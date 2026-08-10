@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>THE CODING DESKTOP — VOL. 01</title>
+    <link rel="stylesheet" href="index.css">
+</head>
+<body>
+    <main class="page">
+        <!-- crop marks, like a printed sheet -->
+        <span class="crop crop-tl"></span>
+        <span class="crop crop-tr"></span>
+        <span class="crop crop-bl"></span>
+        <span class="crop crop-br"></span>
+
+        <!-- masthead -->
+        <header class="masthead">
+            <div class="masthead-tags">
+                <span>AGENT HARNESS</span>
+                <span>EST. 2026</span>
+                <span>VOL. 01 — THE DOUBLE LOOP</span>
+            </div>
+            <h1 class="masthead-title">THE CODING<br>DESKTOP</h1>
+            <div class="masthead-rule"></div>
+            <div class="masthead-meta">
+                <span>PRINTED ON PI-AGENT-CORE · SET IN ELECTROBUN</span>
+                <span class="masthead-meta-right">NO. 001</span>
+            </div>
+        </header>
+
+        <!-- transcript -->
+        <section class="transcript" id="transcript" aria-live="polite">
+            <div class="empty-state" id="empty-state">
+                <p>— waiting for your first prompt —</p>
+                <p class="hint">ask me what time it is · or just talk</p>
+            </div>
+        </section>
+
+        <!-- control -->
+        <footer class="control">
+            <div class="status" id="status">
+                <span class="status-dot" id="status-dot"></span>
+                <span class="status-text" id="status-text">AGENT: IDLE</span>
+                <span class="status-fill"></span>
+                <span class="status-extra" id="status-extra"></span>
+            </div>
+            <form class="composer" id="composer">
+                <input id="prompt-input" type="text" placeholder="type a prompt …" autocomplete="off" spellcheck="false">
+                <button class="btn btn-primary" type="submit">SEND ↗</button>
+                <button class="btn" type="button" id="stop-btn" disabled>STOP</button>
+                <button class="btn" type="button" id="reset-btn">NEW ↺</button>
+            </form>
+        </footer>
+    </main>
+    <script type="module" src="index.ts"></script>
+</body>
+</html>

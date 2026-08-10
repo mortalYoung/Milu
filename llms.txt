@@ -1,0 +1,33 @@
+# CODING DESKTOP
+
+An agent-harness desktop app: the pi agent harness double loop
+(@earendil-works/pi-agent-core) running inside an Electrobun shell,
+with a zine-style UI. LLM provider: DeepSeek via @earendil-works/pi-ai
+(env: DEEPSEEK_API_KEY, optional PI_MODEL override).
+
+IMPORTANT: Electrobun is NOT Electron. Do not use Electron APIs or patterns.
+
+Key files:
+- src/bun/agent.ts — the pi Agent (double loop: inner LLM↔tools turn, outer follow-up drain), one tool: `now`
+- src/bun/index.ts — BrowserWindow + RPC handlers (chat/stop/reset)
+- src/shared/rpc.ts — AppRPCSchema: single source of truth for the RPC wire format
+- src/mainview/ — zine-style UI, RPC client
+
+## Documentation
+
+Full API reference: https://blackboard.sh/electrobun/llms.txt
+Getting started: https://blackboard.sh/electrobun/docs/
+
+## Quick Reference
+
+Import patterns:
+- Main process (Bun): `import { BrowserWindow } from "electrobun/bun"`
+- Browser context: `import { Electroview } from "electrobun/view"`
+
+Use `views://` URLs to load bundled assets (e.g., `url: "views://mainview/index.html"`).
+Views must be configured in `electrobun.config.ts` to be built and copied into the bundle.
+
+## About
+
+Electrobun is built by Blackboard (https://blackboard.sh), an innovation lab building
+tools and funding teams that define the next generation of technology.
