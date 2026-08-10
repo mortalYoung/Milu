@@ -42,6 +42,7 @@ Semantics (matching `defineElectrobunRPC`):
 - Tabs for indentation (matches existing files).
 - Keep the transcript rendering in `src/mainview/index.ts`; all agent/LLM logic stays in `src/bun/` (the webview never talks to the provider).
 - Zine style constraints in `src/mainview/index.css`: paper/ink/one red, no border-radius, no shadows, no gradients. Don't introduce web-app chrome.
+- `src/mainview/index.html` must load the view script as `<script type="module" src="index.js">` — electrobun bundles the view entrypoint (`electrobun.config.ts` → `build.views.mainview.entrypoint`) to `index.js`; the dev server does NOT serve raw `index.ts`, and a wrong `src` fails silently with "empty response for URL: views://mainview/index.ts" (view JS never runs, UI appears dead).
 
 ## Commands
 
@@ -55,6 +56,8 @@ bun run typecheck  # tsc --noEmit
 
 - `DEEPSEEK_API_KEY` — required for the agent to reply (provider: DeepSeek, OpenAI-completions API at api.deepseek.com)
 - `PI_MODEL` — optional model override, e.g. `deepseek-v4-pro` (any id in pi-ai's deepseek catalog, see `node_modules/@earendil-works/pi-ai/dist/providers/data/deepseek.json`)
+- Put both in the project-root `.env` (git-ignored; see `.env.example`). The `dev`/`start` scripts load it via `bun --env-file=.env`, and env propagates down the launcher spawn chain to the main process. Do not add new keys to the shell export docs — keep them in `.env`.
+- The agent reads `process.env` at request time (pi auth resolution), so the key is picked up per turn without restart.
 - Missing key is NOT a crash: pi encodes it as an error stream → `agent_end` with `errorMessage` → `ERR §` line in the UI.
 
 ## Verification

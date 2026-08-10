@@ -41,11 +41,14 @@ A single tool, `now`, demonstrates the inner loop (LLM → tool → result → L
 
 ```bash
 bun install
-export DEEPSEEK_API_KEY=sk-...   # your DeepSeek API key
-bun run dev                      # dev mode with watch
+cp .env.example .env             # then put your DEEPSEEK_API_KEY in .env
+bun run dev                      # dev mode with watch (.env is auto-loaded)
 ```
 
-Optional: `export PI_MODEL=deepseek-v4-pro` to switch models (anything in pi-ai's deepseek catalog).
+`.env` lives in the project root and is git-ignored — the dev scripts load it via
+`bun --env-file=.env`, so the key reaches the main process without shell exports.
+Optional: `PI_MODEL=deepseek-v4-pro` in `.env` to switch models (anything in
+pi-ai's deepseek catalog).
 
 > No key set? The app still runs — the agent replies with an `ERR §` line telling you so.
 

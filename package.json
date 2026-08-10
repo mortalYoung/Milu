@@ -3,8 +3,8 @@
 	"version": "0.1.0",
 	"description": "A minimal zine-style agent harness desktop app — pi's double loop on Electrobun",
 	"scripts": {
-		"start": "electrobun dev",
-		"dev": "electrobun dev --watch",
+		"start": "bun --env-file=.env x electrobun dev",
+		"dev": "bun --env-file=.env x electrobun dev --watch",
 		"build": "electrobun build",
 		"typecheck": "tsc --noEmit"
 	},
