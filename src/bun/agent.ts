@@ -1,13 +1,6 @@
-import {
-	Agent,
-	type AgentTool,
-	type AgentEvent,
-} from "@earendil-works/pi-agent-core";
-import { createModels, Type } from "@earendil-works/pi-ai";
-import { deepseekProvider } from "@earendil-works/pi-ai/providers/deepseek";
-
 /**
- * The double-loop agent (pi-agent-core).
+ * The double-loop agent runtime (pi-agent-core).
+ * How the loop runs — not what the agent is (see agent-config.ts).
  *
  * - Inner loop: stream the LLM response, execute any tool calls, feed the
  *   results back to the model, repeat until the model stops.
@@ -17,6 +10,8 @@ import { deepseekProvider } from "@earendil-works/pi-ai/providers/deepseek";
  * Every user message becomes a `prompt()` run; messages sent while the agent
  * is streaming are queued via `followUp()` and picked up by the outer loop.
  */
+import { Agent, type AgentEvent } from "@earendil-works/pi-agent-core";
+import { STREAM_FN, SYSTEM_PROMPT, TOOLS, resolveModel } from "./agent-config";
 
 export interface AgentBridge {
 	/** Fired for every text delta of the current reply. */
@@ -40,51 +35,15 @@ export interface AgentHandle {
 	reset: () => void;
 }
 
-const MODELS = createModels();
-MODELS.setProvider(deepseekProvider());
-
-const DEFAULT_MODEL = "deepseek-v4-flash";
-
-// `now` — the one tool that makes the inner loop visible:
-// the model calls it, the loop executes it, and the result
-// is fed back into the next LLM call.
-const nowTool = {
-	name: "now",
-	label: "Now",
-	description:
-		"Get the current date and time in the local timezone. Use it whenever you need to know what time it is.",
-	parameters: Type.Object({}),
-	async execute() {
-		const iso = new Date().toISOString();
-		return {
-			content: [{ type: "text", text: iso }],
-			details: { iso },
-		};
-	},
-} satisfies AgentTool;
-
 export function createAgent(bridge: AgentBridge): AgentHandle {
-	const modelId = process.env["PI_MODEL"] ?? DEFAULT_MODEL;
-	const model = MODELS.getModel("deepseek", modelId);
-	if (!model) {
-		throw new Error(
-			`Model "${modelId}" not found for provider "deepseek". ` +
-				"Set PI_MODEL to a model from the deepseek catalog (e.g. deepseek-v4-flash).",
-		);
-	}
-
 	const agent = new Agent({
 		initialState: {
-			systemPrompt: [
-				"CODING DESKTOP — a minimal agent harness.",
-				"You answer tersely, in plain text, no markdown ceremony.",
-				"If the user asks what time it is (or anything time-related), call the `now` tool.",
-			].join("\n"),
-			model,
+			systemPrompt: SYSTEM_PROMPT,
+			model: resolveModel(),
 			thinkingLevel: "off",
-			tools: [nowTool],
+			tools: TOOLS,
 		},
-		streamFn: MODELS.streamSimple.bind(MODELS),
+		streamFn: STREAM_FN,
 		// One queued message at a time, oldest first.
 		followUpMode: "one-at-a-time",
 		steeringMode: "one-at-a-time",

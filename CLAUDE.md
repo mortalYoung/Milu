@@ -1,65 +1,51 @@
 # CLAUDE.md
 
-Guidance for Claude Code and other agents working in this repository.
+Guidance for agents working in this repository.
 
 ## Project
 
-CODING DESKTOP — a minimal agent-harness desktop app. The pi agent harness's
-**double loop** runs in an Electrobun shell with a zine-style UI.
+CODING DESKTOP — a minimal agent-harness desktop app: the pi agent harness's
+**double loop** (`@earendil-works/pi-agent-core`) in an Electrobun shell with an
+IM-style UI. Runtime: Bun (main process) + native webview.
 
-- Shell: [Electrobun](https://electrobun.dev) — **NOT Electron.** Never use Electron APIs or patterns.
-- Agent runtime: `@earendil-works/pi-agent-core` (the `Agent` class wraps the double-nested `runLoop`)
-- LLM layer: `@earendil-works/pi-ai` — provider-agnostic; app uses the DeepSeek provider
-- Runtime: Bun (main process) + native webview (UI)
+- **Electrobun, NOT Electron** — never use Electron APIs or patterns.
+- LLM layer: `@earendil-works/pi-ai`, DeepSeek provider.
+- Window: `titleBarStyle: "hiddenInset"` (IDE-style, no title text) — the view's top strip is the drag region (`.electrobun-webkit-app-region-drag`), keep it.
 
 ## Architecture: the double loop
 
-The agent loop (`src/bun/agent.ts`) is two nested loops:
+`src/bun/agent.ts` runs two nested loops:
 
-- **Inner loop** — stream LLM response → execute tool calls → feed results back → repeat until the model stops. One "turn".
+- **Inner loop** — stream LLM → execute tool calls → feed results back → repeat until the model stops ("one turn").
 - **Outer loop** — after a turn settles, drain queued follow-up/steering messages; keep going until nothing is left.
 
-`Agent.chat()` semantics in `src/bun/agent.ts`:
-- Agent idle → `agent.prompt(text)` (starts a run)
-- Agent busy → `agent.followUp({role: "user", ...})` (outer loop drains it after the current turn)
-- If `prompt()` throws "Agent is already processing." (previous run still settling) → queue as follow-up; the next run's drain point picks it up. Never leave a message dropped.
+Rules an agent must respect:
 
-Events from `agent.subscribe()` drive the UI bridge: `turn_start` → `agent_turn`, `message_update` with `text_delta` → `agent_delta`, `tool_execution_start/end` → `agent_tool`, `agent_end` → `agent_end` (with `agent.state.errorMessage` on failure, e.g. missing API key).
+- Agent idle → `agent.prompt(text)`; agent busy → `agent.followUp(...)` (outer loop drains it). If `prompt()` throws "Agent is already processing." (previous run still settling), queue as follow-up — never drop a message.
+- Events → UI: `turn_start` → `agent_turn`, `message_update`/`text_delta` → `agent_delta`, `tool_execution_start/end` → `agent_tool`, `agent_end` → `agent_end` (`agent.state.errorMessage` on failure).
 
 ## RPC
 
-`src/shared/rpc.ts` is the single source of truth for the wire format — a hand-written schema TYPE (`AppRPCSchema`) passed as the generic to `BrowserView.defineRPC<AppRPCSchema>` (bun side, `src/bun/index.ts`) and `Electroview.defineRPC<AppRPCSchema>` (view side, `src/mainview/index.ts`).
+`src/shared/rpc.ts` (`AppRPCSchema`) is the single source of truth — the generic for `BrowserView.defineRPC` (bun) / `Electroview.defineRPC` (view).
 
-Semantics (matching `defineElectrobunRPC`):
-- `bun.requests` — methods the webview calls on Bun (handlers in `src/bun/index.ts`)
-- `webview.messages` — fire-and-forget messages Bun sends to the webview (`rpc.send.agent_delta({text})`; view listens via `rpc.addMessageListener("agent_delta", ...)`)
-- Every request entry must have a required `params` and `response` — optional params violate the `ElectrobunRPCSchema` constraint; pass `{}` at call sites (electrobun convention).
-- Do NOT write the schema as a runtime object literal with inline type syntax (`{params: {text: string}}` as a value) — TS's `satisfies` type-literal parsing breaks on unions/semicolons. Type-only schema.
+- `bun.requests` = webview calls Bun; `webview.messages` = Bun sends to webview (`rpc.send.*`, `rpc.addMessageListener`).
+- Every request entry needs required `params` + `response` — pass `{}` at call sites (electrobun convention).
+- Schema must be **type-only** — `satisfies` literals with inline type syntax break on unions.
 
-## Code conventions
+## Conventions
 
-- TypeScript strict, `noUnusedLocals/Parameters`, `verbatimModuleSyntax` (use `import type`), `noPropertyAccessFromIndexSignature` — env vars must be accessed as `process.env["NAME"]`.
-- Tabs for indentation (matches existing files).
-- Keep the transcript rendering in `src/mainview/index.ts`; all agent/LLM logic stays in `src/bun/` (the webview never talks to the provider).
-- Zine style constraints in `src/mainview/index.css`: paper/ink/one red, no border-radius, no shadows, no gradients. Don't introduce web-app chrome.
-- `src/mainview/index.html` must load the view script as `<script type="module" src="index.js">` — electrobun bundles the view entrypoint (`electrobun.config.ts` → `build.views.mainview.entrypoint`) to `index.js`; the dev server does NOT serve raw `index.ts`, and a wrong `src` fails silently with "empty response for URL: views://mainview/index.ts" (view JS never runs, UI appears dead).
+- **Separation of concerns**: all agent/LLM logic lives in `src/bun/` — `agent.ts` (loop mechanics) + `agent-config.ts` (model/stream/prompt/tools). The webview only renders and talks RPC — `transcript.ts` (document rendering) + `index.ts` (controller: state, RPC wiring, shell chrome). Dependencies flow one way: config → agent → index; transcript ← controller.
+- FT editorial style, set in Tailwind v4: the CSS source is `src/mainview/style.css` — `@theme` carries the FT tokens measured from ft.com (pink paper `#fff1e5`, warm ink `#33302e`, slate `#262a33`, teal `#0d7680`), Georgia serif for titles/bubbles, system sans for meta. IM structure retained (bubbles, timestamps, system lines, time separators — see `transcript.ts`). Flat print buttons — no glass/blur. `src/mainview/index.css` is a git-ignored build artifact — run `bun run build:css` (or `dev:css --watch`) instead of editing it.
+- TS strict + `verbatimModuleSyntax` (`import type`); env vars via `process.env["NAME"]`; match surrounding style (tabs).
+- `index.html` must load the view as `<script type="module" src="index.js">` — the raw `.ts` is not served; a wrong `src` fails silently (view JS never runs).
 
 ## Commands
 
-```bash
-bun run dev        # dev mode with watch (launches the desktop app)
-bun run build      # production build
-bun run typecheck  # tsc --noEmit
-```
+`bun run dev` (watch) · `bun run build` · `bun run typecheck` · `bun run dev:css` (Tailwind watch, run alongside dev when editing CSS) · `bun run format` / `format:check` (Biome; config in `biome.json`, formatter-only, linter disabled)
 
 ## Environment
 
-- `DEEPSEEK_API_KEY` — required for the agent to reply (provider: DeepSeek, OpenAI-completions API at api.deepseek.com)
-- `PI_MODEL` — optional model override, e.g. `deepseek-v4-pro` (any id in pi-ai's deepseek catalog, see `node_modules/@earendil-works/pi-ai/dist/providers/data/deepseek.json`)
-- Put both in the project-root `.env` (git-ignored; see `.env.example`). The `dev`/`start` scripts load it via `bun --env-file=.env`, and env propagates down the launcher spawn chain to the main process. Do not add new keys to the shell export docs — keep them in `.env`.
-- The agent reads `process.env` at request time (pi auth resolution), so the key is picked up per turn without restart.
-- Missing key is NOT a crash: pi encodes it as an error stream → `agent_end` with `errorMessage` → `ERR §` line in the UI.
-
-## Verification
-
-The double loop was verified against the live API: turn 1 (LLM → `now` tool → result), turn 2 (answer from tool result), turn 3 (mid-run follow-up drained by the outer loop), clean `agent_end`. To re-verify manually: set a key, `bun run dev`, ask "what time is it?" (tool call), then type another message while it streams (follow-up).
+- `DEEPSEEK_API_KEY` (required) and optional `PI_MODEL` go in the project-root `.env` (git-ignored, see `.env.example`); `dev`/`start` load it via `bun --env-file=.env`. The agent reads `process.env` per request, so key changes apply without restart.
+- Missing key is not a crash: pi streams an error → `agent_end` with `errorMessage` → `ERR §` in the UI.
+- Tools: `read`/`write`/`edit`/`bash` (pi harness tools, see `agent-config.ts` — `createExecutionEnv` backs them with Bun fs + `/bin/sh`; cwd is the app's working directory). Tool failures surface as error results, not crashes. `bash` runs with the app's permissions — there is no permission/sandbox layer yet.
+- Smoke test: with a key set, ask it to "list the files here" (tool call), then type another message mid-stream (follow-up drain).

@@ -1,6 +1,41 @@
-import { BrowserWindow, BrowserView } from "electrobun/bun";
+import { ApplicationMenu, BrowserWindow, BrowserView } from "electrobun/bun";
 import type { AppRPCSchema } from "../shared/rpc";
 import { createAgent } from "./agent";
+
+// Standard macOS menu. Without an Edit menu, the webview's native text
+// editing (Cmd+C/V/X, right-click paste) has no responder to route to.
+ApplicationMenu.setApplicationMenu([
+	{
+		label: "CODING DESKTOP",
+		submenu: [
+			{ role: "about" },
+			{ type: "divider" },
+			{ role: "hide" },
+			{ role: "hideOthers" },
+			{ role: "showAll" },
+			{ type: "divider" },
+			{ role: "quit" },
+		],
+	},
+	{
+		label: "Edit",
+		submenu: [
+			{ role: "undo" },
+			{ role: "redo" },
+			{ type: "divider" },
+			{ role: "cut" },
+			{ role: "copy" },
+			{ role: "paste" },
+			{ role: "pasteAndMatchStyle" },
+			{ type: "divider" },
+			{ role: "selectAll" },
+		],
+	},
+	{
+		label: "Window",
+		submenu: [{ role: "minimize" }, { role: "zoom" }],
+	},
+]);
 
 const agent = createAgent({
 	onDelta: (text) => rpc.send.agent_delta({ text }),
@@ -30,12 +65,15 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 });
 
 new BrowserWindow({
-	title: "coding desktop",
+	title: "Coding",
+	// IDE-style: no title text; traffic lights overlay the view,
+	// whose top strip is a drag region (see index.html).
+	titleBarStyle: "hiddenInset",
 	url: "views://mainview/index.html",
 	rpc,
 	frame: {
-		width: 860,
-		height: 920,
+		width: 540,
+		height: 680,
 		x: 120,
 		y: 60,
 	},
