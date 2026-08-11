@@ -35,13 +35,14 @@ Rules an agent must respect:
 ## Conventions
 
 - **Separation of concerns**: all agent/LLM logic lives in `src/bun/` — `agent.ts` (loop mechanics) + `agent-config.ts` (model/stream/prompt/tools). The webview only renders and talks RPC — `transcript.ts` (document rendering) + `index.ts` (controller: state, RPC wiring, shell chrome). Dependencies flow one way: config → agent → index; transcript ← controller.
-- FT editorial style, set in Tailwind v4: the CSS source is `src/mainview/style.css` — `@theme` carries the FT tokens measured from ft.com (pink paper `#fff1e5`, warm ink `#33302e`, slate `#262a33`, teal `#0d7680`), Georgia serif for titles/bubbles, system sans for meta. IM structure retained (bubbles, timestamps, system lines, time separators — see `transcript.ts`). Flat print buttons — no glass/blur. `src/mainview/index.css` is a git-ignored build artifact — run `bun run build:css` (or `dev:css --watch`) instead of editing it.
+- FT editorial style, set in Tailwind v4 (via the `@tailwindcss/vite` plugin): `src/mainview/style.css` — `@theme` carries the FT tokens measured from ft.com (pink paper `#fff1e5`, warm ink `#33302e`, slate `#262a33`, teal `#0d7680`), Playfair Display serif for titles/bubbles (OFL stand-in for FT's Financier, bundled by Vite from `src/mainview/assets/fonts/`), Inter for meta. IM structure retained (bubbles, timestamps, system lines, time separators). Flat print buttons — no glass/blur.
+- The view is built by **Vite** (`vite.config.ts`: root `src/mainview`, Solid + Tailwind plugins, output `dist/` — git-ignored); electrobun copies `dist/index.html` + `dist/assets` into the bundle (`watchIgnore: ["dist/**"]`). The view stack is **Solid** (signals — the transcript's streaming text is a per-entry signal, so deltas patch one text node).
 - TS strict + `verbatimModuleSyntax` (`import type`); env vars via `process.env["NAME"]`; match surrounding style (tabs).
 - `index.html` must load the view as `<script type="module" src="index.js">` — the raw `.ts` is not served; a wrong `src` fails silently (view JS never runs).
 
 ## Commands
 
-`bun run dev` (watch) · `bun run build` · `bun run typecheck` · `bun run dev:css` (Tailwind watch, run alongside dev when editing CSS) · `bun run format` / `format:check` (Biome; config in `biome.json`, formatter-only, linter disabled)
+`bun run dev` (Vite build + electrobun watch) · `bun run build` · `bun run build:view` (Vite) · `bun run dev:view` (Vite watch) · `bun run typecheck` · `bun run format` / `format:check` (Biome; config in `biome.json`, formatter-only, linter disabled)
 
 ## Environment
 

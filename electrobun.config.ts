@@ -7,16 +7,14 @@ export default {
 		version: "0.1.0",
 	},
 	build: {
-		views: {
-			mainview: {
-				entrypoint: "src/mainview/index.ts",
-			},
-		},
+		// The view is built by Vite (vite.config.ts) into dist/ — copy from there.
+		// fonts are bundled into dist/assets by Vite (see src/mainview/style.css @font-face).
 		copy: {
-			"src/mainview/index.html": "views/mainview/index.html",
-			"src/mainview/index.css": "views/mainview/index.css",
-			"src/mainview/fonts": "views/mainview/fonts",
+			"dist/index.html": "views/mainview/index.html",
+			"dist/assets": "views/mainview/assets",
 		},
+		// Vite output is ignored by electrobun's watch — Vite rebuilds the view.
+		watchIgnore: ["dist/**"],
 		mac: {
 			bundleCEF: false,
 		},

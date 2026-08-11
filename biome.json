@@ -6,20 +6,12 @@
 		"useIgnoreFile": true
 	},
 	"files": {
-		"includes": [
-			"**",
-			"!build/**",
-			"!dist/**",
-			"!artifacts/**",
-			"!bun.lock",
-			"!.env",
-			"!src/mainview/index.css"
-		]
+		"includes": ["**", "!build/**", "!dist/**", "!artifacts/**", "!bun.lock", "!.env"]
 	},
 	"formatter": {
 		"enabled": true,
 		"indentStyle": "tab",
-		"lineWidth": 100
+		"lineWidth": 180
 	},
 	"linter": {
 		"enabled": false

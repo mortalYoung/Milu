@@ -21,18 +21,7 @@ import {
 	type FileInfo,
 	type ShellExecOptions,
 } from "@earendil-works/pi-agent-core";
-import {
-	appendFile,
-	lstat,
-	mkdir,
-	mkdtemp,
-	readFile,
-	readdir,
-	realpath,
-	rename,
-	rm,
-	writeFile,
-} from "node:fs/promises";
+import { appendFile, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 
@@ -50,10 +39,7 @@ export function resolveModel(): Model<any> {
 	const modelId = process.env["PI_MODEL"] ?? DEFAULT_MODEL;
 	const model = MODELS.getModel("deepseek", modelId);
 	if (!model) {
-		throw new Error(
-			`Model "${modelId}" not found for provider "deepseek". ` +
-				"Set PI_MODEL to a model from the deepseek catalog (e.g. deepseek-v4-flash).",
-		);
+		throw new Error(`Model "${modelId}" not found for provider "deepseek". ` + "Set PI_MODEL to a model from the deepseek catalog (e.g. deepseek-v4-flash).");
 	}
 	return model;
 }
@@ -70,17 +56,13 @@ function mapFileError(path: string, cause: unknown): FileError {
 	const error = cause as NodeJS.ErrnoException;
 	const code = error?.code;
 	if (code === "ENOENT") return new FileError("not_found", error.message, path, error);
-	if (code === "EACCES" || code === "EPERM")
-		return new FileError("permission_denied", error.message, path, error);
+	if (code === "EACCES" || code === "EPERM") return new FileError("permission_denied", error.message, path, error);
 	if (code === "EISDIR") return new FileError("is_directory", error.message, path, error);
 	if (code === "ENOTDIR") return new FileError("not_directory", error.message, path, error);
 	return new FileError("unknown", error?.message ?? String(cause), path, error);
 }
 
-function toFileInfo(
-	path: string,
-	s: { size: number; mtimeMs: number; isDirectory(): boolean; isSymbolicLink(): boolean },
-): FileInfo {
+function toFileInfo(path: string, s: { size: number; mtimeMs: number; isDirectory(): boolean; isSymbolicLink(): boolean }): FileInfo {
 	return {
 		name: basename(path),
 		path,
@@ -246,10 +228,7 @@ function createExecutionEnv(cwd: string): ExecutionEnv {
 		},
 		async exec(command, options) {
 			const opts: ShellExecOptions = options ?? {};
-			const env =
-				opts.inheritEnv === false
-					? { ...(opts.env ?? {}) }
-					: { ...process.env, ...(opts.env ?? {}) };
+			const env = opts.inheritEnv === false ? { ...(opts.env ?? {}) } : { ...process.env, ...(opts.env ?? {}) };
 			try {
 				const proc = Bun.spawn(["/bin/sh", "-c", command], {
 					cwd: opts.cwd ? resolve(cwd, opts.cwd) : cwd,
@@ -265,10 +244,7 @@ function createExecutionEnv(cwd: string): ExecutionEnv {
 							proc.kill();
 						}, opts.timeout * 1000)
 					: undefined;
-				const [stdout, stderr] = await Promise.all([
-					readStream(proc.stdout, opts.onStdout),
-					readStream(proc.stderr, opts.onStderr),
-				]);
+				const [stdout, stderr] = await Promise.all([readStream(proc.stdout, opts.onStdout), readStream(proc.stderr, opts.onStderr)]);
 				const exitCode = await proc.exited;
 				if (timer) clearTimeout(timer);
 				if (timedOut) {
@@ -293,10 +269,7 @@ function createExecutionEnv(cwd: string): ExecutionEnv {
 
 /** Collect a spawned stream, forwarding chunks to an optional callback. */
 
-async function readStream(
-	stream: ReadableStream<Uint8Array>,
-	onChunk?: (chunk: string) => void,
-): Promise<string> {
+async function readStream(stream: ReadableStream<Uint8Array>, onChunk?: (chunk: string) => void): Promise<string> {
 	const reader = stream.getReader();
 	const decoder = new TextDecoder();
 	let text = "";
@@ -314,10 +287,7 @@ async function readStream(
  * Bind the ExecutionEnv context into a harness tool, turning it into a
  * plain `AgentTool` the double loop can execute.
  */
-function bindEnv<TParameters extends TSchema, TDetails>(
-	tool: AgentHarnessTool<ExecutionToolContext, TParameters, TDetails>,
-	env: ExecutionEnv,
-): AgentTool<TParameters, TDetails> {
+function bindEnv<TParameters extends TSchema, TDetails>(tool: AgentHarnessTool<ExecutionToolContext, TParameters, TDetails>, env: ExecutionEnv): AgentTool<TParameters, TDetails> {
 	return {
 		...tool,
 		execute(toolCallId, params, signal, onUpdate) {
@@ -329,9 +299,4 @@ function bindEnv<TParameters extends TSchema, TDetails>(
 const env = createExecutionEnv(process.cwd());
 
 /** The standard pi toolset: read, write, edit, bash. */
-export const TOOLS: AgentTool[] = [
-	bindEnv(createReadTool(), env),
-	bindEnv(createWriteTool(), env),
-	bindEnv(createEditTool(), env),
-	bindEnv(createBashTool(), env),
-];
+export const TOOLS: AgentTool[] = [bindEnv(createReadTool(), env), bindEnv(createWriteTool(), env), bindEnv(createEditTool(), env), bindEnv(createBashTool(), env)];

@@ -4,41 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CODING DESKTOP</title>
-    <link rel="stylesheet" href="index.css">
 </head>
 <body class="h-full">
-    <main class="h-full flex flex-col">
-        <!-- pink hero strip: window drag region (titlebar hidden), FT-style serif wordmark -->
-        <header class="electrobun-webkit-app-region-drag shrink-0 h-12 flex items-center justify-center select-none">
-            <span class="font-serif font-bold uppercase text-[16px] tracking-[0.08em] text-ink">Coding Desktop</span>
-        </header>
-
-        <!-- transcript -->
-        <section class="transcript flex-1 overflow-y-auto overscroll-contain px-4 py-3" id="transcript" aria-live="polite">
-            <div class="empty-state text-center font-serif italic text-[14px] text-ink-soft pt-16" id="empty-state">
-                <p>— waiting for your first prompt —</p>
-                <p class="mt-2">ask it to read a file, run a command, or just talk</p>
-            </div>
-        </section>
-
-        <!-- control -->
-        <footer class="shrink-0 px-3 pt-1 pb-3">
-            <div class="status" id="status">
-                <span class="status-dot" id="status-dot"></span>
-                <span class="status-text" id="status-text">AGENT: IDLE</span>
-                <span class="flex-1"></span>
-                <span class="status-extra" id="status-extra"></span>
-            </div>
-            <!-- FT-style field: white, 1.5px warm-gray border, near-square -->
-            <form class="flex items-center gap-2 bg-white border-[1.5px] border-field rounded-sm pl-1.5 pr-1.5 py-1.5 transition-colors focus-within:border-ink" id="composer">
-                <input id="prompt-input" class="flex-1 min-w-0 bg-transparent border-none outline-none font-sans text-[14px] text-ink placeholder:text-ink-soft px-2 py-1.5" type="text" placeholder="type a prompt …" autocomplete="off" spellcheck="false">
-                <button id="send-btn" class="btn btn-primary shrink-0 h-8 px-3.5 rounded-sm flex items-center justify-center text-[12px] tracking-[0.02em]" type="button" title="send">
-                    <span class="icon-send"><i data-lucide="ArrowUp"></i><span>Send</span></span>
-                    <span class="icon-stop"><i data-lucide="Square"></i><span>Stop</span></span>
-                </button>
-            </form>
-        </footer>
-    </main>
-    <script type="module" src="index.js"></script>
+    <main class="h-full flex flex-col" id="app"></main>
+    <script type="module" src="/index.tsx"></script>
 </body>
 </html>

@@ -7,15 +7,7 @@ import { createAgent } from "./agent";
 ApplicationMenu.setApplicationMenu([
 	{
 		label: "CODING DESKTOP",
-		submenu: [
-			{ role: "about" },
-			{ type: "divider" },
-			{ role: "hide" },
-			{ role: "hideOthers" },
-			{ role: "showAll" },
-			{ type: "divider" },
-			{ role: "quit" },
-		],
+		submenu: [{ role: "about" }, { type: "divider" }, { role: "hide" }, { role: "hideOthers" }, { role: "showAll" }, { type: "divider" }, { role: "quit" }],
 	},
 	{
 		label: "Edit",
@@ -79,4 +71,5 @@ new BrowserWindow({
 	},
 });
 
-console.log("coding-desktop started — agent ready");
+// ANSI green — one line, not worth a chalk dependency
+console.log("\x1b[32mcoding-desktop started — agent ready\x1b[0m");

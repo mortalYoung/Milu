@@ -5,4 +5,4 @@ artifacts/
 *.tsbuildinfo
 .env
 .env.local
-src/mainview/index.css
+dist/
