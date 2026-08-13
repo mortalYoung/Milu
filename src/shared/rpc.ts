@@ -30,18 +30,21 @@ export type AppRPCSchema = __schema<{
 				params: {};
 				response: { accepted: boolean };
 			};
+			/** Startup/refresh history: visible messages only (user + send_message). */
+			history: {
+				params: {};
+				response: { items: { id: string; kind: "user" | "send_message"; text: string; time: number }[] };
+			};
 		};
 		messages: {};
 	};
 	webview: {
 		requests: {};
 		messages: {
-			/** Streaming text delta of the assistant reply. */
-			agent_delta: { text: string };
-			/** A tool started/stopped executing (inner loop). */
-			agent_tool: { name: string; status: "start" | "end" };
-			/** A new turn began (one LLM call + tool executions). */
+			/** A new turn began (one LLM call + tool executions) — typing indicator. */
 			agent_turn: { turn: number };
+			/** A visible message was persisted via send_message — view refetches history. */
+			agent_message: {};
 			/** The run settled. error is set when the run failed (e.g. missing API key). */
 			agent_end: { error?: string };
 		};

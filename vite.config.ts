@@ -1,6 +1,6 @@
+import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 import solid from "vite-plugin-solid";
-import tailwindcss from "@tailwindcss/vite";
 
 // The view (src/mainview) is built by Vite into dist/; electrobun copies
 // dist/index.html + dist/assets into the bundle (see electrobun.config.ts).

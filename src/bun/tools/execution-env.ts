@@ -1,56 +1,11 @@
 /**
- * What the agent IS: provider, model, stream function, system prompt, tools.
- * Static configuration + the execution environment the tools run in —
- * no loop mechanics here. `src/bun/agent.ts` only cares about the double loop.
+ * 工具的执行环境:Bun 文件系统 + shell,实现 pi 的 ExecutionEnv。
+ * 会话持久化(pi JSONL 后端)也复用其纯 fs 部分。
  */
-import { createModels, type Model, type TSchema } from "@earendil-works/pi-ai";
-import { deepseekProvider } from "@earendil-works/pi-ai/providers/deepseek";
-import {
-	createBashTool,
-	createEditTool,
-	createReadTool,
-	createWriteTool,
-	ExecutionError,
-	FileError,
-	err,
-	ok,
-	type AgentHarnessTool,
-	type AgentTool,
-	type ExecutionEnv,
-	type ExecutionToolContext,
-	type FileInfo,
-	type ShellExecOptions,
-} from "@earendil-works/pi-agent-core";
-import { appendFile, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { appendFile, lstat, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
-
-const MODELS = createModels();
-MODELS.setProvider(deepseekProvider());
-
-const DEFAULT_MODEL = "deepseek-v4-flash";
-
-export const SYSTEM_PROMPT = [
-	"CODING DESKTOP — an agent harness running on the pi double loop.",
-	"Answer tersely. Use your tools (read, write, edit, bash) to inspect and modify the filesystem when helpful — never invent file contents or command output.",
-].join("\n");
-
-export function resolveModel(): Model<any> {
-	const modelId = process.env["PI_MODEL"] ?? DEFAULT_MODEL;
-	const model = MODELS.getModel("deepseek", modelId);
-	if (!model) {
-		throw new Error(`Model "${modelId}" not found for provider "deepseek". ` + "Set PI_MODEL to a model from the deepseek catalog (e.g. deepseek-v4-flash).");
-	}
-	return model;
-}
-
-/** How the loop talks to the LLM. */
-export const STREAM_FN = MODELS.streamSimple.bind(MODELS);
-
-// ————————————————————————————————
-// Execution environment (Bun-backed filesystem + shell) and the
-// standard pi tools, bound to it.
-// ————————————————————————————————
+import { type ExecutionEnv, ExecutionError, err, FileError, type FileInfo, ok, type ShellExecOptions } from "@earendil-works/pi-agent-core";
 
 function mapFileError(path: string, cause: unknown): FileError {
 	const error = cause as NodeJS.ErrnoException;
@@ -73,7 +28,7 @@ function toFileInfo(path: string, s: { size: number; mtimeMs: number; isDirector
 }
 
 /** Filesystem + shell against the current working directory. */
-function createExecutionEnv(cwd: string): ExecutionEnv {
+export function createExecutionEnv(cwd: string): ExecutionEnv {
 	const checkAbort = (signal?: AbortSignal) => signal?.throwIfAborted();
 	const absolute = (path: string) => resolve(cwd, path);
 
@@ -86,7 +41,9 @@ function createExecutionEnv(cwd: string): ExecutionEnv {
 		},
 		async joinPath(parts, signal) {
 			checkAbort(signal);
-			return ok(join(cwd, ...parts));
+			// 契约:直接拼接段(绝对段保持绝对);不能重复加 cwd,
+			// 否则 pi 的 JSONL 会话层传入绝对路径时路径会递归翻倍
+			return ok(join(...parts));
 		},
 		async readTextFile(path, signal) {
 			checkAbort(signal);
@@ -268,7 +225,6 @@ function createExecutionEnv(cwd: string): ExecutionEnv {
 }
 
 /** Collect a spawned stream, forwarding chunks to an optional callback. */
-
 async function readStream(stream: ReadableStream<Uint8Array>, onChunk?: (chunk: string) => void): Promise<string> {
 	const reader = stream.getReader();
 	const decoder = new TextDecoder();
@@ -282,21 +238,3 @@ async function readStream(stream: ReadableStream<Uint8Array>, onChunk?: (chunk: 
 	}
 	return text;
 }
-
-/**
- * Bind the ExecutionEnv context into a harness tool, turning it into a
- * plain `AgentTool` the double loop can execute.
- */
-function bindEnv<TParameters extends TSchema, TDetails>(tool: AgentHarnessTool<ExecutionToolContext, TParameters, TDetails>, env: ExecutionEnv): AgentTool<TParameters, TDetails> {
-	return {
-		...tool,
-		execute(toolCallId, params, signal, onUpdate) {
-			return tool.execute(toolCallId, params, signal, onUpdate, { env });
-		},
-	};
-}
-
-const env = createExecutionEnv(process.cwd());
-
-/** The standard pi toolset: read, write, edit, bash. */
-export const TOOLS: AgentTool[] = [bindEnv(createReadTool(), env), bindEnv(createWriteTool(), env), bindEnv(createEditTool(), env), bindEnv(createBashTool(), env)];

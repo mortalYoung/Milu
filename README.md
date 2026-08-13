@@ -82,16 +82,19 @@ pi-ai's deepseek catalog).
 src/
 ├── bun/
 │   ├── index.ts        # composition root: window + RPC wiring
-│   ├── agent.ts        # pi Agent: double loop, events, chat semantics
-│   └── agent-config.ts # model, stream fn, system prompt, tools, execution env
+│   ├── core/           # agent runtime: agent.ts (double loop), agent-config.ts
+│   │                   #   (model/stream/projection), prompt.ts (SOUL persona),
+│   │                   #   session.ts (JSONL persistence), config.ts (constants)
+│   └── tools/          # execution-env.ts (Bun fs/shell) + tool assembly
+│                       #   (read/write/edit/bash + send_message)
 ├── mainview/           # built by Vite (vite.config.ts) into dist/ (git-ignored)
 │   ├── index.html      # Vite entry
 │   ├── index.tsx       # bootstrap: render <App/> into #app
 │   ├── App.tsx         # controller: RPC wiring, app state, shell chrome
-│   ├── Transcript.tsx  # document rendering (Solid, per-entry streaming signals)
-│   ├── Composer.tsx    # input field + dual-mode send/stop button
+│   ├── components/     # Button (FT variants), Composer (input + dual-mode send)
+│   ├── layouts/        # Transcript (document rendering, storage-driven)
 │   ├── style.css       # Tailwind v4 source: FT theme + component styles
-│   └── assets/fonts/   # Playfair Display + Inter (OFL), bundled by Vite
+│   └── assets/fonts/   # Playfair Display + JetBrains Mono (OFL), bundled by Vite
 └── shared/
     └── rpc.ts          # AppRPCSchema (typed requests/messages, shared both sides)
 ```

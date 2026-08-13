@@ -10,8 +10,9 @@
 		"build": "bun run build:view && electrobun build",
 		"build:view": "vite build",
 		"typecheck": "tsc --noEmit",
-		"format": "biome format --write .",
-		"format:check": "biome format ."
+		"test": "bun test",
+		"format": "biome check --write .",
+		"format:check": "biome check ."
 	},
 	"dependencies": {
 		"@earendil-works/pi-agent-core": "0.84.1",
