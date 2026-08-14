@@ -38,5 +38,10 @@ export function resolveModel(): Model<any> {
 	return model;
 }
 
+/** identify 段的运行时信息:框架 + 当前模型(与 resolveModel 同源,随 PI_MODEL 变化)。 */
+export function describeRuntime(): { framework: string; model: string } {
+	return { framework: "CODING DESKTOP", model: resolveModel().id };
+}
+
 /** How the loop talks to the LLM. */
 export const STREAM_FN = MODELS.streamSimple.bind(MODELS);

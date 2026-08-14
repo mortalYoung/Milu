@@ -1,29 +1,27 @@
 /* ————————————————————————————————
-   CODING DESKTOP — IM layout, Tailwind v4.
-   Source of truth for the view's CSS; compiled by Vite
-   (@tailwindcss/vite) into dist/assets/.
-
-   Palette: FT 色板(粉纸/暖墨/石板/青)。交互布局参考飞书:
-   左侧对话列表 + 右侧聊天窗口,输入有内容才出现发送按钮。
+   CODING DESKTOP — 书信对话(见 DESIGN.md,方向 B)。
+   旧纸 #f7f3ea / 信笺 #fffdf8 / 暖墨 #2a2620 / 封印红 #b03a2e / 发丝线 #e2dccb。
+   Newsreader 只做阅读,Public Sans 只做 UI,JetBrains Mono 仅内联代码。
+   消息为 60% 居中窄栏信件;无头像;虚线邮戳;三圆点 Writing 胶囊。
+   无阴影、无渐变;层级靠纸面交替、发丝线、字距。动效:盖邮戳入场。
    ———————————————————————————————— */
 
 @import "tailwindcss";
+@import "tw-animate-css";
 
-/* Open-source stand-ins for FT's proprietary faces (bundled locally):
-   Financier Display → Playfair Display (OFL), Metric → JetBrains Mono (OFL).
-   See src/mainview/assets/fonts/. */
+/* 字体(本地打包,OFL):Newsreader(信笺正文)/ Public Sans(UI)/ JetBrains Mono(内联代码) */
 @font-face {
-	font-family: "Playfair Display";
-	src: url("assets/fonts/playfair-display.woff2") format("woff2-variations");
-	font-weight: 100 900;
+	font-family: "Newsreader";
+	src: url("assets/fonts/newsreader.woff2") format("woff2-variations");
+	font-weight: 400 700;
 	font-style: normal;
 	font-display: swap;
 }
 @font-face {
-	font-family: "Playfair Display";
-	src: url("assets/fonts/playfair-display-italic.woff2") format("woff2-variations");
+	font-family: "Public Sans";
+	src: url("assets/fonts/public-sans.woff2") format("woff2-variations");
 	font-weight: 100 900;
-	font-style: italic;
+	font-style: normal;
 	font-display: swap;
 }
 @font-face {
@@ -35,18 +33,73 @@
 }
 
 @theme {
-	--color-paper: #fff1e5;
-	--color-paper-soft: #fff7ef;
-	--color-salmon: #fcd0b1;
-	--color-ink: #33302e;
-	--color-ink-soft: #66605c;
-	--color-mute: #a8aaad;
-	--color-slate: #262a33;
-	--color-teal: #0d7680;
-	--color-brick: #c2422d;
-	--color-field: #b3a9a0; /* FT search-field border */
-	--font-serif: "Playfair Display", Georgia, "Times New Roman", Times, serif;
-	--font-sans: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+	/* 书信对话色板(DESIGN.md) */
+	--color-paper: #f7f3ea;
+	--color-paper-deep: #ece5d6;
+	--color-paper-hover: #f0ead9;
+	--color-letter: #fffdf8;
+	--color-ink: #2a2620;
+	--color-ink-soft: #4a4438;
+	--color-body-muted: #6f675a;
+	--color-muted: #8d8474;
+	--color-hairline: #e2dccb;
+	--color-hairline-soft: #eceae0;
+	--color-seal: #b03a2e;
+	--color-seal-soft: #e8d5d1;
+	--color-on-ink: #f7f3ea;
+
+	/* 兼容旧引用 */
+	--color-qw-bg: #f7f3ea;
+	--color-qw-panel: #f7f3ea;
+	--color-qw-text: #2a2620;
+	--color-qw-text-2: #6f675a;
+	--color-qw-border: #e2dccb;
+	--color-qw-hover: #f0ead9;
+	--color-qw-active: #2a2620;
+
+	/* 字体:衬线只做阅读,sans 只做 UI,mono 只给内联代码 */
+	--font-sans: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+	--font-serif: "Newsreader", Georgia, "Times New Roman", serif;
+	--font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+	/* shadcn/SolidUI 主题变量(映射到书信色板) */
+	--color-background: #f7f3ea;
+	--color-foreground: #2a2620;
+	--color-card: #fffdf8;
+	--color-card-foreground: #2a2620;
+	--color-primary: #2a2620;
+	--color-primary-foreground: #f7f3ea;
+	--color-secondary: #ece5d6;
+	--color-secondary-foreground: #2a2620;
+	--color-muted: #8d8474;
+	--color-muted-foreground: #8d8474;
+	--color-accent: #f0ead9;
+	--color-accent-foreground: #2a2620;
+	--color-destructive: #b03a2e;
+	--color-destructive-foreground: #fffdf8;
+	--color-border: #e2dccb;
+	--color-input: #e2dccb;
+	--color-ring: #b03a2e;
+	--color-popover: #fffdf8;
+	--color-popover-foreground: #2a2620;
+	--color-error: #b03a2e;
+	--color-error-foreground: #b03a2e;
+
+	/* 弹窗方向 C 配色(印刷橙,详情/设置弹窗使用) */
+	--color-print: #e2552d;
+	--color-print-line: #d8d8d4;
+	--color-print-tint: #f4f4f2;
+}
+
+/* 氛围层:旧纸微噪点(透明度 <4%,pointer-events 穿透) */
+body::before {
+	content: "";
+	position: fixed;
+	inset: 0;
+	z-index: 9999;
+	pointer-events: none;
+	opacity: 0.035;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 @layer base {
@@ -57,162 +110,352 @@
 	body {
 		@apply bg-paper text-ink font-sans antialiased;
 	}
+	/* 裸 border 类默认用 --border(shadcn 约定) */
+	*,
+	::after,
+	::before {
+		border-color: var(--color-border);
+	}
+	/* 选中文本 = 封印红纸(品牌色) */
 	::selection {
-		background: var(--color-teal);
-		color: var(--color-paper);
+		background: var(--color-seal);
+		color: var(--color-on-ink);
 	}
 }
 
+/* 大写标签(eyebrow:分区头/系统行;Public Sans 11px + 0.6px 正字距) */
+@utility eyebrow {
+	font-family: var(--font-sans);
+	font-size: 11px;
+	font-weight: 500;
+	letter-spacing: 0.6px;
+	text-transform: uppercase;
+	color: var(--color-muted);
+}
+
 @layer components {
-	/* ————— 对话列表 ————— */
+	/* ————— 左侧图标栏(纸面;active = 暖墨实底) ————— */
+	.rail {
+		@apply w-16 shrink-0 bg-paper border-r border-hairline flex flex-col items-center pt-4;
+	}
+	/* 顶部空拖拽区(24px):让位给红绿灯 */
+	.rail-spacer {
+		@apply h-6 w-full shrink-0;
+	}
+	.rail-brand {
+		@apply size-[30px] rounded-full bg-ink text-paper font-serif text-[15px] font-semibold flex items-center justify-center cursor-default select-none;
+	}
+	.rail-tab {
+		@apply mt-3 size-10 flex items-center justify-center rounded-[10px] text-ink cursor-pointer transition-colors;
+	}
+	.rail-tab:hover {
+		background: var(--color-paper-deep);
+	}
+	.rail-tab.active {
+		background: var(--color-ink);
+		color: var(--color-paper);
+	}
+	/* footer(上边框) */
+	.rail-footer {
+		@apply mt-auto w-full pb-[14px] flex flex-col items-center gap-3;
+	}
+	.rail-settings {
+		@apply size-10 flex items-center justify-center rounded-[10px] text-ink cursor-pointer transition-colors;
+	}
+	.rail-settings:hover {
+		background: var(--color-paper-deep);
+	}
+	.rail-settings.active {
+		background: var(--color-ink);
+		color: var(--color-paper);
+	}
+
+	/* ————— 顶栏(设置页:eyebrow 标签) ————— */
+	.topbar {
+		@apply h-16 shrink-0 bg-paper border-b border-hairline flex items-center px-6 eyebrow;
+	}
+
+	/* ————— 对话列表(信件目录) ————— */
+	.conv-list-head {
+		@apply flex items-center justify-between pl-1 pr-3 mb-[14px];
+	}
+	.conv-list-title {
+		@apply font-serif text-[19px] font-semibold text-ink;
+	}
+	.conv-list-search {
+		@apply h-9 border border-hairline rounded-[8px] bg-letter flex items-center px-3 mr-3 mb-[14px];
+	}
+	.conv-list-input {
+		@apply flex-1 min-w-0 bg-transparent border-none outline-none font-sans text-[13px] text-ink placeholder:text-muted;
+	}
 	.conv-item {
-		@apply flex items-center gap-2.5 w-full px-3 py-2.5 rounded-lg cursor-pointer text-left;
+		@apply relative flex items-center gap-2.5 px-2 mr-3 py-[9px] rounded-[6px] cursor-pointer text-left transition-colors;
 	}
 	.conv-item:hover {
-		background: rgba(51, 48, 46, 0.05);
+		background: var(--color-paper-hover);
 	}
 	.conv-item.selected {
-		background: rgba(13, 118, 128, 0.1);
+		background: var(--color-paper-deep);
 	}
 	.conv-avatar {
-		@apply size-9 rounded-full flex items-center justify-center shrink-0;
+		@apply size-[34px] rounded-full flex items-center justify-center shrink-0 font-serif text-[15px] font-semibold leading-none;
 	}
-	.avatar-agent {
-		@apply bg-slate text-paper;
+	/* 首字母的光学居中:衬线小写字母压在基线上,视觉中心偏上,微沉 0.1em */
+	.avatar-initial {
+		@apply block leading-none;
+		transform: translateY(0.1em);
 	}
-	.avatar-user {
-		@apply bg-white text-ink border border-ink/15;
+	.conv-avatar.avatar-ink {
+		@apply bg-ink text-paper;
+	}
+	.conv-avatar.avatar-paper {
+		@apply bg-letter text-ink border border-hairline;
+	}
+	.conv-main {
+		@apply flex flex-col min-w-0 flex-1 leading-tight pointer-events-none;
+	}
+	.conv-name-row {
+		@apply flex items-baseline justify-between gap-2 min-w-0;
 	}
 	.conv-name {
-		@apply text-[13px] font-medium text-ink;
-	}
-	.conv-preview {
-		@apply text-[12px] text-ink-soft truncate;
+		@apply font-serif text-[15px] font-semibold text-ink truncate;
 	}
 	.conv-time {
-		@apply text-[11px] text-ink-soft;
+		@apply font-sans text-[10.5px] text-seal tracking-[0.03em] whitespace-nowrap;
+	}
+	.conv-preview {
+		@apply font-sans text-[12px] text-body-muted truncate mt-[2px];
+	}
+	/* hover 时悬浮浮现的 ellipsis(绝对定位盖在行上,不占布局) */
+	.conv-ellipsis {
+		@apply absolute right-1.5 top-1/2 -translate-y-1/2 size-6 flex items-center justify-center rounded text-body-muted cursor-pointer transition-opacity bg-letter/80;
+	}
+	.conv-ellipsis:hover {
+		background: var(--color-letter);
 	}
 
-	/* ————— 聊天窗口头部 ————— */
+	/* ————— markdown 渲染(创建预览 / 详情右栏) ————— */
+	.md {
+		@apply font-serif text-[15px] leading-[1.6] text-[#111110] break-words;
+	}
+	.md h1 {
+		@apply text-[18px] font-semibold mt-1 mb-2;
+	}
+	.md h2 {
+		@apply text-[16px] font-semibold mt-4 mb-1.5;
+	}
+	.md h3 {
+		@apply text-[15px] font-semibold mt-3 mb-1;
+	}
+	.md p {
+		@apply my-1.5;
+	}
+	.md ul {
+		list-style: disc;
+		@apply my-1.5 pl-5;
+	}
+	.md ol {
+		list-style: decimal;
+		@apply my-1.5 pl-5;
+	}
+	.md li {
+		@apply my-0.5;
+	}
+	.md blockquote {
+		border-left: 2px solid var(--color-print);
+		@apply my-2 pl-2.5 text-[#555] text-[14px];
+	}
+	.md code {
+		@apply font-mono text-[12px] bg-print-tint border border-print-line rounded-[3px] px-[5px] py-[1px];
+	}
+	.md pre {
+		@apply bg-print-tint border border-print-line rounded-[4px] px-3 py-2.5 overflow-x-auto my-2;
+	}
+	.md pre code {
+		@apply bg-transparent border-0 p-0;
+	}
+	.md a {
+		color: var(--color-print);
+		text-decoration: underline;
+	}
+
+	/* ————— 主从导航(创建/详情弹窗) ————— */
+	.field-btn {
+		@apply w-full flex flex-col items-start gap-1 px-3 py-2 rounded-[6px] text-left transition-colors cursor-pointer;
+	}
+	.field-btn:hover {
+		background: var(--color-print-tint);
+	}
+	.field-btn.active {
+		background: var(--color-print-tint);
+	}
+	.field-dot-filled {
+		@apply size-1.5 rounded-full bg-[#111110] shrink-0;
+	}
+	.field-dot-empty {
+		@apply size-1.5 rounded-full border border-[#b0a89a] shrink-0;
+	}
+	.tab-pill {
+		@apply font-sans text-[11px] font-medium rounded-full px-2.5 py-1 transition-colors cursor-pointer;
+	}
+	.tab-pill.active {
+		@apply bg-[#111110] text-white;
+	}
+	.tab-pill:not(.active) {
+		@apply text-[#757575] hover:bg-print-tint;
+	}
+
+	/* ————— 聊天页 ————— */
+	.chat-page {
+		@apply flex-1 flex min-h-0;
+	}
+	.chat-window {
+		@apply flex-1 flex flex-col min-w-0;
+	}
+	/* 信封抬头 header:72px,上下发丝线,居中姓名行 */
 	.chat-header {
-		@apply flex items-center gap-2.5 px-4 h-12 shrink-0 bg-white border-b border-ink/10;
+		@apply relative h-[72px] shrink-0 bg-paper border-t border-b border-hairline flex items-center justify-center;
 	}
-	.chat-title {
-		@apply text-[14px] font-medium text-ink;
+	.chat-worker {
+		@apply flex items-baseline gap-[9px] font-serif text-[18px] font-semibold text-ink whitespace-nowrap;
 	}
-	.chat-status {
-		@apply text-[11px] text-ink-soft;
+	.chat-worker-sep {
+		@apply font-sans text-[13px] text-body-muted;
+	}
+	.chat-worker-role {
+		@apply font-sans text-[10px] tracking-[0.2em] text-body-muted;
+	}
+	.chat-toggle {
+		@apply absolute left-4 top-1/2 -translate-y-1/2;
 	}
 
-	/* ————— 消息气泡(IM) ————— */
-	.msg {
-		@apply flex items-start gap-2 py-1;
+	/* 信件流:60% 居中窄栏 */
+	.transcript-inner {
+		@apply w-[60%] mx-auto flex flex-col;
 	}
 	.msg-user {
-		@apply flex-row-reverse;
+		@apply self-end max-w-full bg-ink text-paper font-serif text-[16px] leading-[1.5] whitespace-pre-wrap break-words rounded-[10px] px-[15px] py-[10px];
 	}
-	.msg-agent {
-		@apply flex-row;
+	.msg-user-time {
+		@apply self-end font-sans text-[10.5px] text-seal tracking-[0.05em] mt-1.5;
 	}
-	.msg-col {
-		@apply flex flex-col max-w-[72%];
+	.msg-letter {
+		@apply self-start mt-6 relative bg-letter border border-hairline rounded-[10px] px-[18px] pt-[17px] pb-3 min-w-0;
 	}
-	.msg-user .msg-col {
-		@apply items-end;
+	.msg-letter-text {
+		@apply font-serif text-[16px] leading-[1.62] whitespace-pre-wrap break-words text-ink;
 	}
-	.msg-agent .msg-col {
-		@apply items-start;
+	/* 虚线邮戳:信纸右上角,旋转 -12° */
+	.msg-postmark {
+		@apply absolute -top-4 -right-4 size-[58px] rounded-full border border-dashed border-seal flex flex-col items-center justify-center font-sans text-[8.5px] tracking-[0.12em] text-seal leading-[1.6] text-center;
+		background: rgba(247, 243, 234, 0.55);
+		transform: rotate(-12deg);
 	}
-	.msg-bubble {
-		@apply px-3.5 py-2 text-[14px] leading-[1.55] whitespace-pre-wrap break-words rounded-lg;
+	/* 内联代码:纸上墨迹 chip(mono 为代码字形) */
+	.inline-code {
+		@apply bg-paper-hover border border-hairline rounded-[3px] px-[5px] py-[1px] font-mono text-[13px] whitespace-nowrap;
 	}
-	.msg-user .msg-bubble {
-		@apply bg-slate text-paper font-sans;
-		border: 1px solid var(--color-slate);
-		border-top-right-radius: 2px;
+	/* 署名行:seal 红右对齐 */
+	.msg-sign {
+		@apply font-sans text-[12px] text-seal tracking-[0.03em] text-right mt-[9px];
 	}
-	.msg-agent .msg-bubble {
-		@apply bg-white text-ink font-sans;
-		border: 1px solid rgba(51, 48, 46, 0.18);
-		border-top-left-radius: 2px;
+	/* 运行指示:三个错峰呼吸的墨点(深底用纸色,浅底用墨色,由各处 .xxx .work-dot 覆写) */
+	.work-dot {
+		@apply size-[5px] rounded-full;
+		background: var(--color-paper);
+		animation: work-dot 1.2s infinite;
 	}
-	.msg-meta {
-		@apply text-[11px] text-ink-soft mt-1 px-0.5;
+	.work-dot:nth-child(2) {
+		animation-delay: 0.2s;
 	}
-
-	/* 工作中指示(打字光标) */
-	.cursor {
-		display: inline-block;
-		width: 0.5em;
-		height: 1em;
-		margin-left: 2px;
-		background: var(--color-ink);
-		vertical-align: -0.1em;
-		animation: cursor-blink 0.9s steps(1) infinite;
+	.work-dot:nth-child(3) {
+		animation-delay: 0.4s;
 	}
-	@keyframes cursor-blink {
-		50% {
-			background: transparent;
+	@keyframes work-dot {
+		0%,
+		60%,
+		100% {
+			opacity: 0.25;
+		}
+		30% {
+			opacity: 1;
 		}
 	}
-
-	/* 系统消息(follow-up、错误) */
+	/* 正在说话气泡(信笺样式,复用 msg-letter):墨点 + 署名行 */
+	.msg-speaking-dots {
+		@apply flex items-center gap-1.5;
+	}
+	.msg-speaking .work-dot {
+		background: var(--color-ink-soft);
+	}
+	/* 列表行工作指示:预览槽内三墨点 */
+	.conv-preview-dots {
+		@apply inline-flex items-center gap-[3px] pt-[3px];
+	}
+	.conv-preview-dots .work-dot {
+		background: var(--color-ink-soft);
+	}
+	/* 信封抬头工作状态:分隔线 + 三墨点 + Writing… */
+	.chat-worker-status {
+		@apply inline-flex items-center gap-[3px] ml-2 pl-2 border-l border-hairline font-sans text-[9px] uppercase tracking-[0.14em] text-ink-soft;
+	}
+	.chat-worker-status .work-dot {
+		background: var(--color-ink-soft);
+	}
+	/* 系统行:eyebrow;错误用封印红 */
 	.sys {
-		@apply text-center text-[12px] text-ink-soft py-1.5;
+		@apply text-center eyebrow py-1.5;
 	}
 	.sys-error {
-		@apply text-brick;
+		@apply text-seal font-medium;
 	}
-
-	/* 时间分隔 */
+	/* 日期分隔:小字 + 两侧短线(44px) */
 	.time-sep {
-		@apply flex items-center gap-2 text-[11px] text-ink-soft pt-2.5 pb-1;
+		@apply flex items-center justify-center gap-3 font-sans text-[10px] tracking-[0.18em] text-body-muted mt-0 mb-6;
 	}
 	.time-sep::before,
 	.time-sep::after {
 		content: "";
-		flex: 1;
-		border-top: 1px solid rgba(51, 48, 46, 0.18);
+		width: 44px;
+		height: 1px;
+		background: var(--color-hairline);
 	}
-
-	/* ————— 输入区(飞书式交互:有内容才出现发送) ————— */
+	/* 输入区:居中药丸(60%,44px) */
 	.composer {
-		@apply shrink-0 px-3 pt-1 pb-3;
+		@apply shrink-0 h-[72px] border-t border-hairline flex items-center justify-center px-6 bg-paper;
 	}
-	.composer-box {
-		@apply flex items-center gap-2 bg-white border border-ink/10 rounded-xl px-3 py-1.5 transition-colors focus-within:border-teal;
+	.composer-field {
+		@apply flex items-center gap-2 w-[60%] h-11 bg-letter border border-hairline rounded-[22px] px-[18px] pr-[5px] transition-colors focus-within:border-seal;
 	}
 	.composer-input {
-		@apply flex-1 min-w-0 bg-transparent border-none outline-none font-sans text-[14px] text-ink placeholder:text-ink-soft py-1;
-	}
-
-	/* ————— 按钮 ————— */
-	.btn {
-		@apply inline-flex items-center justify-center gap-1.5 cursor-pointer font-sans whitespace-nowrap;
-	}
-	.btn:disabled {
-		@apply opacity-40 cursor-default;
-	}
-	.btn:active:not(:disabled) {
-		@apply opacity-70;
-	}
-	.btn svg {
-		@apply size-3.5;
+		@apply flex-1 min-w-0 bg-transparent border-none outline-none font-sans text-[14px] text-ink placeholder:text-muted;
 	}
 }
 
-/* thin scrollbar for the transcript */
-.transcript {
+/* thin scrollbar(纸面发丝线) */
+.transcript,
+.home-page {
 	scrollbar-width: thin;
-	scrollbar-color: rgba(51, 48, 46, 0.25) transparent;
+	scrollbar-color: var(--color-hairline) transparent;
 }
-.transcript::-webkit-scrollbar {
+.transcript::-webkit-scrollbar,
+.home-page::-webkit-scrollbar {
 	width: 6px;
 }
-.transcript::-webkit-scrollbar-thumb {
-	background: rgba(51, 48, 46, 0.25);
+.transcript::-webkit-scrollbar-thumb,
+.home-page::-webkit-scrollbar-thumb {
+	background: var(--color-hairline);
 	border-radius: 3px;
 }
-.transcript::-webkit-scrollbar-track {
+.transcript::-webkit-scrollbar-track,
+.home-page::-webkit-scrollbar-track {
 	background: transparent;
+}
+
+/* 无障碍:减少动效(保留 opacity 过渡,移除呼吸) */
+@media (prefers-reduced-motion: reduce) {
+	.work-dot {
+		animation: none;
+		opacity: 1;
+	}
 }

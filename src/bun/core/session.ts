@@ -55,6 +55,8 @@ export interface VisibleItem {
 export interface SessionStore {
 	/** 打开/恢复完成(可在首次操作前 await)。 */
 	ready(): Promise<void>;
+	/** 切换会话根目录(按 Partner 隔离):重建 repo/session 并回放新根的历史。 */
+	setRoot(root: string): Promise<void>;
 	appendUser(content: string, timestamp: number): Promise<void>;
 	appendAssistant(meta: AssistantMeta, timestamp: number): Promise<void>;
 	appendSendMessage(content: string, details: Record<string, unknown>, timestamp: number): Promise<void>;
@@ -80,13 +82,18 @@ const SEND_MESSAGE_PROJECTOR = (entry: CustomEntry): AgentMessage[] | undefined 
 
 export function createSessionStore(root: string = DATABASE_ROOT): SessionStore {
 	// pi 的 JSONL 后端需要 FileSystem 适配器;直接复用执行环境(纯 fs 部分)
-	const repo = new JsonlSessionRepo({ fs: createExecutionEnv(root), sessionsRoot: root });
+	let currentRoot = root;
+	let repo: JsonlSessionRepo;
 	let session: Session | null = null;
 	let entries: Entry[] = [];
 	let opened = false;
 
-	async function ensureOpen() {
-		if (opened) return;
+	async function openRoot(newRoot: string) {
+		currentRoot = newRoot;
+		// 每个根目录一个 repo(按 Partner 隔离会话文件)
+		repo = new JsonlSessionRepo({ fs: createExecutionEnv(currentRoot), sessionsRoot: currentRoot });
+		session = null;
+		entries = [];
 		const sessions = await repo.list();
 		if (sessions.length > 0) {
 			// 单会话连续:取最新
@@ -96,6 +103,11 @@ export function createSessionStore(root: string = DATABASE_ROOT): SessionStore {
 			session = await repo.create({ cwd: PROJECT_ROOT });
 		}
 		await refreshEntries();
+	}
+
+	async function ensureOpen() {
+		if (opened) return;
+		await openRoot(currentRoot);
 		opened = true;
 	}
 
@@ -115,6 +127,9 @@ export function createSessionStore(root: string = DATABASE_ROOT): SessionStore {
 	return {
 		async ready() {
 			await ensureOpen();
+		},
+		async setRoot(newRoot: string) {
+			await openRoot(newRoot);
 		},
 		async appendUser(content, timestamp) {
 			await appendMessage({ role: "user", content, timestamp });

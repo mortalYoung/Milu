@@ -34,6 +34,19 @@ const sendMessageTool = (deps: ToolDeps): AgentTool<typeof sendMessageSchema> =>
 	},
 });
 
+/**
+ * 工具 usage guidance 表:每个工具一条"这个工具应该怎么用才正确"的指引,
+ * 由 prompt 构建器动态插入 TOOL-GUIDANCE 段。未在此表内的工具在提示词里
+ * 回落为 name — description 清单。
+ */
+export const TOOL_GUIDANCE: Record<string, string> = {
+	read: "Use the read tool — not shell commands like cat — to inspect text files; it reads the exact path you give, line-numbered for precision.",
+	write: "Use the write tool to create or overwrite whole files; prefer edit for targeted changes to existing files.",
+	edit: "Use the edit tool for targeted changes inside existing files — smaller diffs than rewriting the whole file and harder to corrupt. Never rewrite a file wholesale when an edit suffices.",
+	bash: "Check the [exit code: N] marker on every bash result; investigate failures before moving on. Prefer read/write/edit over shell for file inspection and changes.",
+	send_message: "The user only sees what you deliver through send_message. Call it to reply, report progress, or ask questions — plain text replies are never shown.",
+};
+
 /** The standard pi toolset (read, write, edit, bash) + send_message. */
 export function createTools(deps: ToolDeps): AgentTool[] {
 	return [bindEnv(createReadTool(), env), bindEnv(createWriteTool(), env), bindEnv(createEditTool(), env), bindEnv(createBashTool(), env), sendMessageTool(deps)];

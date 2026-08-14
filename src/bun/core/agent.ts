@@ -13,9 +13,9 @@
  */
 import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { createTools } from "../tools";
-import { convertToLlm, resolveModel, STREAM_FN } from "./agent-config";
-import { SYSTEM_PROMPT } from "./prompt";
+import { createTools, TOOL_GUIDANCE } from "../tools";
+import { convertToLlm, describeRuntime, resolveModel, STREAM_FN } from "./agent-config";
+import { buildSystemPrompt, type PartnerPrompt } from "./prompt";
 import type { SessionStore } from "./session";
 
 export interface AgentBridge {
@@ -38,6 +38,10 @@ export interface AgentHandle {
 	reset: () => void;
 	/** 启动恢复:以持久化的消息链替换内存 transcript。 */
 	restore: (messages: AgentMessage[]) => void;
+	/** 切换 Partner:以档案字段(role/responsibilities/tones)重建系统提示词。 */
+	setPartner: (partner: PartnerPrompt | null) => void;
+	/** 以档案字段试拼四段系统提示词(预览用,不改动 agent 状态)。 */
+	previewSystemPrompt: (partner: PartnerPrompt | null) => string;
 }
 
 export interface AgentDeps {
@@ -50,7 +54,7 @@ export interface AgentDeps {
 export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	const agent = new Agent({
 		initialState: {
-			systemPrompt: SYSTEM_PROMPT,
+			systemPrompt: "",
 			model: resolveModel(),
 			thinkingLevel: "high",
 			tools: [],
@@ -63,7 +67,12 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		steeringMode: "one-at-a-time",
 	});
 
-	// tools 需要 agent 实例(把可见消息写回 agent 上下文),故构造后再挂载
+	// 四段提示词 = IDENTIFY + PERSONA + TOOL-GUIDANCE + RESPONSE-FORMAT;
+	// identify 的框架/模型由 describeRuntime 注入,tool-guidance 由工具 guidance 表驱动
+	const composeSystemPrompt = (partner: PartnerPrompt | null) => buildSystemPrompt(partner, agent.state.tools, TOOL_GUIDANCE, describeRuntime());
+
+	// tools 需要 agent 实例(把可见消息写回 agent 上下文),故构造后再挂载;
+	// 挂载后重建系统提示词,把工具 guidance 编入 TOOL-GUIDANCE 段
 	agent.state.tools = createTools({
 		store: deps.session,
 		onVisibleMessage: (text, timestamp) => {
@@ -77,6 +86,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			bridge.onMessage(text);
 		},
 	});
+	agent.state.systemPrompt = composeSystemPrompt(null);
 
 	let turn = 0;
 	let running = false;
@@ -191,6 +201,12 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		},
 		restore(messages: AgentMessage[]) {
 			agent.state.messages = messages;
+		},
+		setPartner(partner: PartnerPrompt | null) {
+			agent.state.systemPrompt = composeSystemPrompt(partner);
+		},
+		previewSystemPrompt(partner: PartnerPrompt | null) {
+			return composeSystemPrompt(partner);
 		},
 	};
 }

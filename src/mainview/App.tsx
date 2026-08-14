@@ -1,18 +1,19 @@
 /**
- * App — the controller. Owns app state (busy/queued/turn/working), wires RPC
- * events into visible transcript entries, and renders the IM shell:
- * conversation list (left) + chat window (right).
- * Only user messages and send_message output reach the transcript.
+ * App — the controller. Owns app state, wires RPC events into visible
+ * transcript entries, and renders the shell: icon rail + chat / settings views.
+ * Partners are created via a modal and saved as folders (see src/bun/partners.ts).
  */
 
 import { Electroview } from "electrobun/view";
-import { Bot, MoreHorizontal, Search } from "lucide-solid";
 import { createSignal } from "solid-js";
 import type { AppRPCSchema } from "../shared/rpc";
-import { Button } from "./components/Button";
-import { Composer } from "./components/Composer";
-import { type ConversationItem, ConversationList } from "./components/ConversationList";
-import { type Entry, fmtTime, makeAgentEntry, makeSepEntry, makeSysEntry, makeUserEntry, SEPARATOR_GAP_MS, Transcript } from "./layouts/Transcript";
+import { AppRail } from "./components/AppRail";
+import { PartnerDetailsDialog } from "./components/PartnerDetailsDialog";
+import { type PartnerFormData, PartnerModal } from "./components/PartnerModal";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./components/ui/dialog";
+import { type Entry, makeAgentEntry, makeSepEntry, makeSysEntry, makeUserEntry, SEPARATOR_GAP_MS } from "./layouts/Transcript";
+import { ConversationPage } from "./pages/ConversationPage";
+import { type SettingsData, SettingsView } from "./pages/SettingsView";
 
 // ————— RPC —————
 const rpc = Electroview.defineRPC<AppRPCSchema>({
@@ -20,15 +21,38 @@ const rpc = Electroview.defineRPC<AppRPCSchema>({
 });
 new Electroview({ rpc });
 
+interface PartnerItem {
+	name: string;
+	avatar?: string;
+	role?: string;
+	responsibilities?: string;
+	tones?: string;
+	createdAt: number;
+}
+
 export function App() {
 	// ————— state —————
+	const [view, setView] = createSignal<"chat" | "settings">("chat");
+	const [settingsOpen, setSettingsOpen] = createSignal(false);
+	// Partner 详情弹窗(列表菜单 / 头部点击共用)
+	const [detailsPartner, setDetailsPartner] = createSignal<PartnerItem | null>(null);
 	const [entries, setEntries] = createSignal<Entry[]>([]);
+	// busy = agent 是否在运行(流式/工具执行中),单一来源;推送事件做增量,get_status 校准
 	const [busy, setBusy] = createSignal(false);
-	const [working, setWorking] = createSignal(false);
 	const [queued, setQueued] = createSignal(0);
-	const [error, setError] = createSignal<string | null>(null);
 	const [tick, setTick] = createSignal(0);
-	const [conversation, setConversation] = createSignal<ConversationItem>({ id: "main", name: "Coding Desktop", preview: "", time: "" });
+	const [selected, setSelected] = createSignal<string | null>(null);
+	const [partners, setPartners] = createSignal<PartnerItem[]>([]);
+	const [showModal, setShowModal] = createSignal(false);
+	const [settings, setSettings] = createSignal<SettingsData | null>(null);
+	const [runtime, setRuntime] = createSignal<{ model: string; apiKeyConfigured: boolean } | null>(null);
+	// chat 列表收起状态(持久化)
+	const [listCollapsed, setListCollapsed] = createSignal(localStorage.getItem("chatlist.collapsed") === "1");
+	function toggleListCollapsed() {
+		const next = !listCollapsed();
+		setListCollapsed(next);
+		localStorage.setItem("chatlist.collapsed", next ? "1" : "0");
+	}
 	let lastMsgTime = 0;
 
 	const bump = () => setTick((t) => t + 1);
@@ -37,7 +61,8 @@ export function App() {
 		bump();
 	};
 
-	// 渲染来源 = 持久化 JSONL(经 bun 拉取);按 id 去重,只追加新记录
+	// ————— RPC helpers —————
+	// 渲染来源 = 持久化 JSONL;按 id 去重,只追加新记录
 	const renderedIds = new Set<string>();
 	async function refreshHistory() {
 		const { items } = await rpc.request.history({});
@@ -47,31 +72,47 @@ export function App() {
 			maybeTimeSeparator(new Date(item.time));
 			push(item.kind === "user" ? makeUserEntry(item.text, item.time) : makeAgentEntry(item.text, item.time));
 		}
-		// 对话列表:最后一条可见消息作为预览
-		const last = items[items.length - 1];
-		if (last) {
-			setConversation((prev) => ({
-				...prev,
-				preview: last.text,
-				time: fmtTime(new Date(last.time)),
-			}));
-		}
 	}
 
+	const WEEKDAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+	const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 	function maybeTimeSeparator(d: Date) {
 		if (lastMsgTime && d.getTime() - lastMsgTime > SEPARATOR_GAP_MS) {
-			const sameDay = new Date(lastMsgTime).toDateString() === d.toDateString();
-			push(makeSepEntry(sameDay ? fmtTime(d) : `${d.getMonth() + 1}/${d.getDate()} · ${fmtTime(d)}`));
+			push(makeSepEntry(`${WEEKDAYS[d.getDay()]} · ${MONTHS[d.getMonth()]} ${d.getDate()}`));
 		}
 		lastMsgTime = d.getTime();
 	}
 
-	// ————— RPC events → state + entries —————
+	async function refreshPartners() {
+		const { partners: list } = await rpc.request.list_partners({});
+		setPartners(list);
+		// 默认选中第一个 Partner;已选中项消失时清空
+		if (selected() == null && list.length > 0) selectPartner(list[0]);
+		if (selected() != null && !list.some((p) => p.name === selected())) selectPartner(null);
+	}
+
+	// 选择 Partner → 切换会话(清空当前聊天)+ 动态重建系统提示词
+	function selectPartner(partner: PartnerItem | null) {
+		setSelected(partner?.name ?? null);
+		setEntries([]);
+		renderedIds.clear();
+		lastMsgTime = 0;
+		void rpc.request
+			.set_partner({
+				profile: partner ? { name: partner.name, role: partner.role, responsibilities: partner.responsibilities, tones: partner.tones } : null,
+			})
+			.then(() => refreshHistory());
+	}
+
+	async function refreshSettings() {
+		const { settings: s, runtime: r } = await rpc.request.get_settings({});
+		setSettings(s);
+		setRuntime(r);
+	}
+
+	// ————— RPC events —————
 	rpc.addMessageListener("agent_turn", ({ turn: t }) => {
 		setBusy(true);
-		if (!working()) setWorking(true);
-		// agent_turn 每个回合都触发(含内循环工具迭代);
-		// 只有真实排空 follow-up 队列才显示提示
 		if (queued() > 0) {
 			setQueued((q) => q - 1);
 			push(makeSysEntry(`✳ follow-up · turn ${t}`));
@@ -79,22 +120,21 @@ export function App() {
 		bump();
 	});
 
-	// send_message 已入库 → 重新拉取渲染
 	rpc.addMessageListener("agent_message", () => {
 		void refreshHistory();
 	});
 
-	// 挂载后拉取历史(存储驱动渲染;推送可能在视图就绪前丢失,故用 request)
-	void refreshHistory();
-
 	rpc.addMessageListener("agent_end", ({ error: err }) => {
-		setBusy(false);
-		setWorking(false);
 		setQueued(0);
-		setError(err ?? null);
 		if (err) push(makeSysEntry(`ERR § ${err}`, true));
 		bump();
+		calibrateBusy();
 	});
+
+	// 校准:以 bun 侧 isStreaming 为准,兜底推送事件丢失/晚到(如挂载晚于 turn 的启动竞态)
+	function calibrateBusy() {
+		void rpc.request.get_status({}).then((s) => setBusy(s.streaming));
+	}
 
 	// ————— user input —————
 	function onSend(text: string) {
@@ -102,39 +142,88 @@ export function App() {
 			push(makeSysEntry("✳ follow-up queued"));
 			setQueued((q) => q + 1);
 		}
-		// chat 返回时用户消息已落盘 → 拉取渲染(不走乐观渲染)
 		void rpc.request.chat({ text }).then(() => refreshHistory());
 	}
 
-	const statusText = () => (busy() ? "回复中…" : error() ? "出错了" : "在线");
+	// ————— Partner 删除 —————
+	async function onDeletePartner(name: string) {
+		await rpc.request.delete_partner({ name });
+		// 若删除的是当前选中 Partner:立即关闭(重置选中与提示词)
+		if (selected() === name) selectPartner(null);
+		void refreshPartners();
+	}
+
+	// ————— Partner 创建 —————
+	async function onCreatePartner(data: PartnerFormData): Promise<string | null> {
+		const res = await rpc.request.create_partner(data);
+		if (res.ok) {
+			setShowModal(false);
+			void refreshPartners();
+			return null;
+		}
+		return res.error ?? "Failed to create partner";
+	}
+
+	// 预览 = 四段系统提示词拼装效果(identify/tool-guidance 只读展示在拼装结果里)
+	function onPreviewPrompt(data: PartnerFormData): Promise<string> {
+		return rpc.request
+			.preview_system_prompt({
+				profile: { role: data.role, responsibilities: data.responsibilities, tones: data.tones },
+			})
+			.then((res) => res.prompt);
+	}
+
+	// ————— 挂载 —————
+	void refreshHistory();
+	void refreshPartners();
+	void refreshSettings();
+	calibrateBusy();
 
 	// ————— shell —————
-	// 顶部无独立拖拽条:聊天头部与对话列表顶部即拖拽区(红绿灯悬浮于列表左上,
-	// 列表内容用 pt 让位)。交互元素需 no-drag。
 	return (
 		<div class="flex flex-1 min-h-0">
-			{/* 对话列表 */}
-			<ConversationList item={conversation()} />
+			<AppRail active={view()} onSelect={(tab) => (tab === "settings" ? setSettingsOpen(true) : setView("chat"))} />
 
-			{/* 聊天窗口 */}
-			<div class="flex flex-1 flex-col min-w-0">
-				<div class="chat-header electrobun-webkit-app-region-drag">
-					<span class="msg-avatar avatar-agent">
-						<Bot size={16} />
-					</span>
-					<div class="flex flex-col leading-tight">
-						<span class="chat-title">Coding Desktop</span>
-						<span class="chat-status">{statusText()}</span>
-					</div>
-					<span class="flex-1" />
-					<Button variant="icon" class="electrobun-webkit-app-region-no-drag" title="搜索" icon={<Search size={16} />} />
-					<Button variant="icon" class="electrobun-webkit-app-region-no-drag" title="更多" icon={<MoreHorizontal size={16} />} />
-				</div>
+			<main class="flex-1 flex flex-col min-w-0 bg-qw-bg">
+				<ConversationPage
+					partners={partners()}
+					selected={selected()}
+					onSelect={(name) => selectPartner(partners().find((p) => p.name === name) ?? null)}
+					onAddPartner={() => setShowModal(true)}
+					onDelete={onDeletePartner}
+					onViewDetails={(name) => setDetailsPartner(partners().find((p) => p.name === name) ?? null)}
+					listCollapsed={listCollapsed()}
+					onToggleList={toggleListCollapsed}
+					entries={entries}
+					working={busy}
+					tick={tick}
+					busy={busy}
+					onSend={onSend}
+					onStop={() => void rpc.request.stop({})}
+				/>
+			</main>
 
-				<Transcript entries={entries} working={working} tick={tick} />
+			{/* 设置:弹窗 */}
+			<Dialog open={settingsOpen()} onOpenChange={setSettingsOpen}>
+				<DialogContent class="w-[440px] bg-white border-print-line">
+					<DialogHeader>
+						<DialogTitle>Settings</DialogTitle>
+					</DialogHeader>
+					<SettingsView
+						settings={settings()}
+						runtime={runtime()}
+						onLoad={() => void refreshSettings()}
+						onSave={async (s) => {
+							await rpc.request.update_settings({ settings: s });
+							setSettings(s);
+						}}
+					/>
+				</DialogContent>
+			</Dialog>
 
-				<Composer busy={busy} onSend={onSend} onStop={() => void rpc.request.stop({})} />
-			</div>
+			<PartnerModal open={showModal()} onOpenChange={setShowModal} onConfirm={onCreatePartner} onPreview={onPreviewPrompt} />
+
+			<PartnerDetailsDialog partner={detailsPartner()} onOpenChange={(open) => !open && setDetailsPartner(null)} />
 		</div>
 	);
 }

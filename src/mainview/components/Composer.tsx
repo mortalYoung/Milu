@@ -26,22 +26,22 @@ export function Composer(props: { busy: () => boolean; onSend: (text: string) =>
 
 	return (
 		<form class="composer" id="composer" onSubmit={submit}>
-			<div class="composer-box">
+			<div class="composer-field">
 				<input
 					id="prompt-input"
 					value={text()}
 					onInput={(e) => setText(e.currentTarget.value)}
 					class="composer-input"
 					type="text"
-					placeholder="输入消息…"
+					placeholder="Type a message…"
 					autocomplete="off"
 					spellcheck={false}
 				/>
 				{showSend() && (
 					<Button
-						variant="solid"
-						class="size-8 p-0 rounded-full"
-						title={props.busy() ? "停止" : "发送"}
+						variant={props.busy() ? "outline" : "seal"}
+						class="size-[34px] p-0 rounded-full"
+						title={props.busy() ? "Stop" : "Send"}
 						icon={props.busy() ? <Square size={14} /> : <ArrowUp size={14} />}
 						onClick={() => (props.busy() ? props.onStop() : send())}
 					/>

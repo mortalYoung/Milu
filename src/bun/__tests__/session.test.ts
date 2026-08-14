@@ -105,6 +105,22 @@ describe("session store (pi JSONL backend)", () => {
 		expect(restored[1]).toMatchObject({ role: "toolResult", toolCallId: "t1" });
 	});
 
+	it("setRoot switches conversation root per partner", async () => {
+		const dirA = await tempDir();
+		const dirB = await tempDir();
+		const session = createSessionStore(dirA);
+		await session.appendUser("in A", 1);
+		await session.appendSendMessage("reply A", {}, 2);
+
+		await session.setRoot(dirB);
+		expect(session.visibleHistory()).toEqual([]);
+		await session.appendUser("in B", 3);
+		expect(session.visibleHistory().map((m) => m.text)).toEqual(["in B"]);
+
+		await session.setRoot(dirA);
+		expect(session.visibleHistory().map((m) => m.text)).toEqual(["in A", "reply A"]);
+	});
+
 	it("single session semantics: second store continues the same conversation", async () => {
 		const dir = await tempDir();
 		const first = createSessionStore(dir);
