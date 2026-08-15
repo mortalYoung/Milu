@@ -13,9 +13,10 @@
  */
 import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { createTools, TOOL_GUIDANCE } from "../tools";
-import { convertToLlm, describeRuntime, resolveModel, STREAM_FN } from "./agent-config";
-import { buildSystemPrompt, type PartnerPrompt } from "./prompt";
+import { createTools } from "../tools";
+import { convertToLlm, resolveModel, STREAM_FN } from "./agent-config";
+import { AgentContext, appendSystemReminder } from "./context";
+import type { PartnerPrompt } from "./prompt";
 import type { SessionStore } from "./session";
 
 export interface AgentBridge {
@@ -23,6 +24,8 @@ export interface AgentBridge {
 	onTurnStart: (turn: number) => void;
 	/** A visible message was sent to the user via send_message. */
 	onMessage: (text: string) => void;
+	/** A turn has been persisted (trajectory has new data); fired after persistence completes so a fetch is always up to date. */
+	onTrajectoryUpdate: () => void;
 	/** The run settled. `error` is set on failure (e.g. missing API key). */
 	onEnd: (error?: string) => void;
 }
@@ -30,31 +33,38 @@ export interface AgentBridge {
 export interface AgentHandle {
 	/** True while the agent is streaming or awaiting tool results. */
 	readonly isStreaming: boolean;
-	/** 发送用户消息(持久化完成后 resolve);忙时排队为 follow-up。 */
+	/** The current system prompt (rebuilt on setPartner/setStoragePath). */
+	readonly systemPrompt: string;
+	/** Send a user message (resolves after persistence); queued as a follow-up while busy. */
 	chat: (text: string) => Promise<void>;
 	/** Abort the current run. */
 	stop: () => void;
 	/** Wipe the transcript. */
 	reset: () => void;
-	/** 启动恢复:以持久化的消息链替换内存 transcript。 */
+	/** Startup restore: replace the in-memory transcript with the persisted message chain. */
 	restore: (messages: AgentMessage[]) => void;
-	/** 切换 Partner:以档案字段(role/responsibilities/tones)重建系统提示词。 */
+	/** Switch Partner: rebuild the system prompt from the profile fields (role/responsibilities/tones). */
 	setPartner: (partner: PartnerPrompt | null) => void;
-	/** 以档案字段试拼四段系统提示词(预览用,不改动 agent 状态)。 */
+	/** Set the agent's storage directory (written into the prompt as the STORAGE section); null clears it. */
+	setStoragePath: (path: string | null) => void;
+	/** Compose a trial four-section system prompt from the profile fields (for preview; does not change agent state). */
 	previewSystemPrompt: (partner: PartnerPrompt | null) => string;
 }
 
 export interface AgentDeps {
-	/** 对话持久化存储。 */
+	/** Conversation persistence store. */
 	session: SessionStore;
-	/** 恢复的初始消息链(见 toAgentMessages)。 */
+	/** The initial message chain to restore (see toAgentMessages). */
 	initialMessages?: AgentMessage[];
 }
 
 export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
+	const ctx = new AgentContext();
+
 	const agent = new Agent({
 		initialState: {
-			systemPrompt: "",
+			// Tools are not mounted yet, so the initial list is empty; rebuilt via ctx.setTools after mounting
+			systemPrompt: ctx.composeSystemPrompt(),
 			model: resolveModel(),
 			thinkingLevel: "high",
 			tools: [],
@@ -67,70 +77,106 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		steeringMode: "one-at-a-time",
 	});
 
-	// 四段提示词 = IDENTIFY + PERSONA + TOOL-GUIDANCE + RESPONSE-FORMAT;
-	// identify 的框架/模型由 describeRuntime 注入,tool-guidance 由工具 guidance 表驱动
-	const composeSystemPrompt = (partner: PartnerPrompt | null) => buildSystemPrompt(partner, agent.state.tools, TOOL_GUIDANCE, describeRuntime());
+	// A visible message lands in three places: persisted session entry (the tool does it), agent context,
+	// and the bridge signal. The context push + signal are shared by the send_message tool and the direct
+	// final-delivery fallback (deliverText).
+	function deliverVisible(text: string, timestamp: number) {
+		agent.state.messages.push({
+			role: "custom",
+			customType: "send_message",
+			content: text,
+			display: true,
+			timestamp,
+		});
+		ctx.markVisible();
+		bridge.onMessage(text);
+	}
 
-	// tools 需要 agent 实例(把可见消息写回 agent 上下文),故构造后再挂载;
-	// 挂载后重建系统提示词,把工具 guidance 编入 TOOL-GUIDANCE 段
+	// Tools need the agent instance (to write visible messages back into the agent context), so mount after construction;
+	// after mounting, rebuild the system prompt so tool guidance is woven into the TOOL-GUIDANCE section
 	agent.state.tools = createTools({
 		store: deps.session,
-		onVisibleMessage: (text, timestamp) => {
-			agent.state.messages.push({
-				role: "custom",
-				customType: "send_message",
-				content: text,
-				display: true,
-				timestamp,
-			});
-			bridge.onMessage(text);
-		},
+		onVisibleMessage: (text, timestamp) => deliverVisible(text, timestamp),
 	});
-	agent.state.systemPrompt = composeSystemPrompt(null);
+	ctx.setTools(agent.state.tools);
+	agent.state.systemPrompt = ctx.composeSystemPrompt();
 
-	let turn = 0;
-	let running = false;
-	// 本轮运行内是否已产出过可见消息(用于防重复提示)
-	let sentVisibleThisRun = false;
-	// 连续未调用 send_message 的提示次数(上限防死循环)
-	let nudgeCount = 0;
+	/** Persist a reminder (custom entry) so the trajectory timeline shows it. */
+	function persistReminder(text: string) {
+		void deps.session.appendReminder(text, Date.now()).catch((error) => console.error("session appendReminder failed:", error));
+	}
 
-	/** 该回合若未调用 send_message,注入指令式提示让模型补答(每轮运行最多 3 次)。 */
-	function nudgeIfForgotSendMessage(event: Extract<AgentEvent, { type: "turn_end" }>) {
-		const assistant = event.message as AssistantMessage;
-		if (assistant.stopReason === "error" || assistant.stopReason === "aborted") return;
-		const calledSendMessage = assistant.content.some((b) => b.type === "toolCall" && b.name === "send_message");
-		if (calledSendMessage) {
-			sentVisibleThisRun = true;
-			return;
-		}
-		if (sentVisibleThisRun || nudgeCount >= 3) return;
-		nudgeCount += 1;
-		// turn_end 订阅者先于 steering 轮询执行,此处 steer 下一回合必然被拾取
+	/** 20s progress reminder: steering queues a message the outer loop always drains, driving a new turn — so even the final turn gets acted on. */
+	function notifyIfSilent() {
+		if (!ctx.shouldNotify()) return;
+		const secs = Math.round(ctx.visibleElapsedMs() / 1000);
+		const content = `You've been working ~${secs}s without sending the user anything visible. Call \`send_message\` now with a brief progress update, then continue.`;
+		persistReminder(content);
 		agent.steer({
 			role: "user",
-			content: "<status_bar>Your reply was not delivered — plain text is never shown to the user. You MUST call the send_message tool now to send your reply.</status_bar>",
+			content: `<system_reminder>${content}</system_reminder>`,
 			timestamp: Date.now(),
 		});
 	}
 
+	/** Deliver the model's text as a visible message on its behalf (persist + context + signal). */
+	function deliverText(text: string) {
+		const timestamp = Date.now();
+		void deps.session
+			.appendSendMessage(text, { toolCallId: "harness-delivery" }, timestamp)
+			.then(() => deliverVisible(text, timestamp))
+			.catch((error) => console.error("session appendSendMessage failed:", error));
+	}
+
+	/**
+	 * Whether send_message was delivered within the last two turns — derived from the message chain
+	 * (SSOT: every delivery is recorded there as a display:true custom message; each turn is one assistant
+	 * message, so counting assistant messages since the last delivery ≈ counting turns).
+	 */
+	function recentMessage(): boolean {
+		let assistants = 0;
+		for (let i = agent.state.messages.length - 1; i >= 0; i--) {
+			const m = agent.state.messages[i];
+			if (m.role === "custom" && m.customType === "send_message") break;
+			if (m.role === "assistant") assistants += 1;
+		}
+		return assistants < 2;
+	}
+
+	/**
+	 * End-of-turn delivery: a text-only turn (no tool calls) means the model is answering — deliver that text
+	 * directly via send_message instead of steering another turn. No extra LLM call, no loop risk.
+	 * Skips when send_message was called within the last two turns (the user just got a message; a redundant
+	 * commentary right after it should not produce another bubble).
+	 */
+	function enforceDelivery(event: Extract<AgentEvent, { type: "turn_end" }>) {
+		if (recentMessage()) return;
+		const assistant = event.message as AssistantMessage;
+		if (assistant.stopReason === "error" || assistant.stopReason === "aborted") return;
+		if (assistant.content.some((b) => b.type === "toolCall")) return; // still working mid-task
+		const text = assistant.content
+			.filter((b) => b.type === "text")
+			.map((b) => (b.type === "text" ? b.text : ""))
+			.join("\n")
+			.trim();
+		if (!text) return; // nothing to deliver
+		deliverText(text);
+	}
+
 	const handleEvent = (event: AgentEvent) => {
 		switch (event.type) {
-			case "agent_start":
-				sentVisibleThisRun = false;
-				nudgeCount = 0;
-				break;
 			case "turn_start":
-				turn += 1;
-				bridge.onTurnStart(turn);
+				bridge.onTurnStart(ctx.beginTurn());
 				break;
 			case "turn_end":
-				// 全量持久化:assistant 消息(含 thinking/tool_use 块)+ 工具结果 + usage
-				persistAssistantTurn(event);
-				nudgeIfForgotSendMessage(event);
+				// Notify the trajectory only after persistence completes (fetches are always up to date, never half a turn)
+				void persistAssistantTurn(event).then(() => bridge.onTrajectoryUpdate());
+				ctx.endTurn();
+				notifyIfSilent();
+				enforceDelivery(event);
 				break;
 			case "agent_end":
-				running = false;
+				ctx.setRunning(false);
 				bridge.onEnd(agent.state.errorMessage);
 				break;
 			default:
@@ -138,10 +184,17 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		}
 	};
 
-	function persistAssistantTurn(event: Extract<AgentEvent, { type: "turn_end" }>) {
+	function persistAssistantTurn(event: Extract<AgentEvent, { type: "turn_end" }>): Promise<void> {
 		const assistant = event.message as AssistantMessage;
-		void deps.session
-			.appendAssistant({ blocks: assistant.content, toolResults: event.toolResults, usage: assistant.usage }, assistant.timestamp ?? Date.now())
+		return deps.session
+			.appendAssistant(
+				{
+					blocks: assistant.content,
+					toolResults: event.toolResults,
+					usage: assistant.usage,
+				},
+				assistant.timestamp ?? Date.now(),
+			)
 			.catch((error) => console.error("session appendAssistant failed:", error));
 	}
 
@@ -156,6 +209,13 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	}
 
 	async function runPrompt(text: string) {
+		// Opening reminder: assess the task length first — long tasks (>~20s) open with a send_message stating
+		// the plan and estimated duration; short tasks skip the opening. Progress and final delivery are handled
+		// by notifyIfSilent (every ~20s) and enforceDelivery (always deliver the final message).
+		const opening =
+			"Before starting, assess whether this task will take longer than ~20 seconds. If it is a long task, call `send_message` first to tell the user what you're about to do and the estimated duration. Short tasks need no opening message.";
+		persistReminder(opening);
+		appendSystemReminder(agent.state.messages, opening);
 		try {
 			await agent.prompt(text);
 		} catch (err) {
@@ -174,11 +234,15 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		get isStreaming() {
 			return agent.state.isStreaming;
 		},
+		get systemPrompt() {
+			return agent.state.systemPrompt;
+		},
 		async chat(text: string) {
 			if (text.trim() === "") return;
-			// 先落盘(视图按持久化数据渲染,须在返回前入库)
+			// Persist first (the view renders from persisted data, so it must be in the store before returning)
 			await persistUser(text);
-			if (running) {
+			ctx.markUserMessage();
+			if (ctx.running) {
 				// Outer loop: queue it; the loop drains follow-up messages
 				// after the current turn settles.
 				agent.followUp({
@@ -188,7 +252,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 				});
 				return;
 			}
-			running = true;
+			ctx.setRunning(true);
 			void runPrompt(text);
 		},
 		stop() {
@@ -196,17 +260,21 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		},
 		reset() {
 			agent.reset();
-			turn = 0;
-			running = false;
+			ctx.reset();
 		},
 		restore(messages: AgentMessage[]) {
 			agent.state.messages = messages;
 		},
 		setPartner(partner: PartnerPrompt | null) {
-			agent.state.systemPrompt = composeSystemPrompt(partner);
+			ctx.setPartner(partner);
+			agent.state.systemPrompt = ctx.composeSystemPrompt();
+		},
+		setStoragePath(path: string | null) {
+			ctx.storage_path = path;
+			agent.state.systemPrompt = ctx.composeSystemPrompt();
 		},
 		previewSystemPrompt(partner: PartnerPrompt | null) {
-			return composeSystemPrompt(partner);
+			return ctx.previewSystemPrompt(partner);
 		},
 	};
 }

@@ -1,6 +1,39 @@
 import type { ElectrobunRPCSchema } from "electrobun";
 
 /**
+ * Trajectory records: an expanded view of the agent run (thinking / tool calls / results / token usage).
+ * Folded on the bun side from persisted pi entries; the chat page only shows user/send_message,
+ * the trajectory dialog shows everything. kind:
+ * - user / message: visible message (carries the pi entry id, the view locates its trajectory segment by it);
+ * - assistant: one LLM call (a turn), with thinking and usage;
+ * - tool: one tool call; a missing result = interrupted.
+ */
+export type TrajectoryRecord =
+	| { kind: "user"; seq: number; id: string; text: string; time: number }
+	| { kind: "message"; seq: number; id: string; text: string; time: number }
+	| {
+			kind: "assistant";
+			seq: number;
+			turn: number;
+			text?: string;
+			thinking?: string;
+			usage?: { input: number; output: number; cacheRead: number; cacheWrite: number; totalTokens: number };
+			time: number;
+	  }
+	| {
+			kind: "tool";
+			seq: number;
+			turn: number;
+			callId: string;
+			name: string;
+			args: string;
+			result?: { text: string; isError: boolean };
+			time: number;
+	  }
+	| { kind: "system"; seq: number; text: string; time: number }
+	| { kind: "reminder"; seq: number; text: string; time: number };
+
+/**
  * Single source of truth for the app's RPC surface.
  *
  * Semantics (matching electrobun's defineElectrobunRPC):
@@ -35,12 +68,17 @@ export type AppRPCSchema = __schema<{
 				params: {};
 				response: { items: { id: string; kind: "user" | "send_message"; text: string; time: number }[] };
 			};
-			/** 拉取 agent 状态(视图校准 idle/working,推送丢失兜底)。 */
+			/** Fetch agent status (view calibrates idle/working; fallback when a push was lost). */
 			get_status: {
 				params: {};
 				response: { streaming: boolean };
 			};
-			/** Settings(partner 档案路径等)+ 运行时信息(模型/API 密钥状态)。 */
+			/** Trajectory: the full process record (thinking/tools/usage), cached by the view; on message click the matching segment is fetched. */
+			trajectory: {
+				params: {};
+				response: { records: TrajectoryRecord[] };
+			};
+			/** Settings (partner profile path etc.) + runtime info (model / API key status). */
 			get_settings: {
 				params: {};
 				response: {
@@ -52,14 +90,14 @@ export type AppRPCSchema = __schema<{
 				params: { settings: { partner_profile_path: string } };
 				response: { ok: boolean };
 			};
-			/** Partner 列表(按创建时间)。 */
+			/** Partner list (by creation time). */
 			list_partners: {
 				params: {};
 				response: {
 					partners: { name: string; avatar?: string; role?: string; responsibilities?: string; tones?: string; createdAt: number }[];
 				};
 			};
-			/** 创建 Partner:校验 name + role(必填)→ <root>/<name>/profile.json。 */
+			/** Create a Partner: validate name + role (required) → <root>/<name>/profile.json. */
 			create_partner: {
 				params: {
 					name: string;
@@ -70,21 +108,21 @@ export type AppRPCSchema = __schema<{
 				};
 				response: { ok: boolean; error?: string };
 			};
-			/** 切换当前 Partner:name 用于会话目录,其余字段重建四段系统提示词。 */
+			/** Switch the current Partner: name selects the session directory, the other fields rebuild the four-section system prompt. */
 			set_partner: {
 				params: {
 					profile: { name: string; role?: string; responsibilities?: string; tones?: string } | null;
 				};
 				response: { ok: boolean };
 			};
-			/** 试拼四段系统提示词(identify/tool-guidance 只读展示,供新建弹窗预览)。 */
+			/** Compose a trial four-section system prompt (identify/tool-guidance shown read-only, for the create dialog preview). */
 			preview_system_prompt: {
 				params: {
 					profile: { role?: string; responsibilities?: string; tones?: string };
 				};
 				response: { prompt: string };
 			};
-			/** 删除 Partner:移除其档案目录。 */
+			/** Delete a Partner: remove its profile directory. */
 			delete_partner: {
 				params: { name: string };
 				response: { ok: boolean; error?: string };
@@ -99,6 +137,8 @@ export type AppRPCSchema = __schema<{
 			agent_turn: { turn: number };
 			/** A visible message was persisted via send_message — view refetches history. */
 			agent_message: {};
+			/** A turn has been persisted (trajectory has new data); the view invalidates its cache and refetches. */
+			trajectory_update: {};
 			/** The run settled. error is set when the run failed (e.g. missing API key). */
 			agent_end: { error?: string };
 		};

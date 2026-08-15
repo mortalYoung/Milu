@@ -1,6 +1,6 @@
 /**
- * 工具的执行环境:Bun 文件系统 + shell,实现 pi 的 ExecutionEnv。
- * 会话持久化(pi JSONL 后端)也复用其纯 fs 部分。
+ * Tool execution environment: Bun filesystem + shell, implementing pi's ExecutionEnv.
+ * Session persistence (pi JSONL backend) also reuses its pure fs part.
  */
 import { appendFile, lstat, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -41,8 +41,8 @@ export function createExecutionEnv(cwd: string): ExecutionEnv {
 		},
 		async joinPath(parts, signal) {
 			checkAbort(signal);
-			// 契约:直接拼接段(绝对段保持绝对);不能重复加 cwd,
-			// 否则 pi 的 JSONL 会话层传入绝对路径时路径会递归翻倍
+			// Contract: join the parts verbatim (absolute segments stay absolute); must not re-prefix cwd,
+			// or the path recursively doubles when pi's JSONL session layer passes absolute paths
 			return ok(join(...parts));
 		},
 		async readTextFile(path, signal) {

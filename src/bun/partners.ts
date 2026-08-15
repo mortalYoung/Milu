@@ -1,14 +1,14 @@
 /**
- * Partner 管理:设置(~/.config/.partner)与 Partner 档案
- * (~/.partner/<name>/profile.json,路径可配置)。
+ * Partner management: settings (~/.config/.partner) and Partner profiles
+ * (~/.partner/<name>/profile.json, path configurable).
  */
 import { access, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-// ————— 设置 —————
+// ————— Settings —————
 export interface Settings {
-	/** Partner 档案保存根目录(创建 partner 时的地址)。 */
+	/** Root directory for Partner profile storage (where partners get created). */
 	partner_profile_path: string;
 }
 
@@ -18,7 +18,7 @@ const DEFAULT_SETTINGS: Settings = {
 
 const SETTINGS_PATH = join(homedir(), ".config", ".partner");
 
-/** 展开开头的 ~ 为用户主目录。 */
+/** Expand a leading ~ into the user's home directory. */
 function expandHome(path: string): string {
 	return path.startsWith("~") ? join(homedir(), path.slice(1)) : path;
 }
@@ -37,15 +37,15 @@ export async function saveSettings(settings: Settings): Promise<void> {
 	await writeFile(SETTINGS_PATH, JSON.stringify(settings, null, 2) + "\n", "utf8");
 }
 
-// ————— Partner 档案 —————
+// ————— Partner profiles —————
 export interface PartnerProfile {
 	name: string;
 	avatar?: string;
-	/** 角色短语(如 "Front-End Programmer"),必填。 */
+	/** Role phrase (e.g. "Front-End Programmer"), required. */
 	role?: string;
-	/** 职责(用户填写,无默认)。 */
+	/** Responsibilities (user-filled, no default). */
 	responsibilities?: string;
-	/** 语气(用户填写,无默认)。 */
+	/** Tones (user-filled, no default). */
 	tones?: string;
 	createdAt: number;
 }
@@ -53,7 +53,7 @@ export interface PartnerProfile {
 export interface PartnerInput {
 	name: string;
 	avatar?: string;
-	/** 角色短语(如 "Front-End Programmer"),必填。 */
+	/** Role phrase (e.g. "Front-End Programmer"), required. */
 	role: string;
 	responsibilities?: string;
 	tones?: string;
@@ -61,16 +61,48 @@ export interface PartnerInput {
 
 const NAME_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
+/** OS-reserved names that must not become folders (case-insensitive). */
+const RESERVED_NAMES = new Set([
+	"con",
+	"prn",
+	"aux",
+	"nul",
+	"com1",
+	"com2",
+	"com3",
+	"com4",
+	"com5",
+	"com6",
+	"com7",
+	"com8",
+	"com9",
+	"lpt1",
+	"lpt2",
+	"lpt3",
+	"lpt4",
+	"lpt5",
+	"lpt6",
+	"lpt7",
+	"lpt8",
+	"lpt9",
+]);
+
 export class PartnerError extends Error {}
 
-/** 校验 partner 名称:必填、仅字母数字/下划线/连字符。 */
+/**
+ * Validate the partner name: required, letters/digits/underscore/hyphen only (folder-safe —
+ * no slashes, dots, or spaces), not an OS-reserved name. The name becomes a folder path.
+ */
 function validateName(name: string): void {
 	if (!name || !NAME_PATTERN.test(name)) {
 		throw new PartnerError("Name is required (letters, digits, '_', '-', max 64)");
 	}
+	if (RESERVED_NAMES.has(name.toLowerCase())) {
+		throw new PartnerError(`Name "${name}" cannot be used as a folder`);
+	}
 }
 
-/** 校验 role:必填(角色短语,如 "Front-End Programmer")。 */
+/** Validate role: required (role phrase, e.g. "Front-End Programmer"). */
 function validateRole(role: string): void {
 	if (!role?.trim()) {
 		throw new PartnerError("Role is required (e.g. Front-End Programmer)");
@@ -85,7 +117,7 @@ export function partnerDir(settings: Settings, name: string): string {
 	return join(partnerRoot(settings), name);
 }
 
-/** 创建 partner:在 <root>/<name>/ 下建文件夹并写入 profile.json。 */
+/** Create a partner: create the folder under <root>/<name>/ and write profile.json. */
 export async function createPartner(settings: Settings, input: PartnerInput): Promise<PartnerProfile> {
 	const name = input.name.trim();
 	validateName(name);
@@ -101,25 +133,27 @@ export async function createPartner(settings: Settings, input: PartnerInput): Pr
 	const dir = partnerDir(settings, name);
 	const profilePath = join(dir, "profile.json");
 	try {
-		await access(profilePath);
+		// Reject when the folder already exists (with or without profile.json) — the name becomes a folder,
+		// so any existing folder of that name is a conflict (case-insensitive on common macOS/Windows setups)
+		await access(dir);
 		throw new PartnerError(`Partner "${name}" already exists`);
 	} catch (error) {
 		if (error instanceof PartnerError) throw error;
-		// 目录/文件不存在 → 正常创建
+		// Directory does not exist → proceed with normal creation
 	}
 	await mkdir(dir, { recursive: true });
 	await writeFile(profilePath, JSON.stringify(profile, null, 2) + "\n", "utf8");
 	return profile;
 }
 
-/** 删除 partner:移除 <root>/<name>/ 目录(名称先过校验,防路径穿越)。 */
+/** Delete a partner: remove the <root>/<name>/ directory (name is validated first to prevent path traversal). */
 export async function deletePartner(settings: Settings, name: string): Promise<void> {
 	const trimmed = name.trim();
 	validateName(trimmed);
 	await rm(partnerDir(settings, trimmed), { recursive: true, force: true });
 }
 
-/** 列出所有 partner(按创建时间排序)。 */
+/** List all partners (sorted by creation time). */
 export async function listPartners(settings: Settings): Promise<PartnerProfile[]> {
 	let entries;
 	try {
@@ -134,7 +168,7 @@ export async function listPartners(settings: Settings): Promise<PartnerProfile[]
 			const profile = JSON.parse(await readFile(join(partnerRoot(settings), entry.name, "profile.json"), "utf8")) as PartnerProfile;
 			profiles.push(profile);
 		} catch {
-			// 无 profile.json 的目录忽略
+			// Directories without a profile.json are ignored
 		}
 	}
 	return profiles.sort((a, b) => a.createdAt - b.createdAt);

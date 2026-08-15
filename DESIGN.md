@@ -114,6 +114,24 @@ Partner 是一个"数字员工"桌面应用:你选中一位同事(bob、eve、le
 - **目录头**:serif 19px semibold "Letters" + 26px ink 圆新建钮。
 - **dialog/menu**:letter 纸面 + hairline 边框 + 半径 8px,无阴影;
   focus-visible 用 seal 红 ring + 2px offset(禁用浏览器默认蓝)。
+- **outline(回答索引浮层,方向 A)**:右上角悬浮 letter 纸面卡(246px 宽,
+  hairline 边框 + 半径 10px,无阴影),顶部 "Replies · N"(Public Sans 9px
+  uppercase + seal 红 mono 计数),行间 hairline-soft 分隔。每行三层:
+  右侧 seal 红 mono 时间 → 触发问题小字(Public Sans 9px uppercase
+  tracking 0.12em,body-muted,单行截断)→ 回答首行(Newsreader 12.5px,
+  单行截断)。hover = paper-hover + ink 2px 左缘;选中/最近一条 = paper-hover
+  + seal 2px 左缘。**入场 = 卷轴式展开**(transform-origin top,scaleY
+  0.94 → 1 + opacity,220ms ease-out),行内 25ms 级联;点击条目后目标气泡
+  短暂 seal-soft "火漆闪烁"(1.1s 淡出)。`prefers-reduced-motion` 全部禁用。
+- **trajectory drawer(密度格点,方向 B)**:右侧全高抽屉(≈74% 宽),三层结构:
+  - **密度格点带**:每回合一格,格点高度 = 工具数(38/55/72%),颜色深浅 = token 用量(浅/中/深三级);
+    用户提问 = seal 色里程碑标记;格点可点选(选中 = seal 实底,再点取消)。
+  - **标签带**:每列与格点对齐,上层工具 chip(bash/read,seal-soft 的 msg),下层 6.5px 轮次说明
+    (单行截断)。
+  - **详情区**:无边框无底色,纯 hairline 分隔;默认全量回合按顺序列出,选中只显示该回合
+    (回合头/时间/token、内容、工具 chips)。
+  - 联动:点格点 → 聊天滚动定位 + 火漆闪烁;聊天滚动 → 当前可见回复所属回合格点高亮;
+    消息气泡"Trajectory"入口 → 打开抽屉并聚焦该回合。入场 = 右侧滑入(220ms ease-out)。
 - **自定义滚动条**:6px 细窄,hairline thumb。
 
 ## 5. 布局原则

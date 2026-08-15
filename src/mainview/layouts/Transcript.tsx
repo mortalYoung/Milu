@@ -1,12 +1,13 @@
 /**
  * Transcript — the document layer, rendered with Solid.
  * Knows nothing about RPC or the agent: it receives entries and renders them.
- * 书信对话:60% 居中信件窄栏,无头像。user = 暖墨信封气泡 + seal 时间;
- * agent = 信笺 + 虚线邮戳 + 内联代码 chip + 署名行;运行指示 = 末尾"正在说话"
- * 信笺气泡(三墨点 + 署名行),工作中新到的消息渲染在其上方。
+ * Letter conversation: a 60%-centered narrow letter column, no avatars. user = warm-ink envelope bubble + seal time;
+ * agent = letter paper + dashed postmark + markdown body + signature line; running indicator = a "speaking"
+ * letter bubble at the end (three ink dots + signature line); messages arriving mid-run render above it.
  */
-import { type Accessor, createEffect, For, type JSX } from "solid-js";
+import { type Accessor, createEffect, For } from "solid-js";
 import { AnimatePresence, Motion, MotionConfigProvider } from "solid-motion";
+import { renderMarkdown } from "../lib/markdown";
 
 export interface Entry {
 	id: number;
@@ -14,22 +15,23 @@ export interface Entry {
 	text: string;
 	time?: string;
 	error?: boolean;
+	/** id of the persisted pi entry (carried by agent messages; used to locate the trajectory segment on click). */
+	piId?: string;
 }
 
 export const SEPARATOR_GAP_MS = 5 * 60 * 1000;
 
 let nextId = 1;
 const pad = (n: number) => String(n).padStart(2, "0");
-export const fmtTime = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-/** 完整日期时间格式:2026-08-13 10:22:27 */
+/** Full date-time format: 2026-08-13 10:22:27 */
 const fmtDateTime = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 
-export function makeUserEntry(text: string, time = Date.now()): Entry {
-	return { id: nextId++, kind: "user", text, time: fmtDateTime(new Date(time)) };
+export function makeUserEntry(text: string, time = Date.now(), piId?: string): Entry {
+	return { id: nextId++, kind: "user", text, time: fmtDateTime(new Date(time)), piId };
 }
 
-export function makeAgentEntry(text: string, time = Date.now()): Entry {
-	return { id: nextId++, kind: "agent", text, time: fmtDateTime(new Date(time)) };
+export function makeAgentEntry(text: string, time = Date.now(), piId?: string): Entry {
+	return { id: nextId++, kind: "agent", text, time: fmtDateTime(new Date(time)), piId };
 }
 
 export function makeSysEntry(text: string, error = false): Entry {
@@ -40,7 +42,7 @@ export function makeSepEntry(text: string): Entry {
 	return { id: nextId++, kind: "sep", text };
 }
 
-/** 解析 "2026-08-13 10:22:27" → 邮戳 "OCT 13" / "10:22" */
+/** Parse "2026-08-13 10:22:27" → postmark "OCT 13" / "10:22" */
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 function parseStamp(raw: string | undefined): { date: string; time: string } | null {
 	const m = raw?.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/);
@@ -48,27 +50,53 @@ function parseStamp(raw: string | undefined): { date: string; time: string } | n
 	return { date: `${MONTHS[Number(m[2]) - 1]} ${Number(m[3])}`, time: `${m[4]}:${m[5]}` };
 }
 
-/** 12 小时制:10:22:27 → "10:22 AM" */
-function time12(raw: string | undefined): string {
+/** 24-hour clock: 10:22:27 → "10:22" */
+function timeHM(raw: string | undefined): string {
 	const m = raw?.match(/ (\d{2}):(\d{2}):/);
 	if (!m) return "";
-	const h = Number(m[1]);
-	const ampm = h >= 12 ? "PM" : "AM";
-	return `${pad(h % 12 || 12)}:${m[2]} ${ampm}`;
+	return `${m[1]}:${m[2]}`;
 }
 
-/** 反引号代码片段 → inline-code chip(其余为纯文本) */
-function renderRich(text: string): JSX.Element {
-	const parts = text.split(/`([^`]+)`/g);
-	return <>{parts.map((p, i) => (i % 2 === 1 ? <span class="inline-code">{p}</span> : <>{p}</>))}</>;
-}
-
-export function Transcript(props: { entries: Accessor<Entry[]>; working: Accessor<boolean>; tick: Accessor<number>; worker?: string }) {
+export function Transcript(props: {
+	entries: Accessor<Entry[]>;
+	working: Accessor<boolean>;
+	tick: Accessor<number>;
+	worker?: string;
+	onViewTrajectory?: (piId: string) => void;
+	/** Outline locate target: the matching bubble briefly flashes seal-soft. */
+	locateFlashId?: Accessor<number | null>;
+	/** The agent message currently visible in the viewport (pi id), reported for trajectory linkage. */
+	onVisibleReply?: (piId: string | null) => void;
+}) {
 	let container: HTMLElement | undefined;
 
 	createEffect(() => {
-		props.tick(); // push、history、turn、end — 都 bump
+		props.tick(); // push, history, turn, end — all bump it
 		container && (container.scrollTop = container.scrollHeight);
+	});
+
+	// Trajectory linkage: report the agent message currently in the viewport (center band)
+	createEffect(() => {
+		const root = container;
+		if (!props.onVisibleReply || !root) return;
+		props.entries().length; // re-observe when entries change
+		const targets = Array.from(root.querySelectorAll<HTMLElement>(".msg-letter[data-pi]"));
+		if (targets.length === 0) {
+			props.onVisibleReply(null);
+			return;
+		}
+		const io = new IntersectionObserver(
+			(entries) => {
+				let best: IntersectionObserverEntry | null = null;
+				for (const en of entries) {
+					if (en.isIntersecting && (!best || en.intersectionRatio > best.intersectionRatio)) best = en;
+				}
+				props.onVisibleReply?.((best?.target as HTMLElement | undefined)?.dataset["pi"] ?? null);
+			},
+			{ root, rootMargin: "-30% 0px -55% 0px" },
+		);
+		targets.forEach((t) => io.observe(t));
+		return () => io.disconnect();
 	});
 
 	return (
@@ -86,10 +114,24 @@ export function Transcript(props: { entries: Accessor<Entry[]>; working: Accesso
 							if (e.kind === "user") {
 								return (
 									<>
-										<Motion as="div" class="msg-user" initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}>
+										<Motion
+											as="div"
+											class={"msg-user" + (props.locateFlashId?.() === e.id ? " locate-flash" : "")}
+											id={"entry-" + e.id}
+											initial={{ opacity: 0, y: 6 }}
+											animate={{ opacity: 1, y: 0 }}
+											transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
+										>
 											{e.text}
 										</Motion>
-										<span class="msg-user-time">{time12(e.time)}</span>
+										<span class="msg-user-time">
+											{timeHM(e.time)}
+											{e.piId && props.onViewTrajectory && (
+												<button class="msg-trajectory-link" title="View trajectory" onClick={() => props.onViewTrajectory?.(e.piId!)}>
+													Trajectory
+												</button>
+											)}
+										</span>
 									</>
 								);
 							}
@@ -98,7 +140,9 @@ export function Transcript(props: { entries: Accessor<Entry[]>; working: Accesso
 								return (
 									<Motion
 										as="div"
-										class="msg-letter"
+										class={"msg-letter" + (props.locateFlashId?.() === e.id ? " locate-flash" : "")}
+										id={"entry-" + e.id}
+										data-pi={e.piId}
 										initial={{ opacity: 0, scale: 0.96, rotate: 0.4 }}
 										animate={{ opacity: 1, scale: 1, rotate: 0 }}
 										transition={{ duration: 0.24, ease: [0.23, 1, 0.32, 1] }}
@@ -109,10 +153,15 @@ export function Transcript(props: { entries: Accessor<Entry[]>; working: Accesso
 												<span>{stamp.time}</span>
 											</div>
 										)}
-										<p class="msg-letter-text">{renderRich(e.text)}</p>
+										<div class="md msg-letter-text" innerHTML={renderMarkdown(e.text)} />
 										{props.worker && (
 											<div class="msg-sign">
-												— {props.worker} · {time12(e.time)}
+												— {props.worker} · {timeHM(e.time)}
+												{e.piId && props.onViewTrajectory && (
+													<button class="msg-trajectory-link" title="View trajectory" onClick={() => props.onViewTrajectory?.(e.piId!)}>
+														Trajectory
+													</button>
+												)}
 											</div>
 										)}
 									</Motion>
@@ -124,7 +173,7 @@ export function Transcript(props: { entries: Accessor<Entry[]>; working: Accesso
 							return <div class="time-sep">{e.text}</div>;
 						}}
 					</For>
-					{/* 正在说话:信笺气泡渲染在末尾;工作中新到的消息追加在 entries 里,自然出现在其上方 */}
+					{/* Speaking: the letter bubble renders at the end; messages arriving mid-run are appended to entries and naturally appear above it */}
 					<AnimatePresence>
 						{props.working() && (
 							<Motion

@@ -1,6 +1,6 @@
 /**
- * Button — SolidUI 组件(SolidUI copy-paste,Kobalte 无头原语)。
- * 对外保持本项目原有 API(variant/size/class/icon/children/onClick/disabled/title/type)。
+ * Button — a SolidUI component (SolidUI copy-paste, Kobalte headless primitives).
+ * Keeps this project's original API on the outside (variant/size/class/icon/children/onClick/disabled/title/type).
  */
 import type { JSX } from "solid-js";
 import { Button as UIButton } from "./ui/button";

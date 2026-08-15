@@ -17,7 +17,7 @@ async function tempDir(): Promise<string> {
 	return dir;
 }
 
-// 避免测试文件顶部 import 缺失
+// Avoid a missing import at the top of the test file
 describe("session store (pi JSONL backend)", () => {
 	it("appends all kinds; visible history filters; reopen restores", async () => {
 		const dir = await tempDir();
@@ -40,7 +40,7 @@ describe("session store (pi JSONL backend)", () => {
 		expect(session.visibleHistory().map((m) => m.kind)).toEqual(["user", "send_message"]);
 		expect(session.visibleHistory()[1].text).toBe("done");
 
-		// 重开:同一根目录新实例恢复
+		// Reopen: a new instance on the same root restores
 		const reopened = createSessionStore(dir);
 		await reopened.ready();
 		expect(reopened.visibleHistory().map((m) => m.kind)).toEqual(["user", "send_message"]);
@@ -84,7 +84,7 @@ describe("session store (pi JSONL backend)", () => {
 		await session.appendAssistant(
 			{
 				blocks: [{ type: "toolCall", id: "t1", name: "bash", arguments: {} }],
-				// pi 循环构造的消息带显式 undefined 字段,必须能入库
+				// Messages built by the pi loop carry explicit undefined fields; they must still be storable
 				toolResults: [
 					{
 						role: "toolResult",

@@ -1,11 +1,11 @@
 /**
- * 对话持久化:基于 pi 的 JSONL 会话层(JsonlSessionRepo + Session)。
+ * Conversation persistence: based on pi's JSONL session layer (JsonlSessionRepo + Session).
  *
- * - 单会话连续:打开 repo 中最新会话,不存在则创建;同一会话持续追加
- * - 全量入库:user / assistant(thinking、tool_use 块原文)/ toolResult /
- *   send_message 自定义条目;前端只可见 user 与 send_message
- * - 恢复:buildSessionContext + entryProjectors 还原 AgentMessage 链
- *   (pi 的 JSONL 后端自带追加式写入与 torn-write 修复)
+ * - Single continuous session: open the newest session in the repo, create one if none exists; keep appending to the same session
+ * - Full ingestion: user / assistant (thinking, tool_use blocks verbatim) / toolResult /
+ *   send_message custom entries; the frontend only sees user and send_message
+ * - Restore: buildSessionContext + entryProjectors reconstruct the AgentMessage chain
+ *   (pi's JSONL backend has built-in append-only writes and torn-write repair)
  */
 import type { AgentMessage, CustomEntry, Entry } from "@earendil-works/pi-agent-core";
 import { buildSessionContext, JsonlSessionRepo, Session } from "@earendil-works/pi-agent-core";
@@ -23,8 +23,8 @@ const EMPTY_USAGE: Usage = {
 };
 
 /**
- * send_message 可见消息:作为自定义消息进 agent 上下文,
- * convertToLlm 投影为可见文本;display:false 的丢弃。
+ * send_message visible messages: enter the agent context as custom messages,
+ * projected by convertToLlm into visible text; display:false ones are dropped.
  */
 declare module "@earendil-works/pi-agent-core" {
 	interface CustomAgentMessages {
@@ -45,7 +45,7 @@ export interface AssistantMeta {
 }
 
 export interface VisibleItem {
-	/** pi entry id,视图按它去重增量渲染。 */
+	/** pi entry id; the view dedupes incremental renders by it. */
 	id: string;
 	kind: "user" | "send_message";
 	text: string;
@@ -53,17 +53,23 @@ export interface VisibleItem {
 }
 
 export interface SessionStore {
-	/** 打开/恢复完成(可在首次操作前 await)。 */
+	/** Open/restore complete (can be awaited before the first operation). */
 	ready(): Promise<void>;
-	/** 切换会话根目录(按 Partner 隔离):重建 repo/session 并回放新根的历史。 */
+	/** Switch the session root (isolated per Partner): rebuild repo/session and replay the new root's history. */
 	setRoot(root: string): Promise<void>;
 	appendUser(content: string, timestamp: number): Promise<void>;
 	appendAssistant(meta: AssistantMeta, timestamp: number): Promise<void>;
 	appendSendMessage(content: string, details: Record<string, unknown>, timestamp: number): Promise<void>;
-	/** 前端可见记录(user + send_message),按会话顺序。 */
+	/** Persist the current system prompt (custom entry; the trajectory view shows it). */
+	appendSystemPrompt(text: string, timestamp: number): Promise<void>;
+	/** Persist a system reminder (custom entry; part of the trajectory timeline). */
+	appendReminder(text: string, timestamp: number): Promise<void>;
+	/** Records visible to the frontend (user + send_message), in session order. */
 	visibleHistory(): VisibleItem[];
-	/** 完整对话链(agent 上下文恢复用)。 */
+	/** The full conversation chain (for agent context restore). */
 	restoreMessages(): Promise<AgentMessage[]>;
+	/** Raw pi entries (for trajectory folding; thinking/tool content still never enters visibleHistory). */
+	rawEntries(): Entry[];
 }
 
 const SEND_MESSAGE_PROJECTOR = (entry: CustomEntry): AgentMessage[] | undefined => {
@@ -81,7 +87,7 @@ const SEND_MESSAGE_PROJECTOR = (entry: CustomEntry): AgentMessage[] | undefined 
 };
 
 export function createSessionStore(root: string = DATABASE_ROOT): SessionStore {
-	// pi 的 JSONL 后端需要 FileSystem 适配器;直接复用执行环境(纯 fs 部分)
+	// pi's JSONL backend needs a FileSystem adapter; reuse the execution environment directly (pure fs part)
 	let currentRoot = root;
 	let repo: JsonlSessionRepo;
 	let session: Session | null = null;
@@ -90,16 +96,15 @@ export function createSessionStore(root: string = DATABASE_ROOT): SessionStore {
 
 	async function openRoot(newRoot: string) {
 		currentRoot = newRoot;
-		// 每个根目录一个 repo(按 Partner 隔离会话文件)
+		// One repo per root directory (session files isolated per Partner)
 		repo = new JsonlSessionRepo({ fs: createExecutionEnv(currentRoot), sessionsRoot: currentRoot });
 		session = null;
 		entries = [];
 		const sessions = await repo.list();
 		if (sessions.length > 0) {
-			// 单会话连续:取最新
+			// Single continuous session: take the newest
 			session = await repo.open(sessions[sessions.length - 1]);
 		} else {
-			// cwd = 项目根:目录名即 pi 标准布局 --Users-xiuneng-Projects-coding-desktop--
 			session = await repo.create({ cwd: PROJECT_ROOT });
 		}
 		await refreshEntries();
@@ -113,7 +118,7 @@ export function createSessionStore(root: string = DATABASE_ROOT): SessionStore {
 
 	async function refreshEntries() {
 		const leafId = await session!.getLeafId();
-		// findEntriesOnBranch 叶子在前;翻转成根在前(会话顺序)
+		// findEntriesOnBranch returns leaves first; reverse so the root comes first (session order)
 		const walked = leafId ? await session!.findEntriesOnBranch({ start: leafId }) : [];
 		entries = walked.reverse();
 	}
@@ -136,8 +141,8 @@ export function createSessionStore(root: string = DATABASE_ROOT): SessionStore {
 		},
 		async appendAssistant(meta, timestamp) {
 			await ensureOpen();
-			// pi 循环构造的消息可能带 undefined 字段(如 toolResult.details/usage),
-			// assertJsonSerializable 会拒绝 → 追加前递归剥离
+			// Messages built by the pi loop may carry undefined fields (e.g. toolResult.details/usage),
+			// which assertJsonSerializable would reject → recursively strip them before appending
 			const assistant: AssistantMessage = {
 				role: "assistant",
 				content: stripUndefined(meta.blocks) as AssistantMessage["content"],
@@ -157,6 +162,16 @@ export function createSessionStore(root: string = DATABASE_ROOT): SessionStore {
 		async appendSendMessage(content, details, timestamp) {
 			await ensureOpen();
 			await session!.appendCustomEntry("send_message", { text: content, timestamp, ...details });
+			await refreshEntries();
+		},
+		async appendSystemPrompt(text, timestamp) {
+			await ensureOpen();
+			await session!.appendCustomEntry("system_prompt", { text, timestamp });
+			await refreshEntries();
+		},
+		async appendReminder(text, timestamp) {
+			await ensureOpen();
+			await session!.appendCustomEntry("system_reminder", { text, timestamp });
 			await refreshEntries();
 		},
 		visibleHistory(): VisibleItem[] {
@@ -180,10 +195,13 @@ export function createSessionStore(root: string = DATABASE_ROOT): SessionStore {
 			});
 			return dropDanglingTurn(context.messages);
 		},
+		rawEntries() {
+			return entries;
+		},
 	};
 }
 
-/** 递归剥离 undefined(pi 的 assertJsonSerializable 会拒绝 undefined 值)。 */
+/** Recursively strip undefined (pi's assertJsonSerializable rejects undefined values). */
 function stripUndefined(value: unknown): unknown {
 	if (Array.isArray(value)) return value.map(stripUndefined);
 	if (value !== null && typeof value === "object") {
@@ -197,8 +215,8 @@ function stripUndefined(value: unknown): unknown {
 }
 
 /**
- * 末尾未完成回合保护:最后一条 assistant 含 toolCall 块但缺对应 toolResult
- * (重启中断场景) → 丢弃该回合。
+ * Guard for an unfinished final turn: the last assistant contains toolCall blocks but lacks the
+ * matching toolResult (restart-interruption scenario) → drop that turn.
  */
 function dropDanglingTurn(messages: AgentMessage[]): AgentMessage[] {
 	for (let i = messages.length - 1; i >= 0; i--) {

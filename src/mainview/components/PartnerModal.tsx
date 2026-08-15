@@ -1,9 +1,9 @@
 /**
- * PartnerModal — 添加 Partner(入职)弹窗,主从导航版(方向 D)。
- * 左栏:name/avatar 常显 + PERSONA/RESPONSE-FORMAT 字段按钮(状态点 + 行数);
- * 右栏:当前字段的 markdown 编辑器,Edit/Preview 切换。
- * 可编辑字段只有 role(必填)/ Responsibilities / Tones;IDENTIFY 与 TOOL-GUIDANCE
- * 由系统生成,Preview 展示四段拼装后的完整系统提示词。
+ * PartnerModal — the Add Partner (onboarding) dialog, master-detail navigation variant (direction D).
+ * Left column: name/avatar always visible + PERSONA/RESPONSE-FORMAT field buttons (status dot + line count);
+ * right column: markdown editor for the current field, with an Edit/Preview toggle.
+ * The only editable fields are role (required) / Responsibilities / Tones; IDENTIFY and TOOL-GUIDANCE
+ * are system-generated, and Preview shows the complete four-section system prompt.
  */
 import { createSignal, type JSX } from "solid-js";
 import { renderMarkdown } from "../lib/markdown";
@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 export interface PartnerFormData {
 	name: string;
 	avatar?: string;
-	/** 角色短语(如 "Front-End Programmer"),必填。 */
+	/** Role phrase (e.g. "Front-End Programmer"), required. */
 	role: string;
 	responsibilities?: string;
 	tones?: string;
@@ -26,14 +26,14 @@ const FIELDS: { id: FieldId; label: string }[] = [
 	{ id: "response-format", label: "Response Format" },
 ];
 
-/** 左栏小标签 */
+/** Left-column mini label */
 const MINI_LABEL = "font-sans text-[9px] uppercase tracking-[0.18em] text-[#9a9a94]";
-/** 字段名标签 */
+/** Field name label */
 const FIELD_LABEL = "font-sans text-[11px] uppercase tracking-[0.2em] text-[#111110]";
-/** 编辑器类(等宽,印刷橙聚焦);markdown 大段文案场景,纵向尽量吃满 */
+/** Editor class (monospace, print-orange focus); for large markdown text areas, fill vertically as much as possible */
 const EDITOR_CLS =
 	"w-full min-h-[300px] resize-none border border-print-line rounded-[6px] bg-white px-3 py-2.5 font-mono text-[13px] leading-[1.7] text-[#111110] placeholder:text-[#b0a89a] outline-none focus-visible:border-print";
-/** 短输入类(role) */
+/** Short input class (role) */
 const INPUT_CLS =
 	"h-8 rounded-[6px] border border-print-line bg-white px-2 font-mono text-[12px] text-[#111110] placeholder:text-[#b0a89a] outline-none focus-visible:border-print";
 
@@ -41,8 +41,10 @@ export function PartnerModal(props: {
 	open: boolean;
 	onOpenChange: (open: boolean) => void;
 	onConfirm: (data: PartnerFormData) => Promise<string | null>;
-	/** 试拼四段系统提示词(Preview 展示最终拼装效果)。 */
+	/** Compose a trial four-section system prompt (Preview shows the final assembled result). */
 	onPreview: (data: PartnerFormData) => Promise<string>;
+	/** Existing partner names — the name becomes a folder, so duplicates are rejected (case-insensitive, like the filesystem). */
+	existingNames: string[];
 }) {
 	const [name, setName] = createSignal("");
 	const [avatar, setAvatar] = createSignal("");
@@ -51,14 +53,13 @@ export function PartnerModal(props: {
 	const [tones, setTones] = createSignal("");
 	const [error, setError] = createSignal<string | null>(null);
 	const [saving, setSaving] = createSignal(false);
-	// 主从状态:当前字段 + 编辑/预览
 	const [active, setActive] = createSignal<FieldId>("persona");
 	const [tab, setTab] = createSignal<"edit" | "preview">("edit");
-	// 预览 = 拼装后的完整系统提示词(懒加载 + 内容变更后失效)
+	// Preview = the assembled complete system prompt (lazy-loaded + invalidated when content changes)
 	const [preview, setPreview] = createSignal<string | null>(null);
 	const [previewLoading, setPreviewLoading] = createSignal(false);
 
-	/** 头像预览:输入 emoji/单字符时直接显示;否则回落为名字首字母(不加载外部图) */
+	/** Avatar preview: emoji/single-char input shows directly; otherwise fall back to the name's first letter (no external images loaded) */
 	const avatarPreview = () => {
 		const a = avatar().trim();
 		const n = name().trim();
@@ -74,17 +75,17 @@ export function PartnerModal(props: {
 		tones: tones().trim() || undefined,
 	});
 
-	/** 字段值(编辑内容);RESPONSE-FORMAT = 单一 tones */
+	/** Field value (edited content); RESPONSE-FORMAT = the single tones value */
 	const valueOf = (f: FieldId): string => (f === "persona" ? responsibilities() : tones());
 	const setValueOf = (f: FieldId, v: string) => {
 		if (f === "persona") setResponsibilities(v);
 		else setTones(v);
 	};
-	/** 字段填充状态(persona 含 role 或 responsibilities) */
+	/** Field fill state (persona counts role or responsibilities) */
 	const filledOf = (f: FieldId): boolean => (f === "persona" ? role().trim() !== "" || responsibilities().trim() !== "" : tones().trim() !== "");
 	const linesOf = (f: FieldId): number => valueOf(f).split("\n").length;
 
-	/** 拉取拼装预览(每次进入 Preview 都重新拼,反映最新编辑) */
+	/** Fetch the assembled preview (re-assembled on every entry into Preview, reflecting the latest edits) */
 	function loadPreview() {
 		setPreviewLoading(true);
 		props
@@ -97,6 +98,10 @@ export function PartnerModal(props: {
 		e.preventDefault();
 		if (!name().trim()) {
 			setError("Enter a name to continue");
+			return;
+		}
+		if (props.existingNames.some((n) => n.toLowerCase() === name().trim().toLowerCase())) {
+			setError(`Partner "${name().trim()}" already exists`);
 			return;
 		}
 		if (!role().trim()) {
@@ -120,7 +125,7 @@ export function PartnerModal(props: {
 
 				<form class="flex flex-col" onSubmit={submit}>
 					<div class="grid grid-cols-[150px_1fr]">
-						{/* ————— 左栏:name/avatar 常显 + 字段导航 ————— */}
+						{/* ————— Left column: name/avatar always visible + field navigation ————— */}
 						<div class="border-r border-print-line p-3 flex flex-col gap-1.5">
 							<span class={MINI_LABEL}>name</span>
 							<input class={INPUT_CLS} value={name()} onInput={(e) => setName(e.currentTarget.value)} placeholder="bob" autofocus />
@@ -129,7 +134,7 @@ export function PartnerModal(props: {
 									<span class={MINI_LABEL}>avatar</span>
 									<input class={INPUT_CLS + " min-w-0"} value={avatar()} onInput={(e) => setAvatar(e.currentTarget.value)} placeholder="emoji" spellcheck={false} />
 								</div>
-								{/* 实时头像预览 */}
+								{/* Live avatar preview */}
 								<span
 									class="size-[26px] rounded-full bg-[#111110] text-white flex items-center justify-center font-mono text-[11px] leading-none shrink-0 mb-0.5"
 									title="Avatar preview"
@@ -161,7 +166,7 @@ export function PartnerModal(props: {
 							})}
 						</div>
 
-						{/* ————— 右栏:当前字段编辑器 / 拼装预览 ————— */}
+						{/* ————— Right column: current field editor / assembled preview ————— */}
 						<div class="flex flex-col min-w-0">
 							<div class="flex items-center justify-between px-4 pt-3 pb-2">
 								<span class={FIELD_LABEL}>{FIELDS.find((f) => f.id === active())?.label}</span>
@@ -186,7 +191,7 @@ export function PartnerModal(props: {
 									<div class="flex flex-col gap-2">
 										{active() === "persona" && (
 											<>
-												{/* role 必填:短词输入,persona 页常显 */}
+												{/* role is required: short-word input, always visible on the persona page */}
 												<div class="flex flex-col gap-1">
 													<span class={MINI_LABEL}>role *</span>
 													<input class={INPUT_CLS} value={role()} onInput={(e) => setRole(e.currentTarget.value)} placeholder="Front-End Programmer" spellcheck={false} />

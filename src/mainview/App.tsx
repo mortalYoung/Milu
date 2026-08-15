@@ -6,10 +6,11 @@
 
 import { Electroview } from "electrobun/view";
 import { createSignal } from "solid-js";
-import type { AppRPCSchema } from "../shared/rpc";
+import type { AppRPCSchema, TrajectoryRecord } from "../shared/rpc";
 import { AppRail } from "./components/AppRail";
 import { PartnerDetailsDialog } from "./components/PartnerDetailsDialog";
 import { type PartnerFormData, PartnerModal } from "./components/PartnerModal";
+import { TrajectoryDrawer } from "./components/TrajectoryDrawer";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./components/ui/dialog";
 import { type Entry, makeAgentEntry, makeSepEntry, makeSysEntry, makeUserEntry, SEPARATOR_GAP_MS } from "./layouts/Transcript";
 import { ConversationPage } from "./pages/ConversationPage";
@@ -34,10 +35,15 @@ export function App() {
 	// ————— state —————
 	const [view, setView] = createSignal<"chat" | "settings">("chat");
 	const [settingsOpen, setSettingsOpen] = createSignal(false);
-	// Partner 详情弹窗(列表菜单 / 头部点击共用)
+	// Partner details dialog (shared by the list menu / header click)
 	const [detailsPartner, setDetailsPartner] = createSignal<PartnerItem | null>(null);
+	// Trajectory drawer (density strip): whole-conversation view, linked to the chat
+	const [trajectoryOpen, setTrajectoryOpen] = createSignal(false);
+	const [trajectoryRecords, setTrajectoryRecords] = createSignal<TrajectoryRecord[]>([]);
+	const [focusMessageId, setFocusMessageId] = createSignal<string | null>(null);
+	const [visibleReplyId, setVisibleReplyId] = createSignal<string | null>(null);
 	const [entries, setEntries] = createSignal<Entry[]>([]);
-	// busy = agent 是否在运行(流式/工具执行中),单一来源;推送事件做增量,get_status 校准
+	// busy = whether the agent is running (streaming/tool execution), single source of truth; push events do increments, get_status calibrates
 	const [busy, setBusy] = createSignal(false);
 	const [queued, setQueued] = createSignal(0);
 	const [tick, setTick] = createSignal(0);
@@ -46,7 +52,6 @@ export function App() {
 	const [showModal, setShowModal] = createSignal(false);
 	const [settings, setSettings] = createSignal<SettingsData | null>(null);
 	const [runtime, setRuntime] = createSignal<{ model: string; apiKeyConfigured: boolean } | null>(null);
-	// chat 列表收起状态(持久化)
 	const [listCollapsed, setListCollapsed] = createSignal(localStorage.getItem("chatlist.collapsed") === "1");
 	function toggleListCollapsed() {
 		const next = !listCollapsed();
@@ -62,7 +67,7 @@ export function App() {
 	};
 
 	// ————— RPC helpers —————
-	// 渲染来源 = 持久化 JSONL;按 id 去重,只追加新记录
+	// Render source = the persisted JSONL; dedupe by id, only append new records
 	const renderedIds = new Set<string>();
 	async function refreshHistory() {
 		const { items } = await rpc.request.history({});
@@ -70,8 +75,44 @@ export function App() {
 		for (const item of fresh) {
 			renderedIds.add(item.id);
 			maybeTimeSeparator(new Date(item.time));
-			push(item.kind === "user" ? makeUserEntry(item.text, item.time) : makeAgentEntry(item.text, item.time));
+			push(item.kind === "user" ? makeUserEntry(item.text, item.time, item.id) : makeAgentEntry(item.text, item.time, item.id));
 		}
+	}
+
+	// ————— Trajectory —————
+	// Full trajectory cache: invalidated when new data is persisted or the partner switches; refetched on the next open
+	let trajectoryCache: TrajectoryRecord[] | null = null;
+	async function ensureTrajectory(): Promise<TrajectoryRecord[]> {
+		if (trajectoryCache === null) {
+			const res = await rpc.request.trajectory({});
+			trajectoryCache = res.records;
+		}
+		return trajectoryCache;
+	}
+	// Locate flash: the target bubble briefly flashes seal-soft (shared by outline and trajectory drawer)
+	const [flashId, setFlashId] = createSignal<number | null>(null);
+	let flashTimer: ReturnType<typeof setTimeout> | undefined;
+	const onFlash = (id: number) => {
+		setFlashId(id);
+		clearTimeout(flashTimer);
+		flashTimer = setTimeout(() => setFlashId(null), 1200);
+	};
+	// Scroll the chat to a message by its pi id (the drawer links turns to chat bubbles)
+	function locateByPi(piId: string) {
+		const entry = entries().find((e) => e.piId === piId);
+		if (!entry) return;
+		document.getElementById("entry-" + entry.id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+		onFlash(entry.id);
+	}
+	// Open the drawer; a message link additionally focuses that turn and scrolls to it
+	async function onViewTrajectory(piId?: string) {
+		const records = await ensureTrajectory();
+		setTrajectoryRecords(records);
+		if (piId) {
+			setFocusMessageId(piId);
+			locateByPi(piId);
+		}
+		setTrajectoryOpen(true);
 	}
 
 	const WEEKDAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
@@ -86,17 +127,17 @@ export function App() {
 	async function refreshPartners() {
 		const { partners: list } = await rpc.request.list_partners({});
 		setPartners(list);
-		// 默认选中第一个 Partner;已选中项消失时清空
+		// Select the first Partner by default; clear when the selected one disappears
 		if (selected() == null && list.length > 0) selectPartner(list[0]);
 		if (selected() != null && !list.some((p) => p.name === selected())) selectPartner(null);
 	}
 
-	// 选择 Partner → 切换会话(清空当前聊天)+ 动态重建系统提示词
 	function selectPartner(partner: PartnerItem | null) {
 		setSelected(partner?.name ?? null);
 		setEntries([]);
 		renderedIds.clear();
 		lastMsgTime = 0;
+		trajectoryCache = null;
 		void rpc.request
 			.set_partner({
 				profile: partner ? { name: partner.name, role: partner.role, responsibilities: partner.responsibilities, tones: partner.tones } : null,
@@ -121,7 +162,14 @@ export function App() {
 	});
 
 	rpc.addMessageListener("agent_message", () => {
+		// send_message is persisted; both chat and trajectory may have new content
+		trajectoryCache = null;
 		void refreshHistory();
+	});
+
+	rpc.addMessageListener("trajectory_update", () => {
+		// A turn has been persisted; invalidate the trajectory cache (next click fetches the latest)
+		trajectoryCache = null;
 	});
 
 	rpc.addMessageListener("agent_end", ({ error: err }) => {
@@ -131,7 +179,7 @@ export function App() {
 		calibrateBusy();
 	});
 
-	// 校准:以 bun 侧 isStreaming 为准,兜底推送事件丢失/晚到(如挂载晚于 turn 的启动竞态)
+	// Calibrate: the bun-side isStreaming is authoritative; covers lost/late push events (e.g. the startup race where mount lags the first turn)
 	function calibrateBusy() {
 		void rpc.request.get_status({}).then((s) => setBusy(s.streaming));
 	}
@@ -145,15 +193,15 @@ export function App() {
 		void rpc.request.chat({ text }).then(() => refreshHistory());
 	}
 
-	// ————— Partner 删除 —————
+	// ————— Partner deletion —————
 	async function onDeletePartner(name: string) {
 		await rpc.request.delete_partner({ name });
-		// 若删除的是当前选中 Partner:立即关闭(重置选中与提示词)
+		// If the deleted Partner was selected: close it immediately (reset selection and prompt)
 		if (selected() === name) selectPartner(null);
 		void refreshPartners();
 	}
 
-	// ————— Partner 创建 —————
+	// ————— Partner creation —————
 	async function onCreatePartner(data: PartnerFormData): Promise<string | null> {
 		const res = await rpc.request.create_partner(data);
 		if (res.ok) {
@@ -164,7 +212,7 @@ export function App() {
 		return res.error ?? "Failed to create partner";
 	}
 
-	// 预览 = 四段系统提示词拼装效果(identify/tool-guidance 只读展示在拼装结果里)
+	// Preview = the assembled four-section system prompt (identify/tool-guidance shown read-only in the result)
 	function onPreviewPrompt(data: PartnerFormData): Promise<string> {
 		return rpc.request
 			.preview_system_prompt({
@@ -173,7 +221,7 @@ export function App() {
 			.then((res) => res.prompt);
 	}
 
-	// ————— 挂载 —————
+	// ————— mount —————
 	void refreshHistory();
 	void refreshPartners();
 	void refreshSettings();
@@ -181,7 +229,7 @@ export function App() {
 
 	// ————— shell —————
 	return (
-		<div class="flex flex-1 min-h-0">
+		<div class="relative flex flex-1 min-h-0">
 			<AppRail active={view()} onSelect={(tab) => (tab === "settings" ? setSettingsOpen(true) : setView("chat"))} />
 
 			<main class="flex-1 flex flex-col min-w-0 bg-qw-bg">
@@ -200,10 +248,14 @@ export function App() {
 					busy={busy}
 					onSend={onSend}
 					onStop={() => void rpc.request.stop({})}
+					onViewTrajectory={onViewTrajectory}
+					flashId={flashId}
+					onFlash={onFlash}
+					onVisibleReply={setVisibleReplyId}
 				/>
 			</main>
 
-			{/* 设置:弹窗 */}
+			{/* Settings: dialog */}
 			<Dialog open={settingsOpen()} onOpenChange={setSettingsOpen}>
 				<DialogContent class="w-[440px] bg-white border-print-line">
 					<DialogHeader>
@@ -221,9 +273,19 @@ export function App() {
 				</DialogContent>
 			</Dialog>
 
-			<PartnerModal open={showModal()} onOpenChange={setShowModal} onConfirm={onCreatePartner} onPreview={onPreviewPrompt} />
+			<PartnerModal open={showModal()} onOpenChange={setShowModal} onConfirm={onCreatePartner} onPreview={onPreviewPrompt} existingNames={partners().map((p) => p.name)} />
 
 			<PartnerDetailsDialog partner={detailsPartner()} onOpenChange={(open) => !open && setDetailsPartner(null)} />
+
+			<TrajectoryDrawer
+				open={trajectoryOpen()}
+				onOpenChange={setTrajectoryOpen}
+				records={trajectoryRecords()}
+				onLocate={locateByPi}
+				visibleReplyId={visibleReplyId}
+				focusMessageId={focusMessageId}
+				onFocusConsumed={() => setFocusMessageId(null)}
+			/>
 		</div>
 	);
 }

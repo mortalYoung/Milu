@@ -41,8 +41,8 @@ const DialogContent = <T extends ValidComponent = "div">(props: PolymorphicProps
 			<DialogOverlay />
 			<DialogPrimitive.Content
 				class={cn(
-					// 弹窗保持居中缩放入场(motion-craft:modal 居中 origin,不锚定触发器;去掉 slide-in-* 的左上角位移)
-				"fixed left-1/2 top-1/2 z-50 grid max-h-screen w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto border bg-card p-6 shadow-none duration-200 data-[expanded]:animate-in data-[closed]:animate-out data-[closed]:fade-out-0 data-[expanded]:fade-in-0 data-[closed]:zoom-out-95 data-[expanded]:zoom-in-95 sm:rounded-lg",
+					// Dialog keeps a centered zoom entry (motion-craft: modal-centered origin, not anchored to the trigger; drops the slide-in-* top-left offset)
+					"fixed left-1/2 top-1/2 z-50 grid max-h-screen w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto border bg-card p-6 shadow-none duration-200 data-[expanded]:animate-in data-[closed]:animate-out data-[closed]:fade-out-0 data-[expanded]:fade-in-0 data-[closed]:zoom-out-95 data-[expanded]:zoom-in-95 sm:rounded-lg",
 					props.class,
 				)}
 				{...rest}

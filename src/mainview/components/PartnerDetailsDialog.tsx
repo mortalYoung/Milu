@@ -1,7 +1,7 @@
 /**
- * PartnerDetailsDialog — 查看 Partner 档案弹窗(主从导航版,方向 D)。
- * 左栏:档案头(头像/名字/role)+ PERSONA/RESPONSE-FORMAT 字段按钮(状态点 + 行数);
- * 右栏:当前字段的 markdown 渲染视图;右上 created 邮戳徽章。
+ * PartnerDetailsDialog — dialog for viewing a Partner profile (master-detail navigation variant, direction D).
+ * Left column: profile header (avatar/name/role) + PERSONA/RESPONSE-FORMAT field buttons (status dot + line count);
+ * right column: markdown-rendered view of the current field; created postmark badge at the top right.
  */
 import { createSignal, For } from "solid-js";
 import { renderMarkdown } from "../lib/markdown";
@@ -24,10 +24,9 @@ const FIELD_LABEL = "font-sans text-[11px] uppercase tracking-[0.2em] text-[#111
 
 export function PartnerDetailsDialog(props: { partner: PartnerItem | null; onOpenChange: (open: boolean) => void }) {
 	const p = () => props.partner;
-	// 当前查看字段
 	const [active, setActive] = createSignal<FieldId>("persona");
 
-	/** 字段值;PERSONA = responsibilities(role 展示在角色行) */
+	/** Field value; PERSONA = responsibilities (role is shown in the role row) */
 	const valueOf = (f: FieldId, partner: PartnerItem): string => (f === "persona" ? (partner.responsibilities ?? "") : (partner.tones ?? ""));
 	const filledOf = (f: FieldId, partner: PartnerItem): boolean => valueOf(f, partner).trim() !== "";
 	const linesOf = (f: FieldId, partner: PartnerItem): number => valueOf(f, partner).split("\n").length;
@@ -35,11 +34,11 @@ export function PartnerDetailsDialog(props: { partner: PartnerItem | null; onOpe
 	return (
 		<Dialog open={p() != null} onOpenChange={props.onOpenChange}>
 			<DialogContent class="w-[960px] max-w-[960px] bg-white border-print-line">
-				{/* a11y 标题(视觉上档案头即标题) */}
+				{/* a11y title (visually, the profile header is the title) */}
 				<DialogTitle class="sr-only">{p()?.name ?? ""}</DialogTitle>
 				{p() && (
 					<div class="grid grid-cols-[150px_1fr]">
-						{/* ————— 左栏:档案头 + 字段导航 ————— */}
+						{/* ————— Left column: profile header + field navigation ————— */}
 						<div class="border-r border-print-line p-3 flex flex-col gap-1.5">
 							<div class="flex items-center gap-2.5 pb-2 min-w-0">
 								<span class="conv-avatar bg-[#111110] text-white border-0">
@@ -69,7 +68,7 @@ export function PartnerDetailsDialog(props: { partner: PartnerItem | null; onOpe
 							</For>
 						</div>
 
-						{/* ————— 右栏:渲染视图 + created 徽章 ————— */}
+						{/* ————— Right column: rendered view + created badge ————— */}
 						<div class="flex flex-col min-w-0">
 							<div class="flex items-center justify-between px-4 pt-3 pb-2 gap-2">
 								<span class={FIELD_LABEL}>{FIELDS.find((f) => f.id === active())?.label}</span>
@@ -77,7 +76,7 @@ export function PartnerDetailsDialog(props: { partner: PartnerItem | null; onOpe
 									Created · {postmarkDate(p()!.createdAt)}
 								</span>
 							</div>
-							{/* role 只读展示(persona 页档案头下方角色行) */}
+							{/* Role shown read-only (the role row below the profile header on the persona page) */}
 							{active() === "persona" && p()!.role && (
 								<div class="px-4 pb-2 font-mono text-[12px] text-[#111110]">
 									<span class="text-[#9a9a94]">Role: </span>

@@ -1,7 +1,7 @@
 import { type ClassValue, clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 
-/** 类名合并:clsx + tailwind-merge(冲突类后到者胜)。 */
+/** Class name merge: clsx + tailwind-merge (conflicting classes — the later one wins). */
 export function cn(...inputs: ClassValue[]) {
 	return twMerge(clsx(inputs));
 }

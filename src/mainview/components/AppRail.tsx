@@ -1,6 +1,6 @@
 /**
- * AppRail — 左侧 64px 图标栏(书信方向):品牌字母圆 + Chat 标签 + footer(Settings)。
- * active = 暖墨实底 + 纸色图标。
+ * AppRail — the 64px icon rail on the left (letter direction): brand letter circle + Chat tab + footer (Settings).
+ * active = warm-ink solid + paper-colored icon.
  */
 import { MessageSquare, Settings } from "lucide-solid";
 
@@ -9,9 +9,9 @@ export type RailTabId = "chat" | "settings";
 export function AppRail(props: { active: RailTabId; onSelect: (id: RailTabId) => void }) {
 	return (
 		<nav class="rail electrobun-webkit-app-region-drag">
-			{/* 顶部空拖拽区:让位给悬浮的红绿灯 */}
+			{/* Top empty drag region: makes room for the floating traffic lights */}
 			<div class="rail-spacer" />
-			{/* 品牌区:P 字母圆 */}
+			{/* Brand area: P letter circle */}
 			<div class="rail-brand" title="Coding Desktop">
 				P
 			</div>
@@ -25,7 +25,7 @@ export function AppRail(props: { active: RailTabId; onSelect: (id: RailTabId) =>
 				<MessageSquare size={18} />
 			</button>
 
-			{/* footer:设置 */}
+			{/* Footer: settings */}
 			<div class="rail-footer">
 				<button
 					type="button"

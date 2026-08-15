@@ -72,7 +72,7 @@ const TextFieldTextArea = <T extends ValidComponent = "textarea">(props: Polymor
 	);
 };
 
-// 表单标签:Public Sans 11px 大写 + 0.6px 正字距(书信方向大写标签)
+// Form labels: Public Sans 11px uppercase + 0.6px positive tracking (letter-direction uppercase labels)
 const labelVariants = cva("font-sans text-[11px] font-medium uppercase tracking-[0.6px] text-muted leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70", {
 	variants: {
 		variant: {

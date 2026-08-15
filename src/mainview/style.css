@@ -1,15 +1,15 @@
 /* ————————————————————————————————
-   CODING DESKTOP — 书信对话(见 DESIGN.md,方向 B)。
-   旧纸 #f7f3ea / 信笺 #fffdf8 / 暖墨 #2a2620 / 封印红 #b03a2e / 发丝线 #e2dccb。
-   Newsreader 只做阅读,Public Sans 只做 UI,JetBrains Mono 仅内联代码。
-   消息为 60% 居中窄栏信件;无头像;虚线邮戳;三圆点 Writing 胶囊。
-   无阴影、无渐变;层级靠纸面交替、发丝线、字距。动效:盖邮戳入场。
+   CODING DESKTOP — letter conversation (see DESIGN.md, direction B).
+   Old paper #f7f3ea / letter paper #fffdf8 / warm ink #2a2620 / seal red #b03a2e / hairline #e2dccb.
+   Newsreader for reading only, Public Sans for UI only, JetBrains Mono for inline code only.
+   Messages are 60%-centered narrow-column letters; no avatars; dashed postmarks; three-dot Writing capsule.
+   No shadows, no gradients; hierarchy comes from alternating paper, hairlines, and letter-spacing. Motion: postmark-stamp entry.
    ———————————————————————————————— */
 
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* 字体(本地打包,OFL):Newsreader(信笺正文)/ Public Sans(UI)/ JetBrains Mono(内联代码) */
+/* Fonts (bundled locally, OFL): Newsreader (letter body) / Public Sans (UI) / JetBrains Mono (inline code) */
 @font-face {
 	font-family: "Newsreader";
 	src: url("assets/fonts/newsreader.woff2") format("woff2-variations");
@@ -33,7 +33,7 @@
 }
 
 @theme {
-	/* 书信对话色板(DESIGN.md) */
+	/* Letter-conversation palette (DESIGN.md) */
 	--color-paper: #f7f3ea;
 	--color-paper-deep: #ece5d6;
 	--color-paper-hover: #f0ead9;
@@ -48,7 +48,7 @@
 	--color-seal-soft: #e8d5d1;
 	--color-on-ink: #f7f3ea;
 
-	/* 兼容旧引用 */
+	/* Backward-compatible aliases */
 	--color-qw-bg: #f7f3ea;
 	--color-qw-panel: #f7f3ea;
 	--color-qw-text: #2a2620;
@@ -57,12 +57,12 @@
 	--color-qw-hover: #f0ead9;
 	--color-qw-active: #2a2620;
 
-	/* 字体:衬线只做阅读,sans 只做 UI,mono 只给内联代码 */
+	/* Fonts: serif for reading only, sans for UI only, mono for inline code only */
 	--font-sans: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
 	--font-serif: "Newsreader", Georgia, "Times New Roman", serif;
 	--font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
-	/* shadcn/SolidUI 主题变量(映射到书信色板) */
+	/* shadcn/SolidUI theme variables (mapped to the letter palette) */
 	--color-background: #f7f3ea;
 	--color-foreground: #2a2620;
 	--color-card: #fffdf8;
@@ -85,13 +85,13 @@
 	--color-error: #b03a2e;
 	--color-error-foreground: #b03a2e;
 
-	/* 弹窗方向 C 配色(印刷橙,详情/设置弹窗使用) */
+	/* Dialog direction C palette (print orange, used by the details/settings dialogs) */
 	--color-print: #e2552d;
 	--color-print-line: #d8d8d4;
 	--color-print-tint: #f4f4f2;
 }
 
-/* 氛围层:旧纸微噪点(透明度 <4%,pointer-events 穿透) */
+/* Atmosphere layer: old-paper micro-noise (opacity <4%, pointer-events pass-through) */
 body::before {
 	content: "";
 	position: fixed;
@@ -110,20 +110,20 @@ body::before {
 	body {
 		@apply bg-paper text-ink font-sans antialiased;
 	}
-	/* 裸 border 类默认用 --border(shadcn 约定) */
+	/* Bare border classes default to --border (shadcn convention) */
 	*,
 	::after,
 	::before {
 		border-color: var(--color-border);
 	}
-	/* 选中文本 = 封印红纸(品牌色) */
+	/* Selected text = seal red paper (brand color) */
 	::selection {
 		background: var(--color-seal);
 		color: var(--color-on-ink);
 	}
 }
 
-/* 大写标签(eyebrow:分区头/系统行;Public Sans 11px + 0.6px 正字距) */
+/* Uppercase label (eyebrow: section headers/system rows; Public Sans 11px + 0.6px positive tracking) */
 @utility eyebrow {
 	font-family: var(--font-sans);
 	font-size: 11px;
@@ -134,11 +134,11 @@ body::before {
 }
 
 @layer components {
-	/* ————— 左侧图标栏(纸面;active = 暖墨实底) ————— */
+	/* ————— Left icon rail (paper surface; active = warm-ink solid) ————— */
 	.rail {
 		@apply w-16 shrink-0 bg-paper border-r border-hairline flex flex-col items-center pt-4;
 	}
-	/* 顶部空拖拽区(24px):让位给红绿灯 */
+	/* Top empty drag region (24px): makes room for the traffic lights */
 	.rail-spacer {
 		@apply h-6 w-full shrink-0;
 	}
@@ -155,7 +155,7 @@ body::before {
 		background: var(--color-ink);
 		color: var(--color-paper);
 	}
-	/* footer(上边框) */
+	/* Footer (top border) */
 	.rail-footer {
 		@apply mt-auto w-full pb-[14px] flex flex-col items-center gap-3;
 	}
@@ -170,12 +170,12 @@ body::before {
 		color: var(--color-paper);
 	}
 
-	/* ————— 顶栏(设置页:eyebrow 标签) ————— */
+	/* ————— Top bar (settings page: eyebrow label) ————— */
 	.topbar {
 		@apply h-16 shrink-0 bg-paper border-b border-hairline flex items-center px-6 eyebrow;
 	}
 
-	/* ————— 对话列表(信件目录) ————— */
+	/* ————— Conversation list (letter directory) ————— */
 	.conv-list-head {
 		@apply flex items-center justify-between pl-1 pr-3 mb-[14px];
 	}
@@ -200,7 +200,7 @@ body::before {
 	.conv-avatar {
 		@apply size-[34px] rounded-full flex items-center justify-center shrink-0 font-serif text-[15px] font-semibold leading-none;
 	}
-	/* 首字母的光学居中:衬线小写字母压在基线上,视觉中心偏上,微沉 0.1em */
+	/* Optical centering of the initial: serif lowercase sits on the baseline, visual center sits high, nudge down 0.1em */
 	.avatar-initial {
 		@apply block leading-none;
 		transform: translateY(0.1em);
@@ -226,7 +226,7 @@ body::before {
 	.conv-preview {
 		@apply font-sans text-[12px] text-body-muted truncate mt-[2px];
 	}
-	/* hover 时悬浮浮现的 ellipsis(绝对定位盖在行上,不占布局) */
+	/* Ellipsis that appears floating on hover (absolutely positioned over the row, no layout footprint) */
 	.conv-ellipsis {
 		@apply absolute right-1.5 top-1/2 -translate-y-1/2 size-6 flex items-center justify-center rounded text-body-muted cursor-pointer transition-opacity bg-letter/80;
 	}
@@ -234,7 +234,7 @@ body::before {
 		background: var(--color-letter);
 	}
 
-	/* ————— markdown 渲染(创建预览 / 详情右栏) ————— */
+	/* ————— Markdown rendering (create preview / details right column) ————— */
 	.md {
 		@apply font-serif text-[15px] leading-[1.6] text-[#111110] break-words;
 	}
@@ -268,6 +268,18 @@ body::before {
 	.md code {
 		@apply font-mono text-[12px] bg-print-tint border border-print-line rounded-[3px] px-[5px] py-[1px];
 	}
+	.md table {
+		@apply my-2 w-full border-collapse text-[14px];
+	}
+	.md th {
+		@apply font-semibold text-left bg-paper-hover border-b border-hairline px-2 py-1.5;
+	}
+	.md td {
+		@apply border-b border-hairline px-2 py-1.5 align-top;
+	}
+	.md tr:last-child td {
+		border-bottom: none;
+	}
 	.md pre {
 		@apply bg-print-tint border border-print-line rounded-[4px] px-3 py-2.5 overflow-x-auto my-2;
 	}
@@ -279,7 +291,7 @@ body::before {
 		text-decoration: underline;
 	}
 
-	/* ————— 主从导航(创建/详情弹窗) ————— */
+	/* ————— Master-detail navigation (create/details dialogs) ————— */
 	.field-btn {
 		@apply w-full flex flex-col items-start gap-1 px-3 py-2 rounded-[6px] text-left transition-colors cursor-pointer;
 	}
@@ -305,14 +317,14 @@ body::before {
 		@apply text-[#757575] hover:bg-print-tint;
 	}
 
-	/* ————— 聊天页 ————— */
+	/* ————— Chat page ————— */
 	.chat-page {
-		@apply flex-1 flex min-h-0;
+		@apply relative flex-1 flex min-h-0;
 	}
 	.chat-window {
 		@apply flex-1 flex flex-col min-w-0;
 	}
-	/* 信封抬头 header:72px,上下发丝线,居中姓名行 */
+	/* Envelope header: 72px, hairline on top and bottom, centered name row */
 	.chat-header {
 		@apply relative h-[72px] shrink-0 bg-paper border-t border-b border-hairline flex items-center justify-center;
 	}
@@ -328,38 +340,140 @@ body::before {
 	.chat-toggle {
 		@apply absolute left-4 top-1/2 -translate-y-1/2;
 	}
+	/* Outline toggle: header right side, mirror of the list toggle */
+	.outline-toggle {
+		@apply absolute right-4 top-1/2 -translate-y-1/2;
+	}
+	/* Outline: floating replies index (direction A) — letter card, question-anchored rows, scroll-like unroll */
+	.outline {
+		@apply absolute top-[80px] right-4 z-20 w-[246px] max-h-[65vh] rounded-[10px] bg-letter flex flex-col overflow-hidden;
+		transform-origin: top;
+	}
+	.outline-head {
+		@apply flex items-baseline justify-between px-4 pt-3 pb-2 border-b border-hairline;
+	}
+	.outline-count {
+		@apply font-mono text-[10px] text-seal;
+	}
+	.outline-list {
+		@apply overflow-y-auto py-1 flex flex-col min-h-0;
+	}
+	.outline-item {
+		@apply relative text-left w-full px-4 py-2 cursor-pointer flex flex-col gap-[2px] border-b border-hairline-soft last:border-b-0;
+		animation: outline-row-in 200ms var(--ease-out) both;
+	}
+	.outline-item:hover {
+		@apply bg-paper-hover;
+	}
+	.outline-item:hover::before {
+		content: "";
+		position: absolute;
+		left: 0;
+		top: 0;
+		bottom: 0;
+		width: 2px;
+		background: var(--color-ink);
+	}
+	.outline-item:focus-visible {
+		outline: 2px solid var(--color-seal);
+		outline-offset: -2px;
+	}
+	.outline-item.active {
+		@apply bg-paper-hover;
+	}
+	.outline-item.active::before {
+		content: "";
+		position: absolute;
+		left: 0;
+		top: 0;
+		bottom: 0;
+		width: 2px;
+		background: var(--color-seal);
+	}
+	.outline-meta {
+		@apply flex items-baseline justify-between gap-2;
+	}
+	.outline-time {
+		@apply shrink-0 font-mono text-[9px] text-seal;
+	}
+	.outline-q {
+		@apply font-sans text-[9px] uppercase tracking-[0.12em] text-body-muted truncate;
+	}
+	.outline-a {
+		@apply font-serif text-[12.5px] leading-[1.45] text-ink truncate;
+	}
+	@keyframes outline-row-in {
+		from {
+			opacity: 0;
+			transform: translateY(4px);
+		}
+		to {
+			opacity: 1;
+			transform: none;
+		}
+	}
+	/* Locate feedback: the target bubble flashes, then fades back (agent = seal-soft paper; user = seal outline on ink) */
+	@keyframes locate-flash {
+		0% {
+			background: var(--color-seal-soft);
+		}
+		100% {
+			background: var(--color-letter);
+		}
+	}
+	@keyframes locate-flash-user {
+		0% {
+			outline: 2px solid var(--color-seal);
+			outline-offset: 3px;
+		}
+		100% {
+			outline: 2px solid transparent;
+			outline-offset: 3px;
+		}
+	}
+	.msg-letter.locate-flash {
+		animation: locate-flash 1.1s var(--ease-out) both;
+	}
+	.msg-user.locate-flash {
+		animation: locate-flash-user 1.1s var(--ease-out) both;
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.outline-item {
+			animation: none;
+		}
+		.msg-letter.locate-flash,
+		.msg-user.locate-flash {
+			animation: none;
+		}
+	}
 
-	/* 信件流:60% 居中窄栏 */
+	/* Letter stream: 60% centered narrow column */
 	.transcript-inner {
 		@apply w-[60%] mx-auto flex flex-col;
 	}
 	.msg-user {
-		@apply self-end max-w-full bg-ink text-paper font-serif text-[16px] leading-[1.5] whitespace-pre-wrap break-words rounded-[10px] px-[15px] py-[10px];
+		@apply self-end mt-6 max-w-full bg-ink text-paper font-serif text-[16px] leading-[1.5] whitespace-pre-wrap break-words rounded-[10px] px-[15px] py-[10px];
 	}
 	.msg-user-time {
 		@apply self-end font-sans text-[10.5px] text-seal tracking-[0.05em] mt-1.5;
 	}
 	.msg-letter {
-		@apply self-start mt-6 relative bg-letter border border-hairline rounded-[10px] px-[18px] pt-[17px] pb-3 min-w-0;
+		@apply self-start mt-6 relative bg-letter border border-hairline rounded-[10px] px-[18px] pt-[17px] pb-3 min-w-0 w-[560px] max-w-full;
 	}
 	.msg-letter-text {
-		@apply font-serif text-[16px] leading-[1.62] whitespace-pre-wrap break-words text-ink;
+		@apply font-serif text-[16px] leading-[1.62] break-words text-ink;
 	}
-	/* 虚线邮戳:信纸右上角,旋转 -12° */
+	/* Dashed postmark: top-right of the letter, rotated -12° */
 	.msg-postmark {
 		@apply absolute -top-4 -right-4 size-[58px] rounded-full border border-dashed border-seal flex flex-col items-center justify-center font-sans text-[8.5px] tracking-[0.12em] text-seal leading-[1.6] text-center;
 		background: rgba(247, 243, 234, 0.55);
 		transform: rotate(-12deg);
 	}
-	/* 内联代码:纸上墨迹 chip(mono 为代码字形) */
-	.inline-code {
-		@apply bg-paper-hover border border-hairline rounded-[3px] px-[5px] py-[1px] font-mono text-[13px] whitespace-nowrap;
-	}
-	/* 署名行:seal 红右对齐 */
+	/* Signature line: seal red, right-aligned */
 	.msg-sign {
 		@apply font-sans text-[12px] text-seal tracking-[0.03em] text-right mt-[9px];
 	}
-	/* 运行指示:三个错峰呼吸的墨点(深底用纸色,浅底用墨色,由各处 .xxx .work-dot 覆写) */
+	/* Working indicator: three staggered breathing ink dots (paper color on dark backgrounds, ink color on light ones, overridden by the various .xxx .work-dot rules) */
 	.work-dot {
 		@apply size-[5px] rounded-full;
 		background: var(--color-paper);
@@ -381,35 +495,258 @@ body::before {
 			opacity: 1;
 		}
 	}
-	/* 正在说话气泡(信笺样式,复用 msg-letter):墨点 + 署名行 */
+	/* Speaking bubble (letter style, reuses msg-letter): ink dots + signature line */
 	.msg-speaking-dots {
 		@apply flex items-center gap-1.5;
 	}
 	.msg-speaking .work-dot {
 		background: var(--color-ink-soft);
 	}
-	/* 列表行工作指示:预览槽内三墨点 */
+	/* List-row working indicator: three ink dots in the preview slot */
 	.conv-preview-dots {
 		@apply inline-flex items-center gap-[3px] pt-[3px];
 	}
 	.conv-preview-dots .work-dot {
 		background: var(--color-ink-soft);
 	}
-	/* 信封抬头工作状态:分隔线 + 三墨点 + Writing… */
+	/* Envelope-header working status: separator + three ink dots + Writing… */
 	.chat-worker-status {
 		@apply inline-flex items-center gap-[3px] ml-2 pl-2 border-l border-hairline font-sans text-[9px] uppercase tracking-[0.14em] text-ink-soft;
 	}
 	.chat-worker-status .work-dot {
 		background: var(--color-ink-soft);
 	}
-	/* 系统行:eyebrow;错误用封印红 */
+	/* "View trajectory" entry on the message signature line: small seal-red text */
+	.msg-trajectory-link {
+		@apply font-sans text-[10px] text-seal underline-offset-2 hover:underline cursor-pointer bg-transparent border-0 p-0 ml-2;
+	}
+	/* Trajectory drawer (density strip, direction B): three layers.
+	   Width is capped so the chat stays visible to its left — the drawer overlays, and linkage
+	   (locate a turn → see the bubble) only works when the target is not hidden behind it. */
+	.traj-drawer {
+		@apply absolute top-0 right-0 bottom-0 z-20 w-[440px] max-w-[72vw] bg-letter border-l border-hairline flex flex-col p-4;
+	}
+	.traj-head {
+		@apply flex items-baseline gap-2 pb-3 border-b border-hairline;
+	}
+	.traj-title {
+		@apply font-sans text-[9px] uppercase tracking-[0.2em] text-body-muted;
+	}
+	.traj-count {
+		@apply ml-auto font-mono text-[10px] text-seal;
+	}
+	.traj-close {
+		@apply font-sans text-[15px] leading-none text-body-muted hover:text-ink cursor-pointer bg-transparent border-0 p-0 ml-2;
+	}
+	/* Layers 1+2: the full timeline (system / question / reminder / turn) — one horizontally scrollable block */
+	.traj-scroll {
+		@apply overflow-x-auto;
+	}
+	.traj-band {
+		@apply flex items-end gap-[3px] h-[64px] pt-4 pb-2 min-w-max;
+	}
+	.traj-cell {
+		@apply flex-1 min-w-[26px] rounded-t-[2px] cursor-pointer border-0 p-0;
+		transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
+	}
+	.traj-cell:hover {
+		transform: translateY(-2px);
+	}
+	.traj-cell.l1 {
+		background: var(--color-paper-deep);
+	}
+	.traj-cell.l2 {
+		background: var(--color-ink-soft);
+	}
+	.traj-cell.l3 {
+		background: var(--color-ink);
+	}
+	.traj-cell.hot {
+		background: var(--color-seal);
+		outline: 1.5px solid var(--color-seal);
+		outline-offset: 1px;
+	}
+	/* Live-linkage: the turn of the reply currently visible in the chat — a subtle bottom bar, distinct from selection */
+	.traj-cell.live {
+		border-bottom: 2px solid var(--color-seal);
+	}
+	/* Non-turn timeline columns: a centered marker inside a column of the same width as turn cells */
+	.traj-marker {
+		@apply flex-1 min-w-[26px] self-stretch flex items-center justify-center;
+	}
+	.traj-marker.hot {
+		outline: 1.5px solid var(--color-seal);
+		outline-offset: 1px;
+		border-radius: 3px;
+	}
+	.traj-marker .mq {
+		@apply w-[4px] h-[60%] rounded-[2px] bg-seal cursor-pointer border-0 p-0;
+		transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
+	}
+	.traj-marker .mq:hover {
+		transform: translateY(-2px);
+	}
+	.traj-marker .msys {
+		@apply w-[12px] h-[60%] rounded-[2px] bg-ink cursor-pointer border-0 p-0;
+		transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
+	}
+	.traj-marker .msys:hover {
+		transform: translateY(-2px);
+	}
+	.traj-marker .mrm {
+		@apply w-[12px] h-[60%] rounded-[2px] cursor-pointer border-0 p-0;
+		border: 1.5px dashed var(--color-seal);
+		transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
+	}
+	.traj-marker .mrm:hover {
+		transform: translateY(-2px);
+	}
+	.traj-marker .mtool {
+		@apply w-[10px] h-[45%] rounded-[2px] bg-ink cursor-pointer border-0 p-0;
+		transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
+	}
+	.traj-marker .mtool:hover {
+		transform: translateY(-2px);
+	}
+	.traj-marker .mmsg {
+		@apply w-[10px] h-[45%] rounded-[2px] bg-seal-soft cursor-pointer border-0 p-0;
+		border: 1px solid var(--color-seal);
+		transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
+	}
+	.traj-marker .mmsg:hover {
+		transform: translateY(-2px);
+	}
+	/* Turn boundary: a vertical hairline spanning band and labels */
+	.traj-boundary {
+		@apply w-px self-stretch bg-hairline flex-none;
+	}
+	/* Layer 3: detail — no border, no background, separators only */
+	.traj-detail {
+		@apply flex-1 min-h-0 overflow-y-auto mt-2;
+	}
+	.traj-row {
+		@apply flex items-baseline gap-2 w-full text-left py-[5px] border-b border-hairline-soft last:border-b-0 cursor-pointer bg-transparent;
+	}
+	.traj-row:hover {
+		@apply bg-paper-hover;
+	}
+	.traj-row b {
+		@apply font-mono text-[9px] text-seal font-semibold;
+	}
+	.traj-row .row-cap {
+		@apply font-serif text-[11.5px] text-ink truncate flex-1 min-w-0;
+	}
+	.traj-row .row-tools {
+		@apply font-mono text-[8px] text-body-muted truncate;
+	}
+	.traj-row .row-tok {
+		@apply font-mono text-[8.5px] text-muted;
+	}
+	.traj-row.q {
+		@apply py-[3px];
+	}
+	.traj-row.q b {
+		@apply text-seal;
+	}
+	.traj-row.q .row-cap {
+		@apply font-sans text-[9px] uppercase tracking-[0.1em] text-body-muted;
+	}
+	.traj-row.sys b {
+		@apply text-ink;
+	}
+	.traj-row.rm b {
+		@apply text-seal;
+	}
+	.traj-row.rm .row-cap {
+		@apply font-sans text-[9px] text-body-muted;
+	}
+	.traj-row.tool b {
+		@apply font-mono text-[9px] text-letter bg-ink rounded-[3px] px-[5px] py-[1px];
+	}
+	.traj-row.tool .row-cap.mono {
+		@apply font-mono text-[9px] text-ink-soft;
+	}
+	.traj-row.msg b {
+		@apply text-seal;
+	}
+	/* Turn separator inside the node list */
+	.traj-turn-sep {
+		@apply flex items-center gap-2 mt-2 mb-0.5 font-sans text-[8px] uppercase tracking-[0.18em] text-muted;
+	}
+	.traj-turn-sep::after {
+		content: "";
+		flex: 1;
+		border-top: 1px solid var(--color-hairline-soft);
+	}
+	.traj-one {
+		@apply py-1;
+	}
+	.traj-one .one-head {
+		@apply flex justify-between font-sans text-[8px] uppercase tracking-[0.14em] text-muted;
+	}
+	.traj-one .one-cap {
+		@apply font-serif text-[13px] leading-[1.6] text-ink mt-2;
+	}
+	.traj-one .one-tools {
+		@apply mt-2 flex flex-col gap-2;
+	}
+	.traj-one .one-tool-name {
+		@apply font-mono text-[8.5px] px-2 py-[2px] rounded-[4px] bg-paper-deep text-ink-soft;
+	}
+	.traj-one .one-args {
+		@apply mt-1 max-h-[140px] overflow-auto whitespace-pre-wrap break-words font-mono text-[10px] leading-[1.6] text-ink-soft border border-hairline rounded-[4px] px-2 py-1.5;
+	}
+	/* Thinking: the model's internal reasoning — expanded by default, capped height with scroll */
+	.traj-one .one-think-label {
+		@apply mt-2 font-sans text-[8.5px] uppercase tracking-[0.16em] text-body-muted;
+	}
+	.traj-one .one-thinking {
+		@apply mt-1 font-serif text-[12px] leading-[1.7] text-ink-soft whitespace-pre-wrap max-h-[220px] overflow-y-auto;
+		background: var(--color-paper-hover);
+		border-left: 2px solid var(--color-hairline);
+		padding: 8px 10px;
+		border-radius: 0 6px 6px 0;
+	}
+	.traj-one .one-cap.plain {
+		@apply whitespace-pre-wrap;
+	}
+	.traj-one .one-args.err {
+		@apply border-seal/60 text-seal;
+	}
+	.traj-one .one-locate {
+		@apply mt-2 font-sans text-[9px] uppercase tracking-[0.12em] text-seal hover:text-ink cursor-pointer bg-transparent border-0 p-0;
+	}
+	.traj-one .one-msg {
+		@apply mt-2 font-sans text-[9px] text-seal uppercase tracking-[0.12em];
+	}
+	.traj-nav {
+		@apply mt-3 flex items-center gap-2;
+	}
+	.traj-nav button {
+		@apply font-sans text-[9px] uppercase tracking-[0.12em] text-seal hover:text-ink cursor-pointer bg-transparent border-0 p-0;
+	}
+	.traj-nav button:disabled {
+		@apply text-muted cursor-default;
+	}
+	.traj-nav .back {
+		@apply mx-auto text-body-muted;
+	}
+	.traj-foot {
+		@apply pt-2 font-sans text-[8px] text-muted text-right;
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.traj-cell {
+			transition: none;
+		}
+	}
+	/* System row: eyebrow; errors in seal red */
 	.sys {
 		@apply text-center eyebrow py-1.5;
 	}
 	.sys-error {
 		@apply text-seal font-medium;
 	}
-	/* 日期分隔:小字 + 两侧短线(44px) */
+	/* Date separator: small text + short lines on both sides (44px) */
 	.time-sep {
 		@apply flex items-center justify-center gap-3 font-sans text-[10px] tracking-[0.18em] text-body-muted mt-0 mb-6;
 	}
@@ -420,7 +757,7 @@ body::before {
 		height: 1px;
 		background: var(--color-hairline);
 	}
-	/* 输入区:居中药丸(60%,44px) */
+	/* Input area: centered pill (60%, 44px) */
 	.composer {
 		@apply shrink-0 h-[72px] border-t border-hairline flex items-center justify-center px-6 bg-paper;
 	}
@@ -432,7 +769,7 @@ body::before {
 	}
 }
 
-/* thin scrollbar(纸面发丝线) */
+/* Thin scrollbar (paper hairline) */
 .transcript,
 .home-page {
 	scrollbar-width: thin;
@@ -452,7 +789,7 @@ body::before {
 	background: transparent;
 }
 
-/* 无障碍:减少动效(保留 opacity 过渡,移除呼吸) */
+/* Accessibility: reduced motion (keep opacity transitions, remove the breathing) */
 @media (prefers-reduced-motion: reduce) {
 	.work-dot {
 		animation: none;

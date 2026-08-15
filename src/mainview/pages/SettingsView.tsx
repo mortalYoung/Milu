@@ -1,7 +1,7 @@
 /**
- * SettingsView — 设置弹窗内容(方向 A 结构 + C 印刷橙配色)。
- * 分组列表:GENERAL(partner_profile_path)+ RUNTIME(model / api key 状态)。
- * 设置持久化于 ~/.config/.partner。
+ * SettingsView — the settings dialog content (direction A structure + C print-orange palette).
+ * Grouped list: GENERAL (partner_profile_path) + RUNTIME (model / api key status).
+ * Settings persist in ~/.config/.partner.
  */
 import { createSignal } from "solid-js";
 import { Button } from "../components/Button";
@@ -16,16 +16,10 @@ export interface RuntimeInfo {
 	apiKeyConfigured: boolean;
 }
 
-export function SettingsView(props: {
-	settings: SettingsData | null;
-	runtime: RuntimeInfo | null;
-	onSave: (settings: SettingsData) => Promise<void>;
-	onLoad: () => void;
-}) {
+export function SettingsView(props: { settings: SettingsData | null; runtime: RuntimeInfo | null; onSave: (settings: SettingsData) => Promise<void>; onLoad: () => void }) {
 	const [path, setPath] = createSignal("");
 	const [saved, setSaved] = createSignal(false);
 
-	// 数据到达后填充表单
 	if (props.settings && path() === "" && props.settings.partner_profile_path !== path()) {
 		setPath(props.settings.partner_profile_path);
 	}
@@ -68,7 +62,7 @@ export function SettingsView(props: {
 				</div>
 			</div>
 
-			{/* 保存 */}
+			{/* Save */}
 			<div class="border-t border-print-line pt-4 flex items-center justify-end gap-2">
 				{saved() && <span class="text-[12px] text-[#757575]">Saved ✓</span>}
 				<Button class="bg-print text-white hover:bg-print/90" onClick={save}>

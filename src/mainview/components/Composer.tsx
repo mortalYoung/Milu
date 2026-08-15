@@ -1,6 +1,6 @@
 /**
- * Composer — 输入区(IM 交互,参考飞书):
- * 圆角输入框,有内容时出现发送按钮;运行中变为停止按钮。
+ * Composer — the input area (IM interaction, modeled on Feishu):
+ * rounded input; the send button appears when there is content; it becomes a stop button while running.
  */
 import { ArrowUp, Square } from "lucide-solid";
 import { createSignal, type JSX } from "solid-js";
@@ -16,7 +16,6 @@ export function Composer(props: { busy: () => boolean; onSend: (text: string) =>
 		props.onSend(value);
 	};
 
-	// Enter 发送(忙时排队);按钮:有内容发送 / 运行中停止
 	const submit: JSX.EventHandler<HTMLFormElement, SubmitEvent> = (e) => {
 		e.preventDefault();
 		send();

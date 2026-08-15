@@ -7,9 +7,9 @@ import { splitProps } from "solid-js";
 
 import { cn } from "../../lib/utils";
 
-// 书信对话按钮系统(DESIGN.md):
-// default = 暖墨实底(信封);seal = 封印红(发送/邮戳语义);outline = 发丝线描边;
-// link = 下划线文本链接。字重 500 以内;按压缩放 0.97(motion-craft)。
+// Letter-conversation button system (DESIGN.md):
+// default = warm-ink solid (envelope); seal = seal red (send/postmark semantics); outline = hairline border;
+// link = underlined text link. Font weight 500 max; pressed scale 0.97 (motion-craft).
 const buttonVariants = cva(
 	"inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full font-sans text-sm font-medium transition-[transform,background-color,color,border-color,opacity] duration-[160ms] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
 	{

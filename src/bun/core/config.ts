@@ -5,5 +5,5 @@ if (!databaseRoot) {
 	throw new Error("DATABASE_ROOT is not set — add it to .env");
 }
 export const DATABASE_ROOT: string = databaseRoot;
-/** 项目根目录:作为会话的 cwd(pi 按 cwd 转义目录名)。 */
+/** Project root: used as the session cwd (pi escapes directory names by cwd). */
 export const PROJECT_ROOT = dirname(DATABASE_ROOT);
