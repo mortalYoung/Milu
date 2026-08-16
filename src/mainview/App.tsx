@@ -24,8 +24,6 @@ new Electroview({ rpc });
 
 interface PartnerItem {
 	name: string;
-	avatar?: string;
-	role?: string;
 	responsibilities?: string;
 	tones?: string;
 	createdAt: number;
@@ -140,7 +138,7 @@ export function App() {
 		trajectoryCache = null;
 		void rpc.request
 			.set_partner({
-				profile: partner ? { name: partner.name, role: partner.role, responsibilities: partner.responsibilities, tones: partner.tones } : null,
+				profile: partner ? { name: partner.name, responsibilities: partner.responsibilities, tones: partner.tones } : null,
 			})
 			.then(() => refreshHistory());
 	}
@@ -216,7 +214,7 @@ export function App() {
 	function onPreviewPrompt(data: PartnerFormData): Promise<string> {
 		return rpc.request
 			.preview_system_prompt({
-				profile: { role: data.role, responsibilities: data.responsibilities, tones: data.tones },
+				profile: { responsibilities: data.responsibilities, tones: data.tones },
 			})
 			.then((res) => res.prompt);
 	}

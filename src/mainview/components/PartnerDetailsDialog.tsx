@@ -1,6 +1,6 @@
 /**
  * PartnerDetailsDialog — dialog for viewing a Partner profile (master-detail navigation variant, direction D).
- * Left column: profile header (avatar/name/role) + PERSONA/RESPONSE-FORMAT field buttons (status dot + line count);
+ * Left column: profile header (initial avatar/name/role) + PERSONA/RESPONSE-FORMAT field buttons (status dot + line count);
  * right column: markdown-rendered view of the current field; created postmark badge at the top right.
  */
 import { createSignal, For } from "solid-js";
@@ -42,11 +42,11 @@ export function PartnerDetailsDialog(props: { partner: PartnerItem | null; onOpe
 						<div class="border-r border-print-line p-3 flex flex-col gap-1.5">
 							<div class="flex items-center gap-2.5 pb-2 min-w-0">
 								<span class="conv-avatar bg-[#111110] text-white border-0">
-									{p()!.avatar ? <span class="text-[15px]">{p()!.avatar}</span> : <span class="avatar-initial">{p()!.name.charAt(0)}</span>}
+									<span class="avatar-initial">{p()!.name.charAt(0)}</span>
 								</span>
 								<div class="flex flex-col min-w-0">
 									<span class="font-serif text-[15px] font-semibold text-[#111110] leading-tight truncate">{p()!.name}</span>
-									<span class="font-sans text-[10px] text-[#757575] truncate mt-0.5">{p()!.role ?? "partner"}</span>
+									<span class="font-sans text-[10px] text-[#757575] truncate mt-0.5">partner</span>
 								</div>
 							</div>
 
@@ -76,13 +76,7 @@ export function PartnerDetailsDialog(props: { partner: PartnerItem | null; onOpe
 									Created · {postmarkDate(p()!.createdAt)}
 								</span>
 							</div>
-							{/* Role shown read-only (the role row below the profile header on the persona page) */}
-							{active() === "persona" && p()!.role && (
-								<div class="px-4 pb-2 font-mono text-[12px] text-[#111110]">
-									<span class="text-[#9a9a94]">Role: </span>
-									{p()!.role}
-								</div>
-							)}
+
 							<div class="px-4 pb-4 min-h-0">
 								{valueOf(active(), p()!).trim() ? (
 									<div

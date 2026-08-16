@@ -2,8 +2,8 @@
  * System prompt construction — IDENTIFY / PERSONA / TOOL-GUIDANCE / RESPONSE-FORMAT (+ optional STORAGE).
  * Conventions:
  * - IDENTIFY: one sentence establishing "who you are, what framework you run on" (framework + model, system-injected, not editable).
- * - PERSONA: the task role. role is required (role phrase, e.g. "Front-End Programmer"); when role is missing (no
- *   Partner selected) the whole section is omitted. Responsibilities is user-filled, no default; empty means the part is omitted.
+ * - PERSONA: a fixed role sentence ("You are an agent running in Partner App.") + Responsibilities (user-filled,
+ *   no default; empty means the part is omitted).
  * - TOOL-GUIDANCE: per-tool "how to use this tool correctly" guidance, dynamically inserted from the tool guidance table;
  *   tools without guidance fall back to a name — description list.
  * - RESPONSE-FORMAT: final response format constraints (fixed rules) + Tones (user-filled, no default; empty means omitted).
@@ -14,10 +14,8 @@
 
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 
-/** Fields required for prompt construction (role required; display fields like name/avatar do not enter the prompt). */
+/** Fields required for prompt construction (display fields like name do not enter the prompt). */
 export interface PartnerPrompt {
-	/** Role phrase (e.g. "Front-End Programmer"), required. */
-	role?: string;
 	/** Responsibilities, user-filled; omitted when empty. */
 	responsibilities?: string;
 	/** Tones, user-filled; omitted when empty. */
@@ -38,11 +36,9 @@ export function buildIdentify(runtime: RuntimeInfo): string {
 	return ["# IDENTIFY", `You are an AI partner agent powered by the ${runtime.framework} which is an AI employees harness, running on the ${runtime.model} model.`].join("\n");
 }
 
-/** PERSONA: role sentence + Responsibilities (user-filled, omitted when empty). role is required; the whole section is omitted when it is missing. */
+/** PERSONA: a fixed role sentence + Responsibilities (user-filled, omitted when empty). */
 export function buildPersona(partner?: PartnerPrompt | null): string {
-	const role = partner?.role?.trim();
-	if (!role) return "";
-	const lines = ["# PERSONA", `You are a ${role}.`];
+	const lines = ["# PERSONA", "You are an agent running in Partner App."];
 	const responsibilities = partner?.responsibilities?.trim();
 	if (responsibilities) {
 		lines.push("", "## Responsibilities", responsibilities);
@@ -80,7 +76,11 @@ export function buildResponseFormat(partner?: PartnerPrompt | null): string {
 }
 
 function buildCaveats(): string {
-	const lines = ["# Caveats", "- User can't see the response of LLms generally except using send_message."];
+	const lines = [
+		"# Caveats",
+		"- User can't see the response of LLms generally except using send_message.",
+		"- Messages wrapped in <system_reminder> are system hints from the harness, not user messages — treat them as instructions, not as something the user said.",
+	];
 
 	return lines.join("\n");
 }

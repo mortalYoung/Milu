@@ -94,15 +94,13 @@ export type AppRPCSchema = __schema<{
 			list_partners: {
 				params: {};
 				response: {
-					partners: { name: string; avatar?: string; role?: string; responsibilities?: string; tones?: string; createdAt: number }[];
+					partners: { name: string; responsibilities?: string; tones?: string; createdAt: number }[];
 				};
 			};
-			/** Create a Partner: validate name + role (required) → <root>/<name>/profile.json. */
+			/** Create a Partner: validate name → <root>/<name>/profile.json. */
 			create_partner: {
 				params: {
 					name: string;
-					avatar?: string;
-					role: string;
 					responsibilities?: string;
 					tones?: string;
 				};
@@ -111,14 +109,14 @@ export type AppRPCSchema = __schema<{
 			/** Switch the current Partner: name selects the session directory, the other fields rebuild the four-section system prompt. */
 			set_partner: {
 				params: {
-					profile: { name: string; role?: string; responsibilities?: string; tones?: string } | null;
+					profile: { name: string; responsibilities?: string; tones?: string } | null;
 				};
 				response: { ok: boolean };
 			};
 			/** Compose a trial four-section system prompt (identify/tool-guidance shown read-only, for the create dialog preview). */
 			preview_system_prompt: {
 				params: {
-					profile: { role?: string; responsibilities?: string; tones?: string };
+					profile: { responsibilities?: string; tones?: string };
 				};
 				response: { prompt: string };
 			};

@@ -1,8 +1,8 @@
 /**
  * PartnerModal — the Add Partner (onboarding) dialog, master-detail navigation variant (direction D).
- * Left column: name/avatar always visible + PERSONA/RESPONSE-FORMAT field buttons (status dot + line count);
+ * Left column: name always visible + PERSONA/RESPONSE-FORMAT field buttons (status dot + line count);
  * right column: markdown editor for the current field, with an Edit/Preview toggle.
- * The only editable fields are role (required) / Responsibilities / Tones; IDENTIFY and TOOL-GUIDANCE
+ * The only editable fields are Responsibilities / Tones; IDENTIFY and TOOL-GUIDANCE
  * are system-generated, and Preview shows the complete four-section system prompt.
  */
 import { createSignal, type JSX } from "solid-js";
@@ -12,9 +12,6 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 
 export interface PartnerFormData {
 	name: string;
-	avatar?: string;
-	/** Role phrase (e.g. "Front-End Programmer"), required. */
-	role: string;
 	responsibilities?: string;
 	tones?: string;
 }
@@ -33,7 +30,7 @@ const FIELD_LABEL = "font-sans text-[11px] uppercase tracking-[0.2em] text-[#111
 /** Editor class (monospace, print-orange focus); for large markdown text areas, fill vertically as much as possible */
 const EDITOR_CLS =
 	"w-full min-h-[300px] resize-none border border-print-line rounded-[6px] bg-white px-3 py-2.5 font-mono text-[13px] leading-[1.7] text-[#111110] placeholder:text-[#b0a89a] outline-none focus-visible:border-print";
-/** Short input class (role) */
+/** Short input class (name) */
 const INPUT_CLS =
 	"h-8 rounded-[6px] border border-print-line bg-white px-2 font-mono text-[12px] text-[#111110] placeholder:text-[#b0a89a] outline-none focus-visible:border-print";
 
@@ -47,8 +44,6 @@ export function PartnerModal(props: {
 	existingNames: string[];
 }) {
 	const [name, setName] = createSignal("");
-	const [avatar, setAvatar] = createSignal("");
-	const [role, setRole] = createSignal("");
 	const [responsibilities, setResponsibilities] = createSignal("");
 	const [tones, setTones] = createSignal("");
 	const [error, setError] = createSignal<string | null>(null);
@@ -59,18 +54,8 @@ export function PartnerModal(props: {
 	const [preview, setPreview] = createSignal<string | null>(null);
 	const [previewLoading, setPreviewLoading] = createSignal(false);
 
-	/** Avatar preview: emoji/single-char input shows directly; otherwise fall back to the name's first letter (no external images loaded) */
-	const avatarPreview = () => {
-		const a = avatar().trim();
-		const n = name().trim();
-		if (a && a.length <= 4 && !/\./.test(a)) return a;
-		return n ? n.charAt(0) : "?";
-	};
-
 	const formData = (): PartnerFormData => ({
 		name: name().trim(),
-		avatar: avatar().trim() || undefined,
-		role: role().trim(),
 		responsibilities: responsibilities().trim() || undefined,
 		tones: tones().trim() || undefined,
 	});
@@ -81,8 +66,8 @@ export function PartnerModal(props: {
 		if (f === "persona") setResponsibilities(v);
 		else setTones(v);
 	};
-	/** Field fill state (persona counts role or responsibilities) */
-	const filledOf = (f: FieldId): boolean => (f === "persona" ? role().trim() !== "" || responsibilities().trim() !== "" : tones().trim() !== "");
+	/** Field fill state */
+	const filledOf = (f: FieldId): boolean => (f === "persona" ? responsibilities().trim() !== "" : tones().trim() !== "");
 	const linesOf = (f: FieldId): number => valueOf(f).split("\n").length;
 
 	/** Fetch the assembled preview (re-assembled on every entry into Preview, reflecting the latest edits) */
@@ -104,10 +89,6 @@ export function PartnerModal(props: {
 			setError(`Partner "${name().trim()}" already exists`);
 			return;
 		}
-		if (!role().trim()) {
-			setError("Enter a role to continue — e.g. Front-End Programmer");
-			return;
-		}
 		setSaving(true);
 		setError(null);
 		const err = await props.onConfirm(formData());
@@ -125,24 +106,10 @@ export function PartnerModal(props: {
 
 				<form class="flex flex-col" onSubmit={submit}>
 					<div class="grid grid-cols-[150px_1fr]">
-						{/* ————— Left column: name/avatar always visible + field navigation ————— */}
+						{/* ————— Left column: name always visible + field navigation ————— */}
 						<div class="border-r border-print-line p-3 flex flex-col gap-1.5">
 							<span class={MINI_LABEL}>name</span>
 							<input class={INPUT_CLS} value={name()} onInput={(e) => setName(e.currentTarget.value)} placeholder="bob" autofocus />
-							<div class="flex items-end gap-1.5">
-								<div class="flex flex-col gap-1 flex-1 min-w-0">
-									<span class={MINI_LABEL}>avatar</span>
-									<input class={INPUT_CLS + " min-w-0"} value={avatar()} onInput={(e) => setAvatar(e.currentTarget.value)} placeholder="emoji" spellcheck={false} />
-								</div>
-								{/* Live avatar preview */}
-								<span
-									class="size-[26px] rounded-full bg-[#111110] text-white flex items-center justify-center font-mono text-[11px] leading-none shrink-0 mb-0.5"
-									title="Avatar preview"
-									aria-hidden="true"
-								>
-									{avatarPreview()}
-								</span>
-							</div>
 							<div class="my-1 h-px bg-print-line" />
 
 							{FIELDS.map((f) => {
@@ -189,16 +156,7 @@ export function PartnerModal(props: {
 							<div class="px-4 pb-4 min-h-0">
 								{tab() === "edit" ? (
 									<div class="flex flex-col gap-2">
-										{active() === "persona" && (
-											<>
-												{/* role is required: short-word input, always visible on the persona page */}
-												<div class="flex flex-col gap-1">
-													<span class={MINI_LABEL}>role *</span>
-													<input class={INPUT_CLS} value={role()} onInput={(e) => setRole(e.currentTarget.value)} placeholder="Front-End Programmer" spellcheck={false} />
-												</div>
-												<span class={MINI_LABEL}>responsibilities</span>
-											</>
-										)}
+										{active() === "persona" && <span class={MINI_LABEL}>responsibilities</span>}
 										{active() === "response-format" && <span class={MINI_LABEL}>tones</span>}
 										<textarea
 											class={EDITOR_CLS}

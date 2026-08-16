@@ -72,11 +72,11 @@ describe("AgentContext lifecycle", () => {
 describe("AgentContext prompt assembly", () => {
 	test("composeSystemPrompt has all four sections after setPartner/setTools", () => {
 		const ctx = new AgentContext();
-		ctx.setPartner({ role: "Writer" });
+		ctx.setPartner({ responsibilities: "Ship features" });
 		ctx.setTools([{ name: "read", description: "Read a file" }] as never);
 		const p = ctx.composeSystemPrompt();
 		expect(p).toContain("# IDENTIFY");
-		expect(p).toContain("You are a Writer.");
+		expect(p).toContain("You are an agent running in Partner App.");
 		expect(p).toContain("# TOOL-GUIDANCE");
 		expect(p).toContain("# RESPONSE-FORMAT");
 		// Matches direct assembly (same guidance table + runtime source)
@@ -85,16 +85,17 @@ describe("AgentContext prompt assembly", () => {
 
 	test("previewSystemPrompt uses the passed profile, does not change the current context", () => {
 		const ctx = new AgentContext();
-		ctx.setPartner({ role: "A" });
-		const preview = ctx.previewSystemPrompt({ role: "B" });
-		expect(preview).toContain("You are a B.");
-		expect(ctx.composeSystemPrompt()).toContain("You are a A.");
+		ctx.setPartner({ responsibilities: "A" });
+		const preview = ctx.previewSystemPrompt({ responsibilities: "B" });
+		expect(preview).toContain("B");
+		expect(ctx.composeSystemPrompt()).toContain("A");
 	});
 
-	test("composeSystemPrompt without a partner has no PERSONA section", () => {
+	test("composeSystemPrompt always includes the fixed PERSONA sentence", () => {
 		const ctx = new AgentContext();
 		const p = ctx.composeSystemPrompt();
-		expect(p).not.toContain("# PERSONA");
+		expect(p).toContain("# PERSONA");
+		expect(p).toContain("You are an agent running in Partner App.");
 		expect(p.indexOf("# IDENTIFY")).toBeLessThan(p.indexOf("# TOOL-GUIDANCE"));
 		expect(buildSystemPrompt !== undefined).toBe(true);
 	});

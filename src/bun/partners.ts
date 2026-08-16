@@ -40,9 +40,6 @@ export async function saveSettings(settings: Settings): Promise<void> {
 // ————— Partner profiles —————
 export interface PartnerProfile {
 	name: string;
-	avatar?: string;
-	/** Role phrase (e.g. "Front-End Programmer"), required. */
-	role?: string;
 	/** Responsibilities (user-filled, no default). */
 	responsibilities?: string;
 	/** Tones (user-filled, no default). */
@@ -52,9 +49,6 @@ export interface PartnerProfile {
 
 export interface PartnerInput {
 	name: string;
-	avatar?: string;
-	/** Role phrase (e.g. "Front-End Programmer"), required. */
-	role: string;
 	responsibilities?: string;
 	tones?: string;
 }
@@ -102,13 +96,6 @@ function validateName(name: string): void {
 	}
 }
 
-/** Validate role: required (role phrase, e.g. "Front-End Programmer"). */
-function validateRole(role: string): void {
-	if (!role?.trim()) {
-		throw new PartnerError("Role is required (e.g. Front-End Programmer)");
-	}
-}
-
 export function partnerRoot(settings: Settings): string {
 	return expandHome(settings.partner_profile_path);
 }
@@ -121,11 +108,8 @@ export function partnerDir(settings: Settings, name: string): string {
 export async function createPartner(settings: Settings, input: PartnerInput): Promise<PartnerProfile> {
 	const name = input.name.trim();
 	validateName(name);
-	validateRole(input.role);
 	const profile: PartnerProfile = {
 		name,
-		avatar: input.avatar?.trim() || undefined,
-		role: input.role.trim(),
 		responsibilities: input.responsibilities?.trim() || undefined,
 		tones: input.tones?.trim() || undefined,
 		createdAt: Date.now(),

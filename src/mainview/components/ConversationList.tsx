@@ -1,6 +1,6 @@
 /**
  * ConversationList — the letter directory on the left.
- * Header "Letters" + a round create button; rows = initial avatar + name/time + preview;
+ * Header "Letters" + a round create button; rows = initial-letter avatar + name/time + preview;
  * hover ellipsis opens a DropdownMenu; right-click ContextMenu (delete); delete-confirmation Dialog.
  */
 import { Info, MoreVertical, Plus, Trash2 } from "lucide-solid";
@@ -12,8 +12,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 export interface PartnerItem {
 	name: string;
-	avatar?: string;
-	role?: string;
 	responsibilities?: string;
 	tones?: string;
 	createdAt: number;
@@ -34,9 +32,6 @@ function convTime(ts: number): string {
 function PartnerAvatar(props: { partner: PartnerItem; selected: boolean }) {
 	// Selected row = warm-ink solid initial; others = paper-outlined initial
 	const cls = props.selected ? "avatar-ink" : "avatar-paper";
-	if (props.partner.avatar) {
-		return <span class={`conv-avatar ${cls} text-[15px]`}>{props.partner.avatar}</span>;
-	}
 	return (
 		<span class={`conv-avatar ${cls}`}>
 			<span class="avatar-initial">{props.partner.name.charAt(0)}</span>
@@ -119,7 +114,7 @@ export function ConversationList(props: {
 										<span class="work-dot" />
 									</span>
 								) : (
-									partner.role || "—"
+									(partner.responsibilities?.split("\n").find((l) => l.trim()) ?? "") || "—"
 								)}
 							</span>
 						</span>

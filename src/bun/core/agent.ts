@@ -132,11 +132,14 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	 * Whether send_message was delivered within the last two turns — derived from the message chain
 	 * (SSOT: every delivery is recorded there as a display:true custom message; each turn is one assistant
 	 * message, so counting assistant messages since the last delivery ≈ counting turns).
+	 * A real user message (not a <system_reminder> hint) resets the window: an answer to a new question
+	 * must always be delivered, even if the previous turn delivered one.
 	 */
 	function recentMessage(): boolean {
 		let assistants = 0;
 		for (let i = agent.state.messages.length - 1; i >= 0; i--) {
 			const m = agent.state.messages[i];
+			if (m.role === "user" && !String(m.content).startsWith("<system_reminder>")) return false;
 			if (m.role === "custom" && m.customType === "send_message") break;
 			if (m.role === "assistant") assistants += 1;
 		}
@@ -209,11 +212,9 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	}
 
 	async function runPrompt(text: string) {
-		// Opening reminder: assess the task length first — long tasks (>~20s) open with a send_message stating
-		// the plan and estimated duration; short tasks skip the opening. Progress and final delivery are handled
-		// by notifyIfSilent (every ~20s) and enforceDelivery (always deliver the final message).
-		const opening =
-			"Before starting, assess whether this task will take longer than ~20 seconds. If it is a long task, call `send_message` first to tell the user what you're about to do and the estimated duration. Short tasks need no opening message.";
+		// Opening reminder: always open with a brief send_message feedback before starting, regardless of
+		// task size. Progress (every ~20s) and final delivery are handled by notifyIfSilent and enforceDelivery.
+		const opening = "Before starting, call `send_message` first to give the user a brief feedback about what you're about to do, regardless of the task size.";
 		persistReminder(opening);
 		appendSystemReminder(agent.state.messages, opening);
 		try {

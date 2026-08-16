@@ -22,7 +22,7 @@ afterAll(async () => {
 	await rm(root, { recursive: true, force: true });
 });
 
-const input = { name: "bob", role: "Writer" };
+const input = { name: "bob" };
 
 describe("createPartner name validation", () => {
 	test("creates a partner with a valid name", async () => {

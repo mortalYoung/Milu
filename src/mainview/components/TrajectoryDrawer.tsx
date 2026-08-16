@@ -50,6 +50,19 @@ export function TrajectoryDrawer(props: {
 		props.onFocusConsumed();
 	});
 
+	// The timeline band scrolls so the selected node's column is centered
+	let bandRef: HTMLDivElement | undefined;
+	createEffect(() => {
+		const seq = selectedSeq();
+		if (seq == null || !bandRef) return;
+		const el = bandRef.querySelector<HTMLElement>(`[data-seq="${seq}"]`);
+		if (!el) return;
+		const containerRect = bandRef.getBoundingClientRect();
+		const elRect = el.getBoundingClientRect();
+		const target = bandRef.scrollLeft + (elRect.left - containerRect.left) - (containerRect.width - elRect.width) / 2;
+		bandRef.scrollTo({ left: target, behavior: "smooth" });
+	});
+
 	const selectedNode = () => nodes().find((n) => n.seq === selectedSeq()) ?? null;
 	const selectedIdx = () => nodes().findIndex((n) => n.seq === selectedSeq());
 	const selectNode = (n: TrajectoryNode) => setSelectedSeq(selectedSeq() === n.seq ? null : n.seq);
@@ -85,6 +98,7 @@ export function TrajectoryDrawer(props: {
 					<button
 						class={"traj-cell " + (n.density ?? "l1") + (selectedSeq() === n.seq ? " hot" : "") + (t?.messageId === props.visibleReplyId() ? " live" : "")}
 						style={{ height: toolHeight(t?.tools ?? []) + "%" }}
+						data-seq={n.seq}
 						title={`T${n.turn} · ${short(n.text ?? "")}`}
 						onClick={() => selectNode(n)}
 					/>
@@ -94,7 +108,7 @@ export function TrajectoryDrawer(props: {
 		return (
 			<>
 				{boundary}
-				<span class={"traj-marker" + (selectedSeq() === n.seq ? " hot" : "")}>
+				<span class={"traj-marker" + (selectedSeq() === n.seq ? " hot" : "")} data-seq={n.seq}>
 					{n.kind === "user" ? (
 						<button class="mq" title={short(n.text ?? "")} onClick={() => selectNode(n)} />
 					) : n.kind === "system" ? (
@@ -246,7 +260,7 @@ export function TrajectoryDrawer(props: {
 						</div>
 
 						{/* Top band: every node is a column; vertical boundaries mark turn changes */}
-						<div class="traj-scroll">
+						<div class="traj-scroll" ref={bandRef}>
 							<div class="traj-band">
 								<For each={nodes()}>{(n, i) => nodeColumn(n, i())}</For>
 							</div>

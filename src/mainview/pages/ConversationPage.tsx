@@ -92,8 +92,6 @@ export function ConversationPage(props: {
 					/>
 					<div class="chat-worker electrobun-webkit-app-region-no-drag cursor-pointer" title="View details" onClick={() => props.selected && props.onViewDetails(props.selected)}>
 						<span>{props.selected ?? "Chat"}</span>
-						<span class="chat-worker-sep">·</span>
-						<span class="chat-worker-role">{props.partners.find((p) => p.name === props.selected)?.role ?? "partner"}</span>
 						{props.busy() && (
 							<span class="chat-worker-status" title="Working…">
 								<span class="work-dot" />

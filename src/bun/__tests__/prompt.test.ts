@@ -18,7 +18,6 @@ const TOOLS = [
 ] as unknown as AgentTool[];
 
 const PARTNER: PartnerPrompt = {
-	role: "Front-End Programmer",
 	responsibilities: "Ship features end-to-end.",
 	tones: "Short and plain.",
 };
@@ -37,23 +36,23 @@ describe("buildSystemPrompt four-section framework", () => {
 		expect(p).toContain("deepseek-v4-flash");
 	});
 
-	test("PERSONA: role renders the role sentence; Responsibilities generated when present", () => {
+	test("PERSONA: fixed role sentence + Responsibilities generated when present", () => {
 		const p = buildPersona(PARTNER);
-		expect(p).toContain("You are a Front-End Programmer.");
+		expect(p).toContain("You are an agent running in Partner App.");
 		expect(p).toContain("## Responsibilities");
 		expect(p).toContain("Ship features end-to-end.");
 	});
 
 	test("PERSONA: Responsibilities empty → that part is not generated", () => {
-		const p = buildPersona({ role: "Writer" });
-		expect(p).toContain("You are a Writer.");
+		const p = buildPersona({});
+		expect(p).toContain("You are an agent running in Partner App.");
 		expect(p).not.toContain("## Responsibilities");
 	});
 
-	test("missing role (no Partner) → PERSONA section entirely omitted", () => {
-		expect(buildPersona(null)).toBe("");
+	test("PERSONA section is always present (the role sentence is fixed)", () => {
+		expect(buildPersona(null)).toContain("You are an agent running in Partner App.");
 		const p = buildSystemPrompt(null, TOOLS, TOOL_GUIDANCE, RUNTIME);
-		expect(p).not.toContain("# PERSONA");
+		expect(p).toContain("# PERSONA");
 	});
 
 	test("TOOL-GUIDANCE: tools in the guidance table get guidance, others fall back to name — description", () => {
@@ -67,7 +66,7 @@ describe("buildSystemPrompt four-section framework", () => {
 		const withTones = buildResponseFormat(PARTNER);
 		expect(withTones).toContain("## Tones");
 		expect(withTones).toContain("Short and plain.");
-		const withoutTones = buildResponseFormat({ role: "Writer" });
+		const withoutTones = buildResponseFormat({});
 		expect(withoutTones).not.toContain("## Tones");
 	});
 
