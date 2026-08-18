@@ -32,6 +32,8 @@ export function ConversationPage(props: {
 	onFlash: (id: number) => void;
 	/** The agent message currently visible in the chat (pi id) — drives the trajectory drawer highlight. */
 	onVisibleReply?: (piId: string | null) => void;
+	/** The current workspace (shown near the input, read-only). */
+	workspacePath: string | null;
 }) {
 	// Outline: floating replies index (direction A); clicking a reply scrolls the transcript to it and flashes the target
 	const [outlineOpen, setOutlineOpen] = createSignal(false);
@@ -121,7 +123,7 @@ export function ConversationPage(props: {
 							locateFlashId={props.flashId}
 							onVisibleReply={props.onVisibleReply}
 						/>
-						<Composer busy={props.busy} onSend={props.onSend} onStop={props.onStop} />
+						<Composer busy={props.busy} onSend={props.onSend} onStop={props.onStop} workspace={props.workspacePath} />
 					</>
 				) : (
 					<div class="flex-1 flex flex-col items-center justify-center gap-3 text-center">

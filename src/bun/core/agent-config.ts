@@ -56,7 +56,7 @@ export function resolveModel(): Model<any> {
 
 /** Runtime info for the identify section: framework + current model (same source as resolveModel, follows PI_MODEL). */
 export function describeRuntime(): { framework: string; model: string } {
-	return { framework: "CODING DESKTOP", model: resolveModel().id };
+	return { framework: "LETTERS", model: resolveModel().id };
 }
 
 /** How the loop talks to the LLM. */

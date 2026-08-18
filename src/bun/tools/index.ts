@@ -7,16 +7,17 @@ import { createBashTool, createEditTool, createReadTool, createWriteTool } from 
 import { type TSchema, Type } from "@earendil-works/pi-ai";
 import { PROJECT_ROOT } from "../core/config";
 import type { SessionStore } from "../core/session";
-import { createExecutionEnv } from "./execution-env";
-
-// Tool working directory = project root (same as the session cwd; this is what makes the prompt's Context valid)
-const env = createExecutionEnv(PROJECT_ROOT);
+import { createExecutionEnv, type EnvGuard } from "./execution-env";
 
 export interface ToolDeps {
 	/** Conversation persistence store. */
 	store: SessionStore;
 	/** On send_message: write the visible message into the agent context (a display:true custom message). */
 	onVisibleMessage: (text: string, timestamp: number) => void;
+	/** Path guard: workspace/storage roots for the file tools (null = unset). */
+	guard?: EnvGuard;
+	/** set_workspace: validate + apply; returns an error message or null on success. */
+	onSetWorkspace?: (workspace: string) => string | null;
 }
 
 const sendMessageSchema = Type.Object({
@@ -54,9 +55,46 @@ export const TOOL_GUIDANCE: Record<string, string> = {
 		"The user only sees what you deliver through send_message — plain text replies are never shown. Do not call it on your own initiative: call it only when the harness instructs you to via a system reminder. You can use Markdown (**bold**, `code`, lists, links) to format your message.",
 };
 
-/** The standard pi toolset (read, write, edit, bash) + send_message. */
+const workspaceSchema = Type.Object({
+	workspace: Type.String({ description: "Absolute path of the new working directory" }),
+});
+
+/** set_workspace: establish the task's working directory (once per conversation). */
+function setWorkspaceTool(deps: ToolDeps): AgentTool<typeof workspaceSchema> {
+	return {
+		name: "set_workspace",
+		label: "Set Workspace",
+		description:
+			"Set the working directory of this conversation to an absolute path — the project root of the current task. Call it at the start of a task that uses tools, as the first tool call (before other tools), to establish the workspace. Can only be called once per conversation; afterwards, relative paths resolve against it.",
+		parameters: workspaceSchema,
+		// Sequential: the workspace switch must apply to sibling tool calls of the same batch, so the model
+		// listing set_workspace first makes it run before the tools that use it (parallel would race them)
+		executionMode: "sequential",
+		async execute(_toolCallId, { workspace }) {
+			if (!deps.onSetWorkspace) {
+				return { content: [{ type: "text", text: "set_workspace is not available" }], details: { ok: false } };
+			}
+			const error = deps.onSetWorkspace(workspace);
+			if (error) {
+				return { content: [{ type: "text", text: `Error: ${error}` }], details: { ok: false, error } };
+			}
+			return { content: [{ type: "text", text: `Workspace set to ${workspace}` }], details: { ok: true, workspace } };
+		},
+	};
+}
+
+/** The standard pi toolset (read, write, edit, bash) + send_message + set_workspace, bound to the path-guarded env. */
 export function createTools(deps: ToolDeps): AgentTool[] {
-	return [bindEnv(createReadTool(), env), bindEnv(createWriteTool(), env), bindEnv(createEditTool(), env), bindEnv(createBashTool(), env), sendMessageTool(deps)];
+	// The env is created per toolset so it can carry the path guard (workspace/storage roots, read dynamically)
+	const env = createExecutionEnv(PROJECT_ROOT, deps.guard);
+	return [
+		bindEnv(createReadTool(), env),
+		bindEnv(createWriteTool(), env),
+		bindEnv(createEditTool(), env),
+		bindEnv(createBashTool(), env),
+		sendMessageTool(deps),
+		setWorkspaceTool(deps),
+	];
 }
 
 /**

@@ -40,6 +40,7 @@ export function App() {
 	const [trajectoryRecords, setTrajectoryRecords] = createSignal<TrajectoryRecord[]>([]);
 	const [focusMessageId, setFocusMessageId] = createSignal<string | null>(null);
 	const [visibleReplyId, setVisibleReplyId] = createSignal<string | null>(null);
+	const [workspacePath, setWorkspacePath] = createSignal<string | null>(null);
 	const [entries, setEntries] = createSignal<Entry[]>([]);
 	// busy = whether the agent is running (streaming/tool execution), single source of truth; push events do increments, get_status calibrates
 	const [busy, setBusy] = createSignal(false);
@@ -179,8 +180,16 @@ export function App() {
 
 	// Calibrate: the bun-side isStreaming is authoritative; covers lost/late push events (e.g. the startup race where mount lags the first turn)
 	function calibrateBusy() {
-		void rpc.request.get_status({}).then((s) => setBusy(s.streaming));
+		void rpc.request.get_status({}).then((s) => {
+			setBusy(s.streaming);
+			setWorkspacePath(s.workspace_path);
+		});
 	}
+
+	rpc.addMessageListener("workspace_update", () => {
+		// The workspace was set via set_workspace; refetch status to show it near the input
+		void rpc.request.get_status({}).then((s) => setWorkspacePath(s.workspace_path));
+	});
 
 	// ————— user input —————
 	function onSend(text: string) {
@@ -250,6 +259,7 @@ export function App() {
 					flashId={flashId}
 					onFlash={onFlash}
 					onVisibleReply={setVisibleReplyId}
+					workspacePath={workspacePath()}
 				/>
 			</main>
 

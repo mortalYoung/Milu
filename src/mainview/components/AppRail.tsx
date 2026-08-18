@@ -12,7 +12,7 @@ export function AppRail(props: { active: RailTabId; onSelect: (id: RailTabId) =>
 			{/* Top empty drag region: makes room for the floating traffic lights */}
 			<div class="rail-spacer" />
 			{/* Brand area: P letter circle */}
-			<div class="rail-brand" title="Coding Desktop">
+			<div class="rail-brand" title="Letters">
 				P
 			</div>
 			<button

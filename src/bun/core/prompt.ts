@@ -1,17 +1,3 @@
-/**
- * System prompt construction — IDENTIFY / PERSONA / TOOL-GUIDANCE / RESPONSE-FORMAT (+ optional STORAGE).
- * Conventions:
- * - IDENTIFY: one sentence establishing "who you are, what framework you run on" (framework + model, system-injected, not editable).
- * - PERSONA: a fixed role sentence ("You are an agent running in Partner App.") + Responsibilities (user-filled,
- *   no default; empty means the part is omitted).
- * - TOOL-GUIDANCE: per-tool "how to use this tool correctly" guidance, dynamically inserted from the tool guidance table;
- *   tools without guidance fall back to a name — description list.
- * - RESPONSE-FORMAT: final response format constraints (fixed rules) + Tones (user-filled, no default; empty means omitted).
- * - STORAGE (optional, appended last): the agent's own storage directory — an epistemic guardrail that makes explicit
- *   where it may freely persist work, so it never guesses or scatters files elsewhere.
- * System prompt = IDENTIFY + PERSONA + TOOL-GUIDANCE + RESPONSE-FORMAT (+ STORAGE).
- */
-
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 
 /** Fields required for prompt construction (display fields like name do not enter the prompt). */
@@ -52,12 +38,27 @@ export function buildToolGuidance(tools: AgentTool[] = [], guidance: ToolGuidanc
 	return ["# TOOL-GUIDANCE", ...entries].join("\n");
 }
 
-/** STORAGE: the agent's own storage directory — epistemic guardrail, explicit so the model never guesses where it may persist work. */
-export function buildStoragePath(storagePath: string): string {
+/**
+ * WORKSPACE: the agent's working directory — static text (no embedded path; the path is injected via
+ * system_reminder at run start, so the prompt prefix stays stable for KV cache reuse).
+ */
+export function buildWorkspacePath(): string {
+	return [
+		"# WORKSPACE",
+		"Your workspace is your working directory for the current task — usually the project root of the code or project the user is asking about.",
+		"At the start of a task that uses tools, call `set_workspace` with the absolute path of that working directory, as the first tool call (before other tools). It can only be called once per conversation.",
+		"Relative paths you receive from the user resolve against the workspace. You may read, write, and run shell commands on non-sensitive files inside it. Sensitive files (e.g. .env, private keys) are off-limits there. Task-related files belong in the workspace — for example, if the user asks you to create a .env, create it in the workspace.",
+	].join("\n");
+}
+
+/**
+ * STORAGE: the agent's own storage directory — static text (no embedded path; the path is injected via
+ * system_reminder at run start). Full access, including sensitive files.
+ */
+export function buildStoragePath(): string {
 	return [
 		"# STORAGE",
-		`Your storage path is ${storagePath}.`,
-		"This directory is yours: create, read, write, or delete anything under it to persist notes, scratch files, and artifacts across sessions. Use it instead of scattering files in the project.",
+		"Your storage path is your own directory. You have full access to everything in it, including sensitive files. Put temporary artifacts, experience notes, and content that is not tied to the current workspace (e.g. summaries, knowledge snippets) here — never in the workspace or the user's project.",
 	].join("\n");
 }
 
@@ -85,15 +86,14 @@ function buildCaveats(): string {
 	return lines.join("\n");
 }
 
-/** System prompt = IDENTIFY + PERSONA + TOOL-GUIDANCE + RESPONSE-FORMAT. */
+/** System prompt = IDENTIFY + PERSONA + WORKSPACE + STORAGE + TOOL-GUIDANCE + RESPONSE-FORMAT + Caveats. Static: no runtime paths embedded (those arrive via system_reminder). */
 export function buildSystemPrompt(
 	partner: PartnerPrompt | null,
 	tools: AgentTool[] = [],
 	guidance: ToolGuidance = {},
 	runtime: RuntimeInfo = { framework: "Partner", model: "deepseek-v4-flash" },
-	storagePath?: string | null,
 ): string {
-	const sections = [buildIdentify(runtime), buildPersona(partner), buildToolGuidance(tools, guidance), buildResponseFormat(partner), buildCaveats()];
-	if (storagePath) sections.push(buildStoragePath(storagePath));
-	return sections.filter(Boolean).join("\n\n");
+	return [buildIdentify(runtime), buildPersona(partner), buildWorkspacePath(), buildStoragePath(), buildToolGuidance(tools, guidance), buildResponseFormat(partner), buildCaveats()]
+		.filter(Boolean)
+		.join("\n\n");
 }

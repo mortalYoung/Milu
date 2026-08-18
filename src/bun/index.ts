@@ -10,8 +10,10 @@ import { createPartner, deletePartner, listPartners, loadSettings, PartnerError,
 // Session persistence: isolated per Partner directory; chatting is disabled while no Partner is selected
 const session = createSessionStore();
 let currentPartner: { name: string; dir: string } | null = null;
-// The last system prompt persisted to the session (dedupes identical entries across redundant set_partner calls)
-let lastPersistedPrompt: string | null = null;
+// Last prompt persisted per session root: dedupes redundant set_partner calls. Keyed by root because the
+// prompt is now static (identical across partners) — a single last-value guard would suppress the append
+// for every partner selected after the first, leaving those sessions without a system_prompt entry.
+const persistedPromptByRoot = new Map<string, string>();
 
 const agent = createAgent(
 	{
@@ -20,6 +22,8 @@ const agent = createAgent(
 		onMessage: () => rpc.send.agent_message({}),
 		// A turn has been persisted; the view invalidates its trajectory cache and refetches
 		onTrajectoryUpdate: () => rpc.send.trajectory_update({}),
+		// The workspace was set; the view refetches status and shows it near the input
+		onWorkspaceUpdate: () => rpc.send.workspace_update({}),
 		onEnd: (error) => rpc.send.agent_end({ error }),
 	},
 	{ session },
@@ -49,7 +53,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				return { items: session.visibleHistory() };
 			},
 			// The bun-side ground truth: true while streaming or executing tools; the view calibrates idle rendering with it
-			get_status: () => ({ streaming: agent.isStreaming }),
+			get_status: () => ({ streaming: agent.isStreaming, workspace_path: agent.workspacePath }),
 			trajectory: () => ({ records: currentPartner ? fold(session.rawEntries()) : [] }),
 			get_settings: async () => {
 				return {
@@ -94,10 +98,10 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					const storagePath = join(currentPartner.dir, "storage");
 					await mkdir(storagePath, { recursive: true });
 					agent.setStoragePath(storagePath);
-					// Persist the rebuilt prompt so the trajectory view can show it — only when it actually changed,
-					// otherwise repeated partner switches pile up identical system entries in the timeline
-					if (agent.systemPrompt !== lastPersistedPrompt) {
-						lastPersistedPrompt = agent.systemPrompt;
+					// Persist the rebuilt prompt so the trajectory view can show it — per root, and only when it
+					// actually changed; repeated partner switches would otherwise pile up identical system entries
+					if (persistedPromptByRoot.get(currentPartner.dir) !== agent.systemPrompt) {
+						persistedPromptByRoot.set(currentPartner.dir, agent.systemPrompt);
 						await session.appendSystemPrompt(agent.systemPrompt, Date.now());
 					}
 					agent.restore(restored);
@@ -128,7 +132,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 // editing (Cmd+C/V/X, right-click paste) has no responder to route to.
 ApplicationMenu.setApplicationMenu([
 	{
-		label: "CODING DESKTOP",
+		label: "LETTERS",
 		submenu: [{ role: "about" }, { type: "divider" }, { role: "hide" }, { role: "hideOthers" }, { role: "showAll" }, { type: "divider" }, { role: "quit" }],
 	},
 	{
@@ -168,4 +172,4 @@ new BrowserWindow({
 });
 
 // ANSI green — one line, not worth a chalk dependency
-console.log("\x1b[32mcoding-desktop started — agent ready\x1b[0m");
+console.log("\x1b[32mletters started — agent ready\x1b[0m");

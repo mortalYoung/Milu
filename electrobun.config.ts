@@ -2,8 +2,8 @@ import type { ElectrobunConfig } from "electrobun";
 
 export default {
 	app: {
-		name: "coding-desktop",
-		identifier: "coding.desktop.local",
+		name: "letters",
+		identifier: "letters.local",
 		version: "0.1.0",
 	},
 	build: {

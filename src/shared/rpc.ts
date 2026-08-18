@@ -71,7 +71,7 @@ export type AppRPCSchema = __schema<{
 			/** Fetch agent status (view calibrates idle/working; fallback when a push was lost). */
 			get_status: {
 				params: {};
-				response: { streaming: boolean };
+				response: { streaming: boolean; workspace_path: string | null };
 			};
 			/** Trajectory: the full process record (thinking/tools/usage), cached by the view; on message click the matching segment is fetched. */
 			trajectory: {
@@ -137,6 +137,8 @@ export type AppRPCSchema = __schema<{
 			agent_message: {};
 			/** A turn has been persisted (trajectory has new data); the view invalidates its cache and refetches. */
 			trajectory_update: {};
+			/** The workspace was set via set_workspace; the view refetches status to show it near the input. */
+			workspace_update: {};
 			/** The run settled. error is set when the run failed (e.g. missing API key). */
 			agent_end: { error?: string };
 		};

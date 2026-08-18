@@ -1,4 +1,4 @@
-# CODING DESKTOP
+# LETTERS
 
 An agent-harness desktop app: the pi agent harness double loop
 (@earendil-works/pi-agent-core) running inside an Electrobun shell,

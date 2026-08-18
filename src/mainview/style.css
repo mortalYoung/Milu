@@ -1,5 +1,5 @@
 /* ————————————————————————————————
-   CODING DESKTOP — letter conversation (see DESIGN.md, direction B).
+   LETTERS — letter conversation (see DESIGN.md, direction B).
    Old paper #f7f3ea / letter paper #fffdf8 / warm ink #2a2620 / seal red #b03a2e / hairline #e2dccb.
    Newsreader for reading only, Public Sans for UI only, JetBrains Mono for inline code only.
    Messages are 60%-centered narrow-column letters; no avatars; dashed postmarks; three-dot Writing capsule.
@@ -763,6 +763,10 @@ body::before {
 	}
 	.composer-field {
 		@apply flex items-center gap-2 w-[60%] h-11 bg-letter border border-hairline rounded-[22px] px-[18px] pr-[5px] transition-colors focus-within:border-seal;
+	}
+	/* Workspace chip: read-only current working directory above the input */
+	.composer-workspace {
+		@apply font-mono text-[9px] text-muted max-w-[60%] truncate mb-1;
 	}
 	.composer-input {
 		@apply flex-1 min-w-0 bg-transparent border-none outline-none font-sans text-[14px] text-ink placeholder:text-muted;

@@ -8,7 +8,7 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { buildIdentify, buildPersona, buildResponseFormat, buildSystemPrompt, buildToolGuidance, type PartnerPrompt, type RuntimeInfo } from "../core/prompt";
 import { TOOL_GUIDANCE } from "../tools";
 
-const RUNTIME: RuntimeInfo = { framework: "CODING DESKTOP", model: "deepseek-v4-flash" };
+const RUNTIME: RuntimeInfo = { framework: "LETTERS", model: "deepseek-v4-flash" };
 
 // custom is not in the guidance table; used to verify the fallback behavior
 const TOOLS = [
@@ -32,7 +32,7 @@ describe("buildSystemPrompt four-section framework", () => {
 
 	test("IDENTIFY injects the framework and model names (system-fixed, not from the user)", () => {
 		const p = buildIdentify(RUNTIME);
-		expect(p).toContain("CODING DESKTOP");
+		expect(p).toContain("LETTERS");
 		expect(p).toContain("deepseek-v4-flash");
 	});
 
@@ -70,12 +70,20 @@ describe("buildSystemPrompt four-section framework", () => {
 		expect(withoutTones).not.toContain("## Tones");
 	});
 
-	test("STORAGE: section generated when a storage path is given, omitted otherwise", () => {
-		const withStorage = buildSystemPrompt(PARTNER, TOOLS, TOOL_GUIDANCE, RUNTIME, "/tmp/storage");
-		expect(withStorage).toContain("# STORAGE");
-		expect(withStorage).toContain("Your storage path is /tmp/storage.");
-		expect(withStorage.indexOf("# STORAGE")).toBeGreaterThan(withStorage.indexOf("# RESPONSE-FORMAT"));
-		const withoutStorage = buildSystemPrompt(PARTNER, TOOLS, TOOL_GUIDANCE, RUNTIME);
-		expect(withoutStorage).not.toContain("# STORAGE");
+	test("WORKSPACE and STORAGE are always present and static (no embedded paths)", () => {
+		const p1 = buildSystemPrompt(PARTNER, TOOLS, TOOL_GUIDANCE, RUNTIME);
+		const p2 = buildSystemPrompt(PARTNER, TOOLS, TOOL_GUIDANCE, RUNTIME);
+		expect(p1).toContain("# WORKSPACE");
+		expect(p1).toContain("# STORAGE");
+		expect(p1).not.toContain("/tmp/storage");
+		expect(p1.indexOf("# WORKSPACE")).toBeLessThan(p1.indexOf("# STORAGE"));
+		// Stable prefix: identical across builds → KV cache reuse
+		expect(p1).toBe(p2);
+	});
+
+	test("WORKSPACE instructs the model to establish the workspace via set_workspace as the first tool call", () => {
+		const p = buildSystemPrompt(PARTNER, TOOLS, TOOL_GUIDANCE, RUNTIME);
+		expect(p).toContain("set_workspace");
+		expect(p).toContain("first tool call");
 	});
 });

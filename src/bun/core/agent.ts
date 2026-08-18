@@ -11,10 +11,13 @@
  * data — thinking, tool calls, results). The user only sees `send_message`
  * output, delivered through the bridge's onMessage.
  */
+import { statSync } from "node:fs";
+import { isAbsolute, resolve, sep } from "node:path";
 import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { createTools } from "../tools";
 import { convertToLlm, resolveModel, STREAM_FN } from "./agent-config";
+import { PROJECT_ROOT } from "./config";
 import { AgentContext, appendSystemReminder } from "./context";
 import type { PartnerPrompt } from "./prompt";
 import type { SessionStore } from "./session";
@@ -26,6 +29,8 @@ export interface AgentBridge {
 	onMessage: (text: string) => void;
 	/** A turn has been persisted (trajectory has new data); fired after persistence completes so a fetch is always up to date. */
 	onTrajectoryUpdate: () => void;
+	/** The workspace was set via set_workspace (the view shows it near the input). */
+	onWorkspaceUpdate: () => void;
 	/** The run settled. `error` is set on failure (e.g. missing API key). */
 	onEnd: (error?: string) => void;
 }
@@ -33,8 +38,10 @@ export interface AgentBridge {
 export interface AgentHandle {
 	/** True while the agent is streaming or awaiting tool results. */
 	readonly isStreaming: boolean;
-	/** The current system prompt (rebuilt on setPartner/setStoragePath). */
+	/** The current system prompt (rebuilt on setPartner; the prompt is static otherwise). */
 	readonly systemPrompt: string;
+	/** The current workspace (null until set_workspace); the view shows it near the input. */
+	readonly workspacePath: string | null;
 	/** Send a user message (resolves after persistence); queued as a follow-up while busy. */
 	chat: (text: string) => Promise<void>;
 	/** Abort the current run. */
@@ -43,11 +50,13 @@ export interface AgentHandle {
 	reset: () => void;
 	/** Startup restore: replace the in-memory transcript with the persisted message chain. */
 	restore: (messages: AgentMessage[]) => void;
-	/** Switch Partner: rebuild the system prompt from the profile fields (role/responsibilities/tones). */
+	/** Switch Partner: rebuild the system prompt from the profile fields (responsibilities/tones). */
 	setPartner: (partner: PartnerPrompt | null) => void;
-	/** Set the agent's storage directory (written into the prompt as the STORAGE section); null clears it. */
+	/** Set the agent's storage directory (delivered via system_reminder; the prompt stays static). */
 	setStoragePath: (path: string | null) => void;
-	/** Compose a trial four-section system prompt from the profile fields (for preview; does not change agent state). */
+	/** Set the agent's workspace (delivered via system_reminder; the prompt stays static). */
+	setWorkspace: (path: string | null) => void;
+	/** Compose a trial system prompt from the profile fields (for preview; does not change agent state). */
 	previewSystemPrompt: (partner: PartnerPrompt | null) => string;
 }
 
@@ -56,6 +65,11 @@ export interface AgentDeps {
 	session: SessionStore;
 	/** The initial message chain to restore (see toAgentMessages). */
 	initialMessages?: AgentMessage[];
+}
+
+/** Whether a path is inside a root (or equal to it). */
+function isInsideOf(target: string, root: string): boolean {
+	return target === root || target.startsWith(root + sep);
 }
 
 export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
@@ -93,10 +107,30 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	}
 
 	// Tools need the agent instance (to write visible messages back into the agent context), so mount after construction;
-	// after mounting, rebuild the system prompt so tool guidance is woven into the TOOL-GUIDANCE section
+	// after mounting, rebuild the system prompt so tool guidance is woven into the TOOL-GUIDANCE section.
+	// The path guard reads the workspace/storage roots from the context (null = unset).
 	agent.state.tools = createTools({
 		store: deps.session,
 		onVisibleMessage: (text, timestamp) => deliverVisible(text, timestamp),
+		guard: {
+			workspaceRoot: () => ctx.workspace_path,
+			storageRoot: () => ctx.storage_path,
+		},
+		// set_workspace: once per conversation, absolute path, must exist, not inside storage
+		onSetWorkspace: (workspace: string): string | null => {
+			if (ctx.workspace_path) return "Workspace can only be set once per conversation";
+			const abs = resolve(workspace);
+			if (!isAbsolute(workspace)) return "Workspace must be an absolute path";
+			if (ctx.storage_path && isInsideOf(abs, ctx.storage_path)) return "Workspace cannot be inside the storage path";
+			try {
+				if (!statSync(abs).isDirectory()) return "Workspace path is not a directory";
+			} catch {
+				return "Workspace directory does not exist";
+			}
+			ctx.workspace_path = abs;
+			bridge.onWorkspaceUpdate();
+			return null;
+		},
 	});
 	ctx.setTools(agent.state.tools);
 	agent.state.systemPrompt = ctx.composeSystemPrompt();
@@ -212,9 +246,12 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	}
 
 	async function runPrompt(text: string) {
-		// Opening reminder: always open with a brief send_message feedback before starting, regardless of
-		// task size. Progress (every ~20s) and final delivery are handled by notifyIfSilent and enforceDelivery.
-		const opening = "Before starting, call `send_message` first to give the user a brief feedback about what you're about to do, regardless of the task size.";
+		// Opening reminder: the workflow plus the current workspace/storage paths (the prompt itself is static).
+		// The default workspace path is included so the model can establish it without running pwd first.
+		const opening =
+			"Your workflow: (1) determine the task's working directory — usually the project root of the code or project the user is asking about; if the workspace is not set yet, call `set_workspace` with its absolute path as the first tool call, before other tools. (2) decide whether this task needs tool calls — if it does, call `send_message` in the same turn (in parallel with the first tool call) to give the user brief feedback; if it does not, skip the opening message. (3) Then execute the task.\n" +
+			`Current workspace: ${ctx.workspace_path ?? `unset (defaults to ${PROJECT_ROOT})`}.\n` +
+			`Current storage: ${ctx.storage_path ?? "unset"}.`;
 		persistReminder(opening);
 		appendSystemReminder(agent.state.messages, opening);
 		try {
@@ -237,6 +274,9 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		},
 		get systemPrompt() {
 			return agent.state.systemPrompt;
+		},
+		get workspacePath() {
+			return ctx.workspace_path;
 		},
 		async chat(text: string) {
 			if (text.trim() === "") return;
@@ -270,9 +310,13 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			ctx.setPartner(partner);
 			agent.state.systemPrompt = ctx.composeSystemPrompt();
 		},
+		// The prompt is static: paths arrive via system_reminder, so these do not rebuild it
 		setStoragePath(path: string | null) {
 			ctx.storage_path = path;
-			agent.state.systemPrompt = ctx.composeSystemPrompt();
+		},
+		setWorkspace(path: string | null) {
+			ctx.workspace_path = path;
+			bridge.onWorkspaceUpdate();
 		},
 		previewSystemPrompt(partner: PartnerPrompt | null) {
 			return ctx.previewSystemPrompt(partner);

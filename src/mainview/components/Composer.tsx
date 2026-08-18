@@ -6,7 +6,7 @@ import { ArrowUp, Square } from "lucide-solid";
 import { createSignal, type JSX } from "solid-js";
 import { Button } from "./Button";
 
-export function Composer(props: { busy: () => boolean; onSend: (text: string) => void; onStop: () => void }) {
+export function Composer(props: { busy: () => boolean; onSend: (text: string) => void; onStop: () => void; workspace?: string | null }) {
 	const [text, setText] = createSignal("");
 
 	const send = () => {
@@ -25,6 +25,11 @@ export function Composer(props: { busy: () => boolean; onSend: (text: string) =>
 
 	return (
 		<form class="composer" id="composer" onSubmit={submit}>
+			{props.workspace && (
+				<span class="composer-workspace" title={props.workspace}>
+					workspace: {props.workspace}
+				</span>
+			)}
 			<div class="composer-field">
 				<input
 					id="prompt-input"

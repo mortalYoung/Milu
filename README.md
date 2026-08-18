@@ -1,10 +1,10 @@
-# CODING DESKTOP
+# LETTERS
 
 A minimal agent-harness desktop app. The **[pi agent harness](https://pi.dev)** double loop running inside an **[Electrobun](https://electrobun.dev)** window, styled like an instant messenger.
 
 ```
         ┌─────────────────────────────────────────┐
-        │            CODING DESKTOP                │
+        │                 LETTERS                 │
         │  ───────────────────────────────────────  │
         │                       what time is it?   │
         │        ┌───────────────────────┐         │

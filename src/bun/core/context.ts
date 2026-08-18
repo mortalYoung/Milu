@@ -44,8 +44,10 @@ export class AgentContext {
 	// ————— Context inputs —————
 	private partner: PartnerPrompt | null = null;
 	private tools: AgentTool[] = [];
-	/** The agent's own storage directory (partner-scoped; must exist). Written into the prompt as the STORAGE section. */
+	/** The agent's own storage directory (partner-scoped; must exist). Delivered to the model via system_reminder. */
 	storage_path: string | null = null;
+	/** The agent's current working directory (set once per conversation via set_workspace). Delivered via system_reminder. */
+	workspace_path: string | null = null;
 
 	/** Mount the tool list (call after agent.state.tools is mounted). */
 	setTools(tools: AgentTool[]): void {
@@ -57,12 +59,12 @@ export class AgentContext {
 		this.partner = partner;
 	}
 
-	/** System prompt = IDENTIFY + PERSONA + TOOL-GUIDANCE + RESPONSE-FORMAT + Caveats (+ STORAGE). */
+	/** System prompt = IDENTIFY + PERSONA + WORKSPACE + STORAGE + TOOL-GUIDANCE + RESPONSE-FORMAT + Caveats. */
 	composeSystemPrompt(): string {
-		return buildSystemPrompt(this.partner, this.tools, TOOL_GUIDANCE, describeRuntime(), this.storage_path);
+		return buildSystemPrompt(this.partner, this.tools, TOOL_GUIDANCE, describeRuntime());
 	}
 
-	/** Compose a trial prompt from the given profile (for preview; does not change the current context; no storage path). */
+	/** Compose a trial prompt from the given profile (for preview; does not change the current context). */
 	previewSystemPrompt(partner: PartnerPrompt | null): string {
 		return buildSystemPrompt(partner, this.tools, TOOL_GUIDANCE, describeRuntime());
 	}

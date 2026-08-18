@@ -4,7 +4,7 @@ Guidance for agents working in this repository.
 
 ## Project
 
-CODING DESKTOP — a minimal agent-harness desktop app: the pi agent harness's
+LETTERS — a minimal agent-harness desktop app: the pi agent harness's
 **double loop** (`@earendil-works/pi-agent-core`) in an Electrobun shell with an
 IM-style UI. Runtime: Bun (main process) + native webview.
 

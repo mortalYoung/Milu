@@ -100,12 +100,15 @@ describe("AgentContext prompt assembly", () => {
 		expect(buildSystemPrompt !== undefined).toBe(true);
 	});
 
-	test("storage_path set → composeSystemPrompt includes the STORAGE section", () => {
+	test("WORKSPACE and STORAGE are always included and static (paths arrive via reminder, not the prompt)", () => {
 		const ctx = new AgentContext();
 		ctx.storage_path = "/tmp/storage";
-		expect(ctx.composeSystemPrompt()).toContain("# STORAGE");
-		expect(ctx.composeSystemPrompt()).toContain("Your storage path is /tmp/storage.");
-		ctx.storage_path = null;
-		expect(ctx.composeSystemPrompt()).not.toContain("# STORAGE");
+		ctx.workspace_path = "/tmp/ws";
+		const p = ctx.composeSystemPrompt();
+		expect(p).toContain("# WORKSPACE");
+		expect(p).toContain("# STORAGE");
+		expect(p).not.toContain("/tmp/storage");
+		expect(p).not.toContain("/tmp/ws");
+		expect(p).toBe(ctx.composeSystemPrompt());
 	});
 });
