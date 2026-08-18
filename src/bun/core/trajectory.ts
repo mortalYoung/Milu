@@ -20,6 +20,51 @@ interface ContentBlock {
 	arguments?: unknown;
 }
 
+/** Provider-reported token usage of one assistant turn (fields default to 0 when absent). */
+export interface Usage {
+	input: number;
+	output: number;
+	cacheRead: number;
+	cacheWrite: number;
+	totalTokens: number;
+}
+
+/** Loose shape of a provider usage record (all fields optional; pi's Usage is assignable). */
+interface RawUsage {
+	input?: number;
+	output?: number;
+	cacheRead?: number;
+	cacheWrite?: number;
+	totalTokens?: number;
+}
+
+/** Normalize a raw usage record to the stable four-field shape. */
+function toUsage(usage: RawUsage): Usage {
+	return {
+		input: usage.input ?? 0,
+		output: usage.output ?? 0,
+		cacheRead: usage.cacheRead ?? 0,
+		cacheWrite: usage.cacheWrite ?? 0,
+		totalTokens: usage.totalTokens ?? 0,
+	};
+}
+
+/**
+ * The last assistant turn's token usage, or null when no assistant message carries usage.
+ * Each LLM call sends the whole context, so the most recent request's prompt size is the
+ * current context occupancy (the context_usage handler derives its numerator from this).
+ */
+export function lastUsage(entries: Entry[]): Usage | null {
+	let last: Usage | null = null;
+	for (const entry of entries) {
+		if (entry.type !== "message") continue;
+		const msg = entry.message;
+		if (msg.role !== "assistant" || !msg.usage) continue;
+		last = toUsage(msg.usage);
+	}
+	return last;
+}
+
 export function fold(entries: Entry[]): TrajectoryRecord[] {
 	const records: TrajectoryRecord[] = [];
 	// Placeholder for tool calls not yet paired within the current turn: callId → record index
@@ -59,9 +104,7 @@ export function fold(entries: Entry[]): TrajectoryRecord[] {
 				turn,
 				text: typeof text === "string" ? text : undefined,
 				thinking: typeof thinking === "string" ? thinking : undefined,
-				usage: usage
-					? { input: usage.input ?? 0, output: usage.output ?? 0, cacheRead: usage.cacheRead ?? 0, cacheWrite: usage.cacheWrite ?? 0, totalTokens: usage.totalTokens ?? 0 }
-					: undefined,
+				usage: usage ? toUsage(usage) : undefined,
 				time,
 			});
 			for (const block of blocks) {

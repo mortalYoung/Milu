@@ -59,5 +59,10 @@ export function describeRuntime(): { framework: string; model: string } {
 	return { framework: "LETTERS", model: resolveModel().id };
 }
 
+/** The current model's context window in tokens, from the model catalog (not hardcoded). */
+export function contextWindow(): number {
+	return resolveModel().contextWindow;
+}
+
 /** How the loop talks to the LLM. */
 export const STREAM_FN = MODELS.streamSimple.bind(MODELS);

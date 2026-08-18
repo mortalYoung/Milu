@@ -51,8 +51,8 @@ function DeleteMenuItem(props: { onSelect: () => void }) {
 export function ConversationList(props: {
 	partners: PartnerItem[];
 	selected: string | null;
-	/** Agent running (the selected row's preview slot shows the working indicator). */
-	busy: () => boolean;
+	/** Whether the given partner's run is in progress (its row's preview slot shows the working indicator). */
+	working: (name: string) => boolean;
 	onSelect: (name: string) => void;
 	onAddPartner: () => void;
 	onDelete: (name: string) => void;
@@ -107,7 +107,7 @@ export function ConversationList(props: {
 								<span class="conv-time">{convTime(partner.createdAt)}</span>
 							</span>
 							<span class="conv-preview">
-								{props.busy() && props.selected === partner.name ? (
+								{props.working(partner.name) ? (
 									<span class="conv-preview-dots" title="Working…">
 										<span class="work-dot" />
 										<span class="work-dot" />

@@ -37,13 +37,13 @@ describe("session store (pi JSONL backend)", () => {
 		);
 		await session.appendSendMessage("done", { toolCallId: "tc1" }, 3);
 
-		expect(session.visibleHistory().map((m) => m.kind)).toEqual(["user", "send_message"]);
-		expect(session.visibleHistory()[1].text).toBe("done");
+		expect((await session.visibleHistory()).map((m) => m.kind)).toEqual(["user", "send_message"]);
+		expect((await session.visibleHistory())[1].text).toBe("done");
 
 		// Reopen: a new instance on the same root restores
 		const reopened = createSessionStore(dir);
 		await reopened.ready();
-		expect(reopened.visibleHistory().map((m) => m.kind)).toEqual(["user", "send_message"]);
+		expect((await reopened.visibleHistory()).map((m) => m.kind)).toEqual(["user", "send_message"]);
 	});
 
 	it("restoreMessages rebuilds the full chain in order", async () => {
@@ -113,12 +113,32 @@ describe("session store (pi JSONL backend)", () => {
 		await session.appendSendMessage("reply A", {}, 2);
 
 		await session.setRoot(dirB);
-		expect(session.visibleHistory()).toEqual([]);
+		expect(await session.visibleHistory()).toEqual([]);
 		await session.appendUser("in B", 3);
-		expect(session.visibleHistory().map((m) => m.text)).toEqual(["in B"]);
+		expect((await session.visibleHistory()).map((m) => m.text)).toEqual(["in B"]);
 
 		await session.setRoot(dirA);
-		expect(session.visibleHistory().map((m) => m.text)).toEqual(["in A", "reply A"]);
+		expect((await session.visibleHistory()).map((m) => m.text)).toEqual(["in A", "reply A"]);
+	});
+
+	it("reads a partner's history by dir while another root is active (isolation)", async () => {
+		const dirA = await tempDir();
+		const dirB = await tempDir();
+		const session = createSessionStore(dirA);
+		await session.appendUser("in A", 1);
+		await session.appendSendMessage("reply A", {}, 2);
+		await session.setRoot(dirB);
+		await session.appendUser("in B", 3);
+
+		// The active root is B, but A's history is still readable by dir — the view of a partner
+		// whose run is not active never sees the running partner's messages (or vice versa).
+		expect((await session.visibleHistory(dirA)).map((m) => m.text)).toEqual(["in A", "reply A"]);
+		expect((await session.visibleHistory(dirB)).map((m) => m.text)).toEqual(["in B"]);
+
+		// Appends still go to the active root only
+		await session.appendSendMessage("reply B", {}, 4);
+		expect((await session.rawEntries(dirA)).length).toBe(2);
+		expect((await session.rawEntries(dirB)).length).toBe(2);
 	});
 
 	it("single session semantics: second store continues the same conversation", async () => {
@@ -133,6 +153,6 @@ describe("session store (pi JSONL backend)", () => {
 
 		const third = createSessionStore(dir);
 		await third.ready();
-		expect(third.visibleHistory().map((m) => m.text)).toEqual(["one", "reply one", "two"]);
+		expect((await third.visibleHistory()).map((m) => m.text)).toEqual(["one", "reply one", "two"]);
 	});
 });

@@ -45,7 +45,7 @@ Rules an agent must respect:
 
 ## Commands
 
-`bun run dev` (Vite build + electrobun watch) · `bun run build` · `bun run build:view` (Vite) · `bun run dev:view` (Vite watch) · `bun run typecheck` · `bun run format` / `format:check` (Biome; config in `biome.json`, formatter-only, linter disabled)
+`bun run dev` (Vite build + launch, no watchers — restart manually to pick up changes) · `bun run build` · `bun run build:view` (Vite) · `bun run dev:view` (Vite watch) · `bun run typecheck` · `bun run format` / `format:check` (Biome; config in `biome.json`, formatter-only, linter disabled)
 
 ## Environment
 

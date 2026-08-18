@@ -5,7 +5,7 @@
  * The only editable fields are Responsibilities / Tones; IDENTIFY and TOOL-GUIDANCE
  * are system-generated, and Preview shows the complete four-section system prompt.
  */
-import { createSignal, type JSX } from "solid-js";
+import { createEffect, createSignal, type JSX } from "solid-js";
 import { renderMarkdown } from "../lib/markdown";
 import { Button } from "./Button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
@@ -68,6 +68,19 @@ export function PartnerModal(props: {
 	};
 	/** Field fill state */
 	const filledOf = (f: FieldId): boolean => (f === "persona" ? responsibilities().trim() !== "" : tones().trim() !== "");
+	// Fresh dialog on every open: the modal stays mounted between opens (the Dialog only hides it),
+	// so the form state would otherwise leak into the next session.
+	createEffect(() => {
+		if (props.open) {
+			setName("");
+			setResponsibilities("");
+			setTones("");
+			setError(null);
+			setActive("persona");
+			setTab("edit");
+			setPreview(null);
+		}
+	});
 	const linesOf = (f: FieldId): number => valueOf(f).split("\n").length;
 
 	/** Fetch the assembled preview (re-assembled on every entry into Preview, reflecting the latest edits) */

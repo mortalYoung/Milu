@@ -34,6 +34,25 @@ export type TrajectoryRecord =
 	| { kind: "reminder"; seq: number; text: string; time: number };
 
 /**
+ * Context occupancy of the current conversation (see context_usage).
+ * used = the last assistant turn's provider-reported prompt size (input + cacheRead + cacheWrite, no output),
+ * window = the routed model's contextWindow. Both are last-wins independent fields — the percent is a
+ * deliberately approximate reference number, not an atomic observation.
+ */
+export interface ContextUsage {
+	/** Provider-reported prompt size of the last turn; 0 before the first turn. */
+	used: number;
+	/** Model context window in tokens (e.g. 1_000_000 for deepseek-v4-flash). */
+	window: number;
+	/** min(100, round(used / window * 100)). */
+	percent: number;
+	/** Heuristic composition (4 chars ≈ 1 token; always labeled `~` in the UI), null when unavailable. */
+	breakdown: { systemTokens: number; toolsTokens: number; messageTokens: number } | null;
+	/** The last turn's full usage record; absent before the first turn (the meter stays hidden). */
+	lastTurn?: { input: number; output: number; cacheRead: number; cacheWrite: number; totalTokens: number };
+}
+
+/**
  * Single source of truth for the app's RPC surface.
  *
  * Semantics (matching electrobun's defineElectrobunRPC):
@@ -51,7 +70,7 @@ export type AppRPCSchema = __schema<{
 			/** Send a user prompt. If the agent is busy, it is queued as a follow-up (outer loop). */
 			chat: {
 				params: { text: string };
-				response: { accepted: boolean };
+				response: { accepted: boolean; queued?: boolean };
 			};
 			/** Abort the current agent run. */
 			stop: {
@@ -71,7 +90,12 @@ export type AppRPCSchema = __schema<{
 			/** Fetch agent status (view calibrates idle/working; fallback when a push was lost). */
 			get_status: {
 				params: {};
-				response: { streaming: boolean; workspace_path: string | null };
+				response: { streaming: boolean; workspace_path: string | null; workspace_default: string; running_partner: string | null };
+			};
+			/** Context occupancy (used/window/percent + heuristic breakdown) for the composer meter. */
+			context_usage: {
+				params: {};
+				response: ContextUsage;
 			};
 			/** Trajectory: the full process record (thinking/tools/usage), cached by the view; on message click the matching segment is fetched. */
 			trajectory: {
@@ -131,8 +155,8 @@ export type AppRPCSchema = __schema<{
 	webview: {
 		requests: {};
 		messages: {
-			/** A new turn began (one LLM call + tool executions) — typing indicator. */
-			agent_turn: { turn: number };
+			/** A new turn began (one LLM call + tool executions) — typing indicator; partner = the run's owner (null when unknown). */
+			agent_turn: { turn: number; partner: string | null };
 			/** A visible message was persisted via send_message — view refetches history. */
 			agent_message: {};
 			/** A turn has been persisted (trajectory has new data); the view invalidates its cache and refetches. */

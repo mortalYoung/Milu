@@ -64,12 +64,12 @@ export interface SessionStore {
 	appendSystemPrompt(text: string, timestamp: number): Promise<void>;
 	/** Persist a system reminder (custom entry; part of the trajectory timeline). */
 	appendReminder(text: string, timestamp: number): Promise<void>;
-	/** Records visible to the frontend (user + send_message), in session order. */
-	visibleHistory(): VisibleItem[];
-	/** The full conversation chain (for agent context restore). */
-	restoreMessages(): Promise<AgentMessage[]>;
-	/** Raw pi entries (for trajectory folding; thinking/tool content still never enters visibleHistory). */
-	rawEntries(): Entry[];
+	/** Records visible to the frontend (user + send_message), in session order; active root unless a dir is given. */
+	visibleHistory(dir?: string): Promise<VisibleItem[]>;
+	/** The full conversation chain (for agent context restore); active root unless a dir is given. */
+	restoreMessages(dir?: string): Promise<AgentMessage[]>;
+	/** Raw pi entries (for trajectory folding; thinking/tool content still never enters visibleHistory); active root unless a dir is given. */
+	rawEntries(dir?: string): Promise<Entry[]>;
 }
 
 const SEND_MESSAGE_PROJECTOR = (entry: CustomEntry): AgentMessage[] | undefined => {
@@ -86,47 +86,60 @@ const SEND_MESSAGE_PROJECTOR = (entry: CustomEntry): AgentMessage[] | undefined 
 	];
 };
 
+/** One open session repo per root directory (sessions isolated per Partner). */
+interface RootState {
+	repo: JsonlSessionRepo;
+	session: Session;
+	entries: Entry[];
+}
+
 export function createSessionStore(root: string = DATABASE_ROOT): SessionStore {
 	// pi's JSONL backend needs a FileSystem adapter; reuse the execution environment directly (pure fs part)
-	let currentRoot = root;
-	let repo: JsonlSessionRepo;
-	let session: Session | null = null;
-	let entries: Entry[] = [];
+	// Multiple roots stay open at once: while a partner's run is in flight the active (append) root is
+	// pinned to that partner, but the view still reads other partners' sessions by dir.
+	const roots = new Map<string, RootState>();
+	let activeRoot = root;
 	let opened = false;
 
-	async function openRoot(newRoot: string) {
-		currentRoot = newRoot;
-		// One repo per root directory (session files isolated per Partner)
-		repo = new JsonlSessionRepo({ fs: createExecutionEnv(currentRoot), sessionsRoot: currentRoot });
-		session = null;
-		entries = [];
+	async function openRoot(newRoot: string): Promise<RootState> {
+		const cached = roots.get(newRoot);
+		if (cached) return cached;
+		const repo = new JsonlSessionRepo({ fs: createExecutionEnv(newRoot), sessionsRoot: newRoot });
 		const sessions = await repo.list();
-		if (sessions.length > 0) {
-			// Single continuous session: take the newest
-			session = await repo.open(sessions[sessions.length - 1]);
-		} else {
-			session = await repo.create({ cwd: PROJECT_ROOT });
-		}
-		await refreshEntries();
+		// Single continuous session: take the newest
+		const session = sessions.length > 0 ? await repo.open(sessions[sessions.length - 1]) : await repo.create({ cwd: PROJECT_ROOT });
+		const state: RootState = { repo, session, entries: [] };
+		roots.set(newRoot, state);
+		await refreshEntries(state);
+		return state;
 	}
 
 	async function ensureOpen() {
 		if (opened) return;
-		await openRoot(currentRoot);
+		await openRoot(activeRoot);
 		opened = true;
 	}
 
-	async function refreshEntries() {
-		const leafId = await session!.getLeafId();
+	async function active(): Promise<RootState> {
+		await ensureOpen();
+		return roots.get(activeRoot)!;
+	}
+
+	async function stateFor(dir?: string): Promise<RootState> {
+		return dir && dir !== activeRoot ? openRoot(dir) : active();
+	}
+
+	async function refreshEntries(state: RootState) {
+		const leafId = await state.session.getLeafId();
 		// findEntriesOnBranch returns leaves first; reverse so the root comes first (session order)
-		const walked = leafId ? await session!.findEntriesOnBranch({ start: leafId }) : [];
-		entries = walked.reverse();
+		const walked = leafId ? await state.session.findEntriesOnBranch({ start: leafId }) : [];
+		state.entries = walked.reverse();
 	}
 
 	async function appendMessage(message: AgentMessage) {
-		await ensureOpen();
-		await session!.appendMessage(message);
-		await refreshEntries();
+		const state = await active();
+		await state.session.appendMessage(message);
+		await refreshEntries(state);
 	}
 
 	return {
@@ -134,13 +147,14 @@ export function createSessionStore(root: string = DATABASE_ROOT): SessionStore {
 			await ensureOpen();
 		},
 		async setRoot(newRoot: string) {
+			activeRoot = newRoot;
 			await openRoot(newRoot);
 		},
 		async appendUser(content, timestamp) {
 			await appendMessage({ role: "user", content, timestamp });
 		},
 		async appendAssistant(meta, timestamp) {
-			await ensureOpen();
+			const state = await active();
 			// Messages built by the pi loop may carry undefined fields (e.g. toolResult.details/usage),
 			// which assertJsonSerializable would reject → recursively strip them before appending
 			const assistant: AssistantMessage = {
@@ -153,29 +167,30 @@ export function createSessionStore(root: string = DATABASE_ROOT): SessionStore {
 				usage: meta.usage ?? EMPTY_USAGE,
 				stopReason: "stop",
 			};
-			await session!.appendMessage(assistant);
+			await state.session.appendMessage(assistant);
 			for (const result of meta.toolResults ?? []) {
-				await session!.appendMessage(stripUndefined(result) as ToolResultMessage);
+				await state.session.appendMessage(stripUndefined(result) as ToolResultMessage);
 			}
-			await refreshEntries();
+			await refreshEntries(state);
 		},
 		async appendSendMessage(content, details, timestamp) {
-			await ensureOpen();
-			await session!.appendCustomEntry("send_message", { text: content, timestamp, ...details });
-			await refreshEntries();
+			const state = await active();
+			await state.session.appendCustomEntry("send_message", { text: content, timestamp, ...details });
+			await refreshEntries(state);
 		},
 		async appendSystemPrompt(text, timestamp) {
-			await ensureOpen();
-			await session!.appendCustomEntry("system_prompt", { text, timestamp });
-			await refreshEntries();
+			const state = await active();
+			await state.session.appendCustomEntry("system_prompt", { text, timestamp });
+			await refreshEntries(state);
 		},
 		async appendReminder(text, timestamp) {
-			await ensureOpen();
-			await session!.appendCustomEntry("system_reminder", { text, timestamp });
-			await refreshEntries();
+			const state = await active();
+			await state.session.appendCustomEntry("system_reminder", { text, timestamp });
+			await refreshEntries(state);
 		},
-		visibleHistory(): VisibleItem[] {
-			return entries.flatMap((entry): VisibleItem[] => {
+		async visibleHistory(dir) {
+			const state = await stateFor(dir);
+			return state.entries.flatMap((entry): VisibleItem[] => {
 				if (entry.type === "message" && entry.message.role === "user") {
 					const content = entry.message.content;
 					return [{ id: entry.id, kind: "user", text: typeof content === "string" ? content : "", time: entry.message.timestamp ?? 0 }];
@@ -188,15 +203,16 @@ export function createSessionStore(root: string = DATABASE_ROOT): SessionStore {
 				return [];
 			});
 		},
-		async restoreMessages(): Promise<AgentMessage[]> {
-			await ensureOpen();
-			const context = buildSessionContext(entries, {
+		async restoreMessages(dir) {
+			const state = await stateFor(dir);
+			const context = buildSessionContext(state.entries, {
 				entryProjectors: { send_message: SEND_MESSAGE_PROJECTOR },
 			});
 			return dropDanglingTurn(context.messages);
 		},
-		rawEntries() {
-			return entries;
+		async rawEntries(dir) {
+			const state = await stateFor(dir);
+			return state.entries;
 		},
 	};
 }

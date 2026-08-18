@@ -6,7 +6,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Entry } from "@earendil-works/pi-agent-core";
 import { segmentForMessage, trajectoryNodes } from "../../shared/trajectory";
-import { fold } from "../core/trajectory";
+import { fold, lastUsage } from "../core/trajectory";
 
 let counter = 1;
 function entry(partial: Record<string, unknown>): Entry {
@@ -17,7 +17,7 @@ function userEntry(text: string): Entry {
 	return entry({ message: { role: "user", content: text, timestamp: 1000 } });
 }
 
-function assistantEntry(blocks: Record<string, unknown>[], usage?: { input: number; output: number; totalTokens?: number }): Entry {
+function assistantEntry(blocks: Record<string, unknown>[], usage?: { input: number; output: number; cacheRead?: number; cacheWrite?: number; totalTokens?: number }): Entry {
 	return entry({ message: { role: "assistant", content: blocks, usage, timestamp: 1000 } });
 }
 
@@ -28,6 +28,42 @@ function toolResultEntry(toolCallId: string, text: string, isError = false): Ent
 function sendMessageEntry(text: string): Entry {
 	return entry({ type: "custom", customType: "send_message", data: { text, timestamp: 1000 } });
 }
+
+describe("lastUsage last-turn usage extraction", () => {
+	test("empty entries → null", () => {
+		expect(lastUsage([])).toBeNull();
+	});
+
+	test("no assistant message with usage → null", () => {
+		const entries = [userEntry("hello"), sendMessageEntry("hi"), assistantEntry([{ type: "toolCall", id: "t", name: "bash", arguments: "ls" }])];
+		expect(lastUsage(entries)).toBeNull();
+	});
+
+	test("single assistant with usage → its usage (cache fields default to 0)", () => {
+		const usage = lastUsage([userEntry("q"), assistantEntry([{ type: "text", text: "a" }], { input: 100, output: 20 })]);
+		expect(usage).toEqual({ input: 100, output: 20, cacheRead: 0, cacheWrite: 0, totalTokens: 0 });
+	});
+
+	test("multiple assistants → the last one wins", () => {
+		const usage = lastUsage([
+			userEntry("q1"),
+			assistantEntry([{ type: "text", text: "a" }], { input: 100, output: 20 }),
+			userEntry("q2"),
+			assistantEntry([{ type: "text", text: "b" }], { input: 5000, output: 300, cacheRead: 2000, cacheWrite: 1000 }),
+		]);
+		expect(usage).toEqual({ input: 5000, output: 300, cacheRead: 2000, cacheWrite: 1000, totalTokens: 0 });
+	});
+
+	test("later assistant without usage does not clear the last usage", () => {
+		const usage = lastUsage([userEntry("q"), assistantEntry([{ type: "text", text: "a" }], { input: 10, output: 5 }), assistantEntry([{ type: "text", text: "b" }])]);
+		expect(usage).toEqual({ input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 0 });
+	});
+
+	test("usage passes through custom entries untouched", () => {
+		const usage = lastUsage([sendMessageEntry("before"), userEntry("q"), assistantEntry([{ type: "text", text: "a" }], { input: 7, output: 3 }), sendMessageEntry("after")]);
+		expect(usage).toEqual({ input: 7, output: 3, cacheRead: 0, cacheWrite: 0, totalTokens: 0 });
+	});
+});
 
 describe("fold trajectory folding", () => {
 	test("empty entries → empty list", () => {

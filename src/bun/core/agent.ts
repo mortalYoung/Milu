@@ -31,6 +31,8 @@ export interface AgentBridge {
 	onTrajectoryUpdate: () => void;
 	/** The workspace was set via set_workspace (the view shows it near the input). */
 	onWorkspaceUpdate: () => void;
+	/** The workspace was accepted and resolved (optional; persist it — e.g. per-partner file — so it survives restart). */
+	onWorkspaceSet?: (path: string) => void;
 	/** The run settled. `error` is set on failure (e.g. missing API key). */
 	onEnd: (error?: string) => void;
 }
@@ -70,6 +72,20 @@ export interface AgentDeps {
 /** Whether a path is inside a root (or equal to it). */
 function isInsideOf(target: string, root: string): boolean {
 	return target === root || target.startsWith(root + sep);
+}
+
+/** Validate a set_workspace request: returns an error message, or null when the workspace is accepted. */
+export function validateWorkspace(workspace: string, state: { current: string | null; storagePath: string | null }): string | null {
+	if (state.current) return "Workspace can only be set once per conversation";
+	if (!isAbsolute(workspace)) return "Workspace must be an absolute path";
+	const abs = resolve(workspace);
+	if (state.storagePath && isInsideOf(abs, state.storagePath)) return "Workspace cannot be inside the storage path";
+	try {
+		if (!statSync(abs).isDirectory()) return "Workspace path is not a directory";
+	} catch {
+		return "Workspace directory does not exist";
+	}
+	return null;
 }
 
 export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
@@ -118,17 +134,12 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		},
 		// set_workspace: once per conversation, absolute path, must exist, not inside storage
 		onSetWorkspace: (workspace: string): string | null => {
-			if (ctx.workspace_path) return "Workspace can only be set once per conversation";
-			const abs = resolve(workspace);
-			if (!isAbsolute(workspace)) return "Workspace must be an absolute path";
-			if (ctx.storage_path && isInsideOf(abs, ctx.storage_path)) return "Workspace cannot be inside the storage path";
-			try {
-				if (!statSync(abs).isDirectory()) return "Workspace path is not a directory";
-			} catch {
-				return "Workspace directory does not exist";
-			}
-			ctx.workspace_path = abs;
+			const error = validateWorkspace(workspace, { current: ctx.workspace_path, storagePath: ctx.storage_path });
+			if (error) return error;
+			const resolved = resolve(workspace);
+			ctx.workspace_path = resolved;
 			bridge.onWorkspaceUpdate();
+			bridge.onWorkspaceSet?.(resolved);
 			return null;
 		},
 	});

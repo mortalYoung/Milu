@@ -340,78 +340,6 @@ body::before {
 	.chat-toggle {
 		@apply absolute left-4 top-1/2 -translate-y-1/2;
 	}
-	/* Outline toggle: header right side, mirror of the list toggle */
-	.outline-toggle {
-		@apply absolute right-4 top-1/2 -translate-y-1/2;
-	}
-	/* Outline: floating replies index (direction A) — letter card, question-anchored rows, scroll-like unroll */
-	.outline {
-		@apply absolute top-[80px] right-4 z-20 w-[246px] max-h-[65vh] rounded-[10px] bg-letter flex flex-col overflow-hidden;
-		transform-origin: top;
-	}
-	.outline-head {
-		@apply flex items-baseline justify-between px-4 pt-3 pb-2 border-b border-hairline;
-	}
-	.outline-count {
-		@apply font-mono text-[10px] text-seal;
-	}
-	.outline-list {
-		@apply overflow-y-auto py-1 flex flex-col min-h-0;
-	}
-	.outline-item {
-		@apply relative text-left w-full px-4 py-2 cursor-pointer flex flex-col gap-[2px] border-b border-hairline-soft last:border-b-0;
-		animation: outline-row-in 200ms var(--ease-out) both;
-	}
-	.outline-item:hover {
-		@apply bg-paper-hover;
-	}
-	.outline-item:hover::before {
-		content: "";
-		position: absolute;
-		left: 0;
-		top: 0;
-		bottom: 0;
-		width: 2px;
-		background: var(--color-ink);
-	}
-	.outline-item:focus-visible {
-		outline: 2px solid var(--color-seal);
-		outline-offset: -2px;
-	}
-	.outline-item.active {
-		@apply bg-paper-hover;
-	}
-	.outline-item.active::before {
-		content: "";
-		position: absolute;
-		left: 0;
-		top: 0;
-		bottom: 0;
-		width: 2px;
-		background: var(--color-seal);
-	}
-	.outline-meta {
-		@apply flex items-baseline justify-between gap-2;
-	}
-	.outline-time {
-		@apply shrink-0 font-mono text-[9px] text-seal;
-	}
-	.outline-q {
-		@apply font-sans text-[9px] uppercase tracking-[0.12em] text-body-muted truncate;
-	}
-	.outline-a {
-		@apply font-serif text-[12.5px] leading-[1.45] text-ink truncate;
-	}
-	@keyframes outline-row-in {
-		from {
-			opacity: 0;
-			transform: translateY(4px);
-		}
-		to {
-			opacity: 1;
-			transform: none;
-		}
-	}
 	/* Locate feedback: the target bubble flashes, then fades back (agent = seal-soft paper; user = seal outline on ink) */
 	@keyframes locate-flash {
 		0% {
@@ -757,19 +685,99 @@ body::before {
 		height: 1px;
 		background: var(--color-hairline);
 	}
-	/* Input area: centered pill (60%, 44px) */
+	/* Input area: centered pill (60%, grows with content) */
 	.composer {
-		@apply shrink-0 h-[72px] border-t border-hairline flex items-center justify-center px-6 bg-paper;
+		@apply shrink-0 min-h-[72px] border-t border-hairline flex flex-col items-center justify-center gap-1 px-6 py-2 bg-paper;
 	}
 	.composer-field {
-		@apply flex items-center gap-2 w-[60%] h-11 bg-letter border border-hairline rounded-[22px] px-[18px] pr-[5px] transition-colors focus-within:border-seal;
+		@apply flex items-center gap-2 w-[60%] min-h-11 bg-letter border border-hairline rounded-[22px] px-[18px] pr-[5px] transition-colors focus-within:border-seal;
 	}
 	/* Workspace chip: read-only current working directory above the input */
 	.composer-workspace {
-		@apply font-mono text-[9px] text-muted max-w-[60%] truncate mb-1;
+		@apply inline-flex items-center gap-1 font-mono text-[9px] text-muted max-w-[60%];
+	}
+	.composer-workspace-path {
+		@apply min-w-0 truncate;
 	}
 	.composer-input {
-		@apply flex-1 min-w-0 bg-transparent border-none outline-none font-sans text-[14px] text-ink placeholder:text-muted;
+		@apply flex-1 min-w-0 bg-transparent border-none outline-none font-sans text-[14px] leading-[20px] text-ink placeholder:text-muted resize-none py-[11px];
+		max-height: 120px;
+		overflow-y: auto;
+	}
+
+	/* Context meter: 14px occupancy ring beside the send button + click panel */
+	.context-meter {
+		@apply relative shrink-0;
+	}
+	.context-meter-trigger {
+		@apply flex items-center gap-1 p-1 rounded-full hover:bg-paper-hover transition-colors;
+	}
+	.meter-track {
+		fill: none;
+		stroke: var(--color-hairline);
+		stroke-width: 2;
+	}
+	.meter-fill {
+		fill: none;
+		stroke-width: 2;
+		stroke-linecap: round;
+	}
+	.meter-fill.meter-ok {
+		stroke: var(--color-seal);
+	}
+	.meter-fill.meter-warn {
+		stroke: #b8860b;
+	}
+	.meter-fill.meter-danger {
+		stroke: #d64541;
+	}
+	.context-meter-percent {
+		@apply font-mono text-[9px] text-muted;
+	}
+	.context-meter-panel {
+		@apply absolute bottom-[calc(100%+8px)] right-0 z-50 w-[220px] rounded-md border border-hairline bg-letter p-3 shadow-lg;
+	}
+	.meter-headline {
+		@apply flex items-baseline justify-between gap-2 mb-2;
+	}
+	.meter-title {
+		@apply font-mono text-[11px] text-ink;
+	}
+	.meter-percent {
+		@apply font-serif text-[15px] text-seal font-semibold;
+	}
+	.meter-bar {
+		@apply flex h-1 w-full overflow-hidden rounded-full bg-hairline-soft mb-2;
+	}
+	.meter-segment {
+		@apply block h-full;
+	}
+	.meter-segment.meter-system {
+		background: var(--color-seal);
+	}
+	.meter-segment.meter-tools {
+		background: #b8860b;
+	}
+	.meter-segment.meter-messages {
+		background: #2a9d8f;
+	}
+	.meter-rows {
+		@apply flex flex-col gap-1;
+	}
+	.meter-row {
+		@apply flex items-center gap-2 font-mono text-[9px] text-muted;
+	}
+	.meter-swatch {
+		@apply size-2 rounded-full;
+	}
+	.meter-swatch.meter-system {
+		background: var(--color-seal);
+	}
+	.meter-swatch.meter-tools {
+		background: #b8860b;
+	}
+	.meter-swatch.meter-messages {
+		background: #2a9d8f;
 	}
 }
 

@@ -6,7 +6,7 @@
 
 import { Electroview } from "electrobun/view";
 import { createSignal } from "solid-js";
-import type { AppRPCSchema, TrajectoryRecord } from "../shared/rpc";
+import type { AppRPCSchema, ContextUsage, TrajectoryRecord } from "../shared/rpc";
 import { AppRail } from "./components/AppRail";
 import { PartnerDetailsDialog } from "./components/PartnerDetailsDialog";
 import { type PartnerFormData, PartnerModal } from "./components/PartnerModal";
@@ -41,9 +41,18 @@ export function App() {
 	const [focusMessageId, setFocusMessageId] = createSignal<string | null>(null);
 	const [visibleReplyId, setVisibleReplyId] = createSignal<string | null>(null);
 	const [workspacePath, setWorkspacePath] = createSignal<string | null>(null);
+	const [workspaceDefault, setWorkspaceDefault] = createSignal<string>("");
+	const [contextUsage, setContextUsage] = createSignal<ContextUsage | null>(null);
 	const [entries, setEntries] = createSignal<Entry[]>([]);
 	// busy = whether the agent is running (streaming/tool execution), single source of truth; push events do increments, get_status calibrates
 	const [busy, setBusy] = createSignal(false);
+	// The partner whose run is in progress (from get_status / agent_turn); busy shows only for it.
+	const [runningPartner, setRunningPartner] = createSignal<string | null>(null);
+	// Per-partner busy: true only when the agent is running AND the running partner is the one selected
+	// (or unknown). Fixes: switching from A (writing) to B no longer shows B as writing.
+	const isBusyForSelected = () => busy() && (runningPartner() === null || runningPartner() === selected());
+	// Per-partner writing state for the list rows: the run's owner shows dots even when not selected
+	const workingFor = (name: string) => busy() && (runningPartner() === null ? selected() === name : runningPartner() === name);
 	const [queued, setQueued] = createSignal(0);
 	const [tick, setTick] = createSignal(0);
 	const [selected, setSelected] = createSignal<string | null>(null);
@@ -52,6 +61,19 @@ export function App() {
 	const [settings, setSettings] = createSignal<SettingsData | null>(null);
 	const [runtime, setRuntime] = createSignal<{ model: string; apiKeyConfigured: boolean } | null>(null);
 	const [listCollapsed, setListCollapsed] = createSignal(localStorage.getItem("chatlist.collapsed") === "1");
+	// Per-chat composer drafts: written on every keystroke, restored when the chat is re-selected
+	const [drafts, setDrafts] = createSignal<Record<string, string>>({});
+	function onDraftChange(text: string) {
+		const name = selected();
+		if (!name) return;
+		setDrafts((d) => ({ ...d, [name]: text }));
+	}
+	function clearDraft(name: string) {
+		setDrafts((d) => {
+			const { [name]: _drop, ...rest } = d;
+			return rest;
+		});
+	}
 	function toggleListCollapsed() {
 		const next = !listCollapsed();
 		setListCollapsed(next);
@@ -88,7 +110,7 @@ export function App() {
 		}
 		return trajectoryCache;
 	}
-	// Locate flash: the target bubble briefly flashes seal-soft (shared by outline and trajectory drawer)
+	// Locate flash: the target bubble briefly flashes seal-soft (shared by the trajectory drawer)
 	const [flashId, setFlashId] = createSignal<number | null>(null);
 	let flashTimer: ReturnType<typeof setTimeout> | undefined;
 	const onFlash = (id: number) => {
@@ -141,7 +163,12 @@ export function App() {
 			.set_partner({
 				profile: partner ? { name: partner.name, responsibilities: partner.responsibilities, tones: partner.tones } : null,
 			})
-			.then(() => refreshHistory());
+			.then(() => {
+				refreshHistory();
+				// The session is loaded now (entries restored from JSONL): refresh the context meter too,
+				// so persisted usage survives restart instead of sitting at 0% until the next turn.
+				void refreshContextUsage();
+			});
 	}
 
 	async function refreshSettings() {
@@ -151,9 +178,11 @@ export function App() {
 	}
 
 	// ————— RPC events —————
-	rpc.addMessageListener("agent_turn", ({ turn: t }) => {
+	rpc.addMessageListener("agent_turn", ({ turn: t, partner }) => {
 		setBusy(true);
-		if (queued() > 0) {
+		if (partner != null) setRunningPartner(partner);
+		else if (runningPartner() === null) setRunningPartner(selected());
+		if (queued() > 0 && runningPartner() === selected()) {
 			setQueued((q) => q - 1);
 			push(makeSysEntry(`✳ follow-up · turn ${t}`));
 		}
@@ -169,35 +198,58 @@ export function App() {
 	rpc.addMessageListener("trajectory_update", () => {
 		// A turn has been persisted; invalidate the trajectory cache (next click fetches the latest)
 		trajectoryCache = null;
+		// …and refresh the context meter (usage is persisted per turn)
+		void refreshContextUsage();
 	});
 
 	rpc.addMessageListener("agent_end", ({ error: err }) => {
 		setQueued(0);
-		if (err) push(makeSysEntry(`ERR § ${err}`, true));
+		if (err && runningPartner() === selected()) push(makeSysEntry(`ERR § ${err}`, true));
 		bump();
+		setRunningPartner(null);
 		calibrateBusy();
+		void refreshContextUsage();
 	});
 
 	// Calibrate: the bun-side isStreaming is authoritative; covers lost/late push events (e.g. the startup race where mount lags the first turn)
 	function calibrateBusy() {
 		void rpc.request.get_status({}).then((s) => {
 			setBusy(s.streaming);
+			setRunningPartner(s.running_partner);
 			setWorkspacePath(s.workspace_path);
+			setWorkspaceDefault(s.workspace_default);
 		});
 	}
 
 	rpc.addMessageListener("workspace_update", () => {
 		// The workspace was set via set_workspace; refetch status to show it near the input
-		void rpc.request.get_status({}).then((s) => setWorkspacePath(s.workspace_path));
+		void rpc.request.get_status({}).then((s) => {
+			setBusy(s.streaming);
+			setRunningPartner(s.running_partner);
+			setWorkspacePath(s.workspace_path);
+			setWorkspaceDefault(s.workspace_default);
+		});
 	});
+
+	// ————— context usage (composer meter) —————
+	async function refreshContextUsage() {
+		const usage = await rpc.request.context_usage({});
+		setContextUsage(usage);
+	}
 
 	// ————— user input —————
 	function onSend(text: string) {
-		if (busy()) {
+		if (isBusyForSelected()) {
 			push(makeSysEntry("✳ follow-up queued"));
 			setQueued((q) => q + 1);
 		}
-		void rpc.request.chat({ text }).then(() => refreshHistory());
+		void rpc.request.chat({ text }).then((res) => {
+			// Cross-partner sends are queued on the bun side (another partner's run owns the agent);
+			// the message starts a fresh run once that run settles.
+			if (res.queued) push(makeSysEntry("✳ queued — starts after the current run settles"));
+			if (res.accepted) clearDraft(selected()!);
+			refreshHistory();
+		});
 	}
 
 	// ————— Partner deletion —————
@@ -233,6 +285,7 @@ export function App() {
 	void refreshPartners();
 	void refreshSettings();
 	calibrateBusy();
+	void refreshContextUsage();
 
 	// ————— shell —————
 	return (
@@ -250,16 +303,20 @@ export function App() {
 					listCollapsed={listCollapsed()}
 					onToggleList={toggleListCollapsed}
 					entries={entries}
-					working={busy}
+					working={isBusyForSelected}
 					tick={tick}
-					busy={busy}
+					busy={isBusyForSelected}
 					onSend={onSend}
 					onStop={() => void rpc.request.stop({})}
 					onViewTrajectory={onViewTrajectory}
 					flashId={flashId}
-					onFlash={onFlash}
 					onVisibleReply={setVisibleReplyId}
 					workspacePath={workspacePath()}
+					workspaceDefault={workspaceDefault()}
+					contextUsage={contextUsage()}
+					workingFor={workingFor}
+					draft={selected() ? (drafts()[selected()!] ?? "") : ""}
+					onDraftChange={onDraftChange}
 				/>
 			</main>
 
