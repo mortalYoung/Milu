@@ -394,11 +394,12 @@ body::before {
 		@apply absolute left-4 top-1/2 -translate-y-1/2;
 		-webkit-app-region: no-drag;
 	}
-	/* Outline toggle: header right side, mirror of the list toggle. The explicit no-drag
-	   app-region is belt-and-suspenders: the JS drag-region check uses the class, but the
-	   native titlebar layer also needs to know this element is interactive. */
-	.outline-toggle {
-		@apply absolute right-4 top-1/2 -translate-y-1/2;
+	/* Header action group (outline + trajectory toggles): one absolute anchor at the right,
+	   the buttons lay out with flex. The explicit no-drag app-region is belt-and-suspenders:
+	   the JS drag-region check uses the class, but the native titlebar layer also needs to
+	   know this element is interactive. */
+	.btn-group {
+		@apply absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1;
 		-webkit-app-region: no-drag;
 	}
 	/* Replies panel: plain floating index of the agent replies (question-anchored rows) */
@@ -540,13 +541,8 @@ body::before {
 	.chat-worker-status .work-dot {
 		background: var(--color-ink-soft);
 	}
-	/* "View trajectory" entry on the message signature line: small seal-red text */
-	.msg-trajectory-link {
-		@apply font-sans text-[10px] text-seal underline-offset-2 hover:underline cursor-pointer bg-transparent border-0 p-0 ml-2;
-	}
-	/* Trajectory drawer (density strip, direction B): three layers.
-	   Width is capped so the chat stays visible to its left — the drawer overlays, and linkage
-	   (locate a turn → see the bubble) only works when the target is not hidden behind it. */
+	/* Trajectory drawer (density strip, direction B): the whole origin log.
+   Width is capped so the chat stays visible to its left; the drawer is standalone (no chat linkage). */
 	.traj-drawer {
 		@apply absolute top-0 right-0 bottom-0 z-20 w-[440px] max-w-[72vw] bg-letter border-l border-hairline flex flex-col p-4;
 	}
@@ -562,15 +558,15 @@ body::before {
 	.traj-close {
 		@apply font-sans text-[15px] leading-none text-body-muted hover:text-ink cursor-pointer bg-transparent border-0 p-0 ml-2;
 	}
-	/* Layers 1+2: the full timeline (system / question / reminder / turn) — one horizontally scrollable block */
+	/* Layers 1+2: the timeline band — one horizontally scrollable block, a column per log entry */
 	.traj-scroll {
 		@apply overflow-x-auto;
 	}
 	.traj-band {
-		@apply flex items-end gap-[3px] h-[64px] pt-4 pb-2 min-w-max;
+		@apply flex items-end gap-[2px] h-[42px] pt-2 pb-1.5 min-w-max;
 	}
 	.traj-cell {
-		@apply flex-1 min-w-[26px] rounded-t-[2px] cursor-pointer border-0 p-0;
+		@apply flex-1 min-w-[14px] rounded-t-[2px] cursor-pointer border-0 p-0;
 		transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
 	}
 	.traj-cell:hover {
@@ -590,13 +586,9 @@ body::before {
 		outline: 1.5px solid var(--color-seal);
 		outline-offset: 1px;
 	}
-	/* Live-linkage: the turn of the reply currently visible in the chat — a subtle bottom bar, distinct from selection */
-	.traj-cell.live {
-		border-bottom: 2px solid var(--color-seal);
-	}
-	/* Non-turn timeline columns: a centered marker inside a column of the same width as turn cells */
+	/* Non-assistant columns: a centered marker of the same width as turn cells */
 	.traj-marker {
-		@apply flex-1 min-w-[26px] self-stretch flex items-center justify-center;
+		@apply flex-1 min-w-[14px] self-stretch flex items-center justify-center;
 	}
 	.traj-marker.hot {
 		outline: 1.5px solid var(--color-seal);
@@ -611,7 +603,7 @@ body::before {
 		transform: translateY(-2px);
 	}
 	.traj-marker .msys {
-		@apply w-[12px] h-[60%] rounded-[2px] bg-ink cursor-pointer border-0 p-0;
+		@apply w-[10px] h-[45%] rounded-[2px] bg-ink cursor-pointer border-0 p-0;
 		transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
 	}
 	.traj-marker .msys:hover {
@@ -625,13 +617,6 @@ body::before {
 	.traj-marker .mrm:hover {
 		transform: translateY(-2px);
 	}
-	.traj-marker .mtool {
-		@apply w-[10px] h-[45%] rounded-[2px] bg-ink cursor-pointer border-0 p-0;
-		transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
-	}
-	.traj-marker .mtool:hover {
-		transform: translateY(-2px);
-	}
 	.traj-marker .mmsg {
 		@apply w-[10px] h-[45%] rounded-[2px] bg-seal-soft cursor-pointer border-0 p-0;
 		border: 1px solid var(--color-seal);
@@ -640,135 +625,174 @@ body::before {
 	.traj-marker .mmsg:hover {
 		transform: translateY(-2px);
 	}
-	/* Turn boundary: a vertical hairline spanning band and labels */
+	/* Request positions: a small seal dot (the head of each request; content deduped) */
+	.traj-marker .mreq {
+		@apply w-[8px] h-[30%] rounded-full bg-seal cursor-pointer border-0 p-0;
+		transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
+	}
+	.traj-marker .mreq:hover {
+		transform: translateY(-2px);
+	}
+	/* Tool results: half-height, hollow ink bar */
+	.traj-marker .mres {
+		@apply w-[10px] h-[30%] rounded-[2px] cursor-pointer border-0 p-0;
+		border: 1px solid var(--color-ink-soft);
+		transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
+	}
+	.traj-marker .mres:hover {
+		transform: translateY(-2px);
+	}
+	/* Structural entries (model / thinking level / active tools): thin ink bars */
+	.traj-marker .mchange {
+		@apply w-[16px] h-[22%] rounded-[2px] bg-ink-soft cursor-pointer border-0 p-0;
+		transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
+	}
+	.traj-marker .mchange:hover {
+		transform: translateY(-2px);
+	}
+	/* Compaction family (compaction / branch summary / surface ops): dashed seal bars */
+	.traj-marker .mcompact {
+		@apply w-[16px] h-[30%] rounded-[2px] cursor-pointer border-0 p-0;
+		border: 1.5px dashed var(--color-seal);
+		transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
+	}
+	.traj-marker .mcompact:hover {
+		transform: translateY(-2px);
+	}
+	/* Other custom entries (request headers, unknown types): dotted bars */
+	.traj-marker .mcustom {
+		@apply w-[16px] h-[30%] rounded-[2px] cursor-pointer border-0 p-0;
+		border: 1.5px dotted var(--color-ink-soft);
+		transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
+	}
+	.traj-marker .mcustom:hover {
+		transform: translateY(-2px);
+	}
+	/* Turn boundary: a vertical hairline spanning the band */
 	.traj-boundary {
 		@apply w-px self-stretch bg-hairline flex-none;
 	}
-	/* Layer 3: detail — no border, no background, separators only */
-	.traj-detail {
-		@apply flex-1 min-h-0 overflow-y-auto mt-2;
+	/* Layer 3: the entry list — one expandable row per log entry, separators only */
+	.traj-all {
+		@apply flex-1 min-h-0 overflow-y-auto mt-2 pt-2;
 	}
 	.traj-row {
-		@apply flex items-baseline gap-2 w-full text-left py-[5px] border-b border-hairline-soft last:border-b-0 cursor-pointer bg-transparent;
+		@apply relative w-full;
 	}
-	.traj-row:hover {
+	.traj-row-head {
+		@apply flex items-baseline gap-2 w-full text-left py-[5px] border-b border-hairline-soft cursor-pointer bg-transparent;
+	}
+	.traj-row-head:hover {
 		@apply bg-paper-hover;
 	}
-	.traj-row b {
-		@apply font-mono text-[9px] text-seal font-semibold;
+	.traj-row.open .traj-row-head {
+		@apply bg-paper-hover;
+		/* the expanded body carries the bottom border — no double line */
+		border-bottom: none;
 	}
-	.traj-row .row-cap {
-		@apply font-serif text-[11.5px] text-ink truncate flex-1 min-w-0;
+	.traj-row-head b {
+		@apply flex-none min-w-[38px] text-left font-mono text-[9px] font-semibold text-seal;
 	}
-	.traj-row .row-tools {
-		@apply font-mono text-[8px] text-body-muted truncate;
+	.traj-row-head .row-cap {
+		@apply flex-1 min-w-0 font-serif text-[11.5px] text-ink truncate;
 	}
-	.traj-row .row-tok {
-		@apply font-mono text-[8.5px] text-muted;
+	.traj-row-head .row-time {
+		@apply flex-none font-mono text-[8.5px] text-muted;
 	}
-	.traj-row.q {
-		@apply py-[3px];
-	}
-	.traj-row.q b {
-		@apply text-seal;
-	}
-	.traj-row.q .row-cap {
-		@apply font-sans text-[9px] uppercase tracking-[0.1em] text-body-muted;
-	}
+	/* Row tint per family — every row shares the base style (seal chip + ink caption);
+	   only these families differ, so only their overrides exist */
 	.traj-row.sys b {
 		@apply text-ink;
 	}
-	.traj-row.rm b {
-		@apply text-seal;
+	.traj-row.change b,
+	.traj-row.custom b {
+		@apply text-ink-soft;
 	}
-	.traj-row.rm .row-cap {
-		@apply font-sans text-[9px] text-body-muted;
+	/* Thinking gets its own quieter tone — the model's inner monologue */
+	.traj-row.think b {
+		@apply text-body-muted;
 	}
-	.traj-row.tool b {
-		@apply font-mono text-[9px] text-letter bg-ink rounded-[3px] px-[5px] py-[1px];
+	.traj-row.change .row-cap,
+	.traj-row.compact .row-cap,
+	.traj-row.custom .row-cap,
+	.traj-row.think .row-cap,
+	.traj-row.tool .row-cap {
+		@apply text-ink-soft;
 	}
-	.traj-row.tool .row-cap.mono {
+	/* Floating request dot: marks the divider the request preceded — on the line at the left edge
+	   (inside the scroll container, so overflow never clips it). A letter-colored rim separates
+	   the seal bead from the hairline it sits on. */
+	.req-dot {
+		@apply absolute left-0 top-0 -translate-y-1/2 w-[9px] h-[9px] rounded-full z-10 pointer-events-none;
+		background: var(--color-seal);
+		border: 2px solid var(--color-letter);
+	}
+	/* Expanded body (accordion): gentle slide-in, 180ms, transform/opacity only */
+	.traj-body {
+		@apply px-2 pb-2 pt-1 border-b border-hairline-soft;
+		animation: traj-body-in 180ms cubic-bezier(0.23, 1, 0.32, 1);
+	}
+	@keyframes traj-body-in {
+		from {
+			opacity: 0;
+			transform: translateY(-3px);
+		}
+	}
+	/* Unified body — every kind of content shares one style:
+	   prose in the reading face, code in one mono box, everything else in one muted tone.
+	   Only errors keep the seal marking (isError is data, not decoration). */
+	.traj-body .one-cap,
+	.traj-body .one-thinking {
+		@apply mt-2 font-serif text-[13px] leading-[1.6] text-ink whitespace-pre-wrap max-h-[220px] overflow-y-auto;
+	}
+	.traj-body .one-tools {
+		@apply mt-2 flex flex-col gap-1.5;
+	}
+	.traj-body .one-tool-name {
 		@apply font-mono text-[9px] text-ink-soft;
 	}
-	.traj-row.msg b {
-		@apply text-seal;
+	.traj-body .one-call-id {
+		@apply font-mono text-[8.5px] text-muted;
 	}
-	/* Turn separator inside the node list */
-	.traj-turn-sep {
-		@apply flex items-center gap-2 mt-2 mb-0.5 font-sans text-[8px] uppercase tracking-[0.18em] text-muted;
+	.traj-body .one-args {
+		@apply mt-2 max-h-[140px] overflow-auto whitespace-pre-wrap break-words font-mono text-[10px] leading-[1.6] text-ink-soft border border-hairline rounded-[4px] px-2 py-1.5;
 	}
-	.traj-turn-sep::after {
-		content: "";
-		flex: 1;
-		border-top: 1px solid var(--color-hairline-soft);
-	}
-	.traj-one {
-		@apply py-1;
-	}
-	.traj-one .one-head {
-		@apply flex justify-between font-sans text-[8px] uppercase tracking-[0.14em] text-muted;
-	}
-	.traj-one .one-cap {
-		@apply font-serif text-[13px] leading-[1.6] text-ink mt-2;
-	}
-	.traj-one .one-tools {
-		@apply mt-2 flex flex-col gap-2;
-	}
-	.traj-one .one-tool-name {
-		@apply font-mono text-[8.5px] px-2 py-[2px] rounded-[4px] bg-paper-deep text-ink-soft;
-	}
-	.traj-one .one-args {
-		@apply mt-1 max-h-[140px] overflow-auto whitespace-pre-wrap break-words font-mono text-[10px] leading-[1.6] text-ink-soft border border-hairline rounded-[4px] px-2 py-1.5;
-	}
-	/* Thinking: the model's internal reasoning — expanded by default, capped height with scroll */
-	.traj-one .one-think-label {
-		@apply mt-2 font-sans text-[8.5px] uppercase tracking-[0.16em] text-body-muted;
-	}
-	.traj-one .one-thinking {
-		@apply mt-1 font-serif text-[12px] leading-[1.7] text-ink-soft whitespace-pre-wrap max-h-[220px] overflow-y-auto;
-		background: var(--color-paper-hover);
-		border-left: 2px solid var(--color-hairline);
-		padding: 8px 10px;
-		border-radius: 0 6px 6px 0;
-	}
-	.traj-one .one-cap.plain {
-		@apply whitespace-pre-wrap;
-	}
-	.traj-one .one-args.err {
+	.traj-body .one-args.err {
 		@apply border-seal/60 text-seal;
 	}
-	.traj-one .one-locate {
-		@apply mt-2 font-sans text-[9px] uppercase tracking-[0.12em] text-seal hover:text-ink cursor-pointer bg-transparent border-0 p-0;
+	/* Labels / meta / footers: one muted tone */
+	.traj-body .one-think-label,
+	.traj-body .traj-meta,
+	.traj-body .traj-id,
+	.traj-body .traj-op,
+	.traj-body .traj-interrupted {
+		@apply mt-2 font-mono text-[8.5px] text-muted;
 	}
-	.traj-one .one-msg {
-		@apply mt-2 font-sans text-[9px] text-seal uppercase tracking-[0.12em];
+	.traj-body .one-think-label {
+		@apply uppercase tracking-[0.16em];
 	}
-	.traj-nav {
-		@apply mt-3 flex items-center gap-2;
+	.traj-body .traj-meta {
+		@apply flex flex-wrap items-baseline gap-x-3 gap-y-0.5;
 	}
-	.traj-nav button {
-		@apply font-sans text-[9px] uppercase tracking-[0.12em] text-seal hover:text-ink cursor-pointer bg-transparent border-0 p-0;
-	}
-	.traj-nav button:disabled {
-		@apply text-muted cursor-default;
-	}
-	.traj-nav .back {
-		@apply mx-auto text-body-muted;
+	.traj-body .traj-meta .err {
+		@apply text-seal;
 	}
 	.traj-foot {
 		@apply pt-2 font-sans text-[8px] text-muted text-right;
 	}
+	/* Empty state: the drawer with no persisted entries yet */
+	.traj-empty {
+		@apply flex-1 flex items-center justify-center font-serif text-[14px] text-muted;
+	}
 	@media (prefers-reduced-motion: reduce) {
-		.traj-cell {
-			transition: none;
+		.traj-cell,
+		.traj-body {
+			animation: none;
 		}
 	}
 	/* System row: eyebrow; errors in seal red */
-	.sys {
-		@apply text-center eyebrow py-1.5;
-	}
 	.sys-error {
-		@apply text-seal font-medium;
+		@apply text-seal;
 	}
 	/* Date separator: small text + short lines on both sides (44px) */
 	.time-sep {

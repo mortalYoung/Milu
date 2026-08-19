@@ -7,11 +7,14 @@
  * - Restore: buildSessionContext + entryProjectors reconstruct the AgentMessage chain
  *   (pi's JSONL backend has built-in append-only writes and torn-write repair)
  */
+import { cp } from "node:fs/promises";
 import type { AgentMessage, CustomEntry, Entry } from "@earendil-works/pi-agent-core";
 import { buildSessionContext, JsonlSessionRepo, Session } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage, ToolResultMessage, Usage } from "@earendil-works/pi-ai";
+import type { Surface, SurfaceOpRecord } from "../../shared/surface";
 import { createExecutionEnv } from "../tools/execution-env";
 import { DATABASE_ROOT, PROJECT_ROOT } from "./config";
+import { deriveMessages as deriveSurfaceMessages, dropDanglingTurn, foldSurface } from "./surface";
 
 const EMPTY_USAGE: Usage = {
 	input: 0,
@@ -70,6 +73,20 @@ export interface SessionStore {
 	lastMessage(dir?: string): Promise<VisibleItem | null>;
 	/** The full conversation chain (for agent context restore); active root unless a dir is given. */
 	restoreMessages(dir?: string): Promise<AgentMessage[]>;
+	/** Fold the session log into the model-visible surface (active root unless a dir is given). */
+	surface(dir?: string): Promise<Surface>;
+	/** Project the surface into the pi message chain the model sees (active root unless a dir is given). */
+	deriveMessages(dir?: string): Promise<AgentMessage[]>;
+	/** Record a surface replace (compaction checkpoint) as an append-only `surface_op` log entry. */
+	appendSurfaceOp(op: SurfaceOpRecord, timestamp: number): Promise<void>;
+	/** Persist a compaction summary (custom entry; becomes the replacement checkpoint node). Returns its pi entry id. */
+	appendCompactionSummary(text: string, timestamp: number): Promise<string>;
+	/** Persist a compaction transaction marker (compaction/start | compaction/end; log-only). */
+	appendCompactionRecord(type: "compaction/start" | "compaction/end", details: Record<string, unknown>, timestamp: number): Promise<void>;
+	/** Persist a request header (system prompt + resolved tool names) so every model request is reconstructable (invariant 1). */
+	appendRequestHeader(systemPrompt: string, toolNames: string[], timestamp: number): Promise<void>;
+	/** Fork the log into a new root (raw JSONL copy); the surface re-folds there (fork/restore). */
+	forkTo(sourceDir: string, targetDir: string): Promise<void>;
 	/** Raw pi entries (for trajectory folding; thinking/tool content still never enters visibleHistory); active root unless a dir is given. */
 	rawEntries(dir?: string): Promise<Entry[]>;
 }
@@ -228,6 +245,45 @@ export function createSessionStore(root: string = DATABASE_ROOT): SessionStore {
 			});
 			return dropDanglingTurn(context.messages);
 		},
+		async surface(dir) {
+			const state = await stateFor(dir);
+			return foldSurface(state.entries);
+		},
+		async deriveMessages(dir) {
+			const state = await stateFor(dir);
+			return deriveSurfaceMessages(state.entries, foldSurface(state.entries));
+		},
+		async appendSurfaceOp(op, timestamp) {
+			const state = await active();
+			await state.session.appendCustomEntry("surface_op", { ...op, timestamp });
+			await refreshEntries(state);
+		},
+		async appendCompactionSummary(text, timestamp) {
+			const state = await active();
+			await state.session.appendCustomEntry("compaction_summary", { text, timestamp });
+			await refreshEntries(state);
+			const entry = state.entries.filter((e) => e.type === "custom" && e.customType === "compaction_summary").at(-1);
+			if (!entry) throw new Error("compaction_summary append failed");
+			return entry.id;
+		},
+		async appendCompactionRecord(type, details, timestamp) {
+			const state = await active();
+			await state.session.appendCustomEntry(type, { ...details, timestamp });
+			await refreshEntries(state);
+		},
+		async appendRequestHeader(systemPrompt, toolNames, timestamp) {
+			const state = await active();
+			await state.session.appendCustomEntry("request/header", { systemPrompt, toolNames, timestamp });
+			await refreshEntries(state);
+		},
+		async forkTo(sourceDir, targetDir) {
+			// Load the source first (validates it is a readable session root), then copy the whole log
+			// tree (pi nests session files under a cwd-derived directory) and re-open the target so its
+			// surface re-folds deterministically (fork/restore: log prefix boundary = the copied log).
+			await openRoot(sourceDir);
+			await cp(sourceDir, targetDir, { recursive: true, force: true, filter: (src) => !src.endsWith(".tmp") });
+			await openRoot(targetDir);
+		},
 		async rawEntries(dir) {
 			const state = await stateFor(dir);
 			return state.entries;
@@ -246,24 +302,4 @@ function stripUndefined(value: unknown): unknown {
 		return out;
 	}
 	return value;
-}
-
-/**
- * Guard for an unfinished final turn: the last assistant contains toolCall blocks but lacks the
- * matching toolResult (restart-interruption scenario) → drop that turn.
- */
-function dropDanglingTurn(messages: AgentMessage[]): AgentMessage[] {
-	for (let i = messages.length - 1; i >= 0; i--) {
-		const m = messages[i];
-		if (m.role !== "assistant") continue;
-		const blocks = m.content as { type: string; id: string }[];
-		const hasToolCalls = blocks.some((b) => b.type === "toolCall");
-		if (!hasToolCalls) break;
-		const next = messages[i + 1];
-		const complete = next != null && next.role === "toolResult" && (next as ToolResultMessage).toolCallId === blocks.find((b) => b.type === "toolCall")?.id;
-		if (complete) break;
-		messages.splice(i);
-		break;
-	}
-	return messages;
 }

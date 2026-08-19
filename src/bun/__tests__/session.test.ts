@@ -182,4 +182,21 @@ describe("session store (pi JSONL backend)", () => {
 		await third.ready();
 		expect((await third.visibleHistory()).map((m) => m.text)).toEqual(["one", "reply one", "two"]);
 	});
+
+	it("forkTo copies the log into a new root and the surface re-folds there", async () => {
+		const source = await tempDir();
+		const fork = await tempDir();
+		const session = createSessionStore(source);
+		await session.appendUser("q1", 1);
+		await session.appendSendMessage("a1", {}, 2);
+		await session.appendUser("q2", 3);
+		await session.appendSendMessage("a2", {}, 4);
+
+		await session.forkTo(source, fork);
+
+		// the fork re-folds the same surface (deterministic replay) and the same human transcript
+		expect((await session.surface(fork)).nodes).toEqual((await session.surface(source)).nodes);
+		expect((await session.visibleHistory(fork)).map((m) => m.text)).toEqual(["q1", "a1", "q2", "a2"]);
+		expect((await session.deriveMessages(fork)).map((m) => m.role)).toEqual((await session.deriveMessages(source)).map((m) => m.role));
+	});
 });

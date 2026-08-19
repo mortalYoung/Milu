@@ -15,8 +15,6 @@ export interface Entry {
 	text: string;
 	time?: string;
 	error?: boolean;
-	/** id of the persisted pi entry (carried by agent messages; used to locate the trajectory segment on click). */
-	piId?: string;
 }
 
 export const SEPARATOR_GAP_MS = 5 * 60 * 1000;
@@ -26,12 +24,12 @@ const pad = (n: number) => String(n).padStart(2, "0");
 /** Full date-time format: 2026-08-13 10:22:27 */
 const fmtDateTime = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 
-export function makeUserEntry(text: string, time = Date.now(), piId?: string): Entry {
-	return { id: nextId++, kind: "user", text, time: fmtDateTime(new Date(time)), piId };
+export function makeUserEntry(text: string, time = Date.now()): Entry {
+	return { id: nextId++, kind: "user", text, time: fmtDateTime(new Date(time)) };
 }
 
-export function makeAgentEntry(text: string, time = Date.now(), piId?: string): Entry {
-	return { id: nextId++, kind: "agent", text, time: fmtDateTime(new Date(time)), piId };
+export function makeAgentEntry(text: string, time = Date.now()): Entry {
+	return { id: nextId++, kind: "agent", text, time: fmtDateTime(new Date(time)) };
 }
 
 export function makeSysEntry(text: string, error = false): Entry {
@@ -62,41 +60,14 @@ export function Transcript(props: {
 	working: Accessor<boolean>;
 	tick: Accessor<number>;
 	worker?: string;
-	onViewTrajectory?: (piId: string) => void;
 	/** Outline locate target: the matching bubble briefly flashes seal-soft. */
 	locateFlashId?: Accessor<number | null>;
-	/** The agent message currently visible in the viewport (pi id), reported for trajectory linkage. */
-	onVisibleReply?: (piId: string | null) => void;
 }) {
 	let container: HTMLElement | undefined;
 
 	createEffect(() => {
 		props.tick(); // push, history, turn, end — all bump it
 		container && (container.scrollTop = container.scrollHeight);
-	});
-
-	// Trajectory linkage: report the agent message currently in the viewport (center band)
-	createEffect(() => {
-		const root = container;
-		if (!props.onVisibleReply || !root) return;
-		props.entries().length; // re-observe when entries change
-		const targets = Array.from(root.querySelectorAll<HTMLElement>(".msg-letter[data-pi]"));
-		if (targets.length === 0) {
-			props.onVisibleReply(null);
-			return;
-		}
-		const io = new IntersectionObserver(
-			(entries) => {
-				let best: IntersectionObserverEntry | null = null;
-				for (const en of entries) {
-					if (en.isIntersecting && (!best || en.intersectionRatio > best.intersectionRatio)) best = en;
-				}
-				props.onVisibleReply?.((best?.target as HTMLElement | undefined)?.dataset["pi"] ?? null);
-			},
-			{ root, rootMargin: "-30% 0px -55% 0px" },
-		);
-		targets.forEach((t) => io.observe(t));
-		return () => io.disconnect();
 	});
 
 	return (
@@ -124,14 +95,7 @@ export function Transcript(props: {
 										>
 											{e.text}
 										</Motion>
-										<span class="msg-user-time">
-											{timeHM(e.time)}
-											{e.piId && props.onViewTrajectory && (
-												<button class="msg-trajectory-link" title="View trajectory" onClick={() => props.onViewTrajectory?.(e.piId!)}>
-													Trajectory
-												</button>
-											)}
-										</span>
+										<span class="msg-user-time">{timeHM(e.time)}</span>
 									</>
 								);
 							}
@@ -142,7 +106,6 @@ export function Transcript(props: {
 										as="div"
 										class={"msg-letter" + (props.locateFlashId?.() === e.id ? " locate-flash" : "")}
 										id={"entry-" + e.id}
-										data-pi={e.piId}
 										initial={{ opacity: 0, scale: 0.96, rotate: 0.4 }}
 										animate={{ opacity: 1, scale: 1, rotate: 0 }}
 										transition={{ duration: 0.24, ease: [0.23, 1, 0.32, 1] }}
@@ -157,11 +120,6 @@ export function Transcript(props: {
 										{props.worker && (
 											<div class="msg-sign">
 												— {props.worker} · {timeHM(e.time)}
-												{e.piId && props.onViewTrajectory && (
-													<button class="msg-trajectory-link" title="View trajectory" onClick={() => props.onViewTrajectory?.(e.piId!)}>
-														Trajectory
-													</button>
-												)}
 											</div>
 										)}
 									</Motion>

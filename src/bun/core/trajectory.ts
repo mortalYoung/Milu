@@ -1,23 +1,22 @@
 /**
- * Trajectory folding: organize persisted pi entries (Entry[]) into TrajectoryRecord[].
+ * Trajectory folding: map persisted pi entries (Entry[]) onto TrajectoryRecord[].
  * Pure functions, no IO — clean inputs and outputs, easy to test.
  *
- * Rules:
- * - turns are counted by assistant messages (each LLM call = one turn);
- * - tool results are matched back to their turn's tool call by callId;
- * - tool calls still unpaired at the end (restart interruption/abort) → marked interrupted.
+ * The fold is total: every entry becomes exactly one record (message-shaped kinds
+ * normalized, everything else passed through verbatim), so the trajectory drawer
+ * shows the whole origin log. Only mechanical shaping happens here:
+ * - assistant content blocks travel raw (the view interprets thinking/text/toolCall);
+ * - tool results are their own records (a lost result is visible by absence);
+ * - turn counting: each assistant message is one turn; toolResult inherits the turn
+ *   of the assistant that called the tool.
  */
 import type { Entry } from "@earendil-works/pi-agent-core";
-import type { TrajectoryRecord, UsageTotals } from "../../shared/rpc";
+import type { TrajectoryBlock, TrajectoryRecord, TrajectoryUsage, UsageTotals } from "../../shared/rpc";
 
 /** Loose shape of an assistant message content block (thinking/text/toolCall). */
 interface ContentBlock {
 	type?: unknown;
-	thinking?: unknown;
 	text?: unknown;
-	id?: unknown;
-	name?: unknown;
-	arguments?: unknown;
 }
 
 /** Provider-reported token usage of one assistant turn (fields default to 0 when absent). */
@@ -36,16 +35,32 @@ interface RawUsage {
 	cacheRead?: number;
 	cacheWrite?: number;
 	totalTokens?: number;
+	reasoning?: number;
+	cost?: TrajectoryUsage["cost"];
 }
 
 /** Normalize a raw usage record to the stable four-field shape. */
-function toUsage(usage: RawUsage): Usage {
+function toUsage(raw: RawUsage): Usage {
 	return {
-		input: usage.input ?? 0,
-		output: usage.output ?? 0,
-		cacheRead: usage.cacheRead ?? 0,
-		cacheWrite: usage.cacheWrite ?? 0,
-		totalTokens: usage.totalTokens ?? 0,
+		input: raw.input ?? 0,
+		output: raw.output ?? 0,
+		cacheRead: raw.cacheRead ?? 0,
+		cacheWrite: raw.cacheWrite ?? 0,
+		totalTokens: raw.totalTokens ?? 0,
+	};
+}
+
+/** Normalize a raw usage record, retaining the provider extras (reasoning / cost). */
+function toTrajectoryUsage(raw: RawUsage | undefined): TrajectoryUsage | undefined {
+	if (!raw) return undefined;
+	return {
+		input: raw.input ?? 0,
+		output: raw.output ?? 0,
+		cacheRead: raw.cacheRead ?? 0,
+		cacheWrite: raw.cacheWrite ?? 0,
+		totalTokens: raw.totalTokens ?? 0,
+		...("reasoning" in raw ? { reasoning: raw.reasoning } : {}),
+		...("cost" in raw ? { cost: raw.cost } : {}),
 	};
 }
 
@@ -83,77 +98,77 @@ export function lastUsage(entries: Entry[]): Usage | null {
 	return last;
 }
 
+/** Fold the whole log: one record per entry, nothing dropped. */
 export function fold(entries: Entry[]): TrajectoryRecord[] {
 	const records: TrajectoryRecord[] = [];
-	// Placeholder for tool calls not yet paired within the current turn: callId → record index
-	const pendingToolCalls = new Map<string, number>();
 	let turn = 0;
-	let seq = 0;
-
 	for (const entry of entries) {
-		if (entry.type === "custom") {
-			if (entry.customType === "send_message") {
-				const data = (entry.data ?? {}) as { text?: unknown; timestamp?: unknown };
-				records.push({ kind: "message", seq: seq++, id: entry.id, text: String(data.text ?? ""), time: Number(data.timestamp ?? entry.timestamp ?? 0) });
-			} else if (entry.customType === "system_prompt") {
-				const data = (entry.data ?? {}) as { text?: unknown; timestamp?: unknown };
-				records.push({ kind: "system", seq: seq++, text: String(data.text ?? ""), time: Number(data.timestamp ?? entry.timestamp ?? 0) });
-			} else if (entry.customType === "system_reminder") {
-				const data = (entry.data ?? {}) as { text?: unknown; timestamp?: unknown };
-				records.push({ kind: "reminder", seq: seq++, text: String(data.text ?? ""), time: Number(data.timestamp ?? entry.timestamp ?? 0) });
-			}
-			continue;
-		}
-		if (entry.type !== "message") continue;
-		const msg = entry.message;
-		const time = msg.timestamp ?? entry.timestamp ?? 0;
-
-		if (msg.role === "user") {
-			records.push({ kind: "user", seq: seq++, id: entry.id, text: typeof msg.content === "string" ? msg.content : contentText(msg.content), time });
-		} else if (msg.role === "assistant") {
-			turn += 1;
-			const blocks = (msg.content as ContentBlock[]) ?? [];
-			const thinking = blocks.find((b) => b.type === "thinking")?.thinking;
-			const text = blocks.find((b) => b.type === "text")?.text;
-			const usage = msg.usage;
-			records.push({
-				kind: "assistant",
-				seq: seq++,
-				turn,
-				text: typeof text === "string" ? text : undefined,
-				thinking: typeof thinking === "string" ? thinking : undefined,
-				usage: usage ? toUsage(usage) : undefined,
-				time,
-			});
-			for (const block of blocks) {
-				if (block.type !== "toolCall") continue;
-				const tool: TrajectoryRecord = {
-					kind: "tool",
-					seq: seq++,
-					turn,
-					callId: String(block.id ?? ""),
-					name: String(block.name ?? ""),
-					args: stringifyArgs(block.arguments),
-					time,
-				};
-				pendingToolCalls.set(tool.callId, records.length);
-				records.push(tool);
-			}
-		} else if (msg.role === "toolResult") {
-			const target = pendingToolCalls.get(msg.toolCallId);
-			if (target !== undefined) {
-				pendingToolCalls.delete(msg.toolCallId);
-				const rec = records[target];
-				if (rec.kind === "tool") {
-					rec.result = { text: contentText(msg.content), isError: Boolean(msg.isError) };
+		const base = { seq: records.length, entryId: entry.id, time: entry.timestamp };
+		switch (entry.type) {
+			case "message": {
+				const m = entry.message;
+				if (m.role === "user") {
+					records.push({ ...base, kind: "user", content: typeof m.content === "string" ? m.content : contentText(m.content) });
+				} else if (m.role === "assistant") {
+					turn += 1;
+					records.push({
+						...base,
+						kind: "assistant",
+						turn,
+						blocks: (m.content as unknown as TrajectoryBlock[]) ?? [],
+						api: m.api,
+						provider: m.provider,
+						model: m.model,
+						responseModel: m.responseModel,
+						responseId: m.responseId,
+						usage: toTrajectoryUsage(m.usage),
+						stopReason: m.stopReason,
+						errorMessage: m.errorMessage,
+						rawStopReason: m.rawStopReason,
+					});
+				} else if (m.role === "toolResult") {
+					records.push({
+						...base,
+						kind: "toolResult",
+						turn,
+						toolCallId: m.toolCallId,
+						toolName: m.toolName,
+						content: contentText(m.content),
+						details: m.details,
+						usage: toTrajectoryUsage(m.usage),
+						addedToolNames: m.addedToolNames,
+						isError: Boolean(m.isError),
+					});
 				}
+				break;
 			}
+			case "model_change":
+				records.push({ ...base, kind: "modelChange", provider: entry.provider, modelId: entry.modelId });
+				break;
+			case "thinking_level_change":
+				records.push({ ...base, kind: "thinkingLevel", thinkingLevel: entry.thinkingLevel });
+				break;
+			case "active_tools_change":
+				records.push({ ...base, kind: "activeTools", activeToolNames: entry.activeToolNames });
+				break;
+			case "compaction":
+				records.push({
+					...base,
+					kind: "compaction",
+					summary: entry.summary,
+					retainedTailCount: entry.retainedTail.length,
+					tokensBefore: entry.tokensBefore,
+					details: entry.details,
+					usage: toTrajectoryUsage(entry.usage),
+				});
+				break;
+			case "branch_summary":
+				records.push({ ...base, kind: "branchSummary", fromId: entry.fromId, summary: entry.summary, details: entry.details, usage: toTrajectoryUsage(entry.usage) });
+				break;
+			case "custom":
+				records.push({ ...base, kind: "custom", customType: entry.customType, data: entry.data });
+				break;
 		}
-	}
-
-	for (const idx of pendingToolCalls.values()) {
-		const rec = records[idx];
-		if (rec.kind === "tool") rec.result = { text: "(interrupted)", isError: true };
 	}
 	return records;
 }
@@ -164,22 +179,11 @@ function contentText(content: unknown): string {
 	if (!Array.isArray(content)) return "";
 	return content
 		.map((b) => {
-			const block = b as { type?: unknown; text?: unknown } | null;
+			const block = b as ContentBlock | null;
 			if (!block) return "";
 			if (block.type === "text") return String(block.text ?? "");
 			if (block.type === "image") return "(image)";
 			return "";
 		})
 		.join("\n");
-}
-
-/** toolCall arguments: objects JSON-stringified as-is (indent 2), strings pass through unchanged. */
-function stringifyArgs(args: unknown): string {
-	if (typeof args === "string") return args;
-	if (args == null) return "";
-	try {
-		return JSON.stringify(args, null, 2);
-	} catch {
-		return String(args);
-	}
 }

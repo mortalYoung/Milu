@@ -1,18 +1,22 @@
 /**
  * Mini markdown → HTML renderer (safe subset).
- * Supports: headings (#/##/###), bold, inline code, fenced code blocks, unordered/ordered lists,
+ * Supports: headings (#/##/###), bold, italic, inline code, fenced code blocks, unordered/ordered lists,
  * quotes, links, pipe tables (including :---: alignment). HTML is escaped before any transformation,
  * so user content is never executed as tags.
  */
 
 const esc = (s: string): string => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-/** Inline transforms: escape → inline code → bold → links. */
+/** Inline transforms: escape → inline code → bold → italic → links. */
 function inline(s: string): string {
-	return esc(s)
-		.replace(/`([^`]+)`/g, "<code>$1</code>")
-		.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-		.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+	return (
+		esc(s)
+			.replace(/`([^`]+)`/g, "<code>$1</code>")
+			.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+			// single asterisks: *italic* (double-asterisk pairs were consumed above, so ** stays intact)
+			.replace(/\*([^*\n]+)\*/g, "<em>$1</em>")
+			.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
+	);
 }
 
 /** Pipe tables: strip the leading/trailing pipes, then split by | and trim. */

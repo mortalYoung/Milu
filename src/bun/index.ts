@@ -4,8 +4,9 @@ import { ApplicationMenu, BrowserView, BrowserWindow } from "electrobun/bun";
 import type { AppRPCSchema } from "../shared/rpc";
 import { createAgent, validateWorkspace } from "./core/agent";
 import { contextWindow } from "./core/agent-config";
-import { estimateBreakdown } from "./core/context-estimate";
+import { applyCompaction, type CompactionPlan, planCompaction } from "./core/compaction";
 import { createSessionStore } from "./core/session";
+import { priceSurface } from "./core/token-meter";
 import { aggregateUsage, fold, lastUsage } from "./core/trajectory";
 import { createPartner, deletePartner, listPartners, loadSettings, PartnerError, partnerDir, partnerRoot, saveSettings } from "./partners";
 import { TOOL_GUIDANCE } from "./tools";
@@ -52,7 +53,7 @@ const agent = createAgent(
 		onEnd: (error) => {
 			runningPartner = null;
 			rpc.send.agent_end({ error });
-			void drainQueued();
+			void drainQueued().finally(() => void maybeAutoCompact());
 		},
 	},
 	{ session },
@@ -73,7 +74,6 @@ async function applyPartnerSwitch(profile: { name: string; responsibilities?: st
 		const settings = await loadSettings();
 		currentPartner = { name: profile.name, dir: join(partnerRoot(settings), profile.name) };
 		await session.setRoot(currentPartner.dir);
-		const restored = await session.restoreMessages(currentPartner.dir);
 		agent.setPartner(profile);
 		// Storage: partner-scoped directory the agent may freely write to; must exist before the prompt mentions it
 		const storagePath = join(currentPartner.dir, "storage");
@@ -99,6 +99,10 @@ async function applyPartnerSwitch(profile: { name: string; responsibilities?: st
 			persistedPromptByRoot.set(currentPartner.dir, agent.systemPrompt);
 			await session.appendSystemPrompt(agent.systemPrompt, Date.now());
 		}
+		// Restore the model chain from the surface once compaction has rewritten it (replaceGeneration > 0);
+		// append-only sessions keep the buildSessionContext path (identical output, includes dangling-turn repair).
+		const surf = await session.surface(currentPartner.dir);
+		const restored = surf.replaceGeneration > 0 ? await session.deriveMessages(currentPartner.dir) : await session.restoreMessages(currentPartner.dir);
 		agent.restore(restored);
 	} else {
 		currentPartner = null;
@@ -124,6 +128,38 @@ async function drainQueued() {
 		pendingChats.shift();
 		runningPartner = next.partner;
 		await agent.chat(next.text);
+	}
+}
+
+/** Compaction threshold: auto-compact after a settled run when provider usage exceeds this fraction of the window. */
+const COMPACT_THRESHOLD = 0.7;
+
+/** Apply a compaction plan, sync the agent's in-memory chain to the compacted surface, and notify the view. */
+async function runCompaction(target: { dir: string }, plan: CompactionPlan): Promise<void> {
+	await applyCompaction(session, target.dir, plan);
+	agent.restore(await session.deriveMessages(target.dir));
+	rpc.send.trajectory_update({}); // invalidates the trajectory cache and refreshes the context meter
+}
+
+/** Auto-compact after a run settles: only when the agent is idle and usage crossed the threshold. */
+async function maybeAutoCompact(): Promise<void> {
+	if (agent.isStreaming) return;
+	const target = await effectivePartner();
+	if (!target) return;
+	const entries = await session.rawEntries(target.dir);
+	const usage = lastUsage(entries);
+	if (!usage) return;
+	const window = contextWindow();
+	const used = usage.input + usage.cacheRead + usage.cacheWrite;
+	if (used < window * COMPACT_THRESHOLD) return;
+	try {
+		const surface = await session.surface(target.dir);
+		const plan = planCompaction(entries, surface);
+		if (!plan) return;
+		await runCompaction(target, plan);
+		console.log(`auto-compacted ${plan.range.end - plan.range.start + 1} surface nodes`);
+	} catch (error) {
+		console.error("auto-compact failed:", error);
 	}
 }
 
@@ -166,12 +202,33 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 			},
 			// The bun-side ground truth: true while streaming or executing tools; the view calibrates idle rendering with it
 			get_status: () => ({ streaming: agent.isStreaming, workspace_path: agent.workspacePath, running_partner: runningPartner }),
+			// The model-visible surface (nodes + replace generation); observability for the surface layer
+			surface: async () => {
+				const target = await effectivePartner();
+				if (!target) return { nodes: [], replaceGeneration: 0 };
+				await session.ready();
+				return session.surface(target.dir);
+			},
+			// Manual compaction: rewrite the model-visible surface (the log stays append-only)
+			compact: async () => {
+				const target = await effectivePartner();
+				if (!target) return { ok: false, error: "no partner selected" };
+				if (agent.isStreaming) return { ok: false, error: "agent is running" };
+				await session.ready();
+				const entries = await session.rawEntries(target.dir);
+				const surface = await session.surface(target.dir);
+				const plan = planCompaction(entries, surface);
+				if (!plan) return { ok: true, compacted: 0 };
+				await runCompaction(target, plan);
+				return { ok: true, compacted: plan.range.end - plan.range.start + 1 };
+			},
 			// Context occupancy for the composer meter: used = last turn's provider-reported prompt size
 			// (input + cacheRead + cacheWrite, no output), window = the routed model's contextWindow.
-			// breakdown is the heuristic composition (4 chars ≈ 1 token), always labeled `~` in the UI.
+			// breakdown is the surface-priced composition (4 chars ≈ 1 token), always labeled `~` in the UI.
 			context_usage: async () => {
 				const target = await effectivePartner();
 				const entries = target ? await session.rawEntries(target.dir) : [];
+				const surface = target ? await session.surface(target.dir) : { nodes: [], replaceGeneration: 0 };
 				const usage = lastUsage(entries);
 				const used = usage ? usage.input + usage.cacheRead + usage.cacheWrite : 0;
 				const window = contextWindow();
@@ -180,7 +237,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					used,
 					window,
 					percent,
-					breakdown: currentPartner ? estimateBreakdown(agent.systemPrompt, TOOL_GUIDANCE, entries) : null,
+					breakdown: currentPartner ? priceSurface(agent.systemPrompt, TOOL_GUIDANCE, entries, surface) : null,
 					lastTurn: usage ?? undefined,
 				};
 			},

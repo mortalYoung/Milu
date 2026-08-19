@@ -1,37 +1,98 @@
 import type { ElectrobunRPCSchema } from "electrobun";
+import type { SurfaceNode } from "./surface";
 
 /**
- * Trajectory records: an expanded view of the agent run (thinking / tool calls / results / token usage).
- * Folded on the bun side from persisted pi entries; the chat page only shows user/send_message,
- * the trajectory dialog shows everything. kind:
- * - user / message: visible message (carries the pi entry id, the view locates its trajectory segment by it);
- * - assistant: one LLM call (a turn), with thinking and usage;
- * - tool: one tool call; a missing result = interrupted.
+ * Trajectory records: the complete origin-log timeline, one record per pi log entry.
+ * Folded on the bun side from persisted pi entries; the trajectory drawer renders
+ * every kind. Nothing is dropped at fold time: message blocks, usage, structural
+ * entries (model_change / thinking_level_change / active_tools_change / compaction /
+ * branch_summary) and every custom entry travel to the view verbatim.
  */
+/** Common fields of every trajectory record (mirrors the pi Entry base). */
+export interface TrajectoryBase {
+	/** Position in log order. */
+	seq: number;
+	/** The pi entry id (reconstructable from the log). */
+	entryId: string;
+	/** Entry timestamp, ms since epoch. */
+	time: number;
+}
+
+/** Token usage as reported by the provider (all pi usage fields retained). */
+export interface TrajectoryUsage {
+	input: number;
+	output: number;
+	cacheRead: number;
+	cacheWrite: number;
+	totalTokens: number;
+	reasoning?: number;
+	cost?: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number };
+}
+
+/**
+ * One assistant content block (thinking / text / toolCall / image …), raw from the log.
+ * Known fields are declared for the view; anything else stays reachable via the index signature.
+ */
+export interface TrajectoryBlock {
+	type: string;
+	/** thinking block payload. */
+	thinking?: unknown;
+	/** text block payload. */
+	text?: unknown;
+	/** toolCall block fields. */
+	id?: unknown;
+	name?: unknown;
+	arguments?: unknown;
+	/** thinking block: safety-redaction flag + opaque signature. */
+	redacted?: unknown;
+	thoughtSignature?: unknown;
+	[key: string]: unknown;
+}
+
 export type TrajectoryRecord =
-	| { kind: "user"; seq: number; id: string; text: string; time: number }
-	| { kind: "message"; seq: number; id: string; text: string; time: number }
-	| {
+	| (TrajectoryBase & { kind: "user"; content: string })
+	| (TrajectoryBase & {
 			kind: "assistant";
-			seq: number;
+			/** One LLM call (a turn). */
 			turn: number;
-			text?: string;
-			thinking?: string;
-			usage?: { input: number; output: number; cacheRead: number; cacheWrite: number; totalTokens: number };
-			time: number;
-	  }
-	| {
-			kind: "tool";
-			seq: number;
+			/** All content blocks, verbatim: thinking, text, toolCall, image. */
+			blocks: TrajectoryBlock[];
+			api: string;
+			provider: string;
+			model: string;
+			responseModel?: string;
+			responseId?: string;
+			usage?: TrajectoryUsage;
+			stopReason: string;
+			errorMessage?: string;
+			rawStopReason?: string;
+	  })
+	| (TrajectoryBase & {
+			kind: "toolResult";
+			/** The turn whose assistant called the tool. */
 			turn: number;
-			callId: string;
-			name: string;
-			args: string;
-			result?: { text: string; isError: boolean };
-			time: number;
-	  }
-	| { kind: "system"; seq: number; text: string; time: number }
-	| { kind: "reminder"; seq: number; text: string; time: number };
+			toolCallId: string;
+			toolName: string;
+			content: string;
+			details?: unknown;
+			usage?: TrajectoryUsage;
+			addedToolNames?: string[];
+			isError: boolean;
+	  })
+	| (TrajectoryBase & { kind: "modelChange"; provider: string; modelId: string })
+	| (TrajectoryBase & { kind: "thinkingLevel"; thinkingLevel: string })
+	| (TrajectoryBase & { kind: "activeTools"; activeToolNames: string[] })
+	| (TrajectoryBase & {
+			kind: "compaction";
+			summary: string;
+			/** Count of the retained tail messages (their full text lives in the log's message entries). */
+			retainedTailCount: number;
+			tokensBefore: number;
+			details?: unknown;
+			usage?: TrajectoryUsage;
+	  })
+	| (TrajectoryBase & { kind: "branchSummary"; fromId: string; summary: string; details?: unknown; usage?: TrajectoryUsage })
+	| (TrajectoryBase & { kind: "custom"; customType: string; data?: unknown });
 
 /**
  * Whole-conversation usage totals (see stats): summed across every persisted assistant turn.
@@ -135,6 +196,16 @@ export type AppRPCSchema = __schema<{
 			trajectory: {
 				params: {};
 				response: { records: TrajectoryRecord[] };
+			};
+			/** The model-visible surface (nodes + replace generation) — observability for the surface layer. */
+			surface: {
+				params: {};
+				response: { nodes: SurfaceNode[]; replaceGeneration: number };
+			};
+			/** Manually run compaction: rewrite the model-visible surface (the log stays append-only). */
+			compact: {
+				params: {};
+				response: { ok: boolean; error?: string; compacted?: number };
 			};
 			/** Settings (partner profile path etc.) + runtime info (model / API key status). */
 			get_settings: {

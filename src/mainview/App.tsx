@@ -41,11 +41,9 @@ export function App() {
 	const [settingsOpen, setSettingsOpen] = createSignal(false);
 	// Partner details dialog (shared by the list menu / header click)
 	const [detailsPartner, setDetailsPartner] = createSignal<PartnerItem | null>(null);
-	// Trajectory drawer (density strip): whole-conversation view, linked to the chat
+	// Trajectory drawer (density strip): whole-log view, opened from the header
 	const [trajectoryOpen, setTrajectoryOpen] = createSignal(false);
 	const [trajectoryRecords, setTrajectoryRecords] = createSignal<TrajectoryRecord[]>([]);
-	const [focusMessageId, setFocusMessageId] = createSignal<string | null>(null);
-	const [visibleReplyId, setVisibleReplyId] = createSignal<string | null>(null);
 	const [workspacePath, setWorkspacePath] = createSignal<string | null>(null);
 	const [contextUsage, setContextUsage] = createSignal<ContextUsage | null>(null);
 	const [stats, setStats] = createSignal<SessionStats | null>(null);
@@ -104,7 +102,7 @@ export function App() {
 		for (const item of fresh) {
 			renderedIds.add(item.id);
 			maybeTimeSeparator(new Date(item.time));
-			push(item.kind === "user" ? makeUserEntry(item.text, item.time, item.id) : makeAgentEntry(item.text, item.time, item.id));
+			push(item.kind === "user" ? makeUserEntry(item.text, item.time) : makeAgentEntry(item.text, item.time));
 		}
 	}
 
@@ -118,7 +116,7 @@ export function App() {
 		}
 		return trajectoryCache;
 	}
-	// Locate flash: the target bubble briefly flashes seal-soft (shared by the trajectory drawer)
+	// Locate flash: the target bubble briefly flashes seal-soft (replies outline locate)
 	const [flashId, setFlashId] = createSignal<number | null>(null);
 	let flashTimer: ReturnType<typeof setTimeout> | undefined;
 	const onFlash = (id: number) => {
@@ -126,21 +124,10 @@ export function App() {
 		clearTimeout(flashTimer);
 		flashTimer = setTimeout(() => setFlashId(null), 1200);
 	};
-	// Scroll the chat to a message by its pi id (the drawer links turns to chat bubbles)
-	function locateByPi(piId: string) {
-		const entry = entries().find((e) => e.piId === piId);
-		if (!entry) return;
-		document.getElementById("entry-" + entry.id)?.scrollIntoView({ behavior: "smooth", block: "start" });
-		onFlash(entry.id);
-	}
-	// Open the drawer; a message link additionally focuses that turn and scrolls to it
-	async function onViewTrajectory(piId?: string) {
+	// Open the drawer (the whole log renders inside; no chat linkage)
+	async function onViewTrajectory() {
 		const records = await ensureTrajectory();
 		setTrajectoryRecords(records);
-		if (piId) {
-			setFocusMessageId(piId);
-			locateByPi(piId);
-		}
 		setTrajectoryOpen(true);
 	}
 
@@ -315,7 +302,6 @@ export function App() {
 					onViewTrajectory={onViewTrajectory}
 					flashId={flashId}
 					onFlash={onFlash}
-					onVisibleReply={setVisibleReplyId}
 					workspacePath={workspacePath()}
 					contextUsage={contextUsage()}
 					stats={stats()}
@@ -348,15 +334,7 @@ export function App() {
 
 			<PartnerDetailsDialog partner={detailsPartner()} onOpenChange={(open) => !open && setDetailsPartner(null)} />
 
-			<TrajectoryDrawer
-				open={trajectoryOpen()}
-				onOpenChange={setTrajectoryOpen}
-				records={trajectoryRecords()}
-				onLocate={locateByPi}
-				visibleReplyId={visibleReplyId}
-				focusMessageId={focusMessageId}
-				onFocusConsumed={() => setFocusMessageId(null)}
-			/>
+			<TrajectoryDrawer open={trajectoryOpen()} onOpenChange={setTrajectoryOpen} records={trajectoryRecords()} />
 		</div>
 	);
 }

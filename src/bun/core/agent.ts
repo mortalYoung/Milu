@@ -18,7 +18,6 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { SessionStats } from "../../shared/rpc";
 import { createTools } from "../tools";
 import { convertToLlm, resolveModel, STREAM_FN } from "./agent-config";
-import { PROJECT_ROOT } from "./config";
 import { AgentContext, appendSystemReminder } from "./context";
 import type { PartnerPrompt } from "./prompt";
 import type { SessionStore } from "./session";
@@ -236,6 +235,15 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		switch (event.type) {
 			case "turn_start":
 				bridge.onTurnStart(ctx.beginTurn());
+				// Record the request header (system prompt + resolved tool names) so every model
+				// request is reconstructable from the log (invariant 1: model-visible ⟺ logged).
+				void deps.session
+					.appendRequestHeader(
+						agent.state.systemPrompt,
+						agent.state.tools.map((t) => t.name),
+						Date.now(),
+					)
+					.catch((error) => console.error("session appendRequestHeader failed:", error));
 				// Sampling window: the turn is one LLM call; its start is the closest event to the request being sent
 				turnStartAt = performance.now();
 				firstDeltaAt = 0;
@@ -306,7 +314,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		// The default workspace path is included so the model can establish it without running pwd first.
 		const opening =
 			"Your workflow: (1) determine the task's working directory — usually the project root of the code or project the user is asking about; if the workspace is not set yet, call `set_workspace` with its absolute path as the first tool call, before other tools. (2) decide whether this task needs tool calls — if it does, call `send_message` in the same turn (in parallel with the first tool call) to give the user brief feedback; if it does not, skip the opening message. (3) Then execute the task.\n" +
-			`Current workspace: ${ctx.workspace_path ?? `unset (defaults to ${PROJECT_ROOT})`}.\n` +
+			`Current workspace: ${ctx.workspace_path ?? `unset`}.\n` +
 			`Current storage: ${ctx.storage_path ?? "unset"}.`;
 		persistReminder(opening);
 		appendSystemReminder(agent.state.messages, opening);

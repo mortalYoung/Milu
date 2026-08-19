@@ -45,4 +45,19 @@ describe("renderMarkdown pipe tables", () => {
 		const html = renderMarkdown("| A | B |\n| --- | --- |\n| 1 |");
 		expect(html).toContain("<tr><td>1</td></tr>");
 	});
+
+	test("single-asterisk italic renders as <em>, bold stays intact", () => {
+		const html = renderMarkdown("a *note* for you");
+		expect(html).toContain("<em>note</em>");
+		const both = renderMarkdown("**bold** and *italic*");
+		expect(both).toContain("<strong>bold</strong>");
+		expect(both).toContain("<em>italic</em>");
+		// double asterisks are not split by the italic rule
+		expect(both).not.toContain("<em>*bold");
+	});
+
+	test("italic inside table cells and Chinese text", () => {
+		const table = renderMarkdown("| K |\n| --- |\n| *小信息* |");
+		expect(table).toContain("<td><em>小信息</em></td>");
+	});
 });
