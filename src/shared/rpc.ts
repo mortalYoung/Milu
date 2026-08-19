@@ -90,7 +90,7 @@ export type AppRPCSchema = __schema<{
 			/** Fetch agent status (view calibrates idle/working; fallback when a push was lost). */
 			get_status: {
 				params: {};
-				response: { streaming: boolean; workspace_path: string | null; workspace_default: string; running_partner: string | null };
+				response: { streaming: boolean; workspace_path: string | null; running_partner: string | null };
 			};
 			/** Context occupancy (used/window/percent + heuristic breakdown) for the composer meter. */
 			context_usage: {
@@ -114,11 +114,22 @@ export type AppRPCSchema = __schema<{
 				params: { settings: { partner_profile_path: string } };
 				response: { ok: boolean };
 			};
-			/** Partner list (by creation time). */
+			/** Partner list (by creation time), each with the last visible message for its list-row preview. */
 			list_partners: {
 				params: {};
 				response: {
-					partners: { name: string; responsibilities?: string; tones?: string; createdAt: number }[];
+					partners: {
+						name: string;
+						responsibilities?: string;
+						tones?: string;
+						createdAt: number;
+						/** Last visible message text (null when the chat is empty). */
+						lastMessage?: string;
+						/** Timestamp of the last visible message (null when the chat is empty). */
+						lastMessageAt?: number;
+						/** Who sent the last message — "user" (you) or "send_message" (the partner's reply). */
+						lastMessageKind?: "user" | "send_message";
+					}[];
 				};
 			};
 			/** Create a Partner: validate name → <root>/<name>/profile.json. */

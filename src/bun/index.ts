@@ -4,11 +4,10 @@ import { ApplicationMenu, BrowserView, BrowserWindow } from "electrobun/bun";
 import type { AppRPCSchema } from "../shared/rpc";
 import { createAgent, validateWorkspace } from "./core/agent";
 import { contextWindow } from "./core/agent-config";
-import { PROJECT_ROOT } from "./core/config";
 import { estimateBreakdown } from "./core/context-estimate";
 import { createSessionStore } from "./core/session";
 import { fold, lastUsage } from "./core/trajectory";
-import { createPartner, deletePartner, listPartners, loadSettings, PartnerError, partnerRoot, saveSettings } from "./partners";
+import { createPartner, deletePartner, listPartners, loadSettings, PartnerError, partnerDir, partnerRoot, saveSettings } from "./partners";
 import { TOOL_GUIDANCE } from "./tools";
 
 // Session persistence: isolated per Partner directory; chatting is disabled while no Partner is selected
@@ -80,16 +79,20 @@ async function applyPartnerSwitch(profile: { name: string; responsibilities?: st
 		const storagePath = join(currentPartner.dir, "storage");
 		await mkdir(storagePath, { recursive: true });
 		agent.setStoragePath(storagePath);
-		// Restore the persisted workspace (per-partner): re-validated so a deleted directory is not restored
+		// Restore the persisted workspace (per-partner): re-validated so a deleted directory is not restored.
+		// Always applied (null when this partner has none) — otherwise the previous partner's workspace
+		// would leak into this one after a switch.
+		let workspace: string | null = null;
 		try {
 			const raw = await readFile(workspaceFilePath(currentPartner.dir), "utf8");
 			const saved = JSON.parse(raw) as { path?: unknown };
 			if (typeof saved.path === "string" && validateWorkspace(saved.path, { current: null, storagePath }) === null) {
-				agent.setWorkspace(saved.path);
+				workspace = saved.path;
 			}
 		} catch {
 			// no persisted workspace for this partner
 		}
+		agent.setWorkspace(workspace);
 		// Persist the rebuilt prompt so the trajectory view can show it — per root, and only when it
 		// actually changed; repeated partner switches would otherwise pile up identical system entries
 		if (persistedPromptByRoot.get(currentPartner.dir) !== agent.systemPrompt) {
@@ -162,7 +165,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				return { items: await session.visibleHistory(target.dir) };
 			},
 			// The bun-side ground truth: true while streaming or executing tools; the view calibrates idle rendering with it
-			get_status: () => ({ streaming: agent.isStreaming, workspace_path: agent.workspacePath, workspace_default: PROJECT_ROOT, running_partner: runningPartner }),
+			get_status: () => ({ streaming: agent.isStreaming, workspace_path: agent.workspacePath, running_partner: runningPartner }),
 			// Context occupancy for the composer meter: used = last turn's provider-reported prompt size
 			// (input + cacheRead + cacheWrite, no output), window = the routed model's contextWindow.
 			// breakdown is the heuristic composition (4 chars ≈ 1 token), always labeled `~` in the UI.
@@ -200,7 +203,16 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 			},
 			list_partners: async () => {
 				const settings = await loadSettings();
-				return { partners: await listPartners(settings) };
+				const profiles = await listPartners(settings);
+				// Each row shows the partner's last visible message; read it per partner dir so the
+				// list preview stays current even for chats that are not selected (isolation by dir).
+				const partners = await Promise.all(
+					profiles.map(async (profile) => {
+						const last = await session.lastMessage(partnerDir(settings, profile.name));
+						return last ? { ...profile, lastMessage: last.text, lastMessageAt: last.time, lastMessageKind: last.kind } : profile;
+					}),
+				);
+				return { partners };
 			},
 			create_partner: async (input) => {
 				try {

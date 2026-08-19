@@ -141,6 +141,33 @@ describe("session store (pi JSONL backend)", () => {
 		expect((await session.rawEntries(dirB)).length).toBe(2);
 	});
 
+	it("lastMessage returns the last visible message (user or send_message), null when empty", async () => {
+		const dir = await tempDir();
+		const session = createSessionStore(dir);
+		expect(await session.lastMessage()).toBeNull();
+
+		await session.appendUser("hi", 1);
+		expect(await session.lastMessage()).toMatchObject({ kind: "user", text: "hi", time: 1 });
+
+		// Thinking/tool entries in between never become the preview; the reply does
+		await session.appendAssistant(
+			{
+				blocks: [
+					{ type: "thinking", thinking: "..." },
+					{ type: "toolCall", id: "t1", name: "bash", arguments: { command: "ls" } },
+				],
+				toolResults: [{ role: "toolResult", toolCallId: "t1", toolName: "bash", content: [{ type: "text", text: "out" }], isError: false, timestamp: 2 }],
+			},
+			2,
+		);
+		await session.appendSendMessage("done", {}, 3);
+		expect(await session.lastMessage()).toMatchObject({ kind: "send_message", text: "done", time: 3 });
+
+		// Per-dir isolation: a different root's last message is independent
+		const dirB = await tempDir();
+		expect(await session.lastMessage(dirB)).toBeNull();
+	});
+
 	it("single session semantics: second store continues the same conversation", async () => {
 		const dir = await tempDir();
 		const first = createSessionStore(dir);

@@ -2,13 +2,14 @@
  * ConversationPage — the chat page: Partner list on the left (from the config directory) + chat window on the right.
  * The header title follows the selected Partner.
  */
-import { PanelLeftClose, PanelLeftOpen } from "lucide-solid";
-import { type Accessor } from "solid-js";
+import { ListTree, PanelLeftClose, PanelLeftOpen } from "lucide-solid";
+import { type Accessor, createSignal } from "solid-js";
 import { AnimatePresence, Motion } from "solid-motion";
 import type { ContextUsage } from "../../shared/rpc";
 import { Button } from "../components/Button";
 import { Composer } from "../components/Composer";
 import { ConversationList, type PartnerItem } from "../components/ConversationList";
+import { RepliesPane } from "../components/RepliesPane";
 import { type Entry, Transcript } from "../layouts/Transcript";
 
 export function ConversationPage(props: {
@@ -29,12 +30,12 @@ export function ConversationPage(props: {
 	onViewTrajectory?: (piId: string) => void;
 	/** Locate flash (shared with the trajectory drawer): the target bubble briefly flashes seal-soft. */
 	flashId: Accessor<number | null>;
+	/** Flash a transcript bubble by entry id (replies pane locate, trajectory locate). */
+	onFlash: (id: number) => void;
 	/** The agent message currently visible in the chat (pi id) — drives the trajectory drawer highlight. */
 	onVisibleReply?: (piId: string | null) => void;
-	/** The current workspace (shown near the input, read-only). */
+	/** The current workspace (shown near the input, read-only; hidden until set_workspace). */
 	workspacePath: string | null;
-	/** Default workspace (project root) shown when the agent has not set one yet. */
-	workspaceDefault: string;
 	/** Context occupancy for the composer meter (null before the first turn). */
 	contextUsage: ContextUsage | null;
 	/** Per-partner writing state (true for the row whose partner owns the running run). */
@@ -43,6 +44,9 @@ export function ConversationPage(props: {
 	draft: string;
 	onDraftChange: (text: string) => void;
 }) {
+	// Replies outline: hidden by default; the header outline icon toggles it
+	const [outlineOpen, setOutlineOpen] = createSignal(false);
+
 	return (
 		<div class="chat-page">
 			<AnimatePresence>
@@ -84,6 +88,18 @@ export function ConversationPage(props: {
 							</span>
 						)}
 					</div>
+					{/* Outline toggle: header right side, mirror of the list toggle.
+					   Plain button (not the Button component) — same pattern as the AppRail
+					   rail tabs, which are proven clickable inside the drag-region header. */}
+					<button
+						type="button"
+						class="outline-toggle size-8 rounded-full border-0 electrobun-webkit-app-region-no-drag flex items-center justify-center text-ink hover:bg-paper-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+						title={outlineOpen() ? "Hide outline" : "Show outline"}
+						aria-label="Toggle replies outline"
+						onClick={() => setOutlineOpen((v) => !v)}
+					>
+						<ListTree size={16} />
+					</button>
 				</div>
 				{props.selected ? (
 					<>
@@ -101,7 +117,6 @@ export function ConversationPage(props: {
 							onSend={props.onSend}
 							onStop={props.onStop}
 							workspace={props.workspacePath}
-							workspaceDefault={props.workspaceDefault}
 							contextUsage={props.contextUsage}
 							draft={props.draft}
 							onDraftChange={props.onDraftChange}
@@ -114,6 +129,9 @@ export function ConversationPage(props: {
 					</div>
 				)}
 			</div>
+
+			{/* Replies outline: floating index, hidden by default; the header outline icon toggles it */}
+			<RepliesPane open={outlineOpen()} entries={props.entries} onFlash={props.onFlash} />
 		</div>
 	);
 }

@@ -66,6 +66,8 @@ export interface SessionStore {
 	appendReminder(text: string, timestamp: number): Promise<void>;
 	/** Records visible to the frontend (user + send_message), in session order; active root unless a dir is given. */
 	visibleHistory(dir?: string): Promise<VisibleItem[]>;
+	/** The last visible message (user or send_message), or null for an empty session; active root unless a dir is given. */
+	lastMessage(dir?: string): Promise<VisibleItem | null>;
 	/** The full conversation chain (for agent context restore); active root unless a dir is given. */
 	restoreMessages(dir?: string): Promise<AgentMessage[]>;
 	/** Raw pi entries (for trajectory folding; thinking/tool content still never enters visibleHistory); active root unless a dir is given. */
@@ -202,6 +204,22 @@ export function createSessionStore(root: string = DATABASE_ROOT): SessionStore {
 				}
 				return [];
 			});
+		},
+		async lastMessage(dir) {
+			const state = await stateFor(dir);
+			// Entries are in session order; take the last visible one without materializing the whole history
+			let last: VisibleItem | null = null;
+			for (const entry of state.entries) {
+				if (entry.type === "message" && entry.message.role === "user") {
+					const content = entry.message.content;
+					last = { id: entry.id, kind: "user", text: typeof content === "string" ? content : "", time: entry.message.timestamp ?? 0 };
+				} else if (entry.type === "custom" && entry.customType === "send_message") {
+					const data = entry.data as { text: string; timestamp: number } | undefined;
+					if (!data) continue;
+					last = { id: entry.id, kind: "send_message", text: data.text, time: data.timestamp };
+				}
+			}
+			return last;
 		},
 		async restoreMessages(dir) {
 			const state = await stateFor(dir);

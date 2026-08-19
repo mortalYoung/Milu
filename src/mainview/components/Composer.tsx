@@ -20,8 +20,8 @@ export function Composer(props: {
 	busy: () => boolean;
 	onSend: (text: string) => void;
 	onStop: () => void;
+	/** The workspace set via set_workspace; hidden until then (unset = not needed / not yet set). */
 	workspace?: string | null;
-	workspaceDefault?: string;
 	contextUsage?: ContextUsage | null;
 	/** The selected chat's saved draft (cleared + restored across chat switches, owned by the App). */
 	draft: string;
@@ -73,15 +73,16 @@ export function Composer(props: {
 
 	const showSend = () => text().trim() !== "" || props.busy();
 
-	// The chip always shows: the current workspace when set, otherwise the default (project root).
-	const workspaceLabel = () => props.workspace ?? props.workspaceDefault ?? "unset";
-
 	return (
 		<form class="composer" id="composer" onSubmit={submit}>
-			<span class="composer-workspace" title={workspaceLabel()}>
-				<Folder size={10} />
-				<span class="composer-workspace-path">{formatWorkspacePath(workspaceLabel())}</span>
-			</span>
+			{/* Workspace chip: only when the agent has set a workspace — unset means the conversation
+			    has no task directory (not started yet, or the task needs no paths). */}
+			{props.workspace && (
+				<span class="composer-workspace" title={props.workspace}>
+					<Folder size={10} />
+					<span class="composer-workspace-path">{formatWorkspacePath(props.workspace)}</span>
+				</span>
+			)}
 			<div class="composer-field">
 				<textarea
 					id="prompt-input"

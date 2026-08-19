@@ -15,6 +15,12 @@ export interface PartnerItem {
 	responsibilities?: string;
 	tones?: string;
 	createdAt: number;
+	/** Last visible message (chat-list preview); undefined when the chat is empty. */
+	lastMessage?: string;
+	/** Timestamp of the last visible message. */
+	lastMessageAt?: number;
+	/** Who sent the last message — "user" (you) or "send_message" (the partner's reply). */
+	lastMessageKind?: "user" | "send_message";
 }
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
@@ -27,6 +33,20 @@ function convTime(ts: number): string {
 		return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 	}
 	return `${MONTHS[d.getMonth()]} ${d.getDate()}`;
+}
+
+/** Single-line preview for a list row: collapse newlines/whitespace so the truncate ellipsis works. */
+function oneLine(text: string): string {
+	return text.replace(/\s+/g, " ").trim();
+}
+
+/** The row's preview: the last message when there is one (You: prefix for your own), else the profile note, else a placeholder. */
+function previewFor(partner: PartnerItem): string {
+	if (partner.lastMessage) {
+		const text = oneLine(partner.lastMessage);
+		return partner.lastMessageKind === "user" ? `You: ${text}` : text;
+	}
+	return partner.responsibilities?.split("\n").find((l) => l.trim()) ?? "";
 }
 
 function PartnerAvatar(props: { partner: PartnerItem; selected: boolean }) {
@@ -104,7 +124,7 @@ export function ConversationList(props: {
 						<span class="conv-main">
 							<span class="conv-name-row">
 								<span class="conv-name">{partner.name}</span>
-								<span class="conv-time">{convTime(partner.createdAt)}</span>
+								<span class="conv-time">{convTime(partner.lastMessageAt ?? partner.createdAt)}</span>
 							</span>
 							<span class="conv-preview">
 								{props.working(partner.name) ? (
@@ -114,7 +134,7 @@ export function ConversationList(props: {
 										<span class="work-dot" />
 									</span>
 								) : (
-									(partner.responsibilities?.split("\n").find((l) => l.trim()) ?? "") || "—"
+									previewFor(partner) || "—"
 								)}
 							</span>
 						</span>

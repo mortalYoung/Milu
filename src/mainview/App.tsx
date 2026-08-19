@@ -27,6 +27,12 @@ interface PartnerItem {
 	responsibilities?: string;
 	tones?: string;
 	createdAt: number;
+	/** Last visible message (chat-list preview); undefined when the chat is empty. */
+	lastMessage?: string;
+	/** Timestamp of the last visible message. */
+	lastMessageAt?: number;
+	/** Who sent the last message — "user" (you) or "send_message" (the partner's reply). */
+	lastMessageKind?: "user" | "send_message";
 }
 
 export function App() {
@@ -41,7 +47,6 @@ export function App() {
 	const [focusMessageId, setFocusMessageId] = createSignal<string | null>(null);
 	const [visibleReplyId, setVisibleReplyId] = createSignal<string | null>(null);
 	const [workspacePath, setWorkspacePath] = createSignal<string | null>(null);
-	const [workspaceDefault, setWorkspaceDefault] = createSignal<string>("");
 	const [contextUsage, setContextUsage] = createSignal<ContextUsage | null>(null);
 	const [entries, setEntries] = createSignal<Entry[]>([]);
 	// busy = whether the agent is running (streaming/tool execution), single source of truth; push events do increments, get_status calibrates
@@ -193,6 +198,8 @@ export function App() {
 		// send_message is persisted; both chat and trajectory may have new content
 		trajectoryCache = null;
 		void refreshHistory();
+		// …and the chat-list row preview (last message) may have changed
+		void refreshPartners();
 	});
 
 	rpc.addMessageListener("trajectory_update", () => {
@@ -217,7 +224,6 @@ export function App() {
 			setBusy(s.streaming);
 			setRunningPartner(s.running_partner);
 			setWorkspacePath(s.workspace_path);
-			setWorkspaceDefault(s.workspace_default);
 		});
 	}
 
@@ -227,7 +233,6 @@ export function App() {
 			setBusy(s.streaming);
 			setRunningPartner(s.running_partner);
 			setWorkspacePath(s.workspace_path);
-			setWorkspaceDefault(s.workspace_default);
 		});
 	});
 
@@ -310,9 +315,9 @@ export function App() {
 					onStop={() => void rpc.request.stop({})}
 					onViewTrajectory={onViewTrajectory}
 					flashId={flashId}
+					onFlash={onFlash}
 					onVisibleReply={setVisibleReplyId}
 					workspacePath={workspacePath()}
-					workspaceDefault={workspaceDefault()}
 					contextUsage={contextUsage()}
 					workingFor={workingFor}
 					draft={selected() ? (drafts()[selected()!] ?? "") : ""}
