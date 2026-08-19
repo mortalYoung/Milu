@@ -6,7 +6,7 @@
 
 import { Electroview } from "electrobun/view";
 import { createSignal } from "solid-js";
-import type { AppRPCSchema, ContextUsage, TrajectoryRecord } from "../shared/rpc";
+import type { AppRPCSchema, ContextUsage, SessionStats, TrajectoryRecord } from "../shared/rpc";
 import { AppRail } from "./components/AppRail";
 import { PartnerDetailsDialog } from "./components/PartnerDetailsDialog";
 import { type PartnerFormData, PartnerModal } from "./components/PartnerModal";
@@ -48,6 +48,7 @@ export function App() {
 	const [visibleReplyId, setVisibleReplyId] = createSignal<string | null>(null);
 	const [workspacePath, setWorkspacePath] = createSignal<string | null>(null);
 	const [contextUsage, setContextUsage] = createSignal<ContextUsage | null>(null);
+	const [stats, setStats] = createSignal<SessionStats | null>(null);
 	const [entries, setEntries] = createSignal<Entry[]>([]);
 	// busy = whether the agent is running (streaming/tool execution), single source of truth; push events do increments, get_status calibrates
 	const [busy, setBusy] = createSignal(false);
@@ -59,6 +60,8 @@ export function App() {
 	// Per-partner writing state for the list rows: the run's owner shows dots even when not selected
 	const workingFor = (name: string) => busy() && (runningPartner() === null ? selected() === name : runningPartner() === name);
 	const [queued, setQueued] = createSignal(0);
+	// A message to the selected chat is queued behind another partner's run (bun-side pendingChats)
+	const [queuedCross, setQueuedCross] = createSignal(false);
 	const [tick, setTick] = createSignal(0);
 	const [selected, setSelected] = createSignal<string | null>(null);
 	const [partners, setPartners] = createSignal<PartnerItem[]>([]);
@@ -211,6 +214,7 @@ export function App() {
 
 	rpc.addMessageListener("agent_end", ({ error: err }) => {
 		setQueued(0);
+		setQueuedCross(false);
 		if (err && runningPartner() === selected()) push(makeSysEntry(`ERR § ${err}`, true));
 		bump();
 		setRunningPartner(null);
@@ -236,10 +240,11 @@ export function App() {
 		});
 	});
 
-	// ————— context usage (composer meter) —————
+	// ————— context usage (composer meter) + session stats —————
 	async function refreshContextUsage() {
-		const usage = await rpc.request.context_usage({});
+		const [usage, s] = await Promise.all([rpc.request.context_usage({}), rpc.request.stats({})]);
 		setContextUsage(usage);
+		setStats(s);
 	}
 
 	// ————— user input —————
@@ -251,7 +256,10 @@ export function App() {
 		void rpc.request.chat({ text }).then((res) => {
 			// Cross-partner sends are queued on the bun side (another partner's run owns the agent);
 			// the message starts a fresh run once that run settles.
-			if (res.queued) push(makeSysEntry("✳ queued — starts after the current run settles"));
+			if (res.queued) {
+				setQueuedCross(true);
+				push(makeSysEntry("✳ queued — starts after the current run settles"));
+			}
 			if (res.accepted) clearDraft(selected()!);
 			refreshHistory();
 		});
@@ -274,15 +282,6 @@ export function App() {
 			return null;
 		}
 		return res.error ?? "Failed to create partner";
-	}
-
-	// Preview = the assembled four-section system prompt (identify/tool-guidance shown read-only in the result)
-	function onPreviewPrompt(data: PartnerFormData): Promise<string> {
-		return rpc.request
-			.preview_system_prompt({
-				profile: { responsibilities: data.responsibilities, tones: data.tones },
-			})
-			.then((res) => res.prompt);
 	}
 
 	// ————— mount —————
@@ -319,6 +318,8 @@ export function App() {
 					onVisibleReply={setVisibleReplyId}
 					workspacePath={workspacePath()}
 					contextUsage={contextUsage()}
+					stats={stats()}
+					queued={queuedCross()}
 					workingFor={workingFor}
 					draft={selected() ? (drafts()[selected()!] ?? "") : ""}
 					onDraftChange={onDraftChange}
@@ -343,7 +344,7 @@ export function App() {
 				</DialogContent>
 			</Dialog>
 
-			<PartnerModal open={showModal()} onOpenChange={setShowModal} onConfirm={onCreatePartner} onPreview={onPreviewPrompt} existingNames={partners().map((p) => p.name)} />
+			<PartnerModal open={showModal()} onOpenChange={setShowModal} onConfirm={onCreatePartner} existingNames={partners().map((p) => p.name)} />
 
 			<PartnerDetailsDialog partner={detailsPartner()} onOpenChange={(open) => !open && setDetailsPartner(null)} />
 

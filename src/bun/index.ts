@@ -6,7 +6,7 @@ import { createAgent, validateWorkspace } from "./core/agent";
 import { contextWindow } from "./core/agent-config";
 import { estimateBreakdown } from "./core/context-estimate";
 import { createSessionStore } from "./core/session";
-import { fold, lastUsage } from "./core/trajectory";
+import { aggregateUsage, fold, lastUsage } from "./core/trajectory";
 import { createPartner, deletePartner, listPartners, loadSettings, PartnerError, partnerDir, partnerRoot, saveSettings } from "./partners";
 import { TOOL_GUIDANCE } from "./tools";
 
@@ -187,6 +187,12 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 			trajectory: async () => {
 				const target = await effectivePartner();
 				return { records: target ? fold(await session.rawEntries(target.dir)) : [] };
+			},
+			// Session-wide metrics: persisted usage totals (per partner dir) + in-memory run timing
+			stats: async () => {
+				const target = await effectivePartner();
+				const usage = target ? aggregateUsage(await session.rawEntries(target.dir)) : null;
+				return { usage, runtime: agent.runtimeStats };
 			},
 			get_settings: async () => {
 				return {

@@ -133,6 +133,13 @@ body::before {
 	color: var(--color-muted);
 }
 
+/* Ruled paper: printed lines under the text, like a real letter sheet — writing sits on the lines */
+@utility letter-lines {
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='32'%3E%3Cline x1='0' y1='31' x2='120' y2='31' stroke='%23ddd6c6' stroke-opacity='0.65'/%3E%3C/svg%3E");
+	background-size: 100% 32px;
+	line-height: 32px;
+}
+
 @layer components {
 	/* ————— Left icon rail (paper surface; active = warm-ink solid) ————— */
 	.rail {
@@ -291,30 +298,76 @@ body::before {
 		text-decoration: underline;
 	}
 
-	/* ————— Master-detail navigation (create/details dialogs) ————— */
-	.field-btn {
-		@apply w-full flex flex-col items-start gap-1 px-3 py-2 rounded-[6px] text-left transition-colors cursor-pointer;
+	/* ————— Letter dialogs (direction C): add/read a partner like a letter —————
+	   The sheet is the letter itself, filling the dialog edge to edge. No drawn border —
+	   the paper reads against the desk by tone, with a faint grain (P-5: texture ≤ 3%). */
+	.letter-sheet {
+		@apply relative flex flex-col gap-3.5 px-8 pt-7 pb-9 bg-letter rounded-[8px] h-full;
+		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.042'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
 	}
-	.field-btn:hover {
-		background: var(--color-print-tint);
+	.letter-sheet ::selection {
+		background: var(--color-seal-soft);
 	}
-	.field-btn.active {
-		background: var(--color-print-tint);
+	/* Salutation: "Dear <alias>," — the alias is just a handle, written inline like a letter opening */
+	.letter-sal {
+		@apply font-serif text-[20px] font-semibold text-ink flex items-baseline gap-1 flex-wrap;
 	}
-	.field-dot-filled {
-		@apply size-1.5 rounded-full bg-[#111110] shrink-0;
+	.letter-alias {
+		@apply font-serif text-[20px] font-semibold bg-transparent border-0 border-b border-hairline rounded-none px-1 min-w-[110px] flex-1 max-w-[220px] focus:border-seal focus:outline-none;
+		caret-color: var(--color-seal);
 	}
-	.field-dot-empty {
-		@apply size-1.5 rounded-full border border-[#b0a89a] shrink-0;
+	.letter-alias::placeholder {
+		color: #cfc8b8;
 	}
-	.tab-pill {
-		@apply font-sans text-[11px] font-medium rounded-full px-2.5 py-1 transition-colors cursor-pointer;
+	.letter-alias-static {
+		@apply text-ink;
 	}
-	.tab-pill.active {
-		@apply bg-[#111110] text-white;
+	.letter-error {
+		@apply font-sans text-[12px] text-seal;
 	}
-	.tab-pill:not(.active) {
-		@apply text-[#757575] hover:bg-print-tint;
+	/* Postmark: the same dashed rubber stamp as the conversation letters (58px circle, -12°),
+	   stamped beside the salutation, clear of the dialog's close button (below its 40px zone) */
+	.letter-postmark {
+		@apply absolute right-5 top-[52px] size-[58px] rounded-full border border-dashed border-seal flex flex-col items-center justify-center font-sans text-[8.5px] uppercase tracking-[0.12em] text-seal leading-[1.6] text-center;
+		background: rgba(247, 243, 234, 0.55);
+		transform: rotate(-12deg);
+	}
+	/* Signature: right-aligned seal-red sign-off, mirroring the conversation letters */
+	.letter-sign {
+		@apply font-sans text-[12px] text-seal tracking-[0.03em] text-right mt-6;
+	}
+	/* Writing header: "new letter" above the salutation (a letter begins with its header) */
+	.letter-eyebrow {
+		@apply eyebrow text-muted;
+	}
+	/* Writing on ruled paper: no box, no chrome — just the lines, the caret and the words */
+	.letter-lines-input {
+		@apply letter-lines w-full resize-none bg-transparent border-0 rounded-none px-0 py-0 font-mono text-[13px] text-ink placeholder:text-muted outline-none focus-visible:outline-none;
+	}
+	/* Rendered content sits on the same ruled lines as writing */
+	.letter-lines .md {
+		line-height: 32px;
+	}
+	.letter-note {
+		@apply font-sans text-[10.5px] leading-relaxed text-muted;
+	}
+	.letter-ps-spacer {
+		@apply mt-5;
+	}
+	.letter-footer {
+		@apply flex items-center justify-end gap-2 border-t border-hairline pt-4 mt-1;
+	}
+	.letter-read {
+		@apply font-serif text-[15px] leading-[1.7] text-ink;
+	}
+	.letter-blank {
+		@apply font-serif text-[14px] text-muted;
+	}
+	.letter-ps {
+		@apply border-t border-hairline pt-3 mt-1 flex items-baseline gap-2;
+	}
+	.letter-ps-label {
+		@apply font-serif text-[15px] font-semibold text-ink shrink-0;
 	}
 
 	/* ————— Chat page ————— */
@@ -728,22 +781,40 @@ body::before {
 		height: 1px;
 		background: var(--color-hairline);
 	}
-	/* Input area: centered pill (60%, grows with content) */
+	/* Input area (direction D · workbench): bordered field, seal focus ring, meta folds in on focus */
 	.composer {
 		@apply shrink-0 min-h-[72px] border-t border-hairline flex flex-col items-center justify-center gap-1 px-6 py-2 bg-paper;
 	}
 	.composer-field {
-		@apply flex items-center gap-2 w-[60%] min-h-11 bg-letter border border-hairline rounded-[22px] px-[18px] pr-[5px] transition-colors focus-within:border-seal;
+		@apply flex items-center gap-2 w-[60%] min-h-11 bg-letter border border-hairline rounded-[10px] px-[14px] py-0 transition-colors focus-within:border-seal;
 	}
-	/* Workspace chip: read-only current working directory above the input */
+	/* Meta rows: workspace above the field, session stats below — always visible */
+	.composer-meta {
+		@apply flex items-center gap-2 w-[60%] font-mono text-[9px] text-muted;
+	}
+	/* Workspace chip: folder icon + path (unset = hidden entirely) */
 	.composer-workspace {
-		@apply inline-flex items-center gap-1 font-mono text-[9px] text-muted max-w-[60%];
+		@apply inline-flex items-center gap-1 min-w-0;
 	}
 	.composer-workspace-path {
 		@apply min-w-0 truncate;
 	}
+	/* Session metrics: whole-chat totals + averaged timing, a quiet footnote under the field */
+	.composer-stats {
+		@apply whitespace-nowrap text-muted/80;
+	}
+	/* Live status row: only when something is happening (writing / queued) */
+	.composer-status {
+		@apply flex items-center gap-1.5 w-[60%] font-mono text-[9px] text-muted;
+	}
+	.composer-status-dot {
+		@apply size-[5px] rounded-full;
+		background: var(--color-seal);
+		animation: work-dot 1.2s infinite;
+	}
 	.composer-input {
 		@apply flex-1 min-w-0 bg-transparent border-none outline-none font-sans text-[14px] leading-[20px] text-ink placeholder:text-muted resize-none py-[11px];
+		/* single line sits vertically centered (the field is items-center); grows from the top */
 		max-height: 120px;
 		overflow-y: auto;
 	}

@@ -15,6 +15,7 @@ import { statSync } from "node:fs";
 import { isAbsolute, resolve, sep } from "node:path";
 import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
+import type { SessionStats } from "../../shared/rpc";
 import { createTools } from "../tools";
 import { convertToLlm, resolveModel, STREAM_FN } from "./agent-config";
 import { PROJECT_ROOT } from "./config";
@@ -44,6 +45,8 @@ export interface AgentHandle {
 	readonly systemPrompt: string;
 	/** The current workspace (null until set_workspace); the view shows it near the input. */
 	readonly workspacePath: string | null;
+	/** In-memory run timing (TTFT / tok/s), averaged across every streamed LLM call this process made. */
+	readonly runtimeStats: SessionStats["runtime"];
 	/** Send a user message (resolves after persistence); queued as a follow-up while busy. */
 	chat: (text: string) => Promise<void>;
 	/** Abort the current run. */
@@ -88,8 +91,26 @@ export function validateWorkspace(workspace: string, state: { current: string | 
 	return null;
 }
 
+/**
+ * Per-LLM-call timing samples: TTFT (turn start → first text delta) and output speed
+ * (tokens per second between first and last delta). In-memory only — persisted usage
+ * totals come from the session (see aggregateUsage).
+ */
+interface RuntimeStats {
+	runs: number;
+	ttfts: number[];
+	speeds: number[];
+	lastTtft: number | null;
+}
+
 export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	const ctx = new AgentContext();
+
+	const runtime: RuntimeStats = { runs: 0, ttfts: [], speeds: [], lastTtft: null };
+	// Per-turn sampling state, reset on every turn_start
+	let turnStartAt = 0;
+	let firstDeltaAt = 0;
+	let lastDeltaAt = 0;
 
 	const agent = new Agent({
 		initialState: {
@@ -215,6 +236,17 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		switch (event.type) {
 			case "turn_start":
 				bridge.onTurnStart(ctx.beginTurn());
+				// Sampling window: the turn is one LLM call; its start is the closest event to the request being sent
+				turnStartAt = performance.now();
+				firstDeltaAt = 0;
+				lastDeltaAt = 0;
+				break;
+			case "message_update":
+				// First text token = TTFT; keep the last delta for the output speed window
+				if (event.assistantMessageEvent.type === "text_delta") {
+					if (firstDeltaAt === 0) firstDeltaAt = performance.now();
+					lastDeltaAt = performance.now();
+				}
 				break;
 			case "turn_end":
 				// Notify the trajectory only after persistence completes (fetches are always up to date, never half a turn)
@@ -222,6 +254,19 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 				ctx.endTurn();
 				notifyIfSilent();
 				enforceDelivery(event);
+				// Settle the sampling window (text-bearing turns only — tool-only turns have no speed to measure)
+				runtime.runs += 1;
+				if (firstDeltaAt > 0 && lastDeltaAt >= firstDeltaAt) {
+					const ttft = firstDeltaAt - turnStartAt;
+					const seconds = (lastDeltaAt - firstDeltaAt) / 1000;
+					if (seconds > 0) {
+						// pi maps the provider's completion_tokens to camelCase `output`
+						const output = (event.message as AssistantMessage).usage?.output ?? 0;
+						runtime.ttfts.push(ttft);
+						runtime.lastTtft = ttft;
+						runtime.speeds.push(output / seconds);
+					}
+				}
 				break;
 			case "agent_end":
 				ctx.setRunning(false);
@@ -288,6 +333,10 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		},
 		get workspacePath() {
 			return ctx.workspace_path;
+		},
+		get runtimeStats(): SessionStats["runtime"] {
+			const avg = (xs: number[]) => (xs.length > 0 ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
+			return { runs: runtime.runs, avgTtftMs: avg(runtime.ttfts), avgTps: avg(runtime.speeds), lastTtftMs: runtime.lastTtft };
 		},
 		async chat(text: string) {
 			if (text.trim() === "") return;

@@ -6,7 +6,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Entry } from "@earendil-works/pi-agent-core";
 import { segmentForMessage, trajectoryNodes } from "../../shared/trajectory";
-import { fold, lastUsage } from "../core/trajectory";
+import { aggregateUsage, fold, lastUsage } from "../core/trajectory";
 
 let counter = 1;
 function entry(partial: Record<string, unknown>): Entry {
@@ -28,6 +28,33 @@ function toolResultEntry(toolCallId: string, text: string, isError = false): Ent
 function sendMessageEntry(text: string): Entry {
 	return entry({ type: "custom", customType: "send_message", data: { text, timestamp: 1000 } });
 }
+
+describe("aggregateUsage whole-session totals", () => {
+	test("null when no assistant message carries usage", () => {
+		expect(aggregateUsage([userEntry("q"), assistantEntry([{ type: "text", text: "hi" }])])).toBeNull();
+	});
+
+	test("sums every assistant turn's usage", () => {
+		const entries = [
+			userEntry("q1"),
+			assistantEntry([{ type: "text", text: "a" }], { input: 100, output: 10, cacheRead: 200, cacheWrite: 5, totalTokens: 310 }),
+			userEntry("q2"),
+			assistantEntry([{ type: "text", text: "b" }], { input: 150, output: 20, cacheRead: 300, cacheWrite: 10, totalTokens: 480 }),
+		];
+		expect(aggregateUsage(entries)).toEqual({ messages: 2, input: 250, output: 30, cacheRead: 500, cacheWrite: 15 });
+	});
+
+	test("skips entries without usage and non-assistant messages", () => {
+		const entries = [
+			userEntry("q"),
+			assistantEntry([{ type: "text", text: "a" }]),
+			assistantEntry([{ type: "text", text: "b" }], { input: 10, output: 2, cacheRead: 30, cacheWrite: 0, totalTokens: 42 }),
+			toolResultEntry("t1", "out"),
+			sendMessageEntry("done"),
+		];
+		expect(aggregateUsage(entries)).toEqual({ messages: 1, input: 10, output: 2, cacheRead: 30, cacheWrite: 0 });
+	});
+});
 
 describe("lastUsage last-turn usage extraction", () => {
 	test("empty entries → null", () => {

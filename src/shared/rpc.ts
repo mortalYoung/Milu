@@ -34,6 +34,35 @@ export type TrajectoryRecord =
 	| { kind: "reminder"; seq: number; text: string; time: number };
 
 /**
+ * Whole-conversation usage totals (see stats): summed across every persisted assistant turn.
+ * input = cache-miss prompt tokens (DeepSeek splits prompt into hit + miss), so the cache hit
+ * rate is cacheRead / (input + cacheRead).
+ */
+export interface UsageTotals {
+	/** Number of assistant turns carrying usage. */
+	messages: number;
+	input: number;
+	output: number;
+	cacheRead: number;
+	cacheWrite: number;
+}
+
+/** Session-wide metrics for the composer line: persisted usage totals + in-memory run timing. */
+export interface SessionStats {
+	usage: UsageTotals | null;
+	runtime: {
+		/** LLM calls this process has streamed. */
+		runs: number;
+		/** Average time to first text token (text-bearing turns only), ms; null before any. */
+		avgTtftMs: number | null;
+		/** Average output tokens/sec while streaming; null before any. */
+		avgTps: number | null;
+		/** Last turn's TTFT, ms; null before any. */
+		lastTtftMs: number | null;
+	};
+}
+
+/**
  * Context occupancy of the current conversation (see context_usage).
  * used = the last assistant turn's provider-reported prompt size (input + cacheRead + cacheWrite, no output),
  * window = the routed model's contextWindow. Both are last-wins independent fields — the percent is a
@@ -96,6 +125,11 @@ export type AppRPCSchema = __schema<{
 			context_usage: {
 				params: {};
 				response: ContextUsage;
+			};
+			/** Session-wide metrics: persisted usage totals + in-memory run timing (TTFT / tok/s). */
+			stats: {
+				params: {};
+				response: SessionStats;
 			};
 			/** Trajectory: the full process record (thinking/tools/usage), cached by the view; on message click the matching segment is fetched. */
 			trajectory: {

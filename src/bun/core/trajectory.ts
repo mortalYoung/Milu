@@ -8,7 +8,7 @@
  * - tool calls still unpaired at the end (restart interruption/abort) → marked interrupted.
  */
 import type { Entry } from "@earendil-works/pi-agent-core";
-import type { TrajectoryRecord } from "../../shared/rpc";
+import type { TrajectoryRecord, UsageTotals } from "../../shared/rpc";
 
 /** Loose shape of an assistant message content block (thinking/text/toolCall). */
 interface ContentBlock {
@@ -54,6 +54,24 @@ function toUsage(usage: RawUsage): Usage {
  * Each LLM call sends the whole context, so the most recent request's prompt size is the
  * current context occupancy (the context_usage handler derives its numerator from this).
  */
+/** Sum the usage of every persisted assistant turn (the composer's whole-session line). */
+export function aggregateUsage(entries: Entry[]): UsageTotals | null {
+	let totals: UsageTotals | null = null;
+	for (const entry of entries) {
+		if (entry.type !== "message") continue;
+		const msg = entry.message;
+		if (msg.role !== "assistant" || !msg.usage) continue;
+		const u = toUsage(msg.usage);
+		totals ??= { messages: 0, input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+		totals.messages += 1;
+		totals.input += u.input;
+		totals.output += u.output;
+		totals.cacheRead += u.cacheRead;
+		totals.cacheWrite += u.cacheWrite;
+	}
+	return totals;
+}
+
 export function lastUsage(entries: Entry[]): Usage | null {
 	let last: Usage | null = null;
 	for (const entry of entries) {

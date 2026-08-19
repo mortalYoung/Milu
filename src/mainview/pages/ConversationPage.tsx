@@ -5,7 +5,7 @@
 import { ListTree, PanelLeftClose, PanelLeftOpen } from "lucide-solid";
 import { type Accessor, createSignal } from "solid-js";
 import { AnimatePresence, Motion } from "solid-motion";
-import type { ContextUsage } from "../../shared/rpc";
+import type { ContextUsage, SessionStats } from "../../shared/rpc";
 import { Button } from "../components/Button";
 import { Composer } from "../components/Composer";
 import { ConversationList, type PartnerItem } from "../components/ConversationList";
@@ -38,6 +38,10 @@ export function ConversationPage(props: {
 	workspacePath: string | null;
 	/** Context occupancy for the composer meter (null before the first turn). */
 	contextUsage: ContextUsage | null;
+	/** Session-wide metrics (usage totals + TTFT / tok/s) for the composer stats line. */
+	stats: SessionStats | null;
+	/** A message to this chat is queued behind another partner's run. */
+	queued: boolean;
 	/** Per-partner writing state (true for the row whose partner owns the running run). */
 	workingFor: (name: string) => boolean;
 	/** The selected chat's saved draft (per-chat, restored on switch-back). */
@@ -118,6 +122,8 @@ export function ConversationPage(props: {
 							onStop={props.onStop}
 							workspace={props.workspacePath}
 							contextUsage={props.contextUsage}
+							stats={props.stats}
+							queued={props.queued}
 							draft={props.draft}
 							onDraftChange={props.onDraftChange}
 						/>
