@@ -1,33 +1,33 @@
 #!/usr/bin/env node
-import http from 'node:http';
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import {spawn} from 'node:child_process';
+import { spawn } from "node:child_process";
+import fs from "node:fs/promises";
+import http from "node:http";
+import path from "node:path";
 
 const args = process.argv.slice(2);
 const getArg = (name, fallback) => {
-  const i = args.indexOf(name);
-  return i >= 0 ? args[i + 1] : fallback;
+	const i = args.indexOf(name);
+	return i >= 0 ? args[i + 1] : fallback;
 };
 
-const file = path.resolve(getArg('--file', 'index.html'));
-const host = getArg('--host', '127.0.0.1');
-const port = Number(getArg('--port', '0'));
-const explicitSelection = getArg('--selection', null);
-const selectionFile = path.resolve(explicitSelection ?? path.join(path.dirname(file), 'selection.json'));
-const shouldOpen = !args.includes('--no-open');
-const shouldExitOnSelect = args.includes('--exit-on-select');
+const file = path.resolve(getArg("--file", "index.html"));
+const host = getArg("--host", "127.0.0.1");
+const port = Number(getArg("--port", "0"));
+const explicitSelection = getArg("--selection", null);
+const selectionFile = path.resolve(explicitSelection ?? path.join(path.dirname(file), "selection.json"));
+const shouldOpen = !args.includes("--no-open");
+const shouldExitOnSelect = args.includes("--exit-on-select");
 
 const mime = {
-  '.html': 'text/html; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.svg': 'image/svg+xml; charset=utf-8',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.webp': 'image/webp'
+	".html": "text/html; charset=utf-8",
+	".css": "text/css; charset=utf-8",
+	".js": "text/javascript; charset=utf-8",
+	".json": "application/json; charset=utf-8",
+	".svg": "image/svg+xml; charset=utf-8",
+	".png": "image/png",
+	".jpg": "image/jpeg",
+	".jpeg": "image/jpeg",
+	".webp": "image/webp",
 };
 
 const bridgeScript = `
@@ -472,96 +472,96 @@ const bridgeScript = `
 </script>`;
 
 function injectBridge(html) {
-  if (html.includes('QIAOMU_DESIGN_PREVIEW_BRIDGE')) return html;
-  if (html.includes('</body>')) return html.replace('</body>', `${bridgeScript}\n</body>`);
-  return `${html}\n${bridgeScript}`;
+	if (html.includes("QIAOMU_DESIGN_PREVIEW_BRIDGE")) return html;
+	if (html.includes("</body>")) return html.replace("</body>", `${bridgeScript}\n</body>`);
+	return `${html}\n${bridgeScript}`;
 }
 
 async function readJsonBody(req) {
-  const chunks = [];
-  let size = 0;
-  for await (const chunk of req) {
-    size += chunk.length;
-    if (size > 1024 * 1024) throw new Error('Request body too large');
-    chunks.push(chunk);
-  }
-  const raw = Buffer.concat(chunks).toString('utf8') || '{}';
-  return JSON.parse(raw);
+	const chunks = [];
+	let size = 0;
+	for await (const chunk of req) {
+		size += chunk.length;
+		if (size > 1024 * 1024) throw new Error("Request body too large");
+		chunks.push(chunk);
+	}
+	const raw = Buffer.concat(chunks).toString("utf8") || "{}";
+	return JSON.parse(raw);
 }
 
 function sendJson(res, status, data) {
-  res.writeHead(status, {'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store'});
-  res.end(JSON.stringify(data));
+	res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+	res.end(JSON.stringify(data));
 }
 
 function openUrl(url) {
-  const opener = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'cmd' : 'xdg-open';
-  const openerArgs = process.platform === 'win32' ? ['/c', 'start', '', url] : [url];
-  const child = spawn(opener, openerArgs, {stdio: 'ignore', detached: true});
-  child.unref();
+	const opener = process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open";
+	const openerArgs = process.platform === "win32" ? ["/c", "start", "", url] : [url];
+	const child = spawn(opener, openerArgs, { stdio: "ignore", detached: true });
+	child.unref();
 }
 
 const root = path.dirname(file);
-const isInsideRoot = candidate => candidate === root || candidate.startsWith(`${root}${path.sep}`);
+const isInsideRoot = (candidate) => candidate === root || candidate.startsWith(`${root}${path.sep}`);
 
 const server = http.createServer(async (req, res) => {
-  try {
-    const url = new URL(req.url || '/', `http://${host}`);
+	try {
+		const url = new URL(req.url || "/", `http://${host}`);
 
-    if (req.method === 'GET' && url.pathname === '/api/health') {
-      return sendJson(res, 200, {ok: true, file, selectionFile});
-    }
+		if (req.method === "GET" && url.pathname === "/api/health") {
+			return sendJson(res, 200, { ok: true, file, selectionFile });
+		}
 
-    if (req.method === 'GET' && url.pathname === '/api/selection') {
-      try {
-        const selection = JSON.parse(await fs.readFile(selectionFile, 'utf8'));
-        return sendJson(res, 200, {ok: true, selection});
-      } catch {
-        return sendJson(res, 200, {ok: true, selection: null});
-      }
-    }
+		if (req.method === "GET" && url.pathname === "/api/selection") {
+			try {
+				const selection = JSON.parse(await fs.readFile(selectionFile, "utf8"));
+				return sendJson(res, 200, { ok: true, selection });
+			} catch {
+				return sendJson(res, 200, { ok: true, selection: null });
+			}
+		}
 
-    if (req.method === 'POST' && url.pathname === '/api/select') {
-      const body = await readJsonBody(req);
-      const record = {
-        id: body.id || '',
-        label: body.label || '',
-        name: body.name || '',
-        notes: body.notes || '',
-        dials: body.dials || null,
-        adjustments: body.adjustments || '',
-        source: body.source || 'preview',
-        receivedAt: new Date().toISOString()
-      };
-      await fs.mkdir(path.dirname(selectionFile), {recursive: true});
-      await fs.writeFile(selectionFile, `${JSON.stringify(record, null, 2)}\n`, 'utf8');
-      console.log(`QIAOMU_DESIGN_SELECTION::${JSON.stringify(record)}`);
-      sendJson(res, 200, {ok: true, selection: record});
-      if (shouldExitOnSelect) {
-        setTimeout(() => server.close(() => process.exit(0)), 20);
-      }
-      return;
-    }
+		if (req.method === "POST" && url.pathname === "/api/select") {
+			const body = await readJsonBody(req);
+			const record = {
+				id: body.id || "",
+				label: body.label || "",
+				name: body.name || "",
+				notes: body.notes || "",
+				dials: body.dials || null,
+				adjustments: body.adjustments || "",
+				source: body.source || "preview",
+				receivedAt: new Date().toISOString(),
+			};
+			await fs.mkdir(path.dirname(selectionFile), { recursive: true });
+			await fs.writeFile(selectionFile, `${JSON.stringify(record, null, 2)}\n`, "utf8");
+			console.log(`QIAOMU_DESIGN_SELECTION::${JSON.stringify(record)}`);
+			sendJson(res, 200, { ok: true, selection: record });
+			if (shouldExitOnSelect) {
+				setTimeout(() => server.close(() => process.exit(0)), 20);
+			}
+			return;
+		}
 
-    if (req.method !== 'GET') return sendJson(res, 405, {ok: false, error: 'Method not allowed'});
+		if (req.method !== "GET") return sendJson(res, 405, { ok: false, error: "Method not allowed" });
 
-    const requestPath = url.pathname === '/' ? file : path.resolve(root, `.${decodeURIComponent(url.pathname)}`);
-    if (!isInsideRoot(requestPath)) return sendJson(res, 403, {ok: false, error: 'Forbidden'});
+		const requestPath = url.pathname === "/" ? file : path.resolve(root, `.${decodeURIComponent(url.pathname)}`);
+		if (!isInsideRoot(requestPath)) return sendJson(res, 403, { ok: false, error: "Forbidden" });
 
-    let body = await fs.readFile(requestPath);
-    const ext = path.extname(requestPath).toLowerCase();
-    res.writeHead(200, {'Content-Type': mime[ext] || 'application/octet-stream', 'Cache-Control': 'no-store'});
-    if (ext === '.html') body = Buffer.from(injectBridge(body.toString('utf8')), 'utf8');
-    res.end(body);
-  } catch (error) {
-    sendJson(res, 500, {ok: false, error: String(error.message || error)});
-  }
+		let body = await fs.readFile(requestPath);
+		const ext = path.extname(requestPath).toLowerCase();
+		res.writeHead(200, { "Content-Type": mime[ext] || "application/octet-stream", "Cache-Control": "no-store" });
+		if (ext === ".html") body = Buffer.from(injectBridge(body.toString("utf8")), "utf8");
+		res.end(body);
+	} catch (error) {
+		sendJson(res, 500, { ok: false, error: String(error.message || error) });
+	}
 });
 
 server.listen(port, host, () => {
-  const address = server.address();
-  const url = `http://${host}:${address.port}/`;
-  console.log(`QIAOMU_DESIGN_PREVIEW_URL::${url}`);
-  console.log(`QIAOMU_DESIGN_SELECTION_FILE::${selectionFile}`);
-  if (shouldOpen) openUrl(url);
+	const address = server.address();
+	const url = `http://${host}:${address.port}/`;
+	console.log(`QIAOMU_DESIGN_PREVIEW_URL::${url}`);
+	console.log(`QIAOMU_DESIGN_SELECTION_FILE::${selectionFile}`);
+	if (shouldOpen) openUrl(url);
 });
