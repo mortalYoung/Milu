@@ -5,7 +5,7 @@
  * agent = letter paper + dashed postmark + markdown body + signature line; running indicator = a "speaking"
  * letter bubble at the end (three ink dots + signature line); messages arriving mid-run render above it.
  */
-import { type Accessor, createEffect, For } from "solid-js";
+import { type Accessor, createEffect, createMemo, createSignal, For } from "solid-js";
 import { AnimatePresence, Motion, MotionConfigProvider } from "solid-motion";
 import { renderMarkdown } from "../lib/markdown";
 
@@ -16,8 +16,6 @@ export interface Entry {
 	time?: string;
 	error?: boolean;
 }
-
-export const SEPARATOR_GAP_MS = 5 * 60 * 1000;
 
 let nextId = 1;
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -55,6 +53,107 @@ function timeHM(raw: string | undefined): string {
 	return `${m[1]}:${m[2]}`;
 }
 
+/** Deterministic pseudo-random in [-1, 1] from a seed — stable across re-renders and navigation. */
+function seededUnit(seed: number): number {
+	const x = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
+	return (x - Math.floor(x)) * 2 - 1;
+}
+
+/** A letter's body: postmark + markdown + signature line (shared by single replies and stack cards). */
+function letterBody(card: Entry, worker?: string, showPostmark = true) {
+	const stamp = showPostmark ? parseStamp(card.time) : null;
+	return (
+		<>
+			{stamp && (
+				<div class="msg-postmark">
+					<span>{stamp.date}</span>
+					<span>{stamp.time}</span>
+				</div>
+			)}
+			<div class="md msg-letter-text" innerHTML={renderMarkdown(card.text)} />
+			{worker && (
+				<div class="msg-sign">
+					— {worker} · {timeHM(card.time)}
+				</div>
+			)}
+		</>
+	);
+}
+
+/**
+ * Reply deck: consecutive agent replies (several send_message deliveries for one user
+ * question) stack like the motion.dev card-stack — the newest reply sits on top, the
+ * others peek translated/rotated behind it; the button below cycles the deck. CSS-only
+ * (no drag); signal reads live in JSX expressions, never hoisted to callback locals.
+ * Cards get a minimum height so short replies keep a substantial deck; back cards are
+ * clipped to that height so the deck's bottom edges stay even regardless of content.
+ */
+const STACK_CARD_MIN_HEIGHT = 96;
+/** Reserved strip above the front card where the back cards' top edges peek out. */
+const STACK_PEEK = 10;
+const STACK_PEEK_STEP = 5;
+
+function MessageStack(props: { cards: Entry[]; worker?: string; locateFlashId?: Accessor<number | null> }) {
+	const [current, setCurrent] = createSignal(props.cards.length - 1);
+	// A growing deck (replies arriving mid-run) jumps to the newest card; a shrinking one clamps.
+	// Only react to LENGTH changes — never to the user's own navigation, which moves `current`
+	// without changing the length and would otherwise be snapped straight back to the newest card.
+	let prevLen = props.cards.length;
+	createEffect(() => {
+		const len = props.cards.length;
+		const c = current();
+		if (len > prevLen)
+			setCurrent(len - 1); // grew → jump to the newest card
+		else if (c >= len) setCurrent(len - 1); // shrank → clamp to the newest valid index
+		prevLen = len;
+	});
+	const prev = () => setCurrent(Math.max(0, current() - 1));
+	const next = () => setCurrent(Math.min(props.cards.length - 1, current() + 1));
+	return (
+		<div class="msg-stack" style={{ "padding-top": `${STACK_PEEK}px` }}>
+			<For each={props.cards}>
+				{(card, i) => {
+					// Depth relative to the top card: 0 = visible, 1 = first behind, …
+					const depth = () => (i() - current() + props.cards.length) % props.cards.length;
+					// Back cards lift UP into the peek strip (capped at two visible edges)
+					const peek = () => Math.min(depth(), STACK_PEEK / STACK_PEEK_STEP) * STACK_PEEK_STEP;
+					// Stable per-card randomness (seeded by the entry id): a slight organic jitter in
+					// lift (peek), angle (rotation) and horizontal spread (depth feel) — never flickers
+					// on navigation or when the deck grows.
+					const jitter = seededUnit(card.id);
+					return (
+						<div
+							class={"msg-letter msg-stack-card" + (depth() === 0 ? " on-top" : "") + (props.locateFlashId?.() === card.id ? " locate-flash" : "")}
+							id={"entry-" + card.id}
+							style={{
+								transform:
+									depth() === 0 ? undefined : `translate(${jitter * 3}px, ${-(peek() + jitter * 2)}px) rotate(${(depth() % 2 ? 1 : -1) * depth() * 1.4 + jitter * 0.8}deg)`,
+								"z-index": 10 - depth(),
+								...(depth() === 0 ? { "min-height": `${STACK_CARD_MIN_HEIGHT}px` } : { height: `${STACK_CARD_MIN_HEIGHT}px`, overflow: "hidden" }),
+							}}
+						>
+							{letterBody(card, props.worker, depth() === 0)}
+						</div>
+					);
+				}}
+			</For>
+			{props.cards.length > 1 && (
+				<div class="msg-stack-nav">
+					<button class="msg-stack-switch" title="Previous reply" onClick={prev} disabled={current() === 0}>
+						‹
+					</button>
+					<span class="msg-stack-count">
+						{current() + 1} / {props.cards.length}
+					</span>
+					<button class="msg-stack-switch" title="Next reply" onClick={next} disabled={current() === props.cards.length - 1}>
+						›
+					</button>
+				</div>
+			)}
+		</div>
+	);
+}
+
 export function Transcript(props: {
 	entries: Accessor<Entry[]>;
 	working: Accessor<boolean>;
@@ -70,6 +169,25 @@ export function Transcript(props: {
 		container && (container.scrollTop = container.scrollHeight);
 	});
 
+	// Consecutive agent replies group into one deck per burst; user/sys/sep stay standalone
+	const blocks = createMemo(() => {
+		const out: (Entry | Entry[])[] = [];
+		let stack: Entry[] | null = null;
+		for (const e of props.entries()) {
+			if (e.kind === "agent") {
+				(stack ??= []).push(e);
+			} else {
+				if (stack) {
+					out.push(stack);
+					stack = null;
+				}
+				out.push(e);
+			}
+		}
+		if (stack) out.push(stack);
+		return out;
+	});
+
 	return (
 		<MotionConfigProvider reducedMotion="user">
 			<section class="transcript flex-1 overflow-y-auto overscroll-contain px-4 py-3" id="transcript" aria-live="polite" ref={container}>
@@ -80,8 +198,26 @@ export function Transcript(props: {
 							<p class="eyebrow mt-3">ask it to read a file, run a command, or just talk</p>
 						</div>
 					)}
-					<For each={props.entries()}>
-						{(e) => {
+					<For each={blocks()}>
+						{(block) => {
+							if (Array.isArray(block)) {
+								// One reply stays a plain letter; several replies stack into a deck
+								return block.length === 1 ? (
+									<Motion
+										as="div"
+										class={"msg-letter" + (props.locateFlashId?.() === block[0].id ? " locate-flash" : "")}
+										id={"entry-" + block[0].id}
+										initial={{ opacity: 0, scale: 0.96, rotate: 0.4 }}
+										animate={{ opacity: 1, scale: 1, rotate: 0 }}
+										transition={{ duration: 0.24, ease: [0.23, 1, 0.32, 1] }}
+									>
+										{letterBody(block[0], props.worker)}
+									</Motion>
+								) : (
+									<MessageStack cards={block} worker={props.worker} locateFlashId={props.locateFlashId} />
+								);
+							}
+							const e = block;
 							if (e.kind === "user") {
 								return (
 									<>
@@ -97,32 +233,6 @@ export function Transcript(props: {
 										</Motion>
 										<span class="msg-user-time">{timeHM(e.time)}</span>
 									</>
-								);
-							}
-							if (e.kind === "agent") {
-								const stamp = parseStamp(e.time);
-								return (
-									<Motion
-										as="div"
-										class={"msg-letter" + (props.locateFlashId?.() === e.id ? " locate-flash" : "")}
-										id={"entry-" + e.id}
-										initial={{ opacity: 0, scale: 0.96, rotate: 0.4 }}
-										animate={{ opacity: 1, scale: 1, rotate: 0 }}
-										transition={{ duration: 0.24, ease: [0.23, 1, 0.32, 1] }}
-									>
-										{stamp && (
-											<div class="msg-postmark">
-												<span>{stamp.date}</span>
-												<span>{stamp.time}</span>
-											</div>
-										)}
-										<div class="md msg-letter-text" innerHTML={renderMarkdown(e.text)} />
-										{props.worker && (
-											<div class="msg-sign">
-												— {props.worker} · {timeHM(e.time)}
-											</div>
-										)}
-									</Motion>
 								);
 							}
 							if (e.kind === "sys") {

@@ -471,6 +471,9 @@ body::before {
 		.traj-enter {
 			animation: none;
 		}
+		.msg-stack-card {
+			transition: none;
+		}
 	}
 
 	/* Letter stream: 60% centered narrow column */
@@ -527,6 +530,59 @@ body::before {
 	}
 	.msg-speaking .work-dot {
 		background: var(--color-ink-soft);
+	}
+	/* Reply deck: consecutive agent replies stack like the motion.dev card-stack — the top
+	   card is in flow (defines the height); the back cards are anchored at the content top
+	   and lift UP into the container's padding strip (STACK_PEEK in Transcript.tsx), so their
+	   top edges peek out above the front card. The letter's mt-6 belongs to the container. */
+	.msg-stack {
+		@apply relative mt-6 self-start w-[560px] max-w-full;
+	}
+	.msg-stack-card {
+		@apply absolute left-0 right-0;
+		/* aligns the back cards with the front card (container padding-top = STACK_PEEK) */
+		top: 10px;
+		margin-top: 0;
+		transition: transform 220ms cubic-bezier(0.23, 1, 0.32, 1);
+	}
+	.msg-stack-card.on-top {
+		@apply relative;
+	}
+	/* The nav is a minimal pill centered on the message's top edge. Absolute + z-20 keeps it
+	   above the deck and the peeked back-card edges. Hidden until the deck is hovered, so it
+	   never clutters the transcript; stays visible while the pointer is on it (clickable) and
+	   while a button inside has focus (keyboard). */
+	.msg-stack-nav {
+		@apply absolute z-20 flex items-center gap-1.5;
+		left: 50%;
+		transform: translateX(-50%);
+		top: -12px;
+		padding: 2px 6px;
+		background: var(--color-paper);
+		border: 1px solid var(--color-hairline);
+		border-radius: 9999px;
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 150ms ease;
+	}
+	.msg-stack-card:hover ~ .msg-stack-nav,
+	.msg-stack-nav:hover,
+	.msg-stack-nav:focus-within {
+		opacity: 1;
+		pointer-events: auto;
+	}
+	.msg-stack-switch {
+		@apply font-mono text-[11px] leading-none text-seal rounded-full px-1.5 py-[2px] cursor-pointer bg-transparent border-none hover:bg-paper-hover;
+	}
+	.msg-stack-switch:disabled {
+		opacity: 0.4;
+		cursor: default;
+	}
+	.msg-stack-switch:disabled:hover {
+		background: transparent;
+	}
+	.msg-stack-count {
+		@apply font-mono text-[9px] text-muted;
 	}
 	/* List-row working indicator: three ink dots in the preview slot */
 	.conv-preview-dots {
@@ -826,9 +882,9 @@ body::before {
 	.composer-field {
 		@apply flex items-center gap-2 w-[60%] min-h-11 bg-letter border border-hairline rounded-[10px] px-[14px] py-0 transition-colors focus-within:border-seal;
 	}
-	/* Meta rows: workspace above the field, session stats below — always visible */
+	/* Meta rows: workspace + status share one flex line above the field — workspace left, live status right */
 	.composer-meta {
-		@apply flex items-center gap-2 w-[60%] font-mono text-[9px] text-muted;
+		@apply flex items-center justify-between gap-2 w-[60%] font-mono text-[9px] text-muted;
 	}
 	/* Workspace chip: folder icon + path (unset = hidden entirely) */
 	.composer-workspace {
@@ -841,9 +897,9 @@ body::before {
 	.composer-stats {
 		@apply whitespace-nowrap text-muted/80;
 	}
-	/* Live status row: only when something is happening (writing / queued) */
+	/* Live status: rides the meta row (right side via the row's justify-between); inherits font */
 	.composer-status {
-		@apply flex items-center gap-1.5 w-[60%] font-mono text-[9px] text-muted;
+		@apply flex items-center gap-1.5;
 	}
 	.composer-status-dot {
 		@apply size-[5px] rounded-full;

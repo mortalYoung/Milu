@@ -298,6 +298,16 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 		bandRef.scrollTo({ left: target, behavior: "smooth" });
 	});
 
+	// Newest content in view: the list scrolls to the bottom and the band to the right
+	// whenever the drawer opens or the records change (the drawer fetches fresh data per open).
+	let listRef: HTMLDivElement | undefined;
+	createEffect(() => {
+		props.open;
+		nodes();
+		if (listRef) listRef.scrollTop = listRef.scrollHeight;
+		if (bandRef) bandRef.scrollLeft = bandRef.scrollWidth;
+	});
+
 	// ESC: collapse the expanded row when one is open, otherwise close the drawer
 	createEffect(() => {
 		if (!props.open) return;
@@ -552,7 +562,7 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 						</div>
 
 						{/* Bottom: one expandable row per display part; request dots float on the divider */}
-						<div class="traj-all">
+						<div class="traj-all" ref={listRef}>
 							<For each={displayRows()}>
 								{(row) => (
 									<div class={"traj-row " + rowClassFor(row) + (expandedKey() === row.key ? " open" : "")}>

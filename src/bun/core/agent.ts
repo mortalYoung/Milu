@@ -15,7 +15,7 @@ import { statSync } from "node:fs";
 import { isAbsolute, resolve, sep } from "node:path";
 import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import type { SessionStats } from "../../shared/rpc";
+import type { RuntimeStatsSnapshot, SessionStats } from "../../shared/rpc";
 import { createTools } from "../tools";
 import { convertToLlm, resolveModel, STREAM_FN } from "./agent-config";
 import { AgentContext, appendSystemReminder } from "./context";
@@ -50,6 +50,8 @@ export interface AgentHandle {
 	chat: (text: string) => Promise<void>;
 	/** Abort the current run. */
 	stop: () => void;
+	/** User sent a message: refresh the visible clock (the progress-notification countdown restarts). */
+	markUserMessage: () => void;
 	/** Wipe the transcript. */
 	reset: () => void;
 	/** Startup restore: replace the in-memory transcript with the persisted message chain. */
@@ -69,6 +71,10 @@ export interface AgentDeps {
 	session: SessionStore;
 	/** The initial message chain to restore (see toAgentMessages). */
 	initialMessages?: AgentMessage[];
+	/** Runtime timing samples from a previous launch (loaded from disk; see runtime-stats.ts). */
+	runtimeStats?: RuntimeStatsSnapshot;
+	/** Write-through hook: persist the raw timing samples after every sampled turn. */
+	persistRuntimeStats?: (snapshot: RuntimeStatsSnapshot) => void;
 }
 
 /** Whether a path is inside a root (or equal to it). */
@@ -92,20 +98,33 @@ export function validateWorkspace(workspace: string, state: { current: string | 
 
 /**
  * Per-LLM-call timing samples: TTFT (turn start → first text delta) and output speed
- * (tokens per second between first and last delta). In-memory only — persisted usage
- * totals come from the session (see aggregateUsage).
+ * (tokens per second between first and last delta). The raw samples are persisted to disk
+ * (see runtime-stats.ts) — the runtime object here is the live copy, written through after
+ * every sampled turn, so the averages survive restarts. Token usage totals are persisted
+ * separately through the session store (see aggregateUsage).
  */
-interface RuntimeStats {
-	runs: number;
-	ttfts: number[];
-	speeds: number[];
-	lastTtft: number | null;
-}
 
 export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	const ctx = new AgentContext();
 
-	const runtime: RuntimeStats = { runs: 0, ttfts: [], speeds: [], lastTtft: null };
+	const runtime: RuntimeStatsSnapshot = {
+		runs: deps.runtimeStats?.runs ?? 0,
+		ttfts: [...(deps.runtimeStats?.ttfts ?? [])],
+		speeds: [...(deps.runtimeStats?.speeds ?? [])],
+		lastTtft: deps.runtimeStats?.lastTtft ?? null,
+		savedAt: deps.runtimeStats?.savedAt ?? 0,
+	};
+
+	/** Write the raw samples through to disk (fire-and-forget; the callback owns error handling). */
+	function persistRuntime() {
+		if (!deps.persistRuntimeStats) return;
+		deps.persistRuntimeStats({
+			...runtime,
+			ttfts: [...runtime.ttfts],
+			speeds: [...runtime.speeds],
+			savedAt: Date.now(),
+		});
+	}
 	// Per-turn sampling state, reset on every turn_start
 	let turnStartAt = 0;
 	let firstDeltaAt = 0;
@@ -194,43 +213,24 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	}
 
 	/**
-	 * Whether send_message was delivered within the last two turns — derived from the message chain
-	 * (SSOT: every delivery is recorded there as a display:true custom message; each turn is one assistant
-	 * message, so counting assistant messages since the last delivery ≈ counting turns).
-	 * A real user message (not a <system_reminder> hint) resets the window: an answer to a new question
-	 * must always be delivered, even if the previous turn delivered one.
+	 * End-of-run delivery: the user must always receive the model's final answer. If the run's last
+	 * assistant message is plain text (no tool calls, not an error/abort), deliver it via send_message —
+	 * models sometimes finish with a plain text answer instead of calling send_message. Runs that failed
+	 * (agent_end already reports the error through bridge.onEnd) or ended on a tool turn have nothing to deliver.
 	 */
-	function recentMessage(): boolean {
-		let assistants = 0;
-		for (let i = agent.state.messages.length - 1; i >= 0; i--) {
-			const m = agent.state.messages[i];
-			if (m.role === "user" && !String(m.content).startsWith("<system_reminder>")) return false;
-			if (m.role === "custom" && m.customType === "send_message") break;
-			if (m.role === "assistant") assistants += 1;
+	function enforceDelivery(event: Extract<AgentEvent, { type: "agent_end" }>) {
+		if (agent.state.errorMessage) return; // failed run — the agent_end handler already reports the error
+		// The run's last LLM output is its last assistant message (event.messages = this run's chain).
+		let assistant: AssistantMessage | undefined;
+		for (let i = event.messages.length - 1; i >= 0; i--) {
+			if (event.messages[i].role === "assistant") {
+				assistant = event.messages[i] as AssistantMessage;
+				break;
+			}
 		}
-		return assistants < 2;
-	}
-
-	/** Total assistant messages in the chain (= turns so far, the current one included). */
-	function totalTurns(): number {
-		let n = 0;
-		for (const m of agent.state.messages) if (m.role === "assistant") n += 1;
-		return n;
-	}
-
-	/**
-	 * End-of-turn delivery: a text-only turn (no tool calls) means the model is answering — deliver that text
-	 * directly via send_message instead of steering another turn. No extra LLM call, no loop risk.
-	 * Skips when send_message was called within the last two turns (the user just got a message; a redundant
-	 * commentary right after it should not produce another bubble) — except in short conversations
-	 * (fewer than 3 turns): there the mid-run send_message was a progress note and the final answer
-	 * must still reach the user (e.g. a one-exchange Q&A: the answering turn delivers its text).
-	 */
-	function enforceDelivery(event: Extract<AgentEvent, { type: "turn_end" }>) {
-		if (recentMessage() && totalTurns() >= 3) return;
-		const assistant = event.message as AssistantMessage;
+		if (!assistant) return; // no model output this run
 		if (assistant.stopReason === "error" || assistant.stopReason === "aborted") return;
-		if (assistant.content.some((b) => b.type === "toolCall")) return; // still working mid-task
+		if (assistant.content.some((b) => b.type === "toolCall")) return; // ended on a tool turn — send_message was the visible output
 		const text = assistant.content
 			.filter((b) => b.type === "text")
 			.map((b) => (b.type === "text" ? b.text : ""))
@@ -270,7 +270,6 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 				void persistAssistantTurn(event).then(() => bridge.onTrajectoryUpdate());
 				ctx.endTurn();
 				notifyIfSilent();
-				enforceDelivery(event);
 				// Settle the sampling window (text-bearing turns only — tool-only turns have no speed to measure)
 				runtime.runs += 1;
 				if (firstDeltaAt > 0 && lastDeltaAt >= firstDeltaAt) {
@@ -284,9 +283,12 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 						runtime.speeds.push(output / seconds);
 					}
 				}
+				// Persist the raw timing samples so TTFT/tok-s metrics survive restarts
+				persistRuntime();
 				break;
 			case "agent_end":
 				ctx.setRunning(false);
+				enforceDelivery(event);
 				bridge.onEnd(agent.state.errorMessage);
 				break;
 			default:
@@ -375,6 +377,9 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		},
 		stop() {
 			agent.abort();
+		},
+		markUserMessage() {
+			ctx.markUserMessage();
 		},
 		reset() {
 			agent.reset();

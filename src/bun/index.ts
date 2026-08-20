@@ -1,11 +1,14 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { homedir } from "node:os";
+import { join, sep } from "node:path";
 import { ApplicationMenu, BrowserView, BrowserWindow } from "electrobun/bun";
 import type { AppRPCSchema } from "../shared/rpc";
 import { createAgent, validateWorkspace } from "./core/agent";
 import { contextWindow } from "./core/agent-config";
 import { applyCompaction, type CompactionPlan, planCompaction } from "./core/compaction";
+import { DATABASE_ROOT } from "./core/config";
+import { loadRuntimeStats, saveRuntimeStats } from "./core/runtime-stats";
 import { createSessionStore } from "./core/session";
 import { priceSurface } from "./core/token-meter";
 import { aggregateUsage, fold, lastUsage } from "./core/trajectory";
@@ -41,6 +44,14 @@ async function recordPrompt(dir: string, prompt: string): Promise<void> {
 	await writeFile(lastPromptPath(dir), JSON.stringify({ hash: promptHash(prompt) }, null, 2), "utf8");
 }
 
+/** Display helper: render the home directory as ~ (…/Users/xiuneng/… → ~/…) for the composer chip. */
+function tildify(path: string): string {
+	const home = homedir();
+	if (path === home) return "~";
+	if (path.startsWith(home + sep)) return `~${path.slice(home.length)}`;
+	return path;
+}
+
 // Workspace persistence: per-partner file (survives restart; re-validated on restore).
 const workspaceFilePath = (dir: string) => join(dir, "workspace.json");
 async function persistWorkspace(path: string) {
@@ -69,7 +80,12 @@ const agent = createAgent(
 			void drainQueued().finally(() => void maybeAutoCompact());
 		},
 	},
-	{ session },
+	{
+		session,
+		// Runtime timing is process-global: seed from disk on launch, write through after every sampled turn
+		runtimeStats: await loadRuntimeStats(DATABASE_ROOT),
+		persistRuntimeStats: (snapshot) => void saveRuntimeStats(DATABASE_ROOT, snapshot).catch((error) => console.error("saveRuntimeStats failed:", error)),
+	},
 );
 
 /** The partner the view is showing right now: the pending switch when one is deferred, else the applied one. */
@@ -184,6 +200,10 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				// is that selection, so a message sent from its chat belongs to the pending partner.
 				const target = pendingSwitch ?? currentPartner;
 				if (!target) return { accepted: false };
+				// Reset the progress-notification clock at SEND time (not when the queued message is
+				// processed): a question queued behind another run must restart the "working ~Ns"
+				// countdown immediately, otherwise reminders keep counting from the previous question.
+				agent.markUserMessage();
 				if (pendingSwitch || (agent.isStreaming && runningPartner !== null && runningPartner !== target.name)) {
 					// Another partner's run is in flight (or the switch to this partner is still pending):
 					// queue the message — it starts a fresh run for this partner once the run settles,
@@ -214,7 +234,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				return { items: await session.visibleHistory(target.dir) };
 			},
 			// The bun-side ground truth: true while streaming or executing tools; the view calibrates idle rendering with it
-			get_status: () => ({ streaming: agent.isStreaming, workspace_path: agent.workspacePath, running_partner: runningPartner }),
+			get_status: () => ({ streaming: agent.isStreaming, workspace_path: agent.workspacePath ? tildify(agent.workspacePath) : null, running_partner: runningPartner }),
 			// The model-visible surface (nodes + replace generation); observability for the surface layer
 			surface: async () => {
 				const target = await effectivePartner();

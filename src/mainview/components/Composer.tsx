@@ -4,8 +4,8 @@
  * the IME candidate, it must not send), Shift+Enter inserts a newline; the send button appears
  * only when there is something to send (text or a run to stop); it becomes a stop button while
  * running. Context occupancy ring sits inside the field. Meta — workspace (folder icon + path)
- * above, session metrics below — unfolds while the field is focused; a status row shows
- * writing / queued while something is happening.
+ * above, session metrics below — unfolds while the field is focused; a status row above
+ * the field shows writing / queued while something is happening.
  */
 import { ArrowUp, Folder, Square } from "lucide-solid";
 import { createEffect, createSignal, type JSX } from "solid-js";
@@ -105,12 +105,21 @@ export function Composer(props: {
 	return (
 		<form class="composer" id="composer" onSubmit={submit}>
 			{/* Workspace: folder icon + path, unfolds with focus (unset = hidden entirely) */}
-			{props.workspace && (
+			{/* Meta row: workspace chip (left) + live writing/queued status (right), flexed on one line */}
+			{(props.workspace || status()) && (
 				<div class="composer-meta">
-					<span class="composer-workspace" title={props.workspace}>
-						<Folder size={10} />
-						<span class="composer-workspace-path">{formatWorkspacePath(props.workspace)}</span>
-					</span>
+					{props.workspace && (
+						<span class="composer-workspace" title={props.workspace}>
+							<Folder size={10} />
+							<span class="composer-workspace-path">{formatWorkspacePath(props.workspace)}</span>
+						</span>
+					)}
+					{status() && (
+						<span class="composer-status">
+							<span class="composer-status-dot" />
+							<span>{status()}</span>
+						</span>
+					)}
 				</div>
 			)}
 			<div class="composer-field">
@@ -144,13 +153,6 @@ export function Composer(props: {
 					/>
 				)}
 			</div>
-			{/* Status: writing / queued — the field itself stays calm */}
-			{status() && (
-				<div class="composer-status">
-					<span class="composer-status-dot" />
-					<span>{status()}</span>
-				</div>
-			)}
 			{/* Session metrics footnote, unfolds with focus */}
 			{statsLine() && <div class="composer-meta composer-stats">{statsLine()}</div>}
 		</form>

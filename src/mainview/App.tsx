@@ -12,7 +12,7 @@ import { PartnerDetailsDialog } from "./components/PartnerDetailsDialog";
 import { type PartnerFormData, PartnerModal } from "./components/PartnerModal";
 import { TrajectoryDrawer } from "./components/TrajectoryDrawer";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./components/ui/dialog";
-import { type Entry, makeAgentEntry, makeSepEntry, makeSysEntry, makeUserEntry, SEPARATOR_GAP_MS } from "./layouts/Transcript";
+import { type Entry, makeAgentEntry, makeSepEntry, makeSysEntry, makeUserEntry } from "./layouts/Transcript";
 import { ConversationPage } from "./pages/ConversationPage";
 import { type SettingsData, SettingsView } from "./pages/SettingsView";
 
@@ -85,7 +85,8 @@ export function App() {
 		setListCollapsed(next);
 		localStorage.setItem("chatlist.collapsed", next ? "1" : "0");
 	}
-	let lastMsgTime = 0;
+	// Last calendar day seen: a day-divider entry is inserted only when the day actually changes
+	let lastMsgDay = "";
 
 	const bump = () => setTick((t) => t + 1);
 	const push = (entry: Entry) => {
@@ -134,10 +135,9 @@ export function App() {
 	const WEEKDAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
 	const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 	function maybeTimeSeparator(d: Date) {
-		if (lastMsgTime && d.getTime() - lastMsgTime > SEPARATOR_GAP_MS) {
-			push(makeSepEntry(`${WEEKDAYS[d.getDay()]} · ${MONTHS[d.getMonth()]} ${d.getDate()}`));
-		}
-		lastMsgTime = d.getTime();
+		const day = `${WEEKDAYS[d.getDay()]} · ${MONTHS[d.getMonth()]} ${d.getDate()}`;
+		if (lastMsgDay && day !== lastMsgDay) push(makeSepEntry(day));
+		lastMsgDay = day;
 	}
 
 	async function refreshPartners() {
@@ -152,7 +152,7 @@ export function App() {
 		setSelected(partner?.name ?? null);
 		setEntries([]);
 		renderedIds.clear();
-		lastMsgTime = 0;
+		lastMsgDay = "";
 		trajectoryCache = null;
 		void rpc.request
 			.set_partner({

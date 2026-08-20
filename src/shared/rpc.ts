@@ -112,7 +112,7 @@ export interface UsageTotals {
 export interface SessionStats {
 	usage: UsageTotals | null;
 	runtime: {
-		/** LLM calls this process has streamed. */
+		/** LLM calls streamed (cumulative across restarts). */
 		runs: number;
 		/** Average time to first text token (text-bearing turns only), ms; null before any. */
 		avgTtftMs: number | null;
@@ -121,6 +121,23 @@ export interface SessionStats {
 		/** Last turn's TTFT, ms; null before any. */
 		lastTtftMs: number | null;
 	};
+}
+
+/**
+ * Raw runtime timing samples, persisted on disk (see runtime-stats.ts) so TTFT/tok-s metrics
+ * survive restarts. The averages shown in SessionStats.runtime are derived from these samples.
+ */
+export interface RuntimeStatsSnapshot {
+	/** LLM calls streamed (cumulative across restarts). */
+	runs: number;
+	/** Time-to-first-text-token samples (text-bearing turns only), ms. */
+	ttfts: number[];
+	/** Output tokens/sec samples. */
+	speeds: number[];
+	/** Last turn's TTFT, ms; null before any. */
+	lastTtft: number | null;
+	/** When the snapshot was last written to disk. */
+	savedAt: number;
 }
 
 /**
