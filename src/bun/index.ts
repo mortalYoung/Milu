@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ApplicationMenu, BrowserView, BrowserWindow } from "electrobun/bun";
@@ -23,10 +24,22 @@ let pendingSwitch: { name: string; responsibilities?: string; tones?: string } |
 // Cross-partner messages queued while another partner's run is in flight: each starts a fresh run
 // for its own partner once the current run settles — never a follow-up into the wrong run.
 const pendingChats: { text: string; partner: string }[] = [];
-// Last prompt persisted per session root: dedupes redundant set_partner calls. Keyed by root because the
-// prompt is now static (identical across partners) — a single last-value guard would suppress the append
-// for every partner selected after the first, leaving those sessions without a system_prompt entry.
-const persistedPromptByRoot = new Map<string, string>();
+// Prompt persistence dedup: the prompt is static, and an in-memory guard resets on every restart
+// (one system_prompt appended per launch, piling up identical entries). Record the last persisted
+// prompt hash per root on disk so restarts stay silent until the prompt actually changes.
+const lastPromptPath = (dir: string) => join(dir, "last-prompt.json");
+const promptHash = (prompt: string) => createHash("sha256").update(prompt).digest("hex");
+async function promptChangedSinceLastPersist(dir: string, prompt: string): Promise<boolean> {
+	try {
+		const saved = JSON.parse(await readFile(lastPromptPath(dir), "utf8")) as { hash?: unknown };
+		return saved.hash !== promptHash(prompt);
+	} catch {
+		return true; // no record yet (first selection of this root)
+	}
+}
+async function recordPrompt(dir: string, prompt: string): Promise<void> {
+	await writeFile(lastPromptPath(dir), JSON.stringify({ hash: promptHash(prompt) }, null, 2), "utf8");
+}
 
 // Workspace persistence: per-partner file (survives restart; re-validated on restore).
 const workspaceFilePath = (dir: string) => join(dir, "workspace.json");
@@ -94,10 +107,10 @@ async function applyPartnerSwitch(profile: { name: string; responsibilities?: st
 		}
 		agent.setWorkspace(workspace);
 		// Persist the rebuilt prompt so the trajectory view can show it — per root, and only when it
-		// actually changed; repeated partner switches would otherwise pile up identical system entries
-		if (persistedPromptByRoot.get(currentPartner.dir) !== agent.systemPrompt) {
-			persistedPromptByRoot.set(currentPartner.dir, agent.systemPrompt);
+		// actually changed; the hash record is file-backed so restarts don't pile up identical entries
+		if (await promptChangedSinceLastPersist(currentPartner.dir, agent.systemPrompt)) {
 			await session.appendSystemPrompt(agent.systemPrompt, Date.now());
+			await recordPrompt(currentPartner.dir, agent.systemPrompt);
 		}
 		// Restore the model chain from the surface once compaction has rewritten it (replaceGeneration > 0);
 		// append-only sessions keep the buildSessionContext path (identical output, includes dangling-turn repair).
@@ -308,6 +321,9 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				try {
 					const settings = await loadSettings();
 					await deletePartner(settings, name);
+					// Drop the cached session root so a recreated same-name partner starts empty
+					// (the store would otherwise keep the old in-memory session and replay its history)
+					session.evictRoot(partnerDir(settings, name));
 					return { ok: true };
 				} catch (error) {
 					if (error instanceof PartnerError) return { ok: false, error: error.message };

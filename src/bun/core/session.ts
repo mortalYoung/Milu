@@ -87,6 +87,8 @@ export interface SessionStore {
 	appendRequestHeader(systemPrompt: string, toolNames: string[], timestamp: number): Promise<void>;
 	/** Fork the log into a new root (raw JSONL copy); the surface re-folds there (fork/restore). */
 	forkTo(sourceDir: string, targetDir: string): Promise<void>;
+	/** Drop a cached root state (partner deletion: a recreated same-name partner must start empty, not replay the old in-memory session). */
+	evictRoot(dir: string): void;
 	/** Raw pi entries (for trajectory folding; thinking/tool content still never enters visibleHistory); active root unless a dir is given. */
 	rawEntries(dir?: string): Promise<Entry[]>;
 }
@@ -283,6 +285,12 @@ export function createSessionStore(root: string = DATABASE_ROOT): SessionStore {
 			await openRoot(sourceDir);
 			await cp(sourceDir, targetDir, { recursive: true, force: true, filter: (src) => !src.endsWith(".tmp") });
 			await openRoot(targetDir);
+		},
+		evictRoot(dir) {
+			roots.delete(dir);
+			// Evicting the active root: the next operation re-opens it fresh (the dir may be gone;
+			// re-creating the same-name partner re-creates it before any chat can start).
+			if (dir === activeRoot) opened = false;
 		},
 		async rawEntries(dir) {
 			const state = await stateFor(dir);

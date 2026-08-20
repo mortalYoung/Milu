@@ -45,9 +45,7 @@ export function buildToolGuidance(tools: AgentTool[] = [], guidance: ToolGuidanc
 export function buildWorkspacePath(): string {
 	return [
 		"# WORKSPACE",
-		"Your workspace is your working directory for the current task — usually the project root of the code or project the user is asking about.",
-		"At the start of a task that uses tools, call `set_workspace` with the absolute path of that working directory, as the first tool call (before other tools). It can only be called once per conversation.",
-		"Relative paths you pass to tools — read/write/edit/bash — resolve against the workspace, whether they come from the user or are your own. You may read, write, and run shell commands on non-sensitive files inside it. Sensitive files (e.g. .env, private keys) are off-limits there: for those, use the storage path, or ask the user to create them. Task-related files belong in the workspace.",
+		"Your workspace is the working directory of the current task. Relative paths you pass to tools — read/write/edit/bash — resolve against it. Sensitive files (e.g. .env, private keys) are off-limits there; use the storage path for those.",
 	].join("\n");
 }
 
@@ -89,11 +87,19 @@ function buildCaveats(): string {
 /** System prompt = IDENTIFY + PERSONA + WORKSPACE + STORAGE + TOOL-GUIDANCE + RESPONSE-FORMAT + Caveats. Static: no runtime paths embedded (those arrive via system_reminder). */
 export function buildSystemPrompt(
 	partner: PartnerPrompt | null,
-	tools: AgentTool[] = [],
-	guidance: ToolGuidance = {},
+	// buildToolGuidance is temporarily disabled for comparison (tools/guidance unused while it is off)
+	_tools: AgentTool[] = [],
+	_guidance: ToolGuidance = {},
 	runtime: RuntimeInfo = { framework: "Partner", model: "deepseek-v4-flash" },
 ): string {
-	return [buildIdentify(runtime), buildPersona(partner), buildWorkspacePath(), buildStoragePath(), buildToolGuidance(tools, guidance), buildResponseFormat(partner), buildCaveats()]
+	return [
+		buildIdentify(runtime),
+		buildPersona(partner),
+		buildWorkspacePath(),
+		buildStoragePath(),
+		/* buildToolGuidance(_tools, _guidance), */ buildResponseFormat(partner),
+		buildCaveats(),
+	]
 		.filter(Boolean)
 		.join("\n\n");
 }

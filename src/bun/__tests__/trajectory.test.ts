@@ -336,24 +336,27 @@ describe("timelineNodes whole-log view model", () => {
 		expect(nodes[0]).toBe(prompts[0]);
 	});
 
-	test("request/header records are band-only position marks floating a dot on the row they precede", () => {
+	test("request segments span one user question to the next; the dot renders on the question row", () => {
 		const { nodes } = timelineNodes(
 			fold([
-				userEntry("q"),
+				userEntry("q1"),
 				entry({ type: "custom", customType: "request/header", data: { toolNames: ["read"], systemPrompt: "# IDENTIFY" } }),
 				assistantEntry([{ type: "toolCall", id: "tk1", name: "bash", arguments: "ls" }]),
 				entry({ type: "custom", customType: "request/header", data: { toolNames: ["read"], systemPrompt: "# IDENTIFY" } }),
 				toolResultEntry("tk1", "out"),
 				assistantEntry([{ type: "text", text: "done" }]),
+				userEntry("q2"),
 			]),
 		);
 		const headers = nodes.filter((n) => n.record.kind === "custom" && n.record.customType === "request/header");
 		expect(headers).toHaveLength(2);
 		for (const h of headers) expect(h.positionOnly).toBe(true);
-		// dots float on the first row after each request in log order
-		const asst = nodes.find((n) => n.record.kind === "assistant");
-		expect(asst?.requestMarks).toBe(1);
-		const res = nodes.find((n) => n.record.kind === "toolResult");
-		expect(res?.requestMarks).toBe(1);
+		// one request per question segment — the dot sits on the question row that starts it
+		const users = nodes.filter((n) => n.record.kind === "user");
+		expect(users).toHaveLength(2);
+		for (const u of users) expect(u.requestMarks).toBe(1);
+		// mid-segment rows carry no dots
+		expect(nodes.find((n) => n.record.kind === "assistant")?.requestMarks).toBeUndefined();
+		expect(nodes.find((n) => n.record.kind === "toolResult")?.requestMarks).toBeUndefined();
 	});
 });

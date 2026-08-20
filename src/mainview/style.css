@@ -467,7 +467,8 @@ body::before {
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.msg-letter.locate-flash,
-		.msg-user.locate-flash {
+		.msg-user.locate-flash,
+		.traj-enter {
 			animation: none;
 		}
 	}
@@ -545,6 +546,16 @@ body::before {
    Width is capped so the chat stays visible to its left; the drawer is standalone (no chat linkage). */
 	.traj-drawer {
 		@apply absolute top-0 right-0 bottom-0 z-20 w-[440px] max-w-[72vw] bg-letter border-l border-hairline flex flex-col p-4;
+	}
+	/* Entry is a CSS animation (no solid-motion wrapper — AnimatePresence freezes child reactivity) */
+	.traj-enter {
+		animation: traj-drawer-in 220ms cubic-bezier(0.23, 1, 0.32, 1);
+	}
+	@keyframes traj-drawer-in {
+		from {
+			opacity: 0;
+			transform: translateX(24px);
+		}
 	}
 	.traj-head {
 		@apply flex items-baseline gap-2 pb-3 border-b border-hairline;
@@ -742,8 +753,11 @@ body::before {
 	   prose in the reading face, code in one mono box, everything else in one muted tone.
 	   Only errors keep the seal marking (isError is data, not decoration). */
 	.traj-body .one-cap,
+	/* Thinking detail: styled as a markdown quote (left print line, indented, muted) */
 	.traj-body .one-thinking {
-		@apply mt-2 font-serif text-[13px] leading-[1.6] text-ink whitespace-pre-wrap max-h-[220px] overflow-y-auto;
+		@apply mt-2 font-serif text-[13px] leading-[1.6] text-ink-soft whitespace-pre-wrap max-h-[220px] overflow-y-auto;
+		border-left: 2px solid var(--color-print);
+		padding-left: 10px;
 	}
 	.traj-body .one-tools {
 		@apply mt-2 flex flex-col gap-1.5;

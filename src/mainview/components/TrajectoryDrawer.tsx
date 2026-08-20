@@ -4,8 +4,7 @@
  * Assistant records split into separate rows — thinking and each tool call get their own
  * row, and a toolResult merges into the tool row it answers (band positions unchanged).
  */
-import { createEffect, createMemo, createSignal, For } from "solid-js";
-import { AnimatePresence, Motion, MotionConfigProvider } from "solid-motion";
+import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import type { TrajectoryBlock, TrajectoryRecord, TrajectoryUsage } from "../../shared/rpc";
 import { stringifyArgs, type TimelineNode, timelineNodes } from "../../shared/trajectory";
 import { renderMarkdown } from "../lib/markdown";
@@ -81,13 +80,13 @@ function markerClass(record: TrajectoryRecord): string | null {
 	}
 }
 
-/** Short row label (band titles and single-row records). */
+/** Short row label (single-row records and split parts; band titles use rowCaption). */
 function chipLabel(record: TrajectoryRecord): string {
 	switch (record.kind) {
 		case "user":
 			return "Q";
 		case "assistant":
-			return `T${record.turn}`;
+			return "MSG";
 		case "toolResult":
 			return "RES";
 		case "modelChange":
@@ -103,7 +102,7 @@ function chipLabel(record: TrajectoryRecord): string {
 		case "custom":
 			switch (record.customType) {
 				case "send_message":
-					return "MSG";
+					return "SEND";
 				case "system_prompt":
 					return "SYS";
 				case "system_reminder":
@@ -116,8 +115,6 @@ function chipLabel(record: TrajectoryRecord): string {
 					return "START";
 				case "compaction/end":
 					return "END";
-				case "request/header":
-					return "HEAD";
 				default:
 					return "CUSTOM";
 			}
@@ -237,22 +234,33 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 			const r = n.record;
 			if (r.kind === "assistant") {
 				const headKey = `a:${n.seq}`;
-				out.push({
-					key: headKey,
-					node: n,
-					marks: n.requestMarks,
-					kind: "assistant",
-					textBlocks: r.blocks.filter((b) => b.type === "text"),
-					otherBlocks: r.blocks.filter((b) => b.type !== "text" && b.type !== "toolCall" && b.type !== "thinking"),
-				});
+				const textBlocksArr = r.blocks.filter((b) => b.type === "text");
+				// An assistant's parts display in a fixed order — thinking → tool calls → text —
+				// regardless of the raw block order in the message. A text-less assistant drops
+				// its head row entirely; request marks go to the first part row.
+				let marksPending = n.requestMarks;
+				const pushPart = (row: DisplayRow) => {
+					out.push(row);
+					marksPending = 0;
+				};
+				for (const b of r.blocks) {
+					if (b.type === "thinking") pushPart({ key: `${headKey}:think:${out.length}`, node: n, marks: marksPending || undefined, kind: "thinking", block: b });
+				}
 				pendingCalls = new Map();
 				for (const b of r.blocks) {
-					if (b.type === "thinking") {
-						out.push({ key: `${headKey}:think:${out.length}`, node: n, kind: "thinking", block: b });
-					} else if (b.type === "toolCall") {
-						out.push({ key: `${headKey}:tool:${out.length}`, node: n, kind: "tool", block: b, callId: String(b.id ?? "") });
-						if (typeof b.id === "string") pendingCalls.set(b.id, out.length - 1);
-					}
+					if (b.type !== "toolCall") continue;
+					pushPart({ key: `${headKey}:tool:${out.length}`, node: n, marks: marksPending || undefined, kind: "tool", block: b, callId: String(b.id ?? "") });
+					if (typeof b.id === "string") pendingCalls.set(b.id, out.length - 1);
+				}
+				if (textBlocksArr.length > 0) {
+					out.push({
+						key: headKey,
+						node: n,
+						marks: marksPending || undefined,
+						kind: "assistant",
+						textBlocks: textBlocksArr,
+						otherBlocks: r.blocks.filter((b) => b.type !== "text" && b.type !== "toolCall" && b.type !== "thinking"),
+					});
 				}
 			} else if (r.kind === "toolResult") {
 				const target = pendingCalls.get(r.toolCallId);
@@ -303,16 +311,17 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 	});
 
 	// ————— band —————
+	// For item callbacks run in an untracked context — every signal read must sit in a JSX
+	// expression (compiled to tracked template computations), never hoisted to a local
 	const nodeColumn = (n: TimelineNode, i: number) => {
 		const boundary = i > 0 && nodes()[i - 1].turn !== n.turn ? <span class="traj-boundary" /> : null;
-		const hot = expandedNode()?.seq === n.seq;
 		if (n.record.kind === "assistant") {
 			const t = turnOf(n);
 			return (
 				<>
 					{boundary}
 					<button
-						class={"traj-cell " + (t?.density ?? "l1") + (hot ? " hot" : "")}
+						class={"traj-cell " + (t?.density ?? "l1") + (expandedNode()?.seq === n.seq ? " hot" : "")}
 						style={{ height: toolHeight(t?.tools ?? []) + "%" }}
 						data-seq={n.seq}
 						title={`T${n.record.turn} · ${short(rowCaption(n.record))}`}
@@ -325,7 +334,7 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 		return (
 			<>
 				{boundary}
-				<span class={"traj-marker" + (hot ? " hot" : "")} data-seq={n.seq}>
+				<span class={"traj-marker" + (expandedNode()?.seq === n.seq ? " hot" : "")} data-seq={n.seq}>
 					<button class={marker ?? "mcustom"} title={short(rowCaption(n.record))} onClick={() => expandNode(n)} />
 				</span>
 			</>
@@ -341,10 +350,6 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 	const chipFor = (row: DisplayRow) => {
 		if (row.kind === "thinking") return "THINK";
 		if (row.kind === "tool") return "TOOL";
-		if (row.kind === "assistant") {
-			const r = row.node.record;
-			if (r.kind === "assistant") return `T${r.turn}`;
-		}
 		return chipLabel(row.node.record);
 	};
 	const captionFor = (row: DisplayRow) => {
@@ -391,7 +396,6 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 		if (r.kind !== "assistant") return null;
 		return (
 			<>
-				{row.textBlocks.length === 0 ? <div class="one-cap">(no text)</div> : null}
 				<For each={row.textBlocks}>{(b) => <div class="md one-cap" innerHTML={renderMarkdown(String(b.text ?? ""))} />}</For>
 				<For each={row.otherBlocks}>{(b) => <pre class="one-args">{json(b)}</pre>}</For>
 				<div class="traj-meta">
@@ -519,71 +523,60 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 		}
 	};
 
+	// No solid-motion wrapper and no body-level `props.open && ...`: AnimatePresence
+	// instantiates children inside untrack() (freezing the whole tree), and a component
+	// body runs once in an untracked context too (a body-level conditional is static).
+	// <Show> is a tracked conditional; the CSS enter animation replaces the motion shell.
 	return (
-		<MotionConfigProvider reducedMotion="user">
-			<AnimatePresence>
-				{props.open && (
-					<Motion
-						as="aside"
-						class="traj-drawer"
-						initial={{ x: 24, opacity: 0 }}
-						animate={{ x: 0, opacity: 1 }}
-						exit={{ x: 24, opacity: 0 }}
-						transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}
-					>
-						<div class="traj-head">
-							<span class="traj-title">Trajectory</span>
-							<span class="traj-count">
-								{nodes().length} entries · {turns().length} turns
-							</span>
-							<button class="traj-close" title="Close" onClick={() => props.onOpenChange(false)}>
-								×
-							</button>
+		<Show when={props.open}>
+			<aside class="traj-drawer traj-enter">
+				<div class="traj-head">
+					<span class="traj-title">Trajectory</span>
+					<span class="traj-count">
+						{nodes().length} entries · {turns().length} turns
+					</span>
+					<button class="traj-close" title="Close" onClick={() => props.onOpenChange(false)}>
+						×
+					</button>
+				</div>
+
+				{nodes().length === 0 ? (
+					<div class="traj-empty">no log entries yet — run a conversation first</div>
+				) : (
+					<>
+						{/* Top band: every entry is a column; vertical boundaries mark turn changes */}
+						<div class="traj-scroll" ref={bandRef}>
+							<div class="traj-band">
+								<For each={nodes()}>{(n, i) => nodeColumn(n, i())}</For>
+							</div>
 						</div>
 
-						{nodes().length === 0 ? (
-							<div class="traj-empty">no log entries yet — run a conversation first</div>
-						) : (
-							<>
-								{/* Top band: every entry is a column; vertical boundaries mark turn changes */}
-								<div class="traj-scroll" ref={bandRef}>
-									<div class="traj-band">
-										<For each={nodes()}>{(n, i) => nodeColumn(n, i())}</For>
+						{/* Bottom: one expandable row per display part; request dots float on the divider */}
+						<div class="traj-all">
+							<For each={displayRows()}>
+								{(row) => (
+									<div class={"traj-row " + rowClassFor(row) + (expandedKey() === row.key ? " open" : "")}>
+										{row.marks ? <span class="req-dot" /> : null}
+										<button class="traj-row-head" onClick={() => setExpandedKey(expandedKey() === row.key ? null : row.key)} aria-expanded={expandedKey() === row.key}>
+											<b>{chipFor(row)}</b>
+											<span class="row-cap">{short(captionFor(row))}</span>
+											<span class="row-time">{fmtTime(row.node.record.time)}</span>
+										</button>
+										{expandedKey() === row.key && (
+											<div class="traj-body">
+												{rowBody(row)}
+												{(row.kind === "row" || row.kind === "assistant") && bodyMeta(row.node)}
+											</div>
+										)}
 									</div>
-								</div>
-
-								{/* Bottom: one expandable row per display part; request dots float on the divider */}
-								<div class="traj-all">
-									<For each={displayRows()}>
-										{(row) => {
-                        // const isOpen = expandedKey() === row.key;
-                        const isOpen = false
-											return (
-												<div class={"traj-row" + rowClassFor(row) + (isOpen ? " open" : "")}>
-													{row.marks ? <span class="req-dot" /> : null}
-													<button class="traj-row-head" onClick={() => setExpandedKey(isOpen ? null : row.key)} aria-expanded={isOpen}>
-														<b>{chipFor(row)}</b>
-														<span class="row-cap">{short(captionFor(row))}</span>
-														<span class="row-time">{fmtTime(row.node.record.time)}</span>
-													</button>
-													{isOpen && (
-														<div class="traj-body">
-															{rowBody(row)}
-															{(row.kind === "row" || row.kind === "assistant") && bodyMeta(row.node)}
-														</div>
-													)}
-												</div>
-											);
-										}}
-									</For>
-								</div>
-							</>
-						)}
-
-						<div class="traj-foot">the whole log · click a row to expand</div>
-					</Motion>
+								)}
+							</For>
+						</div>
+					</>
 				)}
-			</AnimatePresence>
-		</MotionConfigProvider>
+
+				<div class="traj-foot">the whole log · click a row to expand</div>
+			</aside>
+		</Show>
 	);
 }

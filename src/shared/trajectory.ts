@@ -31,7 +31,7 @@ export interface TimelineNode {
 	record: TrajectoryRecord;
 	/** Band-only mark: the record's position shows in the band, its content is not a list row. */
 	positionOnly?: boolean;
-	/** Request headers floating a dot on this row (the request positions right before it in the log). */
+	/** A request segment starts at this row (one user question → the next): renders a request dot. */
 	requestMarks?: number;
 }
 
@@ -94,8 +94,8 @@ export function timelineNodes(records: TrajectoryRecord[]): { nodes: TimelineNod
 	// everything else in log order. Turn blocks themselves stay chronological.
 	nodes.sort((a, b) => a.turn - b.turn || blockRank(a.record) - blockRank(b.record) || a.seq - b.seq);
 	// Dedupe for readability: one system_prompt total (the first). Request headers are not
-	// rows at all — every one is a band-only position mark that floats a dot on the row
-	// following it in log order (their content is the request that produced that row).
+	// rows at all — every one is a band-only position mark (their content is the request
+	// that produced the following work).
 	let sawPrompt = false;
 	const out: TimelineNode[] = [];
 	for (const n of nodes) {
@@ -110,11 +110,10 @@ export function timelineNodes(records: TrajectoryRecord[]): { nodes: TimelineNod
 		}
 		out.push(n);
 	}
-	const rows = out.filter((n) => !n.positionOnly).sort((a, b) => a.seq - b.seq);
+	// Request segments: from a user question to the next user question (or the end) counts as
+	// one request — its dot renders on the question row that starts the segment.
 	for (const n of out) {
-		if (!n.positionOnly) continue;
-		const target = rows.find((r) => r.seq > n.seq);
-		if (target) target.requestMarks = (target.requestMarks ?? 0) + 1;
+		if (n.record.kind === "user") n.requestMarks = 1;
 	}
 	return { nodes: out, turns };
 }

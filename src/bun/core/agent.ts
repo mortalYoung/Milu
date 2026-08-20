@@ -166,9 +166,9 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	ctx.setTools(agent.state.tools);
 	agent.state.systemPrompt = ctx.composeSystemPrompt();
 
-	/** Persist a reminder (custom entry) so the trajectory timeline shows it. */
+	/** Persist a reminder (custom entry) so the trajectory timeline shows it — verbatim as the model sees it, with the <system_reminder> wrapper. */
 	function persistReminder(text: string) {
-		void deps.session.appendReminder(text, Date.now()).catch((error) => console.error("session appendReminder failed:", error));
+		void deps.session.appendReminder(`<system_reminder>${text}</system_reminder>`, Date.now()).catch((error) => console.error("session appendReminder failed:", error));
 	}
 
 	/** 20s progress reminder: steering queues a message the outer loop always drains, driving a new turn — so even the final turn gets acted on. */
@@ -211,14 +211,23 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		return assistants < 2;
 	}
 
+	/** Total assistant messages in the chain (= turns so far, the current one included). */
+	function totalTurns(): number {
+		let n = 0;
+		for (const m of agent.state.messages) if (m.role === "assistant") n += 1;
+		return n;
+	}
+
 	/**
 	 * End-of-turn delivery: a text-only turn (no tool calls) means the model is answering — deliver that text
 	 * directly via send_message instead of steering another turn. No extra LLM call, no loop risk.
 	 * Skips when send_message was called within the last two turns (the user just got a message; a redundant
-	 * commentary right after it should not produce another bubble).
+	 * commentary right after it should not produce another bubble) — except in short conversations
+	 * (fewer than 3 turns): there the mid-run send_message was a progress note and the final answer
+	 * must still reach the user (e.g. a one-exchange Q&A: the answering turn delivers its text).
 	 */
 	function enforceDelivery(event: Extract<AgentEvent, { type: "turn_end" }>) {
-		if (recentMessage()) return;
+		if (recentMessage() && totalTurns() >= 3) return;
 		const assistant = event.message as AssistantMessage;
 		if (assistant.stopReason === "error" || assistant.stopReason === "aborted") return;
 		if (assistant.content.some((b) => b.type === "toolCall")) return; // still working mid-task
@@ -313,8 +322,8 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		// Opening reminder: the workflow plus the current workspace/storage paths (the prompt itself is static).
 		// The default workspace path is included so the model can establish it without running pwd first.
 		const opening =
-			"Your workflow: (1) determine the task's working directory — usually the project root of the code or project the user is asking about; if the workspace is not set yet, call `set_workspace` with its absolute path as the first tool call, before other tools. (2) decide whether this task needs tool calls — if it does, call `send_message` in the same turn (in parallel with the first tool call) to give the user brief feedback; if it does not, skip the opening message. (3) Then execute the task.\n" +
-			`Current workspace: ${ctx.workspace_path ?? `unset`}.\n` +
+			"Your workflow: (1) determine the task's working directory (see the `set_workspace` tool for what to pass); if the workspace is not set yet, call `set_workspace` with its absolute path as the first tool call, before other tools. (2) decide whether this task needs tool calls — if it does, call `send_message` in the same turn (in parallel with the first tool call) to give the user brief feedback; if it does not, skip the opening message. (3) Then execute the task.\n" +
+			`Current workspace: ${ctx.workspace_path ?? "unset — the default working directory for tools is the storage path"}.\n` +
 			`Current storage: ${ctx.storage_path ?? "unset"}.`;
 		persistReminder(opening);
 		appendSystemReminder(agent.state.messages, opening);

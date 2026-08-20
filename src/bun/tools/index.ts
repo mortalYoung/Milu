@@ -56,7 +56,7 @@ export const TOOL_GUIDANCE: Record<string, string> = {
 };
 
 const workspaceSchema = Type.Object({
-	workspace: Type.String({ description: "Absolute path of the new working directory" }),
+	workspace: Type.String({ description: "Absolute path of the working directory — usually the project root of the code or project the user is asking about" }),
 });
 
 /** set_workspace: establish the task's working directory (once per conversation). */
@@ -65,7 +65,7 @@ function setWorkspaceTool(deps: ToolDeps): AgentTool<typeof workspaceSchema> {
 		name: "set_workspace",
 		label: "Set Workspace",
 		description:
-			"Set the working directory of this conversation to an absolute path — the project root of the current task. Call it at the start of a task that uses tools, as the first tool call (before other tools), to establish the workspace. Can only be called once per conversation; afterwards, relative paths resolve against it.",
+			"Set the working directory of this conversation to an absolute path — the project root of the current task. Only needed when the task actually touches files or paths (read/write/edit, or shell commands that reference the project); conversation-only turns can skip it. When needed, call it first, before other tools. Can only be called once per conversation; afterwards, relative paths resolve against it.",
 		parameters: workspaceSchema,
 		// Sequential: the workspace switch must apply to sibling tool calls of the same batch, so the model
 		// listing set_workspace first makes it run before the tools that use it (parallel would race them)

@@ -54,8 +54,9 @@ function toFileInfo(path: string, s: { size: number; mtimeMs: number; isDirector
 /** Filesystem + shell against the current working directory, optionally path-guarded. */
 export function createExecutionEnv(cwd: string, guard?: EnvGuard): ExecutionEnv {
 	const checkAbort = (signal?: AbortSignal) => signal?.throwIfAborted();
-	// Relative paths resolve against the workspace when set, else the default cwd
-	const base = () => guard?.workspaceRoot() ?? cwd;
+	// Relative paths resolve against the workspace when set; without a workspace the default
+	// working directory is the storage path (the agent's own directory), else the static cwd
+	const base = () => guard?.workspaceRoot() ?? guard?.storageRoot() ?? cwd;
 	const absolute = (path: string) => resolve(base(), path);
 
 	// Returns an error message when the path is off-limits, null when allowed
@@ -64,7 +65,7 @@ export function createExecutionEnv(cwd: string, guard?: EnvGuard): ExecutionEnv 
 		const target = resolve(base(), path);
 		const storage = guard.storageRoot();
 		if (storage && isInside(target, storage)) return null; // storage: full access, sensitive files allowed
-		const workspace = guard.workspaceRoot() ?? cwd;
+		const workspace = guard.workspaceRoot() ?? guard.storageRoot() ?? cwd;
 		if (!isInside(target, workspace)) return "Path is outside the workspace and the storage path";
 		if (isSensitiveName(basename(target))) return "Sensitive file access is not allowed (except inside the storage path)";
 		return null;

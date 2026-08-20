@@ -40,6 +40,8 @@ Rules an agent must respect:
 - The view is built by **Vite** (`vite.config.ts`: root `src/mainview`, Solid + Tailwind plugins, output `dist/` — git-ignored); electrobun copies `dist/index.html` + `dist/assets` into the bundle (`watchIgnore: ["dist/**"]`). The view stack is **Solid** (signals — the transcript's streaming text is a per-entry signal, so deltas patch one text node).
 - TS strict + `verbatimModuleSyntax` (`import type`); env vars via `process.env["NAME"]`; match surrounding style (tabs).
 - **Comments**: Avoid comments unless necessary; when you do comment, write **why** (why this approach, why not the alternative), not **what** (the code already says what it does).
+- **Tests**: temporarily suspended — new requirements add no test cases, and changes don't need to pass the test suite (typecheck and format still apply).
+- **Format**: don't run `format` after every change — only when asked, or when `format:check` fails.
 - **Language**: ONLY English in CLAUDE.md and `src/` — code, comments, test names, UI strings, and this file itself contain no Chinese; other docs are English-first.
 - `index.html` must load the view as `<script type="module" src="index.js">` — the raw `.ts` is not served; a wrong `src` fails silently (view JS never runs).
 
