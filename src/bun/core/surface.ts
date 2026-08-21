@@ -108,16 +108,43 @@ export function applyReplace(nodes: SurfaceNode[], op: SurfaceOpRecord, opEntryI
 
 /** Project the surface into the pi AgentMessage chain the model sees. */
 export function deriveMessages(entries: Entry[], surface: Surface): AgentMessage[] {
+	return dropDanglingTurn(projectChain(entries, surface));
+}
+
+/** Surface → message chain without the dangling-turn guard (the resume path keeps the turn). */
+export function projectChain(entries: Entry[], surface?: Surface): AgentMessage[] {
 	const byId = new Map<string, Entry>();
 	for (const e of entries) byId.set(e.id, e);
 	const out: AgentMessage[] = [];
-	for (const node of surface.nodes) {
+	const nodes = (surface ?? foldSurface(entries)).nodes;
+	for (const node of nodes) {
 		const entry = byId.get(node.id);
 		if (!entry) continue; // shadowed or unknown → nothing to project
 		const msg = deriveEventMessage(entry);
 		if (msg) out.push(msg);
 	}
-	return dropDanglingTurn(out);
+	return out;
+}
+
+/**
+ * Locate the assistant tool-call turn for a restart-resume: project without dropping the
+ * dangling turn and return the messages plus the insertion index for the matching tool
+ * result. Null when the turn is gone (compacted away) or superseded by a later run — the
+ * escalation is then orphaned, not resumable.
+ */
+export function buildResumeTurn(entries: Entry[], toolCallId: string): { messages: AgentMessage[]; insertAt: number } | null {
+	const messages = projectChain(entries);
+	for (let i = messages.length - 1; i >= 0; i--) {
+		const m = messages[i];
+		if (m.role !== "assistant") continue;
+		const blocks = m.content as { type: string; id: string }[];
+		if (!blocks.some((b) => b.type === "toolCall" && b.id === toolCallId)) continue;
+		// Anything but user messages after the turn means a later run (or another tool turn)
+		// superseded it — inserting the result mid-history would corrupt the chain.
+		if (messages.slice(i + 1).some((m2) => m2.role === "assistant" || m2.role === "toolResult")) return null;
+		return { messages, insertAt: i + 1 };
+	}
+	return null;
 }
 
 /**

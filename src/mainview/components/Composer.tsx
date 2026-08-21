@@ -9,7 +9,7 @@
  */
 import { ArrowUp, Folder, Square } from "lucide-solid";
 import { createEffect, createSignal, type JSX } from "solid-js";
-import type { ContextUsage, SessionStats } from "../../shared/rpc";
+import type { ContextUsage, SandboxMode, SessionStats } from "../../shared/rpc";
 import { formatWorkspacePath, shouldSendOnEnter } from "../lib/composer-input";
 import { Button } from "./Button";
 import { ContextMeter } from "./ContextMeter";
@@ -30,6 +30,10 @@ export function Composer(props: {
 	onStop: () => void;
 	/** The workspace set via set_workspace; hidden until then (unset = not needed / not yet set). */
 	workspace?: string | null;
+	/** The per-partner sandbox mode (select; human-owned). */
+	sandboxMode: SandboxMode;
+	/** Persist a new per-partner sandbox mode. */
+	onSetSandboxMode: (mode: SandboxMode) => void;
 	contextUsage?: ContextUsage | null;
 	/** Session-wide metrics: whole-chat usage totals + averaged TTFT / tok/s. */
 	stats?: SessionStats | null;
@@ -105,23 +109,33 @@ export function Composer(props: {
 	return (
 		<form class="composer" id="composer" onSubmit={submit}>
 			{/* Workspace: folder icon + path, unfolds with focus (unset = hidden entirely) */}
-			{/* Meta row: workspace chip (left) + live writing/queued status (right), flexed on one line */}
-			{(props.workspace || status()) && (
-				<div class="composer-meta">
-					{props.workspace && (
-						<span class="composer-workspace" title={props.workspace}>
-							<Folder size={10} />
-							<span class="composer-workspace-path">{formatWorkspacePath(props.workspace)}</span>
-						</span>
-					)}
+			{/* Meta row: workspace chip (left) + live status and sandbox-mode select (right), flexed on one line */}
+			<div class="composer-meta">
+				{props.workspace && (
+					<span class="composer-workspace" title={props.workspace}>
+						<Folder size={10} />
+						<span class="composer-workspace-path">{formatWorkspacePath(props.workspace)}</span>
+					</span>
+				)}
+				<span class="composer-meta-right">
 					{status() && (
 						<span class="composer-status">
 							<span class="composer-status-dot" />
 							<span>{status()}</span>
 						</span>
 					)}
-				</div>
-			)}
+					<select
+						class="composer-sandbox"
+						title="Sandbox mode (file writes)"
+						value={props.sandboxMode}
+						onChange={(e) => props.onSetSandboxMode(e.currentTarget.value as SandboxMode)}
+					>
+						<option value="read-only">read-only</option>
+						<option value="workspace-write">workspace-write</option>
+						<option value="danger-full-access">full access</option>
+					</select>
+				</span>
+			</div>
 			<div class="composer-field">
 				<textarea
 					id="prompt-input"

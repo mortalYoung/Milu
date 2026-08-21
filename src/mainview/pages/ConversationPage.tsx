@@ -5,7 +5,7 @@
 import { Activity, ListTree, PanelLeftClose, PanelLeftOpen } from "lucide-solid";
 import { type Accessor, createSignal } from "solid-js";
 import { AnimatePresence, Motion } from "solid-motion";
-import type { ContextUsage, SessionStats } from "../../shared/rpc";
+import type { ContextUsage, SandboxMode, SessionStats } from "../../shared/rpc";
 import { Button } from "../components/Button";
 import { Composer } from "../components/Composer";
 import { ConversationList, type PartnerItem } from "../components/ConversationList";
@@ -33,8 +33,14 @@ export function ConversationPage(props: {
 	flashId: Accessor<number | null>;
 	/** Flash a transcript bubble by entry id (replies pane locate). */
 	onFlash: (id: number) => void;
+	/** Respond to a pending sandbox escalation (inline Approve/Reject buttons). */
+	onEscalationRespond: (id: string, approved: boolean) => void;
 	/** The current workspace (shown near the input, read-only; hidden until set_workspace). */
 	workspacePath: string | null;
+	/** The per-partner sandbox mode (composer select; human-owned). */
+	sandboxMode: SandboxMode;
+	/** Persist a new per-partner sandbox mode (composer select onChange). */
+	onSetSandboxMode: (mode: SandboxMode) => void;
 	/** Context occupancy for the composer meter (null before the first turn). */
 	contextUsage: ContextUsage | null;
 	/** Session-wide metrics (usage totals + TTFT / tok/s) for the composer stats line. */
@@ -119,12 +125,21 @@ export function ConversationPage(props: {
 				</div>
 				{props.selected ? (
 					<>
-						<Transcript entries={props.entries} working={props.working} tick={props.tick} worker={props.selected} locateFlashId={props.flashId} />
+						<Transcript
+							entries={props.entries}
+							working={props.working}
+							tick={props.tick}
+							worker={props.selected}
+							locateFlashId={props.flashId}
+							onEscalationRespond={props.onEscalationRespond}
+						/>
 						<Composer
 							busy={props.busy}
 							onSend={props.onSend}
 							onStop={props.onStop}
 							workspace={props.workspacePath}
+							sandboxMode={props.sandboxMode}
+							onSetSandboxMode={props.onSetSandboxMode}
 							contextUsage={props.contextUsage}
 							stats={props.stats}
 							queued={props.queued}

@@ -16,6 +16,8 @@ import { isAbsolute, resolve, sep } from "node:path";
 import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { RuntimeStatsSnapshot, SessionStats } from "../../shared/rpc";
+import type { SandboxManager } from "../sandbox";
+import type { EscalationDecision, EscalationRequest, SandboxMode } from "../sandbox/types";
 import { createTools } from "../tools";
 import { convertToLlm, resolveModel, STREAM_FN } from "./agent-config";
 import { AgentContext, appendSystemReminder } from "./context";
@@ -44,10 +46,18 @@ export interface AgentHandle {
 	readonly systemPrompt: string;
 	/** The current workspace (null until set_workspace); the view shows it near the input. */
 	readonly workspacePath: string | null;
+	/** The current storage directory (partner-scoped; part of the path guard for tool effects). */
+	readonly storagePath: string | null;
+	/** The current confinement mode (per partner); the composer select shows it. */
+	readonly sandboxMode: SandboxMode;
+	/** Set the confinement mode for tool effects (persisted by the caller per partner). */
+	setSandboxMode: (mode: SandboxMode) => void;
 	/** In-memory run timing (TTFT / tok/s), averaged across every streamed LLM call this process made. */
 	readonly runtimeStats: SessionStats["runtime"];
 	/** Send a user message (resolves after persistence); queued as a follow-up while busy. */
 	chat: (text: string) => Promise<void>;
+	/** Resume a run from a restored context ending in a tool result (restart-resume after an approved escalation). */
+	continue: () => Promise<void>;
 	/** Abort the current run. */
 	stop: () => void;
 	/** User sent a message: refresh the visible clock (the progress-notification countdown restarts). */
@@ -75,6 +85,10 @@ export interface AgentDeps {
 	runtimeStats?: RuntimeStatsSnapshot;
 	/** Write-through hook: persist the raw timing samples after every sampled turn. */
 	persistRuntimeStats?: (snapshot: RuntimeStatsSnapshot) => void;
+	/** Sandbox manager (mounted on macOS); absent ⇒ tools run unconfined. */
+	sandbox?: SandboxManager;
+	/** Human approval gate for escalation retries (wired to escalation records + the inline transcript bubble). */
+	confirmEscalation?: (request: EscalationRequest) => Promise<EscalationDecision>;
 }
 
 /** Whether a path is inside a root (or equal to it). */
@@ -171,6 +185,13 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			workspaceRoot: () => ctx.workspace_path,
 			storageRoot: () => ctx.storage_path,
 		},
+		sandbox: deps.sandbox
+			? {
+					manager: deps.sandbox,
+					getMode: () => ctx.sandbox_mode,
+				}
+			: undefined,
+		confirmEscalation: deps.confirmEscalation,
 		// set_workspace: once per conversation, absolute path, must exist, not inside storage
 		onSetWorkspace: (workspace: string): string | null => {
 			const error = validateWorkspace(workspace, { current: ctx.workspace_path, storagePath: ctx.storage_path });
@@ -326,7 +347,8 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		const opening =
 			"Your workflow: (1) determine the task's working directory (see the `set_workspace` tool for what to pass); if the workspace is not set yet, call `set_workspace` with its absolute path as the first tool call, before other tools. (2) decide whether this task needs tool calls — if it does, call `send_message` in the same turn (in parallel with the first tool call) to give the user brief feedback; if it does not, skip the opening message. (3) Then execute the task.\n" +
 			`Current workspace: ${ctx.workspace_path ?? "unset — the default working directory for tools is the storage path"}.\n` +
-			`Current storage: ${ctx.storage_path ?? "unset"}.`;
+			`Current storage: ${ctx.storage_path ?? "unset"}.\n` +
+			`Current sandbox mode: ${ctx.sandbox_mode}.`;
 		persistReminder(opening);
 		appendSystemReminder(agent.state.messages, opening);
 		try {
@@ -353,9 +375,30 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		get workspacePath() {
 			return ctx.workspace_path;
 		},
+		get storagePath() {
+			return ctx.storage_path;
+		},
+		get sandboxMode() {
+			return ctx.sandbox_mode;
+		},
+		setSandboxMode(mode: SandboxMode) {
+			ctx.sandbox_mode = mode;
+		},
 		get runtimeStats(): SessionStats["runtime"] {
 			const avg = (xs: number[]) => (xs.length > 0 ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
 			return { runs: runtime.runs, avgTtftMs: avg(runtime.ttfts), avgTps: avg(runtime.speeds), lastTtftMs: runtime.lastTtft };
+		},
+		/** Resume a run from a restored context whose last message is a tool result (restart-resume after an approved escalation). */
+		async continue() {
+			if (ctx.running) return; // a run is already active — the resume is stale
+			ctx.setRunning(true);
+			try {
+				await agent.continue();
+			} catch (error) {
+				// Only realistic throw: "Agent is already processing." — the run settled on its own
+				ctx.setRunning(false);
+				console.error("agent.continue failed:", error);
+			}
 		},
 		async chat(text: string) {
 			if (text.trim() === "") return;

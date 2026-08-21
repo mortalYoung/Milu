@@ -98,20 +98,47 @@ export function lastUsage(entries: Entry[]): Usage | null {
 	return last;
 }
 
+/** Custom artifacts persisted mid-turn (tool execution): the log gets them BEFORE the turn's assistant
+ * entry (persisted at turn_end), so the fold defers them until right after that record — the trajectory
+ * then shows [assistant turn → the messages/escalations it produced → its results] instead of append order. */
+const MID_TURN_CUSTOM_TYPES = new Set(["send_message", "escalation/request", "escalation/decision"]);
+
+/** True when a custom entry is a mid-turn artifact the fold must defer. The agent_end fallback
+ * delivery (toolCallId "harness-delivery") is the opposite: it persists AFTER its turn's assistant,
+ * already in the right place — deferring it would push it past the next turn. */
+function isDeferredCustom(entry: Entry): boolean {
+	if (entry.type === "custom" && MID_TURN_CUSTOM_TYPES.has(entry.customType)) {
+		if (entry.customType === "send_message") {
+			const data = entry.data as { toolCallId?: unknown } | undefined;
+			if (data?.toolCallId === "harness-delivery") return false;
+		}
+		return true;
+	}
+	return false;
+}
+
 /** Fold the whole log: one record per entry, nothing dropped. */
 export function fold(entries: Entry[]): TrajectoryRecord[] {
 	const records: TrajectoryRecord[] = [];
 	let turn = 0;
+	const deferred: TrajectoryRecord[] = [];
+	const push = (record: TrajectoryRecord) => {
+		records.push({ ...record, seq: records.length });
+	};
 	for (const entry of entries) {
-		const base = { seq: records.length, entryId: entry.id, time: entry.timestamp };
+		const base = { seq: 0, entryId: entry.id, time: entry.timestamp };
+		if (entry.type === "custom" && isDeferredCustom(entry)) {
+			deferred.push({ ...base, kind: "custom", customType: entry.customType, data: entry.data });
+			continue;
+		}
 		switch (entry.type) {
 			case "message": {
 				const m = entry.message;
 				if (m.role === "user") {
-					records.push({ ...base, kind: "user", content: typeof m.content === "string" ? m.content : contentText(m.content) });
+					push({ ...base, kind: "user", content: typeof m.content === "string" ? m.content : contentText(m.content) });
 				} else if (m.role === "assistant") {
 					turn += 1;
-					records.push({
+					push({
 						...base,
 						kind: "assistant",
 						turn,
@@ -126,8 +153,11 @@ export function fold(entries: Entry[]): TrajectoryRecord[] {
 						errorMessage: m.errorMessage,
 						rawStopReason: m.rawStopReason,
 					});
+					// The turn that produced the deferred artifacts just landed — emit them after it
+					for (const record of deferred) push(record);
+					deferred.length = 0;
 				} else if (m.role === "toolResult") {
-					records.push({
+					push({
 						...base,
 						kind: "toolResult",
 						turn,
@@ -143,16 +173,16 @@ export function fold(entries: Entry[]): TrajectoryRecord[] {
 				break;
 			}
 			case "model_change":
-				records.push({ ...base, kind: "modelChange", provider: entry.provider, modelId: entry.modelId });
+				push({ ...base, kind: "modelChange", provider: entry.provider, modelId: entry.modelId });
 				break;
 			case "thinking_level_change":
-				records.push({ ...base, kind: "thinkingLevel", thinkingLevel: entry.thinkingLevel });
+				push({ ...base, kind: "thinkingLevel", thinkingLevel: entry.thinkingLevel });
 				break;
 			case "active_tools_change":
-				records.push({ ...base, kind: "activeTools", activeToolNames: entry.activeToolNames });
+				push({ ...base, kind: "activeTools", activeToolNames: entry.activeToolNames });
 				break;
 			case "compaction":
-				records.push({
+				push({
 					...base,
 					kind: "compaction",
 					summary: entry.summary,
@@ -163,13 +193,15 @@ export function fold(entries: Entry[]): TrajectoryRecord[] {
 				});
 				break;
 			case "branch_summary":
-				records.push({ ...base, kind: "branchSummary", fromId: entry.fromId, summary: entry.summary, details: entry.details, usage: toTrajectoryUsage(entry.usage) });
+				push({ ...base, kind: "branchSummary", fromId: entry.fromId, summary: entry.summary, details: entry.details, usage: toTrajectoryUsage(entry.usage) });
 				break;
 			case "custom":
-				records.push({ ...base, kind: "custom", customType: entry.customType, data: entry.data });
+				push({ ...base, kind: "custom", customType: entry.customType, data: entry.data });
 				break;
 		}
 	}
+	// Trailing artifacts with no following turn (e.g. a pending escalation at the end) flush last
+	for (const record of deferred) push(record);
 	return records;
 }
 

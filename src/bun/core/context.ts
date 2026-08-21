@@ -11,6 +11,7 @@
  * written by event callbacks (agent_start/turn_start/turn_end/agent_end).
  */
 import type { AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
+import type { SandboxMode } from "../../shared/rpc";
 import { TOOL_GUIDANCE } from "../tools";
 import { describeRuntime } from "./agent-config";
 import { buildSystemPrompt, type PartnerPrompt } from "./prompt";
@@ -48,6 +49,8 @@ export class AgentContext {
 	storage_path: string | null = null;
 	/** The agent's current working directory (set once per conversation via set_workspace). Delivered via system_reminder. */
 	workspace_path: string | null = null;
+	/** The confinement mode for tool effects (per partner; delivered via the opening reminder). */
+	sandbox_mode: SandboxMode = "workspace-write";
 
 	/** Mount the tool list (call after agent.state.tools is mounted). */
 	setTools(tools: AgentTool[]): void {

@@ -7,14 +7,26 @@
  */
 import { type Accessor, createEffect, createMemo, createSignal, For } from "solid-js";
 import { AnimatePresence, Motion, MotionConfigProvider } from "solid-motion";
+import type { EscalationStatus, SandboxMode } from "../../shared/rpc";
 import { renderMarkdown } from "../lib/markdown";
+
+/** Sandbox escalation approval (kind "escalation"): the request payload + decision status. */
+export interface EscalationInfo {
+	id: string;
+	command: string;
+	from: SandboxMode;
+	to: SandboxMode;
+	justification: string;
+	status: EscalationStatus;
+}
 
 export interface Entry {
 	id: number;
-	kind: "user" | "agent" | "sys" | "sep";
+	kind: "user" | "agent" | "sys" | "sep" | "escalation";
 	text: string;
 	time?: string;
 	error?: boolean;
+	escalation?: EscalationInfo;
 }
 
 let nextId = 1;
@@ -28,6 +40,11 @@ export function makeUserEntry(text: string, time = Date.now()): Entry {
 
 export function makeAgentEntry(text: string, time = Date.now()): Entry {
 	return { id: nextId++, kind: "agent", text, time: fmtDateTime(new Date(time)) };
+}
+
+/** Build an escalation entry from the persisted history item (status flips as a decision lands). */
+export function makeEscalationEntry(item: { text: string; time: number; escalation: EscalationInfo }): Entry {
+	return { id: nextId++, kind: "escalation", text: item.text, time: fmtDateTime(new Date(item.time)), escalation: { ...item.escalation } };
 }
 
 export function makeSysEntry(text: string, error = false): Entry {
@@ -80,20 +97,48 @@ function letterBody(card: Entry, worker?: string, showPostmark = true) {
 	);
 }
 
+/** An escalation card's body: request head + command + mode change + status or Approve/Reject (shared by single bubbles and stack cards). No postmark. */
+function escalationBody(esc: EscalationInfo, onRespond?: (id: string, approved: boolean) => void) {
+	return (
+		<>
+			<div class="msg-escalation-head">sandbox escalation</div>
+			<pre class="msg-escalation-cmd">{esc.command}</pre>
+			<div class="msg-escalation-meta">
+				<span>
+					{esc.from} → <b>{esc.to}</b>
+				</span>
+				{esc.justification && <span class="msg-escalation-just">justification: {esc.justification}</span>}
+			</div>
+			{esc.status === "pending" ? (
+				<div class="msg-escalation-actions">
+					<button class="msg-escalation-btn" onClick={() => onRespond?.(esc.id, false)}>
+						Reject
+					</button>
+					<button class="msg-escalation-btn msg-escalation-btn-approve" onClick={() => onRespond?.(esc.id, true)}>
+						Approve
+					</button>
+				</div>
+			) : (
+				<div class={"msg-escalation-status" + (esc.status === "approved" ? " ok" : esc.status === "rejected" ? " no" : " drp")}>{esc.status}</div>
+			)}
+		</>
+	);
+}
+
 /**
- * Reply deck: consecutive agent replies (several send_message deliveries for one user
- * question) stack like the motion.dev card-stack — the newest reply sits on top, the
- * others peek translated/rotated behind it; the button below cycles the deck. CSS-only
- * (no drag); signal reads live in JSX expressions, never hoisted to callback locals.
- * Cards get a minimum height so short replies keep a substantial deck; back cards are
- * clipped to that height so the deck's bottom edges stay even regardless of content.
+ * Reply deck: consecutive agent replies and sandbox escalations stack like the motion.dev
+ * card-stack — the newest card sits on top, the others peek translated/rotated behind it;
+ * the button below cycles the deck. CSS-only (no drag); signal reads live in JSX expressions,
+ * never hoisted to callback locals. Cards get a minimum height so short cards keep a
+ * substantial deck; back cards are clipped to that height so the deck's bottom edges stay
+ * even regardless of content. Letter cards postmark on the top card; escalation cards never.
  */
 const STACK_CARD_MIN_HEIGHT = 96;
 /** Reserved strip above the front card where the back cards' top edges peek out. */
 const STACK_PEEK = 10;
 const STACK_PEEK_STEP = 5;
 
-function MessageStack(props: { cards: Entry[]; worker?: string; locateFlashId?: Accessor<number | null> }) {
+function MessageStack(props: { cards: Entry[]; worker?: string; locateFlashId?: Accessor<number | null>; onEscalationRespond?: (id: string, approved: boolean) => void }) {
 	const [current, setCurrent] = createSignal(props.cards.length - 1);
 	// A growing deck (replies arriving mid-run) jumps to the newest card; a shrinking one clamps.
 	// Only react to LENGTH changes — never to the user's own navigation, which moves `current`
@@ -132,7 +177,7 @@ function MessageStack(props: { cards: Entry[]; worker?: string; locateFlashId?: 
 								...(depth() === 0 ? { "min-height": `${STACK_CARD_MIN_HEIGHT}px` } : { height: `${STACK_CARD_MIN_HEIGHT}px`, overflow: "hidden" }),
 							}}
 						>
-							{letterBody(card, props.worker, depth() === 0)}
+							{card.kind === "escalation" && card.escalation ? escalationBody(card.escalation, props.onEscalationRespond) : letterBody(card, props.worker, depth() === 0)}
 						</div>
 					);
 				}}
@@ -161,6 +206,8 @@ export function Transcript(props: {
 	worker?: string;
 	/** Outline locate target: the matching bubble briefly flashes seal-soft. */
 	locateFlashId?: Accessor<number | null>;
+	/** Respond to a pending sandbox escalation (inline Approve/Reject buttons). */
+	onEscalationRespond?: (id: string, approved: boolean) => void;
 }) {
 	let container: HTMLElement | undefined;
 
@@ -169,12 +216,12 @@ export function Transcript(props: {
 		container && (container.scrollTop = container.scrollHeight);
 	});
 
-	// Consecutive agent replies group into one deck per burst; user/sys/sep stay standalone
+	// Consecutive agent replies and sandbox escalations group into one deck per burst; user/sys/sep stay standalone
 	const blocks = createMemo(() => {
 		const out: (Entry | Entry[])[] = [];
 		let stack: Entry[] | null = null;
 		for (const e of props.entries()) {
-			if (e.kind === "agent") {
+			if (e.kind === "agent" || e.kind === "escalation") {
 				(stack ??= []).push(e);
 			} else {
 				if (stack) {
@@ -201,21 +248,30 @@ export function Transcript(props: {
 					<For each={blocks()}>
 						{(block) => {
 							if (Array.isArray(block)) {
-								// One reply stays a plain letter; several replies stack into a deck
-								return block.length === 1 ? (
-									<Motion
-										as="div"
-										class={"msg-letter" + (props.locateFlashId?.() === block[0].id ? " locate-flash" : "")}
-										id={"entry-" + block[0].id}
-										initial={{ opacity: 0, scale: 0.96, rotate: 0.4 }}
-										animate={{ opacity: 1, scale: 1, rotate: 0 }}
-										transition={{ duration: 0.24, ease: [0.23, 1, 0.32, 1] }}
-									>
-										{letterBody(block[0], props.worker)}
-									</Motion>
-								) : (
-									<MessageStack cards={block} worker={props.worker} locateFlashId={props.locateFlashId} />
-								);
+								const card = block[0];
+								// One card stays standalone (a lone letter keeps its plain motion); several stack into a deck
+								if (block.length === 1) {
+									if (card.kind === "escalation" && card.escalation) {
+										return (
+											<div class="msg-escalation" id={"entry-" + card.id}>
+												{escalationBody(card.escalation, props.onEscalationRespond)}
+											</div>
+										);
+									}
+									return (
+										<Motion
+											as="div"
+											class={"msg-letter" + (props.locateFlashId?.() === card.id ? " locate-flash" : "")}
+											id={"entry-" + card.id}
+											initial={{ opacity: 0, scale: 0.96, rotate: 0.4 }}
+											animate={{ opacity: 1, scale: 1, rotate: 0 }}
+											transition={{ duration: 0.24, ease: [0.23, 1, 0.32, 1] }}
+										>
+											{letterBody(card, props.worker)}
+										</Motion>
+									);
+								}
+								return <MessageStack cards={block} worker={props.worker} locateFlashId={props.locateFlashId} onEscalationRespond={props.onEscalationRespond} />;
 							}
 							const e = block;
 							if (e.kind === "user") {

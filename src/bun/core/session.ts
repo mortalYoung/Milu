@@ -11,10 +11,11 @@ import { cp } from "node:fs/promises";
 import type { AgentMessage, CustomEntry, Entry } from "@earendil-works/pi-agent-core";
 import { buildSessionContext, JsonlSessionRepo, Session } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage, ToolResultMessage, Usage } from "@earendil-works/pi-ai";
+import type { EscalationStatus, SandboxMode } from "../../shared/rpc";
 import type { Surface, SurfaceOpRecord } from "../../shared/surface";
 import { createExecutionEnv } from "../tools/execution-env";
 import { DATABASE_ROOT, PROJECT_ROOT } from "./config";
-import { deriveMessages as deriveSurfaceMessages, dropDanglingTurn, foldSurface } from "./surface";
+import { buildResumeTurn, deriveMessages as deriveSurfaceMessages, dropDanglingTurn, foldSurface, projectChain } from "./surface";
 
 const EMPTY_USAGE: Usage = {
 	input: 0,
@@ -50,9 +51,18 @@ export interface AssistantMeta {
 export interface VisibleItem {
 	/** pi entry id; the view dedupes incremental renders by it. */
 	id: string;
-	kind: "user" | "send_message";
+	kind: "user" | "send_message" | "escalation";
 	text: string;
 	time: number;
+	/** Escalation payload (kind "escalation" only): the approval request + current status. */
+	escalation?: {
+		id: string;
+		command: string;
+		from: SandboxMode;
+		to: SandboxMode;
+		justification: string;
+		status: EscalationStatus;
+	};
 }
 
 export interface SessionStore {
@@ -83,6 +93,27 @@ export interface SessionStore {
 	appendCompactionSummary(text: string, timestamp: number): Promise<string>;
 	/** Persist a compaction transaction marker (compaction/start | compaction/end; log-only). */
 	appendCompactionRecord(type: "compaction/start" | "compaction/end", details: Record<string, unknown>, timestamp: number): Promise<void>;
+	/** Persist a sandbox-escalation lifecycle record (escalation/request | escalation/decision; log-only). */
+	appendEscalationRecord(type: "escalation/request" | "escalation/decision", details: Record<string, unknown>, timestamp: number): Promise<void>;
+	/** The persisted escalation request by id (restart-resume: command, granted mode, blocked tool call), or null. */
+	escalationRequest(
+		dir: string,
+		id: string,
+	): Promise<{
+		command: string;
+		from: SandboxMode;
+		to: SandboxMode;
+		justification: string;
+		toolCallId: string;
+		timestamp: number;
+	} | null>;
+	/**
+	 * The blocked assistant turn for a resume: the messages, where the tool result must be inserted,
+	 * and the reconstructed turn itself when the log lacks it (see implementation). Null when unresumable.
+	 */
+	resumeTurn(dir: string, toolCallId: string): Promise<{ messages: AgentMessage[]; insertAt: number; turn: AgentMessage | null } | null>;
+	/** Append a single tool result message (restart-resume: the approved command's output) to the log. */
+	appendToolResult(result: ToolResultMessage, timestamp: number): Promise<void>;
 	/** Persist a request header (system prompt + resolved tool names) so every model request is reconstructable (invariant 1). */
 	appendRequestHeader(systemPrompt: string, toolNames: string[], timestamp: number): Promise<void>;
 	/** Fork the log into a new root (raw JSONL copy); the surface re-folds there (fork/restore). */
@@ -211,6 +242,14 @@ export function createSessionStore(root: string = DATABASE_ROOT): SessionStore {
 		},
 		async visibleHistory(dir) {
 			const state = await stateFor(dir);
+			// Escalation decisions by escalation id (a decision may follow its request later in the log)
+			const decisions = new Map<string, { approved: boolean; reason?: string }>();
+			for (const entry of state.entries) {
+				if (entry.type !== "custom" || entry.customType !== "escalation/decision") continue;
+				const data = entry.data as { escalationId?: unknown; approved?: unknown } | undefined;
+				if (data?.escalationId == null) continue;
+				decisions.set(String(data.escalationId), { approved: data.approved === true });
+			}
 			return state.entries.flatMap((entry): VisibleItem[] => {
 				if (entry.type === "message" && entry.message.role === "user") {
 					const content = entry.message.content;
@@ -220,6 +259,27 @@ export function createSessionStore(root: string = DATABASE_ROOT): SessionStore {
 					const data = entry.data as { text: string; timestamp: number } | undefined;
 					if (!data) return [];
 					return [{ id: entry.id, kind: "send_message", text: data.text, time: data.timestamp }];
+				}
+				if (entry.type === "custom" && entry.customType === "escalation/request") {
+					const data = entry.data as { escalationId?: unknown; command?: unknown; from?: unknown; to?: unknown; justification?: unknown; timestamp?: unknown } | undefined;
+					if (data?.escalationId == null) return [];
+					const decision = decisions.get(String(data.escalationId));
+					return [
+						{
+							id: entry.id,
+							kind: "escalation",
+							text: String(data.command ?? ""),
+							time: typeof data.timestamp === "number" ? data.timestamp : 0,
+							escalation: {
+								id: String(data.escalationId),
+								command: String(data.command ?? ""),
+								from: data.from as SandboxMode,
+								to: data.to as SandboxMode,
+								justification: String(data.justification ?? ""),
+								status: decision ? (decision.approved ? "approved" : "rejected") : "pending",
+							},
+						},
+					];
 				}
 				return [];
 			});
@@ -271,6 +331,82 @@ export function createSessionStore(root: string = DATABASE_ROOT): SessionStore {
 		async appendCompactionRecord(type, details, timestamp) {
 			const state = await active();
 			await state.session.appendCustomEntry(type, { ...details, timestamp });
+			await refreshEntries(state);
+		},
+		async appendEscalationRecord(type, details, timestamp) {
+			const state = await active();
+			await state.session.appendCustomEntry(type, { ...details, timestamp });
+			await refreshEntries(state);
+		},
+		async escalationRequest(dir, id) {
+			const state = await stateFor(dir);
+			for (const entry of state.entries) {
+				if (entry.type !== "custom" || entry.customType !== "escalation/request") continue;
+				const data = entry.data as
+					| { escalationId?: unknown; command?: unknown; from?: unknown; to?: unknown; justification?: unknown; toolCallId?: unknown; timestamp?: unknown }
+					| undefined;
+				if (data?.escalationId !== id) continue;
+				return {
+					command: String(data.command ?? ""),
+					from: data.from as SandboxMode,
+					to: data.to as SandboxMode,
+					justification: String(data.justification ?? ""),
+					toolCallId: String(data.toolCallId ?? ""),
+					timestamp: typeof data.timestamp === "number" ? data.timestamp : 0,
+				};
+			}
+			return null;
+		},
+		async resumeTurn(dir, toolCallId) {
+			const state = await stateFor(dir);
+			const fromLog = buildResumeTurn(state.entries, toolCallId);
+			if (fromLog) return { ...fromLog, turn: null };
+			// The blocked turn is never in the log: assistant entries land only at turn_end, which a
+			// blocked-and-interrupted run never reaches. Reconstruct it from the escalation record —
+			// but only when nothing followed the request (a later run makes the request stale).
+			let record: { command?: unknown; to?: unknown; justification?: unknown; timestamp?: unknown } | null = null;
+			for (const entry of state.entries) {
+				if (entry.type === "message") record = null; // a message after the request ⇒ superseded
+				if (entry.type !== "custom" || entry.customType !== "escalation/request") continue;
+				const data = entry.data as { toolCallId?: unknown; command?: unknown; from?: unknown; to?: unknown; justification?: unknown; timestamp?: unknown } | undefined;
+				if (data?.toolCallId !== toolCallId) continue;
+				record = data;
+			}
+			if (!record) return null;
+			const messages = dropDanglingTurn(projectChain(state.entries));
+			// Insert before any trailing user messages: the result must follow the call, and queued
+			// follow-ups (persisted during the wait) stay after it — the order the live run would have had.
+			let insertAt = messages.length;
+			for (let i = messages.length - 1; i >= 0; i--) {
+				if (messages[i].role === "user" || messages[i].role === "custom") continue;
+				insertAt = i + 1;
+				break;
+			}
+			// Standard pi assistant shape: consumers assume the full field set — e.g. the stream
+			// path calls calculateContextTokens(assistant.usage) unguarded on every request, so a
+			// missing usage here would crash the resumed run (ERR § usage.totalTokens).
+			const turn: AgentMessage = {
+				role: "assistant",
+				content: [
+					{
+						type: "toolCall",
+						id: toolCallId,
+						name: "bash",
+						args: { command: String(record.command ?? ""), sandbox_mode: record.to, justification: String(record.justification ?? "") },
+					},
+				],
+				api: "",
+				provider: "",
+				model: "",
+				usage: EMPTY_USAGE,
+				stopReason: "stop",
+				timestamp: typeof record.timestamp === "number" ? record.timestamp : 0,
+			} as unknown as AgentMessage;
+			return { messages, insertAt, turn };
+		},
+		async appendToolResult(result, timestamp) {
+			const state = await active();
+			await state.session.appendMessage({ ...result, timestamp } as ToolResultMessage);
 			await refreshEntries(state);
 		},
 		async appendRequestHeader(systemPrompt, toolNames, timestamp) {

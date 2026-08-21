@@ -1,6 +1,13 @@
 import type { ElectrobunRPCSchema } from "electrobun";
 import type { SurfaceNode } from "./surface";
 
+/** File-effect sandbox mode (per partner; human-owned via the composer select). */
+export type SandboxMode = "read-only" | "workspace-write" | "danger-full-access";
+
+/** Lifecycle of a sandbox escalation request as the transcript shows it: awaiting the human,
+ * decided by the human, or orphaned (no live run awaits it — not actionable, no buttons). */
+export type EscalationStatus = "pending" | "approved" | "rejected" | "dropped";
+
 /**
  * Trajectory records: the complete origin-log timeline, one record per pi log entry.
  * Folded on the bun side from persisted pi entries; the trajectory drawer renders
@@ -189,15 +196,40 @@ export type AppRPCSchema = __schema<{
 				params: {};
 				response: { accepted: boolean };
 			};
-			/** Startup/refresh history: visible messages only (user + send_message). */
+			/** Startup/refresh history: visible messages only (user, send_message, sandbox escalations). */
 			history: {
 				params: {};
-				response: { items: { id: string; kind: "user" | "send_message"; text: string; time: number }[] };
+				response: {
+					items: {
+						id: string;
+						kind: "user" | "send_message" | "escalation";
+						text: string;
+						time: number;
+						escalation?: {
+							id: string;
+							command: string;
+							from: SandboxMode;
+							to: SandboxMode;
+							justification: string;
+							status: EscalationStatus;
+						};
+					}[];
+				};
 			};
 			/** Fetch agent status (view calibrates idle/working; fallback when a push was lost). */
 			get_status: {
 				params: {};
-				response: { streaming: boolean; workspace_path: string | null; running_partner: string | null };
+				response: { streaming: boolean; workspace_path: string | null; running_partner: string | null; sandbox_mode: SandboxMode };
+			};
+			/** Set the per-partner sandbox mode (persisted to <partnerDir>/sandbox.json). */
+			set_sandbox_mode: {
+				params: { mode: SandboxMode };
+				response: { ok: boolean; error?: string };
+			};
+			/** Respond to a pending sandbox escalation request (view dialog → bun). */
+			sandbox_respond: {
+				params: { id: string; approved: boolean };
+				response: { ok: boolean };
 			};
 			/** Context occupancy (used/window/percent + heuristic breakdown) for the composer meter. */
 			context_usage: {
@@ -298,6 +330,10 @@ export type AppRPCSchema = __schema<{
 			workspace_update: {};
 			/** The run settled. error is set when the run failed (e.g. missing API key). */
 			agent_end: { error?: string };
+			/** The sandbox mode changed (composer select / partner switch); the view refetches status. */
+			sandbox_mode_update: {};
+			/** An escalation record was persisted (request or decision); the view refetches history. */
+			escalation_update: {};
 		};
 	};
 }>;

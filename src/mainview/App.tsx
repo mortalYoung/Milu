@@ -6,13 +6,13 @@
 
 import { Electroview } from "electrobun/view";
 import { createSignal } from "solid-js";
-import type { AppRPCSchema, ContextUsage, SessionStats, TrajectoryRecord } from "../shared/rpc";
+import type { AppRPCSchema, ContextUsage, SandboxMode, SessionStats, TrajectoryRecord } from "../shared/rpc";
 import { AppRail } from "./components/AppRail";
 import { PartnerDetailsDialog } from "./components/PartnerDetailsDialog";
 import { type PartnerFormData, PartnerModal } from "./components/PartnerModal";
 import { TrajectoryDrawer } from "./components/TrajectoryDrawer";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./components/ui/dialog";
-import { type Entry, makeAgentEntry, makeSepEntry, makeSysEntry, makeUserEntry } from "./layouts/Transcript";
+import { type Entry, makeAgentEntry, makeEscalationEntry, makeSepEntry, makeSysEntry, makeUserEntry } from "./layouts/Transcript";
 import { ConversationPage } from "./pages/ConversationPage";
 import { type SettingsData, SettingsView } from "./pages/SettingsView";
 
@@ -45,6 +45,11 @@ export function App() {
 	const [trajectoryOpen, setTrajectoryOpen] = createSignal(false);
 	const [trajectoryRecords, setTrajectoryRecords] = createSignal<TrajectoryRecord[]>([]);
 	const [workspacePath, setWorkspacePath] = createSignal<string | null>(null);
+	const [sandboxMode, setSandboxMode] = createSignal<SandboxMode>("workspace-write");
+	async function onSetSandboxMode(mode: SandboxMode) {
+		const res = await rpc.request.set_sandbox_mode({ mode });
+		if (res.ok) setSandboxMode(mode);
+	}
 	const [contextUsage, setContextUsage] = createSignal<ContextUsage | null>(null);
 	const [stats, setStats] = createSignal<SessionStats | null>(null);
 	const [entries, setEntries] = createSignal<Entry[]>([]);
@@ -95,12 +100,25 @@ export function App() {
 	};
 
 	// ————— RPC helpers —————
-	// Render source = the persisted JSONL; dedupe by id, only append new records
+	// Render source = the persisted JSONL; dedupe by id, only append new records.
+	// Escalation entries are synced in place instead: a request's status flips pending → approved/rejected
+	// after the decision is persisted, and appending a duplicate bubble would double-render the request.
 	const renderedIds = new Set<string>();
 	async function refreshHistory() {
 		const { items } = await rpc.request.history({});
-		const fresh = items.filter((item) => !renderedIds.has(item.id));
-		for (const item of fresh) {
+		for (const item of items) {
+			if (item.kind === "escalation" && item.escalation) {
+				const entry = makeEscalationEntry({ text: item.text, time: item.time, escalation: item.escalation });
+				const existing = entries().find((e) => e.kind === "escalation" && e.escalation?.id === item.escalation!.id);
+				if (existing) {
+					setEntries((prev) => prev.map((e) => (e.kind === "escalation" && e.escalation?.id === item.escalation!.id ? entry : e)));
+				} else {
+					maybeTimeSeparator(new Date(item.time));
+					push(entry);
+				}
+				continue;
+			}
+			if (renderedIds.has(item.id)) continue;
 			renderedIds.add(item.id);
 			maybeTimeSeparator(new Date(item.time));
 			push(item.kind === "user" ? makeUserEntry(item.text, item.time) : makeAgentEntry(item.text, item.time));
@@ -215,6 +233,7 @@ export function App() {
 			setBusy(s.streaming);
 			setRunningPartner(s.running_partner);
 			setWorkspacePath(s.workspace_path);
+			setSandboxMode(s.sandbox_mode);
 		});
 	}
 
@@ -224,7 +243,20 @@ export function App() {
 			setBusy(s.streaming);
 			setRunningPartner(s.running_partner);
 			setWorkspacePath(s.workspace_path);
+			setSandboxMode(s.sandbox_mode);
 		});
+	});
+
+	rpc.addMessageListener("sandbox_mode_update", () => {
+		// The mode changed (composer select / partner switch); refetch status to stay in sync
+		void rpc.request.get_status({}).then((s) => setSandboxMode(s.sandbox_mode));
+	});
+
+	rpc.addMessageListener("escalation_update", () => {
+		void refreshHistory();
+		// Recalibrate busy: a request pauses the run (idle until the human clicks), a decision
+		// resumes it (writing returns) — get_status reports the view-facing streaming value.
+		calibrateBusy();
 	});
 
 	// ————— context usage (composer meter) + session stats —————
@@ -303,6 +335,9 @@ export function App() {
 					flashId={flashId}
 					onFlash={onFlash}
 					workspacePath={workspacePath()}
+					sandboxMode={sandboxMode()}
+					onSetSandboxMode={(mode) => void onSetSandboxMode(mode)}
+					onEscalationRespond={(id, approved) => void rpc.request.sandbox_respond({ id, approved })}
 					contextUsage={contextUsage()}
 					stats={stats()}
 					queued={queuedCross()}

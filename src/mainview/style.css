@@ -486,6 +486,44 @@ body::before {
 	.msg-user-time {
 		@apply self-end font-sans text-[10.5px] text-seal tracking-[0.05em] mt-1.5;
 	}
+	/* Sandbox escalation: a quiet ledger card in the message list — a pending approval
+	   carries inline Approve/Reject; once decided the status text replaces the buttons. */
+	.msg-escalation {
+		@apply self-start mt-4 w-[560px] max-w-full border border-hairline rounded-[10px] bg-letter px-[18px] py-[10px] font-mono text-[11px] text-ink;
+	}
+	.msg-escalation-head {
+		@apply text-[9px] uppercase tracking-[0.12em] text-muted mb-1;
+	}
+	.msg-escalation-cmd {
+		@apply whitespace-pre-wrap break-all text-[11px] leading-[1.5] mb-1;
+	}
+	.msg-escalation-meta {
+		@apply flex items-baseline gap-2 text-[10px] text-muted flex-wrap;
+	}
+	.msg-escalation-just {
+		@apply text-muted/80;
+	}
+	.msg-escalation-actions {
+		@apply flex items-center gap-2 mt-2;
+	}
+	.msg-escalation-btn {
+		@apply font-mono text-[10px] text-seal border border-hairline rounded-full px-2.5 py-[3px] cursor-pointer bg-transparent hover:bg-paper-hover;
+	}
+	.msg-escalation-btn-approve {
+		@apply bg-seal text-paper border-seal hover:bg-seal/90;
+	}
+	.msg-escalation-status {
+		@apply mt-2 text-[10px] text-muted;
+	}
+	.msg-escalation-status.ok {
+		@apply text-seal;
+	}
+	.msg-escalation-status.no {
+		@apply text-ink-soft;
+	}
+	.msg-escalation-status.drp {
+		@apply text-muted/60;
+	}
 	.msg-letter {
 		@apply self-start mt-6 relative bg-letter border border-hairline rounded-[10px] px-[18px] pt-[17px] pb-3 min-w-0 w-[560px] max-w-full;
 	}
@@ -900,6 +938,14 @@ body::before {
 	/* Live status: rides the meta row (right side via the row's justify-between); inherits font */
 	.composer-status {
 		@apply flex items-center gap-1.5;
+	}
+	/* Right-side meta group: status + sandbox-mode select */
+	.composer-meta-right {
+		@apply flex items-center gap-2 min-w-0;
+	}
+	/* Minimal sandbox-mode select: quiet mono, hairline border, inherits the meta row's size */
+	.composer-sandbox {
+		@apply font-mono text-[9px] text-muted bg-transparent border border-hairline rounded px-1 py-[1px] cursor-pointer outline-none;
 	}
 	.composer-status-dot {
 		@apply size-[5px] rounded-full;

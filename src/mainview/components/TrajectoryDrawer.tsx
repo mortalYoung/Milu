@@ -73,7 +73,10 @@ function markerClass(record: TrajectoryRecord): string | null {
 				case "system_reminder":
 					return "mrm";
 				case "request/header":
+				case "escalation/request":
 					return "mreq";
+				case "escalation/decision":
+					return "mres";
 				default:
 					return "mcustom";
 			}
@@ -115,6 +118,10 @@ function chipLabel(record: TrajectoryRecord): string {
 					return "START";
 				case "compaction/end":
 					return "END";
+				case "escalation/request":
+					return "ESC";
+				case "escalation/decision":
+					return "DEC";
 				default:
 					return "CUSTOM";
 			}
@@ -524,6 +531,33 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 						return (
 							<div class="one-tools">
 								<For each={names}>{(name) => <span class="one-tool-name">{String(name)}</span>}</For>
+							</div>
+						);
+					}
+					case "escalation/request": {
+						const d = (r.data ?? {}) as { escalationId?: unknown; command?: unknown; from?: unknown; to?: unknown; justification?: unknown };
+						return (
+							<>
+								<div class="one-tools">
+									<span class="one-tool-name">escalation</span>
+									{d.escalationId != null && <span class="one-call-id">{String(d.escalationId)}</span>}
+								</div>
+								<pre class="one-args">{String(d.command ?? "")}</pre>
+								<div class="traj-meta">
+									<span>
+										{String(d.from ?? "")} → {String(d.to ?? "")}
+									</span>
+									{d.justification ? <span>{String(d.justification)}</span> : null}
+								</div>
+							</>
+						);
+					}
+					case "escalation/decision": {
+						const d = (r.data ?? {}) as { escalationId?: unknown; approved?: unknown };
+						return (
+							<div class="traj-meta">
+								<span>{d.approved === true ? "approved" : "rejected"}</span>
+								{d.escalationId != null && <span>{String(d.escalationId)}</span>}
 							</div>
 						);
 					}
