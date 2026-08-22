@@ -45,8 +45,6 @@ export function ConversationPage(props: {
 	contextUsage: ContextUsage | null;
 	/** Session-wide metrics (usage totals + TTFT / tok/s) for the composer stats line. */
 	stats: SessionStats | null;
-	/** A message to this chat is queued behind another partner's run. */
-	queued: boolean;
 	/** Per-partner writing state (true for the row whose partner owns the running run). */
 	workingFor: (name: string) => boolean;
 	/** The selected chat's saved draft (per-chat, restored on switch-back). */
@@ -142,7 +140,6 @@ export function ConversationPage(props: {
 							onSetSandboxMode={props.onSetSandboxMode}
 							contextUsage={props.contextUsage}
 							stats={props.stats}
-							queued={props.queued}
 							draft={props.draft}
 							onDraftChange={props.onDraftChange}
 						/>

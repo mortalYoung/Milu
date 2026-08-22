@@ -37,8 +37,6 @@ export function Composer(props: {
 	contextUsage?: ContextUsage | null;
 	/** Session-wide metrics: whole-chat usage totals + averaged TTFT / tok/s. */
 	stats?: SessionStats | null;
-	/** A message to this chat is queued behind another partner's run. */
-	queued: boolean;
 	/** The selected chat's saved draft (cleared + restored across chat switches, owned by the App). */
 	draft: string;
 	onDraftChange: (text: string) => void;
@@ -104,7 +102,7 @@ export function Composer(props: {
 	};
 
 	// Status row: only while something is happening
-	const status = () => (props.busy() ? "writing…" : props.queued ? "queued" : null);
+	const status = () => (props.busy() ? "writing…" : null);
 
 	return (
 		<form class="composer" id="composer" onSubmit={submit}>

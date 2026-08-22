@@ -1,29 +1,28 @@
-import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, sep } from "node:path";
+import { sep } from "node:path";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import { ApplicationMenu, BrowserView, BrowserWindow } from "electrobun/bun";
 import type { AppRPCSchema } from "../shared/rpc";
-import { createAgent, validateWorkspace } from "./core/agent";
+import { type AgentHandle, createAgent } from "./core/agent";
 import { contextWindow } from "./core/agent-config";
 import { applyCompaction, type CompactionPlan, planCompaction } from "./core/compaction";
 import { DATABASE_ROOT } from "./core/config";
 import { loadRuntimeStats, saveRuntimeStats } from "./core/runtime-stats";
-import { createSessionStore } from "./core/session";
 import { priceSurface } from "./core/token-meter";
 import { aggregateUsage, fold, lastUsage } from "./core/trajectory";
-import { createPartner, deletePartner, listPartners, loadSettings, PartnerError, partnerDir, partnerRoot, saveSettings } from "./partners";
+import { ensureSandboxMode, ensureStoragePath, ensureWorkspace } from "./lib/ensure";
+import { partnerDirFor, persistSandboxMode, persistWorkspace, promptChangedSinceLastPersist, recordPrompt } from "./lib/partner-files";
+import { isSandboxMode } from "./lib/sandbox";
+import { getPartnerDir, loadSettings, saveSettings } from "./lib/settings";
+import { createPartner, deletePartner, listPartners, PartnerError, type PartnerInput } from "./partners";
+import { createSessionStore, type SessionScope } from "./persist";
 import { SandboxManager } from "./sandbox";
 import type { EscalationDecision, EscalationRequest, SandboxMode } from "./sandbox/types";
 import { runEscalatedBash, TOOL_GUIDANCE } from "./tools";
 
-// Session persistence: isolated per Partner directory; chatting is disabled while no Partner is selected
 const session = createSessionStore();
-// Sandbox: per-platform backend registry (macOS → seatbelt); fail closed when no backend is usable
 const sandbox = new SandboxManager();
-// Pending escalation decisions awaiting the human (view dialog → sandbox_respond RPC)
-const pendingSandboxConfirms = new Map<string, { resolve: (decision: EscalationDecision) => void; to: SandboxMode }>();
+const pendingSandboxConfirms = new Map<string, { resolve: (decision: EscalationDecision) => void; to: SandboxMode; dir: string; partner: string }>();
 // Escalation ids already decided this session — a repeated sandbox_respond (double-click) or a late
 // click on an already-decided bubble must not persist a second decision record.
 const respondedSandboxIds = new Set<string>();
@@ -32,53 +31,46 @@ const respondedSandboxIds = new Set<string>();
 const escalationNonce = Date.now().toString(36);
 let sandboxConfirmSeq = 0;
 
+interface PartnerAgent {
+	profile: PartnerInput;
+	dir: string;
+	scope: SessionScope;
+	agent: AgentHandle;
+}
+// The partner the view is showing (selection ≠ run owner: every partner runs independently)
+let viewPartner: { name: string; dir: string; profile: PartnerInput } | null = null;
+// Promise-valued: creation is async and first touches race (select + first send) — storing the
+// in-flight creation lets concurrent callers await one promise instead of double-creating.
+const agents = new Map<string, Promise<PartnerAgent>>();
+
+function pendingEscalationCount(partner: string): number {
+	let n = 0;
+	for (const pending of pendingSandboxConfirms.values()) {
+		if (pending.partner === partner) n += 1;
+	}
+	return n;
+}
+
 /**
- * Claim + reject every escalation still awaiting the human: resolve rejected (so the blocked run
- * settles and queued follow-ups can drain), persist the decision, and mark the ids responded (a
- * racing click must not double-decide). Callers: agent_end (the run died) and chat (a new user
- * message supersedes pending approvals).
+ * Claim + reject every escalation of `partner` still awaiting the human: resolve rejected (so the
+ * blocked run settles and queued follow-ups can drain), persist the decision, and mark the ids
+ * responded (a racing click must not double-decide). Callers: agent_end (the run died) and chat
+ * (a new user message supersedes pending approvals).
  */
-function rejectPendingEscalations(reason: string) {
-	if (pendingSandboxConfirms.size === 0) return;
+function rejectPendingEscalations(partner: string, reason: string) {
 	const timestamp = Date.now();
 	for (const [id, pending] of pendingSandboxConfirms) {
+		if (pending.partner !== partner) continue;
 		pendingSandboxConfirms.delete(id);
 		respondedSandboxIds.add(id);
 		pending.resolve({ approved: false, reason });
 		void session
+			.scope(pending.dir)
 			.appendEscalationRecord("escalation/decision", { escalationId: id, approved: false }, timestamp)
 			.catch((error) => console.error("escalation decision failed:", error));
 	}
-	rpc.send.escalation_update({});
-}
-let currentPartner: { name: string; dir: string } | null = null;
-// The partner whose run is currently in progress (set when a run starts, cleared on agent_end);
-// the view uses it to show the writing/stop state only for that partner, not for every partner.
-let runningPartner: string | null = null;
-// A partner switch requested while a run is in flight: applied when the run settles, so the run's
-// session root and agent context stay intact (a mid-run switch would yank both out from under it).
-let pendingSwitch: { name: string; responsibilities?: string; tones?: string } | null = null;
-// Cross-partner messages queued while another partner's run is in flight: each starts a fresh run
-// for its own partner once the current run settles — never a follow-up into the wrong run.
-const pendingChats: { text: string; partner: string }[] = [];
-// Prompt persistence dedup: the prompt is static, and an in-memory guard resets on every restart
-// (one system_prompt appended per launch, piling up identical entries). Record the last persisted
-// prompt hash per root on disk so restarts stay silent until the prompt actually changes.
-const lastPromptPath = (dir: string) => join(dir, "last-prompt.json");
-const promptHash = (prompt: string) => createHash("sha256").update(prompt).digest("hex");
-async function promptChangedSinceLastPersist(dir: string, prompt: string): Promise<boolean> {
-	try {
-		const saved = JSON.parse(await readFile(lastPromptPath(dir), "utf8")) as { hash?: unknown };
-		return saved.hash !== promptHash(prompt);
-	} catch {
-		return true; // no record yet (first selection of this root)
-	}
-}
-async function recordPrompt(dir: string, prompt: string): Promise<void> {
-	await writeFile(lastPromptPath(dir), JSON.stringify({ hash: promptHash(prompt) }, null, 2), "utf8");
 }
 
-/** Display helper: render the home directory as ~ (…/Users/xiuneng/… → ~/…) for the composer chip. */
 function tildify(path: string): string {
 	const home = homedir();
 	if (path === home) return "~";
@@ -86,87 +78,92 @@ function tildify(path: string): string {
 	return path;
 }
 
-// Workspace persistence: per-partner file (survives restart; re-validated on restore).
-const workspaceFilePath = (dir: string) => join(dir, "workspace.json");
-async function persistWorkspace(path: string) {
-	if (!currentPartner) return;
-	try {
-		await writeFile(workspaceFilePath(currentPartner.dir), JSON.stringify({ path }, null, 2), "utf8");
-	} catch (error) {
-		console.error("persistWorkspace failed:", error);
-	}
+/** Create the partner's agent on first interaction — idempotent; it lives until the partner is deleted. */
+function ensureAgent(profile: PartnerInput): Promise<PartnerAgent> {
+	const existing = agents.get(profile.name);
+	if (existing) return existing;
+	// A failed creation must remove itself, or the rejected promise would poison every later call.
+	const created = createPartnerAgent(profile).catch((error) => {
+		if (agents.get(profile.name) === created) agents.delete(profile.name);
+		throw error;
+	});
+	agents.set(profile.name, created);
+	return created;
 }
 
-// Sandbox mode persistence: per-partner file (survives restart; re-validated on restore).
-const sandboxFilePath = (dir: string) => join(dir, "sandbox.json");
-const SANDBOX_MODES: SandboxMode[] = ["read-only", "workspace-write", "danger-full-access"];
-function isSandboxMode(value: unknown): value is SandboxMode {
-	return typeof value === "string" && (SANDBOX_MODES as string[]).includes(value);
-}
-async function persistSandboxMode(mode: SandboxMode) {
-	if (!currentPartner) return;
-	try {
-		await writeFile(sandboxFilePath(currentPartner.dir), JSON.stringify({ mode }, null, 2), "utf8");
-	} catch (error) {
-		console.error("persistSandboxMode failed:", error);
-	}
-}
+async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> {
+	const dir = await partnerDirFor(profile.name);
+	// Storage: partner-scoped directory the agent may freely write to; must exist before the prompt mentions it
+	const storagePath = await ensureStoragePath(dir);
+	// Restore the persisted workspace (per-partner): re-validated so a deleted directory is not restored
+	const workspace = await ensureWorkspace(dir);
+	const mode = await ensureSandboxMode(dir);
 
-const agent = createAgent(
-	{
-		onTurnStart: (turn) => rpc.send.agent_turn({ turn, partner: runningPartner }),
-		// send_message is already in the store; here we only signal the view to refetch
-		onMessage: () => rpc.send.agent_message({}),
-		// A turn has been persisted; the view invalidates its trajectory cache and refetches
-		onTrajectoryUpdate: () => rpc.send.trajectory_update({}),
-		// The workspace was set; the view refetches status and shows it near the input
-		onWorkspaceUpdate: () => rpc.send.workspace_update({}),
-		// …and it was accepted: persist it per-partner so it survives restart
-		onWorkspaceSet: (path) => void persistWorkspace(path),
-		onEnd: (error) => {
-			runningPartner = null;
-			// Any escalation still awaiting the human dies with the run — a late click must never
-			// grant a run that is already gone.
-			rejectPendingEscalations("run ended while awaiting approval");
-			rpc.send.agent_end({ error });
-			void drainQueued().finally(() => void maybeAutoCompact());
+	const scope = session.scope(dir);
+	const agent = createAgent(
+		{
+			onTurnStart: (turn) => rpc.send.agent_turn({ turn, partner: profile.name }),
+			onMessage: () => rpc.send.agent_message({}),
+			onTrajectoryUpdate: () => rpc.send.trajectory_update({}),
+			onWorkspaceUpdate: () => rpc.send.workspace_update({}),
+			onWorkspaceSet: (path) => void persistWorkspace(dir, path),
+			onEnd: (error) => {
+				// Any escalation still awaiting the human dies with the run — a late click must never
+				// grant a run that is already gone.
+				rejectPendingEscalations(profile.name, "run ended while awaiting approval");
+				rpc.send.agent_end({ error, partner: profile.name });
+				void agents.get(profile.name)?.then((e) => void maybeAutoCompact(e));
+			},
 		},
-	},
-	{
-		session,
-		// Runtime timing is process-global: seed from disk on launch, write through after every sampled turn
-		runtimeStats: await loadRuntimeStats(DATABASE_ROOT),
-		persistRuntimeStats: (snapshot) => void saveRuntimeStats(DATABASE_ROOT, snapshot).catch((error) => console.error("saveRuntimeStats failed:", error)),
-		sandbox,
-		// Human approval gate for escalation retries: push to the view, await the sandbox_respond reply
-		confirmEscalation: (request: EscalationRequest) =>
-			new Promise<EscalationDecision>((resolve) => {
-				const id = `sbx-${escalationNonce}-${++sandboxConfirmSeq}`;
-				pendingSandboxConfirms.set(id, { resolve, to: request.to });
-				// Persist the request first — the transcript/trajectory render from the origin log, not a push
-				void session
-					.appendEscalationRecord(
-						"escalation/request",
-						{
-							escalationId: id,
-							command: request.command,
-							from: request.from,
-							to: request.to,
-							justification: request.justification,
-							toolCallId: request.toolCallId,
-						},
-						Date.now(),
-					)
-					.then(() => rpc.send.escalation_update({}))
-					.catch((error) => {
-						// The bubble can never render — the run would hang invisibly on the human gate; drop it as rejected
-						console.error("confirmEscalation persist failed:", error);
-						pendingSandboxConfirms.delete(id);
-						resolve({ approved: false, reason: "escalation request could not be persisted" });
-					});
-			}),
-	},
-);
+		{
+			session: scope,
+			runtimeStats: await loadRuntimeStats(dir),
+			persistRuntimeStats: (snapshot) => void saveRuntimeStats(dir, snapshot).catch((error) => console.error("saveRuntimeStats failed:", error)),
+			sandbox,
+			confirmEscalation: (request: EscalationRequest) =>
+				new Promise<EscalationDecision>((resolve) => {
+					const id = `sbx-${escalationNonce}-${++sandboxConfirmSeq}`;
+					pendingSandboxConfirms.set(id, { resolve, to: request.to, dir, partner: profile.name });
+					// Persist the request first — the transcript/trajectory render from the origin log, not a push
+					void scope
+						.appendEscalationRecord(
+							"escalation/request",
+							{
+								escalationId: id,
+								command: request.command,
+								from: request.from,
+								to: request.to,
+								justification: request.justification,
+								toolCallId: request.toolCallId,
+							},
+							Date.now(),
+						)
+						.then(() => rpc.send.escalation_update({}))
+						.catch((error) => {
+							// The bubble can never render — the run would hang invisibly on the human gate; drop it as rejected
+							console.error("confirmEscalation persist failed:", error);
+							pendingSandboxConfirms.delete(id);
+							resolve({ approved: false, reason: "escalation request could not be persisted" });
+						});
+				}),
+		},
+	);
+	agent.setPartner(profile);
+	agent.setStoragePath(storagePath);
+	agent.setWorkspace(workspace);
+	agent.setSandboxMode(mode);
+	// Persist the rebuilt prompt so the trajectory view can show it — per root, and only when it
+	// actually changed; the hash record is file-backed so restarts don't pile up identical entries
+	if (await promptChangedSinceLastPersist(dir, agent.systemPrompt)) {
+		await scope.appendSystemPrompt(agent.systemPrompt, Date.now());
+		await recordPrompt(dir, agent.systemPrompt);
+	}
+	// Restore the model chain from the surface once compaction has rewritten it (replaceGeneration > 0);
+	// append-only sessions keep the buildSessionContext path (identical output, includes dangling-turn repair).
+	const surf = await session.surface(dir);
+	agent.restore(surf.replaceGeneration > 0 ? await session.deriveMessages(dir) : await session.restoreMessages(dir));
+	return { profile, dir, scope, agent };
+}
 
 type EscalationRequestRecord = NonNullable<Awaited<ReturnType<typeof session.escalationRequest>>>;
 type ResumeTurn = NonNullable<Awaited<ReturnType<typeof session.resumeTurn>>>;
@@ -176,10 +173,10 @@ type ResumeTurn = NonNullable<Awaited<ReturnType<typeof session.resumeTurn>>>;
  * insert the tool result into the restored context (the dangling turn kept; queued follow-up user
  * messages after it stay after it), persist the result, and continue the run from the tool result.
  */
-async function resumeApprovedEscalation(target: { name: string; dir: string }, request: EscalationRequestRecord, turn: ResumeTurn) {
+async function resumeApprovedEscalation(entry: PartnerAgent, request: EscalationRequestRecord, turn: ResumeTurn) {
 	try {
 		const { text, exitCode } = await runEscalatedBash(request.command, request.to, {
-			guard: { workspaceRoot: () => agent.workspacePath, storageRoot: () => agent.storagePath },
+			guard: { workspaceRoot: () => entry.agent.workspacePath, storageRoot: () => entry.agent.storagePath },
 			sandbox: { manager: sandbox, getMode: () => request.to },
 		});
 		const result: ToolResultMessage = {
@@ -190,174 +187,80 @@ async function resumeApprovedEscalation(target: { name: string; dir: string }, r
 			isError: exitCode !== 0 && exitCode !== undefined,
 			timestamp: Date.now(),
 		};
-		const inserted = turn.turn ? [turn.turn, result] : [result]; // log case: the turn is already in messages
-		agent.restore([...turn.messages.slice(0, turn.insertAt), ...inserted, ...turn.messages.slice(turn.insertAt)]);
-		await session.appendToolResult(result, Date.now());
-		if (!agent.isStreaming) runningPartner = target.name;
-		await agent.continue();
+		// The blocked turn is already in the log (persisted at message_end, before the gate) — only the result lands here
+		entry.agent.restore([...turn.messages.slice(0, turn.insertAt), result, ...turn.messages.slice(turn.insertAt)]);
+		await entry.scope.appendToolResult(result, Date.now());
+		await entry.agent.continue();
 	} catch (error) {
 		console.error("resumeApprovedEscalation failed:", error);
-	}
-}
-
-/** The partner the view is showing right now: the pending switch when one is deferred, else the applied one. */
-async function effectivePartner(): Promise<{ name: string; dir: string } | null> {
-	if (pendingSwitch) {
-		const settings = await loadSettings();
-		return { name: pendingSwitch.name, dir: join(partnerRoot(settings), pendingSwitch.name) };
-	}
-	return currentPartner;
-}
-
-/** Switch the active partner (session root, prompt, storage, workspace, restore). Only called while the agent is idle. */
-async function applyPartnerSwitch(profile: { name: string; responsibilities?: string; tones?: string } | null): Promise<void> {
-	if (profile) {
-		const settings = await loadSettings();
-		currentPartner = { name: profile.name, dir: join(partnerRoot(settings), profile.name) };
-		await session.setRoot(currentPartner.dir);
-		agent.setPartner(profile);
-		// Storage: partner-scoped directory the agent may freely write to; must exist before the prompt mentions it
-		const storagePath = join(currentPartner.dir, "storage");
-		await mkdir(storagePath, { recursive: true });
-		agent.setStoragePath(storagePath);
-		// Restore the persisted workspace (per-partner): re-validated so a deleted directory is not restored.
-		// Always applied (null when this partner has none) — otherwise the previous partner's workspace
-		// would leak into this one after a switch.
-		let workspace: string | null = null;
-		try {
-			const raw = await readFile(workspaceFilePath(currentPartner.dir), "utf8");
-			const saved = JSON.parse(raw) as { path?: unknown };
-			if (typeof saved.path === "string" && validateWorkspace(saved.path, { current: null, storagePath }) === null) {
-				workspace = saved.path;
-			}
-		} catch {
-			// no persisted workspace for this partner
-		}
-		agent.setWorkspace(workspace);
-		// Restore the per-partner sandbox mode (persisted; fallback default) — never leak another partner's
-		let mode: SandboxMode = "workspace-write";
-		try {
-			const raw = await readFile(sandboxFilePath(currentPartner.dir), "utf8");
-			const saved = JSON.parse(raw) as { mode?: unknown };
-			if (isSandboxMode(saved.mode)) mode = saved.mode;
-		} catch {
-			// no persisted mode for this partner
-		}
-		agent.setSandboxMode(mode);
-		// Persist the rebuilt prompt so the trajectory view can show it — per root, and only when it
-		// actually changed; the hash record is file-backed so restarts don't pile up identical entries
-		if (await promptChangedSinceLastPersist(currentPartner.dir, agent.systemPrompt)) {
-			await session.appendSystemPrompt(agent.systemPrompt, Date.now());
-			await recordPrompt(currentPartner.dir, agent.systemPrompt);
-		}
-		// Restore the model chain from the surface once compaction has rewritten it (replaceGeneration > 0);
-		// append-only sessions keep the buildSessionContext path (identical output, includes dangling-turn repair).
-		const surf = await session.surface(currentPartner.dir);
-		const restored = surf.replaceGeneration > 0 ? await session.deriveMessages(currentPartner.dir) : await session.restoreMessages(currentPartner.dir);
-		agent.restore(restored);
-	} else {
-		currentPartner = null;
-		agent.setPartner(null);
-		agent.setStoragePath(null);
-		agent.setWorkspace(null);
-		agent.setSandboxMode("workspace-write");
-	}
-}
-
-/**
- * After a run settles: apply the deferred partner switch, then start fresh runs for queued
- * cross-partner messages — each in its own partner's session, never merged into the prior run.
- */
-async function drainQueued() {
-	if (pendingSwitch) {
-		const profile = pendingSwitch;
-		pendingSwitch = null;
-		await applyPartnerSwitch(profile);
-	}
-	while (!agent.isStreaming && pendingChats.length > 0) {
-		const next = pendingChats[0];
-		if (next.partner !== currentPartner?.name) break; // selection moved on; stays queued until it returns
-		pendingChats.shift();
-		runningPartner = next.partner;
-		await agent.chat(next.text);
 	}
 }
 
 /** Compaction threshold: auto-compact after a settled run when provider usage exceeds this fraction of the window. */
 const COMPACT_THRESHOLD = 0.7;
 
-/** Apply a compaction plan, sync the agent's in-memory chain to the compacted surface, and notify the view. */
-async function runCompaction(target: { dir: string }, plan: CompactionPlan): Promise<void> {
-	await applyCompaction(session, target.dir, plan);
-	agent.restore(await session.deriveMessages(target.dir));
-	rpc.send.trajectory_update({}); // invalidates the trajectory cache and refreshes the context meter
+async function runCompaction(entry: PartnerAgent, plan: CompactionPlan): Promise<void> {
+	await applyCompaction(session, entry.dir, plan);
+	entry.agent.restore(await session.deriveMessages(entry.dir));
+	rpc.send.trajectory_update({});
 }
 
-/** Auto-compact after a run settles: only when the agent is idle and usage crossed the threshold. */
-async function maybeAutoCompact(): Promise<void> {
-	if (agent.isStreaming) return;
-	const target = await effectivePartner();
-	if (!target) return;
-	const entries = await session.rawEntries(target.dir);
+async function maybeAutoCompact(entry: PartnerAgent): Promise<void> {
+	if (entry.agent.isStreaming) return;
+	const entries = await session.rawEntries(entry.dir);
 	const usage = lastUsage(entries);
 	if (!usage) return;
 	const window = contextWindow();
 	const used = usage.input + usage.cacheRead + usage.cacheWrite;
 	if (used < window * COMPACT_THRESHOLD) return;
 	try {
-		const surface = await session.surface(target.dir);
+		const surface = await session.surface(entry.dir);
 		const plan = planCompaction(entries, surface);
 		if (!plan) return;
-		await runCompaction(target, plan);
+		await runCompaction(entry, plan);
 		console.log(`auto-compacted ${plan.range.end - plan.range.start + 1} surface nodes`);
 	} catch (error) {
 		console.error("auto-compact failed:", error);
 	}
 }
 
+// preview_system_prompt composes purely from the profile; a throwaway agent with a no-op bridge
+// serves it before any partner agent exists (nothing opens — scopes are lazy).
+const previewAgent = createAgent(
+	{ onTurnStart: () => {}, onMessage: () => {}, onTrajectoryUpdate: () => {}, onWorkspaceUpdate: () => {}, onEnd: () => {} },
+	{ session: session.scope(DATABASE_ROOT) },
+);
+
 const rpc = BrowserView.defineRPC<AppRPCSchema>({
 	handlers: {
 		requests: {
 			chat: async ({ text }) => {
-				// The message targets the view's selection — the pending switch (deferred mid-run)
-				// is that selection, so a message sent from its chat belongs to the pending partner.
-				const target = pendingSwitch ?? currentPartner;
+				const target = viewPartner;
 				if (!target) return { accepted: false };
-				// A new user message supersedes any pending escalations: the human is engaging, not
-				// approving — reject them so the blocked run settles and the queued follow-up can drain
-				// (without this, the new question waits indefinitely on the approval gate).
-				rejectPendingEscalations("superseded by a new user message");
+				const entry = await ensureAgent(target.profile);
+				// A new user message supersedes any pending escalations of THIS partner: the human is
+				// engaging, not approving — reject them so the blocked run settles and the queued
+				// follow-up can drain (without this, the new question waits indefinitely on the gate).
+				rejectPendingEscalations(target.name, "superseded by a new user message");
 				// Reset the progress-notification clock at SEND time (not when the queued message is
-				// processed): a question queued behind another run must restart the "working ~Ns"
-				// countdown immediately, otherwise reminders keep counting from the previous question.
-				agent.markUserMessage();
-				if (pendingSwitch || (agent.isStreaming && runningPartner !== null && runningPartner !== target.name)) {
-					// Another partner's run is in flight (or the switch to this partner is still pending):
-					// queue the message — it starts a fresh run for this partner once the run settles,
-					// never a follow-up into the wrong partner's run (message isolation).
-					pendingChats.push({ text, partner: target.name });
-					return { accepted: true, queued: true };
-				}
-				// A fresh run (not a follow-up) belongs to the partner that sends it; capture it so the
-				// view only shows writing/stop for that partner after a switch.
-				if (!agent.isStreaming) runningPartner = target.name;
-				// Await persistence; the view's subsequent history fetch will then include this message
-				await agent.chat(text);
+				// processed): a follow-up behind the partner's own running turn must restart the
+				// "working ~Ns" countdown immediately.
+				entry.agent.markUserMessage();
+				await entry.agent.chat(text);
 				return { accepted: true };
 			},
 			stop: () => {
-				agent.stop();
+				void agents.get(viewPartner?.name ?? "")?.then((e) => e.agent.stop());
 				return { accepted: true };
 			},
 			reset: () => {
-				agent.reset();
+				void agents.get(viewPartner?.name ?? "")?.then((e) => e.agent.reset());
 				return { accepted: true };
 			},
 			// The view actively pulls history after mounting (avoids the startup race: pushes may be lost before the view is ready)
 			history: async () => {
-				const target = await effectivePartner();
+				const target = viewPartner;
 				if (!target) return { items: [] };
-				await session.ready();
 				const items = await session.visibleHistory(target.dir);
 				// A pending request with no live promise is only actionable when its blocked tool call
 				// still exists in the log (restart-resume); otherwise it is orphaned — render as
@@ -371,26 +274,32 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				}
 				return { items };
 			},
-			// The bun-side ground truth: true while streaming or executing tools; the view calibrates idle rendering with it
-			get_status: () => ({
-				// View-facing streaming: while an escalation awaits the human, present idle — the run is
-				// paused on the approval gate, not generating. Internal isStreaming stays true: chat/queue
-				// semantics and the running-partner capture must still see the busy run.
-				streaming: agent.isStreaming && pendingSandboxConfirms.size === 0,
-				workspace_path: agent.workspacePath ? tildify(agent.workspacePath) : null,
-				running_partner: runningPartner,
-				sandbox_mode: agent.sandboxMode,
-			}),
-			// set the per-partner mode from the composer select; persist + push so the view stays in sync
+			// The bun-side ground truth: per-partner streaming (view-facing: an escalation-paused run
+			// reads idle — the run is paused on the approval gate, not generating) + the selected chat's
+			// workspace/sandbox. The view calibrates idle rendering with it.
+			get_status: async () => {
+				const selected = viewPartner ? await agents.get(viewPartner.name) : undefined;
+				const partners = await Promise.all(
+					[...agents.entries()].map(async ([name, pe]) => {
+						const entry = await pe;
+						return { name, streaming: entry.agent.isStreaming && pendingEscalationCount(name) === 0 };
+					}),
+				);
+				return {
+					workspace_path: selected?.agent.workspacePath ? tildify(selected.agent.workspacePath) : null,
+					sandbox_mode: selected?.agent.sandboxMode ?? "workspace-write",
+					partners,
+				};
+			},
 			set_sandbox_mode: async ({ mode }) => {
-				if (!currentPartner) return { ok: false, error: "no partner selected" };
+				if (!viewPartner) return { ok: false, error: "no partner selected" };
 				if (!isSandboxMode(mode)) return { ok: false, error: "invalid mode" };
-				agent.setSandboxMode(mode);
-				await persistSandboxMode(mode);
+				const entry = await ensureAgent(viewPartner.profile);
+				entry.agent.setSandboxMode(mode);
+				await persistSandboxMode(entry.dir, mode);
 				rpc.send.sandbox_mode_update({});
 				return { ok: true };
 			},
-			// resolve a pending escalation (approve → run once with the requested mode; reject → nothing runs)
 			sandbox_respond: async ({ id, approved }) => {
 				// Claim synchronously on first click: a double-click must not write a second decision
 				// record, and a racing agent_end must not resolve the same entry twice.
@@ -401,15 +310,16 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				// Persisted (restart) escalation: approving must still execute the command and continue
 				// the task — but only while the blocked turn is resumable; otherwise fail closed (a
 				// decision claiming "approved" while nothing runs would be the misleading case).
-				let resume: { target: { name: string; dir: string }; request: EscalationRequestRecord; turn: ResumeTurn } | null = null;
+				let resume: { entry: PartnerAgent; request: EscalationRequestRecord; turn: ResumeTurn } | null = null;
 				if (!pending && approved) {
-					const target = await effectivePartner();
+					const target = viewPartner;
+					const entry = target ? await ensureAgent(target.profile) : undefined;
 					// Idle only: restoring over a live run would yank the active context out from under it
-					if (target && !agent.isStreaming) {
-						const request = await session.escalationRequest(target.dir, id);
-						const turn = request?.toolCallId ? await session.resumeTurn(target.dir, request.toolCallId) : null;
+					if (entry && !entry.agent.isStreaming) {
+						const request = await session.escalationRequest(entry.dir, id);
+						const turn = request?.toolCallId ? await session.resumeTurn(entry.dir, request.toolCallId) : null;
 						if (request && turn) {
-							resume = { target, request, turn };
+							resume = { entry, request, turn };
 						} else {
 							approved = false; // unresumable — record the decision as rejected
 						}
@@ -419,8 +329,14 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				}
 				// Persist the decision BEFORE resolving: the grant must not outrun the log, and a failed
 				// persist must not run the command — the pending run is rejected, never hung.
+				const dir = pending?.dir ?? viewPartner?.dir;
+				if (!dir) {
+					respondedSandboxIds.delete(id);
+					pending?.resolve({ approved: false, reason: "partner is gone" });
+					return { ok: false };
+				}
 				try {
-					await session.appendEscalationRecord("escalation/decision", { escalationId: id, approved }, Date.now());
+					await session.scope(dir).appendEscalationRecord("escalation/decision", { escalationId: id, approved }, Date.now());
 				} catch (error) {
 					console.error("sandbox_respond persist failed:", error);
 					respondedSandboxIds.delete(id); // allow a retry (nothing was decided)
@@ -431,34 +347,32 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					pending.resolve(approved ? { approved: true, mode: pending.to } : { approved: false, reason: "rejected by user" });
 				}
 				rpc.send.escalation_update({});
-				if (resume) void resumeApprovedEscalation(resume.target, resume.request, resume.turn);
+				if (resume) void resumeApprovedEscalation(resume.entry, resume.request, resume.turn);
 				return { ok: true };
 			},
-			// The model-visible surface (nodes + replace generation); observability for the surface layer
 			surface: async () => {
-				const target = await effectivePartner();
+				const target = viewPartner;
 				if (!target) return { nodes: [], replaceGeneration: 0 };
-				await session.ready();
 				return session.surface(target.dir);
 			},
-			// Manual compaction: rewrite the model-visible surface (the log stays append-only)
 			compact: async () => {
-				const target = await effectivePartner();
-				if (!target) return { ok: false, error: "no partner selected" };
-				if (agent.isStreaming) return { ok: false, error: "agent is running" };
-				await session.ready();
+				const target = viewPartner;
+				const entry = target ? await agents.get(target.name) : undefined;
+				if (!target || !entry) return { ok: false, error: "no partner selected" };
+				if (entry.agent.isStreaming) return { ok: false, error: "agent is running" };
 				const entries = await session.rawEntries(target.dir);
 				const surface = await session.surface(target.dir);
 				const plan = planCompaction(entries, surface);
 				if (!plan) return { ok: true, compacted: 0 };
-				await runCompaction(target, plan);
+				await runCompaction(entry, plan);
 				return { ok: true, compacted: plan.range.end - plan.range.start + 1 };
 			},
 			// Context occupancy for the composer meter: used = last turn's provider-reported prompt size
 			// (input + cacheRead + cacheWrite, no output), window = the routed model's contextWindow.
 			// breakdown is the surface-priced composition (4 chars ≈ 1 token), always labeled `~` in the UI.
 			context_usage: async () => {
-				const target = await effectivePartner();
+				const target = viewPartner;
+				const entry = target ? await agents.get(target.name) : undefined;
 				const entries = target ? await session.rawEntries(target.dir) : [];
 				const surface = target ? await session.surface(target.dir) : { nodes: [], replaceGeneration: 0 };
 				const usage = lastUsage(entries);
@@ -469,19 +383,19 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					used,
 					window,
 					percent,
-					breakdown: currentPartner ? priceSurface(agent.systemPrompt, TOOL_GUIDANCE, entries, surface) : null,
+					breakdown: entry ? priceSurface(entry.agent.systemPrompt, TOOL_GUIDANCE, entries, surface) : null,
 					lastTurn: usage ?? undefined,
 				};
 			},
 			trajectory: async () => {
-				const target = await effectivePartner();
+				const target = viewPartner;
 				return { records: target ? fold(await session.rawEntries(target.dir)) : [] };
 			},
-			// Session-wide metrics: persisted usage totals (per partner dir) + in-memory run timing
 			stats: async () => {
-				const target = await effectivePartner();
+				const target = viewPartner;
+				const entry = target ? await agents.get(target.name) : undefined;
 				const usage = target ? aggregateUsage(await session.rawEntries(target.dir)) : null;
-				return { usage, runtime: agent.runtimeStats };
+				return { usage, runtime: entry?.agent.runtimeStats ?? { runs: 0, avgTtftMs: null, avgTps: null, lastTtftMs: null } };
 			},
 			get_settings: async () => {
 				return {
@@ -503,7 +417,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				// list preview stays current even for chats that are not selected (isolation by dir).
 				const partners = await Promise.all(
 					profiles.map(async (profile) => {
-						const last = await session.lastMessage(partnerDir(settings, profile.name));
+						const last = await session.lastMessage(getPartnerDir(settings, profile.name));
 						const lastMessageKind: "user" | "send_message" = last?.kind === "user" ? "user" : "send_message";
 						return last ? { ...profile, lastMessage: last.text, lastMessageAt: last.time, lastMessageKind } : profile;
 					}),
@@ -513,28 +427,29 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 			create_partner: async (input) => {
 				try {
 					const settings = await loadSettings();
-					await createPartner(settings, input);
-					return { ok: true };
+					const profile = await createPartner(settings, input);
+					return { ok: true, profile };
 				} catch (error) {
 					if (error instanceof PartnerError) return { ok: false, error: error.message };
 					console.error("create_partner failed:", error);
 					return { ok: false, error: "Failed to create partner" };
 				}
 			},
-			// Trial four-section system prompt preview (identify/tool-guidance are system-generated, shown read-only in the preview)
 			preview_system_prompt: ({ profile }) => {
-				return { prompt: agent.previewSystemPrompt(profile) };
+				return { prompt: previewAgent.previewSystemPrompt(profile) };
 			},
+			// The view's selection: no deferral needed — every partner runs on its own agent, so the
+			// switch is instant (only the transcript shown changes). The agent is created on demand.
 			set_partner: async ({ profile }) => {
-				if (agent.isStreaming || pendingSwitch) {
-					// A run is in flight (or a switch already is): defer the switch — applying it mid-run
-					// would yank the session root and agent context out from under the running partner
-					// (message isolation). Applied on agent_end, before queued messages drain.
-					pendingSwitch = profile;
-					return { ok: true };
+				if (profile) {
+					const dir = await partnerDirFor(profile.name);
+					viewPartner = { name: profile.name, dir, profile };
+					await ensureAgent(profile);
+					// The selection changed: the composer's workspace/sandbox chip must show the new partner's values
+					rpc.send.workspace_update({});
+				} else {
+					viewPartner = null;
 				}
-				await applyPartnerSwitch(profile);
-				void drainQueued();
 				return { ok: true };
 			},
 			delete_partner: async ({ name }) => {
@@ -542,8 +457,11 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					const settings = await loadSettings();
 					await deletePartner(settings, name);
 					// Drop the cached session root so a recreated same-name partner starts empty
-					// (the store would otherwise keep the old in-memory session and replay its history)
-					session.evictRoot(partnerDir(settings, name));
+					// (the store would otherwise keep the old in-memory session and replay its history) —
+					// and drop the agent: its context dies with the partner.
+					session.evictRoot(getPartnerDir(settings, name));
+					agents.delete(name);
+					if (viewPartner?.name === name) viewPartner = null;
 					return { ok: true };
 				} catch (error) {
 					if (error instanceof PartnerError) return { ok: false, error: error.message };

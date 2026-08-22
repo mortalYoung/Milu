@@ -184,7 +184,8 @@ export type AppRPCSchema = __schema<{
 			/** Send a user prompt. If the agent is busy, it is queued as a follow-up (outer loop). */
 			chat: {
 				params: { text: string };
-				response: { accepted: boolean; queued?: boolean };
+				// accepted=false when no partner is selected; a busy agent queues the message as its own follow-up
+				response: { accepted: boolean };
 			};
 			/** Abort the current agent run. */
 			stop: {
@@ -219,7 +220,13 @@ export type AppRPCSchema = __schema<{
 			/** Fetch agent status (view calibrates idle/working; fallback when a push was lost). */
 			get_status: {
 				params: {};
-				response: { streaming: boolean; workspace_path: string | null; running_partner: string | null; sandbox_mode: SandboxMode };
+				response: {
+					/** The selected chat's workspace / sandbox (each partner runs its own agent). */
+					workspace_path: string | null;
+					sandbox_mode: SandboxMode;
+					/** Per-partner view-facing streaming (escalation-paused runs read idle) — drives the list dots. */
+					partners: { name: string; streaming: boolean }[];
+				};
 			};
 			/** Set the per-partner sandbox mode (persisted to <partnerDir>/sandbox.json). */
 			set_sandbox_mode: {
@@ -293,7 +300,17 @@ export type AppRPCSchema = __schema<{
 					responsibilities?: string;
 					tones?: string;
 				};
-				response: { ok: boolean; error?: string };
+				response: {
+					ok: boolean;
+					error?: string;
+					/** The created profile (present when ok) — returned so the view can select it without re-listing. */
+					profile?: {
+						name: string;
+						responsibilities?: string;
+						tones?: string;
+						createdAt: number;
+					};
+				};
 			};
 			/** Switch the current Partner: name selects the session directory, the other fields rebuild the four-section system prompt. */
 			set_partner: {
@@ -320,16 +337,16 @@ export type AppRPCSchema = __schema<{
 	webview: {
 		requests: {};
 		messages: {
-			/** A new turn began (one LLM call + tool executions) — typing indicator; partner = the run's owner (null when unknown). */
-			agent_turn: { turn: number; partner: string | null };
+			/** A new turn began (one LLM call + tool executions) — typing indicator; partner = the run's owner. */
+			agent_turn: { turn: number; partner: string };
 			/** A visible message was persisted via send_message — view refetches history. */
 			agent_message: {};
 			/** A turn has been persisted (trajectory has new data); the view invalidates its cache and refetches. */
 			trajectory_update: {};
 			/** The workspace was set via set_workspace; the view refetches status to show it near the input. */
 			workspace_update: {};
-			/** The run settled. error is set when the run failed (e.g. missing API key). */
-			agent_end: { error?: string };
+			/** The run settled. error is set when the run failed (e.g. missing API key); partner = the run's owner. */
+			agent_end: { error?: string; partner: string };
 			/** The sandbox mode changed (composer select / partner switch); the view refetches status. */
 			sandbox_mode_update: {};
 			/** An escalation record was persisted (request or decision); the view refetches history. */

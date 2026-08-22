@@ -1,85 +1,38 @@
-/**
- * PartnerModal — Add Partner, written as a letter (direction C: salutation / body / P.S.).
- * "Dear <alias>," is the only required line; the alias is just a handle for the user to tell
- * partners apart. The body and P.S. are written directly on the ruled lines of the sheet —
- * leaving them blank is a valid letter, no toggles needed.
- */
-import { createEffect, createSignal, type JSX } from "solid-js";
+import { createPartnerForm, type PartnerFormData } from "../lib/partner-form";
 import { Button } from "./Button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 
-export interface PartnerFormData {
-	name: string;
-	responsibilities?: string;
-	tones?: string;
-}
-
-export function PartnerModal(props: {
+export interface PartnerModalProps {
 	open: boolean;
+	existingNames: string[];
 	onOpenChange: (open: boolean) => void;
 	onConfirm: (data: PartnerFormData) => Promise<string | null>;
-	/** Existing partner names — the name becomes a folder, so duplicates are rejected (case-insensitive, like the filesystem). */
-	existingNames: string[];
-}) {
-	const [name, setName] = createSignal("");
-	const [responsibilities, setResponsibilities] = createSignal("");
-	const [tones, setTones] = createSignal("");
-	const [error, setError] = createSignal<string | null>(null);
-	const [saving, setSaving] = createSignal(false);
+}
 
-	const formData = (): PartnerFormData => ({
-		name: name().trim(),
-		responsibilities: responsibilities().trim() || undefined,
-		tones: tones().trim() || undefined,
+export function PartnerModal(props: PartnerModalProps) {
+	const form = createPartnerForm({
+		open: () => props.open,
+		existingNames: () => props.existingNames,
+		onConfirm: props.onConfirm,
 	});
-
-	// Fresh dialog on every open: the modal stays mounted between opens (the Dialog only hides it),
-	// so the form state would otherwise leak into the next session.
-	createEffect(() => {
-		if (props.open) {
-			setName("");
-			setResponsibilities("");
-			setTones("");
-			setError(null);
-		}
-	});
-
-	const submit: JSX.EventHandler<HTMLFormElement, SubmitEvent> = async (e) => {
-		e.preventDefault();
-		if (!name().trim()) {
-			setError("Enter a name to continue");
-			return;
-		}
-		if (props.existingNames.some((n) => n.toLowerCase() === name().trim().toLowerCase())) {
-			setError(`Partner "${name().trim()}" already exists`);
-			return;
-		}
-		setSaving(true);
-		setError(null);
-		const err = await props.onConfirm(formData());
-		setSaving(false);
-		if (err) setError(err);
-	};
 
 	return (
 		<Dialog open={props.open} onOpenChange={props.onOpenChange}>
-			{/* The dialog is the desk; the sheet is the letter itself, filling it edge to edge */}
 			<DialogContent class="w-[540px] max-w-[540px] bg-paper p-0 gap-0">
 				<DialogHeader class="sr-only">
 					<DialogTitle>Add Partner</DialogTitle>
 					<DialogDescription>Create a new partner profile in the configured directory.</DialogDescription>
 				</DialogHeader>
 
-				<form class="letter-sheet" onSubmit={submit} autocomplete="off">
-					{/* A new letter begins with its header, then the salutation — the alias is literally the opening line */}
+				<form class="letter-sheet" onSubmit={form.submit} autocomplete="off">
 					<span class="letter-eyebrow">new letter</span>
 					<p class="letter-sal">
 						Dear
-						<input class="letter-alias" value={name()} onInput={(e) => setName(e.currentTarget.value)} placeholder="alias" aria-label="Partner name" autofocus />,
+						<input class="letter-alias" value={form.name()} onInput={(e) => form.setName(e.currentTarget.value)} placeholder="alias" aria-label="Partner name" autofocus />,
 					</p>
-					{error() && (
+					{form.error() && (
 						<p class="letter-error" role="alert">
-							{error()}
+							{form.error()}
 						</p>
 					)}
 
@@ -87,8 +40,8 @@ export function PartnerModal(props: {
 					<textarea
 						class="letter-lines-input"
 						rows={6}
-						value={responsibilities()}
-						onInput={(e) => setResponsibilities(e.currentTarget.value)}
+						value={form.responsibilities()}
+						onInput={(e) => form.setResponsibilities(e.currentTarget.value)}
 						placeholder={"## Responsibilities\n\nMarkdown supported…"}
 						spellcheck={false}
 						aria-label="Persona"
@@ -99,8 +52,8 @@ export function PartnerModal(props: {
 					<textarea
 						class="letter-lines-input"
 						rows={3}
-						value={tones()}
-						onInput={(e) => setTones(e.currentTarget.value)}
+						value={form.tones()}
+						onInput={(e) => form.setTones(e.currentTarget.value)}
 						placeholder={"## Tones\n\nMarkdown supported…"}
 						spellcheck={false}
 						aria-label="Tones"
@@ -108,9 +61,8 @@ export function PartnerModal(props: {
 					<p class="letter-note">Format rules (inline-code file references) are fixed by the system — only the tone is written here.</p>
 
 					<DialogFooter class="letter-footer">
-						{/* No Cancel: the dialog closes via Esc / the X button — a letter is either sent or torn up */}
-						<Button type="submit" disabled={saving()} class="bg-seal text-on-ink hover:bg-seal/90">
-							{saving() ? "Creating…" : "Create"}
+						<Button type="submit" disabled={form.saving()} class="bg-seal text-on-ink hover:bg-seal/90">
+							{form.saving() ? "Creating…" : "Create"}
 						</Button>
 					</DialogFooter>
 				</form>

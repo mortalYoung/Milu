@@ -11,16 +11,17 @@
 import type { AgentMessage, Entry } from "@earendil-works/pi-agent-core";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import type { Surface, SurfaceNode, SurfaceOpRecord } from "../../shared/surface";
+import { EVENTS } from "../persist/events";
 
 /** Custom entry types that join the surface (log-only custom types are skipped). */
-const SURFACE_CUSTOM_TYPES = new Set(["send_message"]);
+const SURFACE_CUSTOM_TYPES = new Set<string>([EVENTS.sendMessage, EVENTS.toolResult]);
 
 export class SurfaceError extends Error {}
 
 /** True when a pi entry can appear as a surface node (append-origin). */
 export function isSurfaceEntry(entry: Entry): boolean {
 	if (entry.type === "message") {
-		return entry.message.role === "user" || entry.message.role === "assistant" || entry.message.role === "toolResult";
+		return entry.message.role === "user" || entry.message.role === "assistant";
 	}
 	return entry.type === "custom" && SURFACE_CUSTOM_TYPES.has(entry.customType);
 }
@@ -41,11 +42,13 @@ function nodeFor(entry: Entry, seq: number): SurfaceNode | null {
 		const time = entryTime(entry);
 		if (entry.message.role === "user") return { kind: "user", seq, id: entry.id, time };
 		if (entry.message.role === "assistant") return { kind: "assistant", seq, id: entry.id, time };
-		if (entry.message.role === "toolResult") return { kind: "tool_result", seq, id: entry.id, time };
 		return null;
 	}
-	if (entry.type === "custom" && entry.customType === "send_message") {
+	if (entry.type === "custom" && entry.customType === EVENTS.sendMessage) {
 		return { kind: "send_message", seq, id: entry.id, time: entryTime(entry) };
+	}
+	if (entry.type === "custom" && entry.customType === EVENTS.toolResult) {
+		return { kind: "tool_result", seq, id: entry.id, time: entryTime(entry) };
 	}
 	return null;
 }
@@ -111,6 +114,58 @@ export function deriveMessages(entries: Entry[], surface: Surface): AgentMessage
 	return dropDanglingTurn(projectChain(entries, surface));
 }
 
+/** One surface node → one message (null for log-only entries that never reach the surface). */
+export function deriveEventMessage(entry: Entry): AgentMessage | null {
+	if (entry.type === "message") {
+		// The persisted pi message is already the exact shape the agent loop consumes
+		return entry.message as unknown as AgentMessage;
+	}
+	if (entry.type === "custom" && entry.customType === EVENTS.sendMessage) {
+		const data = (entry.data ?? {}) as { text?: unknown; timestamp?: unknown };
+		return {
+			role: "custom",
+			customType: "send_message",
+			content: typeof data.text === "string" ? data.text : "",
+			display: true,
+			timestamp: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
+		} as AgentMessage;
+	}
+	if (entry.type === "custom" && entry.customType === EVENTS.toolResult) {
+		// The log keeps a tool/result event (see persist/events.ts); rebuild the toolResult message
+		const data = (entry.data ?? {}) as {
+			toolCallId?: unknown;
+			toolName?: unknown;
+			content?: unknown;
+			details?: unknown;
+			usage?: unknown;
+			addedToolNames?: unknown;
+			isError?: unknown;
+			timestamp?: unknown;
+		};
+		return {
+			role: "toolResult",
+			toolCallId: typeof data.toolCallId === "string" ? data.toolCallId : "",
+			toolName: typeof data.toolName === "string" ? data.toolName : "",
+			content: Array.isArray(data.content) ? data.content : [],
+			details: data.details,
+			usage: data.usage as ToolResultMessage["usage"] | undefined,
+			...(Array.isArray(data.addedToolNames) ? { addedToolNames: data.addedToolNames } : {}),
+			isError: data.isError === true,
+			timestamp: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
+		} as unknown as AgentMessage;
+	}
+	if (entry.type === "custom" && entry.customType === EVENTS.compactionSummary) {
+		// The compaction checkpoint projects as a user message (the summary the model sees)
+		const data = (entry.data ?? {}) as { text?: unknown; timestamp?: unknown };
+		return {
+			role: "user",
+			content: typeof data.text === "string" ? data.text : "",
+			timestamp: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
+		} as AgentMessage;
+	}
+	return null;
+}
+
 /** Surface → message chain without the dangling-turn guard (the resume path keeps the turn). */
 export function projectChain(entries: Entry[], surface?: Surface): AgentMessage[] {
 	const byId = new Map<string, Entry>();
@@ -150,7 +205,7 @@ export function buildResumeTurn(entries: Entry[], toolCallId: string): { message
 /**
  * Guard for an unfinished final turn: the last assistant contains toolCall blocks but lacks the
  * matching toolResult (restart-interruption scenario) → drop that turn so the model never sees a
- * dangling tool call. Mirrors pi's restart repair at the surface layer (see also session.ts).
+ * dangling tool call. Mirrors pi's restart repair at the surface layer (see also persist/store.ts).
  */
 export function dropDanglingTurn(messages: AgentMessage[]): AgentMessage[] {
 	for (let i = messages.length - 1; i >= 0; i--) {
@@ -172,41 +227,13 @@ export function dropDanglingTurn(messages: AgentMessage[]): AgentMessage[] {
 export function reconstructRequestHeader(entries: Entry[]): { systemPrompt: string; toolNames: string[]; time: number } | null {
 	for (let i = entries.length - 1; i >= 0; i--) {
 		const entry = entries[i];
-		if (entry.type !== "custom" || entry.customType !== "request/header") continue;
+		if (entry.type !== "custom" || entry.customType !== EVENTS.requestHeader) continue;
 		const data = (entry.data ?? {}) as { systemPrompt?: unknown; toolNames?: unknown; timestamp?: unknown };
 		return {
 			systemPrompt: typeof data.systemPrompt === "string" ? data.systemPrompt : "",
 			toolNames: Array.isArray(data.toolNames) ? data.toolNames.filter((n): n is string => typeof n === "string") : [],
 			time: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
 		};
-	}
-	return null;
-}
-
-/** One surface node → one message (null for log-only entries that never reach the surface). */
-export function deriveEventMessage(entry: Entry): AgentMessage | null {
-	if (entry.type === "message") {
-		// The persisted pi message is already the exact shape the agent loop consumes
-		return entry.message as unknown as AgentMessage;
-	}
-	if (entry.type === "custom" && entry.customType === "send_message") {
-		const data = (entry.data ?? {}) as { text?: unknown; timestamp?: unknown };
-		return {
-			role: "custom",
-			customType: "send_message",
-			content: typeof data.text === "string" ? data.text : "",
-			display: true,
-			timestamp: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
-		} as AgentMessage;
-	}
-	if (entry.type === "custom" && entry.customType === "compaction_summary") {
-		// The compaction checkpoint projects as a user message (the summary the model sees)
-		const data = (entry.data ?? {}) as { text?: unknown; timestamp?: unknown };
-		return {
-			role: "user",
-			content: typeof data.text === "string" ? data.text : "",
-			timestamp: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
-		} as AgentMessage;
 	}
 	return null;
 }

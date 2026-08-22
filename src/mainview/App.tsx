@@ -1,286 +1,100 @@
 /**
- * App — the controller. Owns app state, wires RPC events into visible
- * transcript entries, and renders the shell: icon rail + chat / settings views.
- * Partners are created via a modal and saved as folders (see src/bun/partners.ts).
+ * App — the composition root (controller). Composes the state primitives from
+ * lib/, wires RPC events into them, and renders the shell: icon rail + chat /
+ * settings views. Partners are created via a modal and saved as folders (see src/bun/partners.ts).
  */
 
-import { Electroview } from "electrobun/view";
-import { createSignal } from "solid-js";
-import type { AppRPCSchema, ContextUsage, SandboxMode, SessionStats, TrajectoryRecord } from "../shared/rpc";
 import { AppRail } from "./components/AppRail";
 import { PartnerDetailsDialog } from "./components/PartnerDetailsDialog";
-import { type PartnerFormData, PartnerModal } from "./components/PartnerModal";
+import { PartnerModal } from "./components/PartnerModal";
 import { TrajectoryDrawer } from "./components/TrajectoryDrawer";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./components/ui/dialog";
-import { type Entry, makeAgentEntry, makeEscalationEntry, makeSepEntry, makeSysEntry, makeUserEntry } from "./layouts/Transcript";
+import { makeSysEntry } from "./layouts/Transcript";
+import { createAgentStatus } from "./lib/agent-status";
+import { createComposer } from "./lib/composer";
+import { createMetrics } from "./lib/metrics";
+import type { PartnerFormData } from "./lib/partner-form";
+import { rpc } from "./lib/rpc";
+import { createSession } from "./lib/session";
+import { createSettings } from "./lib/settings";
+import { createShell } from "./lib/shell";
+import { createTrajectory } from "./lib/trajectory";
 import { ConversationPage } from "./pages/ConversationPage";
 import { type SettingsData, SettingsView } from "./pages/SettingsView";
 
-// ————— RPC —————
-const rpc = Electroview.defineRPC<AppRPCSchema>({
-	handlers: { requests: {}, messages: {} },
-});
-new Electroview({ rpc });
-
-interface PartnerItem {
-	name: string;
-	responsibilities?: string;
-	tones?: string;
-	createdAt: number;
-	/** Last visible message (chat-list preview); undefined when the chat is empty. */
-	lastMessage?: string;
-	/** Timestamp of the last visible message. */
-	lastMessageAt?: number;
-	/** Who sent the last message — "user" (you) or "send_message" (the partner's reply). */
-	lastMessageKind?: "user" | "send_message";
-}
-
 export function App() {
-	// ————— state —————
-	const [view, setView] = createSignal<"chat" | "settings">("chat");
-	const [settingsOpen, setSettingsOpen] = createSignal(false);
-	// Partner details dialog (shared by the list menu / header click)
-	const [detailsPartner, setDetailsPartner] = createSignal<PartnerItem | null>(null);
-	// Trajectory drawer (density strip): whole-log view, opened from the header
-	const [trajectoryOpen, setTrajectoryOpen] = createSignal(false);
-	const [trajectoryRecords, setTrajectoryRecords] = createSignal<TrajectoryRecord[]>([]);
-	const [workspacePath, setWorkspacePath] = createSignal<string | null>(null);
-	const [sandboxMode, setSandboxMode] = createSignal<SandboxMode>("workspace-write");
-	async function onSetSandboxMode(mode: SandboxMode) {
-		const res = await rpc.request.set_sandbox_mode({ mode });
-		if (res.ok) setSandboxMode(mode);
-	}
-	const [contextUsage, setContextUsage] = createSignal<ContextUsage | null>(null);
-	const [stats, setStats] = createSignal<SessionStats | null>(null);
-	const [entries, setEntries] = createSignal<Entry[]>([]);
-	// busy = whether the agent is running (streaming/tool execution), single source of truth; push events do increments, get_status calibrates
-	const [busy, setBusy] = createSignal(false);
-	// The partner whose run is in progress (from get_status / agent_turn); busy shows only for it.
-	const [runningPartner, setRunningPartner] = createSignal<string | null>(null);
-	// Per-partner busy: true only when the agent is running AND the running partner is the one selected
-	// (or unknown). Fixes: switching from A (writing) to B no longer shows B as writing.
-	const isBusyForSelected = () => busy() && (runningPartner() === null || runningPartner() === selected());
-	// Per-partner writing state for the list rows: the run's owner shows dots even when not selected
-	const workingFor = (name: string) => busy() && (runningPartner() === null ? selected() === name : runningPartner() === name);
-	const [queued, setQueued] = createSignal(0);
-	// A message to the selected chat is queued behind another partner's run (bun-side pendingChats)
-	const [queuedCross, setQueuedCross] = createSignal(false);
-	const [tick, setTick] = createSignal(0);
-	const [selected, setSelected] = createSignal<string | null>(null);
-	const [partners, setPartners] = createSignal<PartnerItem[]>([]);
-	const [showModal, setShowModal] = createSignal(false);
-	const [settings, setSettings] = createSignal<SettingsData | null>(null);
-	const [runtime, setRuntime] = createSignal<{ model: string; apiKeyConfigured: boolean } | null>(null);
-	const [listCollapsed, setListCollapsed] = createSignal(localStorage.getItem("chatlist.collapsed") === "1");
-	// Per-chat composer drafts: written on every keystroke, restored when the chat is re-selected
-	const [drafts, setDrafts] = createSignal<Record<string, string>>({});
-	function onDraftChange(text: string) {
-		const name = selected();
-		if (!name) return;
-		setDrafts((d) => ({ ...d, [name]: text }));
-	}
-	function clearDraft(name: string) {
-		setDrafts((d) => {
-			const { [name]: _drop, ...rest } = d;
-			return rest;
-		});
-	}
-	function toggleListCollapsed() {
-		const next = !listCollapsed();
-		setListCollapsed(next);
-		localStorage.setItem("chatlist.collapsed", next ? "1" : "0");
-	}
-	// Last calendar day seen: a day-divider entry is inserted only when the day actually changes
-	let lastMsgDay = "";
-
-	const bump = () => setTick((t) => t + 1);
-	const push = (entry: Entry) => {
-		setEntries((prev) => [...prev, entry]);
-		bump();
-	};
-
-	// ————— RPC helpers —————
-	// Render source = the persisted JSONL; dedupe by id, only append new records.
-	// Escalation entries are synced in place instead: a request's status flips pending → approved/rejected
-	// after the decision is persisted, and appending a duplicate bubble would double-render the request.
-	const renderedIds = new Set<string>();
-	async function refreshHistory() {
-		const { items } = await rpc.request.history({});
-		for (const item of items) {
-			if (item.kind === "escalation" && item.escalation) {
-				const entry = makeEscalationEntry({ text: item.text, time: item.time, escalation: item.escalation });
-				const existing = entries().find((e) => e.kind === "escalation" && e.escalation?.id === item.escalation!.id);
-				if (existing) {
-					setEntries((prev) => prev.map((e) => (e.kind === "escalation" && e.escalation?.id === item.escalation!.id ? entry : e)));
-				} else {
-					maybeTimeSeparator(new Date(item.time));
-					push(entry);
-				}
-				continue;
-			}
-			if (renderedIds.has(item.id)) continue;
-			renderedIds.add(item.id);
-			maybeTimeSeparator(new Date(item.time));
-			push(item.kind === "user" ? makeUserEntry(item.text, item.time) : makeAgentEntry(item.text, item.time));
-		}
-	}
-
-	// ————— Trajectory —————
-	// Full trajectory cache: invalidated when new data is persisted or the partner switches; refetched on the next open
-	let trajectoryCache: TrajectoryRecord[] | null = null;
-	async function ensureTrajectory(): Promise<TrajectoryRecord[]> {
-		if (trajectoryCache === null) {
-			const res = await rpc.request.trajectory({});
-			trajectoryCache = res.records;
-		}
-		return trajectoryCache;
-	}
-	// Locate flash: the target bubble briefly flashes seal-soft (replies outline locate)
-	const [flashId, setFlashId] = createSignal<number | null>(null);
-	let flashTimer: ReturnType<typeof setTimeout> | undefined;
-	const onFlash = (id: number) => {
-		setFlashId(id);
-		clearTimeout(flashTimer);
-		flashTimer = setTimeout(() => setFlashId(null), 1200);
-	};
-	// Open the drawer (the whole log renders inside; no chat linkage)
-	async function onViewTrajectory() {
-		const records = await ensureTrajectory();
-		setTrajectoryRecords(records);
-		setTrajectoryOpen(true);
-	}
-
-	const WEEKDAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
-	const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-	function maybeTimeSeparator(d: Date) {
-		const day = `${WEEKDAYS[d.getDay()]} · ${MONTHS[d.getMonth()]} ${d.getDate()}`;
-		if (lastMsgDay && day !== lastMsgDay) push(makeSepEntry(day));
-		lastMsgDay = day;
-	}
-
-	async function refreshPartners() {
-		const { partners: list } = await rpc.request.list_partners({});
-		setPartners(list);
-		// Select the first Partner by default; clear when the selected one disappears
-		if (selected() == null && list.length > 0) selectPartner(list[0]);
-		if (selected() != null && !list.some((p) => p.name === selected())) selectPartner(null);
-	}
-
-	function selectPartner(partner: PartnerItem | null) {
-		setSelected(partner?.name ?? null);
-		setEntries([]);
-		renderedIds.clear();
-		lastMsgDay = "";
-		trajectoryCache = null;
-		void rpc.request
-			.set_partner({
-				profile: partner ? { name: partner.name, responsibilities: partner.responsibilities, tones: partner.tones } : null,
-			})
-			.then(() => {
-				refreshHistory();
-				// The session is loaded now (entries restored from JSONL): refresh the context meter too,
-				// so persisted usage survives restart instead of sitting at 0% until the next turn.
-				void refreshContextUsage();
-			});
-	}
-
-	async function refreshSettings() {
-		const { settings: s, runtime: r } = await rpc.request.get_settings({});
-		setSettings(s);
-		setRuntime(r);
-	}
+	// ————— state primitives —————
+	const metrics = createMetrics(rpc);
+	const session = createSession(rpc, {
+		// The session is loaded now (entries restored from JSONL): refresh the context meter too,
+		// so persisted usage survives restart instead of sitting at 0% until the next turn.
+		onSessionLoaded: () => void metrics.refresh(),
+	});
+	const status = createAgentStatus(rpc, () => session.selected());
+	const trajectory = createTrajectory(rpc, () => session.selected());
+	const composer = createComposer(() => session.selected());
+	const shell = createShell();
+	const settings = createSettings(rpc);
 
 	// ————— RPC events —————
 	rpc.addMessageListener("agent_turn", ({ turn: t, partner }) => {
-		setBusy(true);
-		if (partner != null) setRunningPartner(partner);
-		else if (runningPartner() === null) setRunningPartner(selected());
-		if (queued() > 0 && runningPartner() === selected()) {
-			setQueued((q) => q - 1);
-			push(makeSysEntry(`✳ follow-up · turn ${t}`));
-		}
-		bump();
+		const drained = status.beginTurn(partner);
+		if (drained) session.push(makeSysEntry(`✳ follow-up · turn ${t}`));
+		session.bump();
+	});
+
+	rpc.addMessageListener("agent_end", ({ error: err, partner }) => {
+		const errForSelected = err && partner === session.selected();
+		status.endTurn(partner);
+		if (errForSelected) session.push(makeSysEntry(`ERR § ${err}`, true));
+		session.bump();
+		status.calibrate();
+		void metrics.refresh();
 	});
 
 	rpc.addMessageListener("agent_message", () => {
 		// send_message is persisted; both chat and trajectory may have new content
-		trajectoryCache = null;
-		void refreshHistory();
+		trajectory.invalidate();
+		void session.refreshHistory();
 		// …and the chat-list row preview (last message) may have changed
-		void refreshPartners();
+		void session.refreshPartners();
 	});
 
 	rpc.addMessageListener("trajectory_update", () => {
 		// A turn has been persisted; invalidate the trajectory cache (next click fetches the latest)
-		trajectoryCache = null;
+		trajectory.invalidate();
 		// …and refresh the context meter (usage is persisted per turn)
-		void refreshContextUsage();
+		void metrics.refresh();
 	});
-
-	rpc.addMessageListener("agent_end", ({ error: err }) => {
-		setQueued(0);
-		setQueuedCross(false);
-		if (err && runningPartner() === selected()) push(makeSysEntry(`ERR § ${err}`, true));
-		bump();
-		setRunningPartner(null);
-		calibrateBusy();
-		void refreshContextUsage();
-	});
-
-	// Calibrate: the bun-side isStreaming is authoritative; covers lost/late push events (e.g. the startup race where mount lags the first turn)
-	function calibrateBusy() {
-		void rpc.request.get_status({}).then((s) => {
-			setBusy(s.streaming);
-			setRunningPartner(s.running_partner);
-			setWorkspacePath(s.workspace_path);
-			setSandboxMode(s.sandbox_mode);
-		});
-	}
 
 	rpc.addMessageListener("workspace_update", () => {
 		// The workspace was set via set_workspace; refetch status to show it near the input
-		void rpc.request.get_status({}).then((s) => {
-			setBusy(s.streaming);
-			setRunningPartner(s.running_partner);
-			setWorkspacePath(s.workspace_path);
-			setSandboxMode(s.sandbox_mode);
-		});
+		status.calibrate();
 	});
 
 	rpc.addMessageListener("sandbox_mode_update", () => {
 		// The mode changed (composer select / partner switch); refetch status to stay in sync
-		void rpc.request.get_status({}).then((s) => setSandboxMode(s.sandbox_mode));
+		status.calibrate();
 	});
 
 	rpc.addMessageListener("escalation_update", () => {
-		void refreshHistory();
+		void session.refreshHistory();
 		// Recalibrate busy: a request pauses the run (idle until the human clicks), a decision
 		// resumes it (writing returns) — get_status reports the view-facing streaming value.
-		calibrateBusy();
+		status.calibrate();
 	});
-
-	// ————— context usage (composer meter) + session stats —————
-	async function refreshContextUsage() {
-		const [usage, s] = await Promise.all([rpc.request.context_usage({}), rpc.request.stats({})]);
-		setContextUsage(usage);
-		setStats(s);
-	}
 
 	// ————— user input —————
 	function onSend(text: string) {
-		if (isBusyForSelected()) {
-			push(makeSysEntry("✳ follow-up queued"));
-			setQueued((q) => q + 1);
+		if (status.isBusyForSelected()) {
+			session.push(makeSysEntry("✳ follow-up queued"));
+			status.queueFollowUp();
 		}
 		void rpc.request.chat({ text }).then((res) => {
-			// Cross-partner sends are queued on the bun side (another partner's run owns the agent);
-			// the message starts a fresh run once that run settles.
-			if (res.queued) {
-				setQueuedCross(true);
-				push(makeSysEntry("✳ queued — starts after the current run settles"));
-			}
-			if (res.accepted) clearDraft(selected()!);
-			refreshHistory();
+			// Each partner runs its own agent: a message to the selected chat is that agent's fresh
+			// run or its own follow-up (queued by the outer loop when busy) — never cross-partner.
+			if (res.accepted) composer.clear(session.selected()!);
+			void session.refreshHistory();
 		});
 	}
 
@@ -288,88 +102,80 @@ export function App() {
 	async function onDeletePartner(name: string) {
 		await rpc.request.delete_partner({ name });
 		// If the deleted Partner was selected: close it immediately (reset selection and prompt)
-		if (selected() === name) selectPartner(null);
-		void refreshPartners();
+		if (session.selected() === name) session.select(null);
+		void session.refreshPartners();
 	}
 
 	// ————— Partner creation —————
 	async function onCreatePartner(data: PartnerFormData): Promise<string | null> {
 		const res = await rpc.request.create_partner(data);
 		if (res.ok) {
-			setShowModal(false);
-			void refreshPartners();
+			shell.setShowModal(false);
+			void session.refreshPartners();
+			if (res.profile) session.select(res.profile);
 			return null;
 		}
 		return res.error ?? "Failed to create partner";
 	}
 
 	// ————— mount —————
-	void refreshHistory();
-	void refreshPartners();
-	void refreshSettings();
-	calibrateBusy();
-	void refreshContextUsage();
+	void session.refreshHistory();
+	void session.refreshPartners();
+	void settings.refresh();
+	status.calibrate();
+	void metrics.refresh();
 
 	// ————— shell —————
 	return (
 		<div class="relative flex flex-1 min-h-0">
-			<AppRail active={view()} onSelect={(tab) => (tab === "settings" ? setSettingsOpen(true) : setView("chat"))} />
+			<AppRail active={shell.view()} onSelect={(tab) => (tab === "settings" ? shell.setSettingsOpen(true) : shell.setView("chat"))} />
 
 			<main class="flex-1 flex flex-col min-w-0 bg-qw-bg">
 				<ConversationPage
-					partners={partners()}
-					selected={selected()}
-					onSelect={(name) => selectPartner(partners().find((p) => p.name === name) ?? null)}
-					onAddPartner={() => setShowModal(true)}
+					partners={session.partners()}
+					selected={session.selected()}
+					onSelect={(name) => session.select(session.partners().find((p) => p.name === name) ?? null)}
+					onAddPartner={() => shell.setShowModal(true)}
 					onDelete={onDeletePartner}
-					onViewDetails={(name) => setDetailsPartner(partners().find((p) => p.name === name) ?? null)}
-					listCollapsed={listCollapsed()}
-					onToggleList={toggleListCollapsed}
-					entries={entries}
-					working={isBusyForSelected}
-					tick={tick}
-					busy={isBusyForSelected}
+					onViewDetails={(name) => shell.setDetailsPartner(session.partners().find((p) => p.name === name) ?? null)}
+					listCollapsed={shell.listCollapsed()}
+					onToggleList={shell.toggleList}
+					entries={session.entries}
+					working={status.isBusyForSelected}
+					tick={session.tick}
+					busy={status.isBusyForSelected}
 					onSend={onSend}
 					onStop={() => void rpc.request.stop({})}
-					onViewTrajectory={onViewTrajectory}
-					flashId={flashId}
-					onFlash={onFlash}
-					workspacePath={workspacePath()}
-					sandboxMode={sandboxMode()}
-					onSetSandboxMode={(mode) => void onSetSandboxMode(mode)}
+					onViewTrajectory={trajectory.view}
+					flashId={trajectory.flashId}
+					onFlash={trajectory.flash}
+					workspacePath={status.workspacePath()}
+					sandboxMode={status.sandboxMode()}
+					onSetSandboxMode={(mode) => void status.onSetSandboxMode(mode)}
 					onEscalationRespond={(id, approved) => void rpc.request.sandbox_respond({ id, approved })}
-					contextUsage={contextUsage()}
-					stats={stats()}
-					queued={queuedCross()}
-					workingFor={workingFor}
-					draft={selected() ? (drafts()[selected()!] ?? "") : ""}
-					onDraftChange={onDraftChange}
+					contextUsage={metrics.contextUsage()}
+					stats={metrics.stats()}
+					workingFor={status.workingFor}
+					draft={session.selected() ? (composer.drafts()[session.selected()!] ?? "") : ""}
+					onDraftChange={composer.change}
 				/>
 			</main>
 
 			{/* Settings: dialog */}
-			<Dialog open={settingsOpen()} onOpenChange={setSettingsOpen}>
+			<Dialog open={shell.settingsOpen()} onOpenChange={shell.setSettingsOpen}>
 				<DialogContent class="w-[440px] bg-white border-print-line">
 					<DialogHeader>
 						<DialogTitle>Settings</DialogTitle>
 					</DialogHeader>
-					<SettingsView
-						settings={settings()}
-						runtime={runtime()}
-						onLoad={() => void refreshSettings()}
-						onSave={async (s) => {
-							await rpc.request.update_settings({ settings: s });
-							setSettings(s);
-						}}
-					/>
+					<SettingsView settings={settings.settings()} runtime={settings.runtime()} onLoad={() => void settings.refresh()} onSave={(s: SettingsData) => settings.save(s)} />
 				</DialogContent>
 			</Dialog>
 
-			<PartnerModal open={showModal()} onOpenChange={setShowModal} onConfirm={onCreatePartner} existingNames={partners().map((p) => p.name)} />
+			<PartnerModal open={shell.showModal()} onOpenChange={shell.setShowModal} onConfirm={onCreatePartner} existingNames={session.partners().map((p) => p.name)} />
 
-			<PartnerDetailsDialog partner={detailsPartner()} onOpenChange={(open) => !open && setDetailsPartner(null)} />
+			<PartnerDetailsDialog partner={shell.detailsPartner()} onOpenChange={(open) => !open && shell.setDetailsPartner(null)} />
 
-			<TrajectoryDrawer open={trajectoryOpen()} onOpenChange={setTrajectoryOpen} records={trajectoryRecords()} />
+			<TrajectoryDrawer open={trajectory.open()} onOpenChange={trajectory.setOpen} records={trajectory.records()} />
 		</div>
 	);
 }

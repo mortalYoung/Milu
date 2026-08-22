@@ -98,37 +98,39 @@ export function lastUsage(entries: Entry[]): Usage | null {
 	return last;
 }
 
-/** Custom artifacts persisted mid-turn (tool execution): the log gets them BEFORE the turn's assistant
- * entry (persisted at turn_end), so the fold defers them until right after that record — the trajectory
- * then shows [assistant turn → the messages/escalations it produced → its results] instead of append order. */
-const MID_TURN_CUSTOM_TYPES = new Set(["send_message", "escalation/request", "escalation/decision"]);
-
-/** True when a custom entry is a mid-turn artifact the fold must defer. The agent_end fallback
- * delivery (toolCallId "harness-delivery") is the opposite: it persists AFTER its turn's assistant,
- * already in the right place — deferring it would push it past the next turn. */
-function isDeferredCustom(entry: Entry): boolean {
-	if (entry.type === "custom" && MID_TURN_CUSTOM_TYPES.has(entry.customType)) {
-		if (entry.customType === "send_message") {
-			const data = entry.data as { toolCallId?: unknown } | undefined;
-			if (data?.toolCallId === "harness-delivery") return false;
-		}
-		return true;
-	}
-	return false;
-}
-
 /** Fold the whole log: one record per entry, nothing dropped. */
 export function fold(entries: Entry[]): TrajectoryRecord[] {
 	const records: TrajectoryRecord[] = [];
 	let turn = 0;
-	const deferred: TrajectoryRecord[] = [];
 	const push = (record: TrajectoryRecord) => {
 		records.push({ ...record, seq: records.length });
 	};
 	for (const entry of entries) {
 		const base = { seq: 0, entryId: entry.id, time: entry.timestamp };
-		if (entry.type === "custom" && isDeferredCustom(entry)) {
-			deferred.push({ ...base, kind: "custom", customType: entry.customType, data: entry.data });
+		// A persisted tool/result event answers its turn's tool call (the live loop writes it after the
+		// assistant's message, so the log is already in display order — no deferral needed anymore)
+		if (entry.type === "custom" && entry.customType === "tool/result") {
+			const data = (entry.data ?? {}) as {
+				toolCallId?: unknown;
+				toolName?: unknown;
+				content?: unknown;
+				details?: unknown;
+				usage?: unknown;
+				addedToolNames?: unknown;
+				isError?: unknown;
+			};
+			push({
+				...base,
+				kind: "toolResult",
+				turn,
+				toolCallId: String(data.toolCallId ?? ""),
+				toolName: String(data.toolName ?? ""),
+				content: contentText(data.content),
+				details: data.details,
+				usage: toTrajectoryUsage(data.usage as RawUsage | undefined),
+				addedToolNames: Array.isArray(data.addedToolNames) ? data.addedToolNames.map(String) : undefined,
+				isError: data.isError === true,
+			});
 			continue;
 		}
 		switch (entry.type) {
@@ -152,22 +154,6 @@ export function fold(entries: Entry[]): TrajectoryRecord[] {
 						stopReason: m.stopReason,
 						errorMessage: m.errorMessage,
 						rawStopReason: m.rawStopReason,
-					});
-					// The turn that produced the deferred artifacts just landed — emit them after it
-					for (const record of deferred) push(record);
-					deferred.length = 0;
-				} else if (m.role === "toolResult") {
-					push({
-						...base,
-						kind: "toolResult",
-						turn,
-						toolCallId: m.toolCallId,
-						toolName: m.toolName,
-						content: contentText(m.content),
-						details: m.details,
-						usage: toTrajectoryUsage(m.usage),
-						addedToolNames: m.addedToolNames,
-						isError: Boolean(m.isError),
 					});
 				}
 				break;
@@ -200,8 +186,6 @@ export function fold(entries: Entry[]): TrajectoryRecord[] {
 				break;
 		}
 	}
-	// Trailing artifacts with no following turn (e.g. a pending escalation at the end) flush last
-	for (const record of deferred) push(record);
 	return records;
 }
 

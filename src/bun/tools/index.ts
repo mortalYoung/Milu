@@ -6,13 +6,13 @@ import type { AgentHarnessTool, AgentTool, ExecutionEnv, ExecutionToolContext } 
 import { createEditTool, createReadTool, createWriteTool } from "@earendil-works/pi-agent-core";
 import { type TSchema, Type } from "@earendil-works/pi-ai";
 import { PROJECT_ROOT } from "../core/config";
-import type { SessionStore } from "../core/session";
+import type { SessionScope } from "../persist";
 import type { EscalationDecision, EscalationRequest, SandboxMode } from "../sandbox/types";
 import { createExecutionEnv, type EnvGuard, type SandboxedExecOptions, type SandboxRuntime } from "./execution-env";
 
 export interface ToolDeps {
-	/** Conversation persistence store. */
-	store: SessionStore;
+	/** Conversation persistence, scoped to the owning agent's session root. */
+	store: SessionScope;
 	/** On send_message: write the visible message into the agent context (a display:true custom message). */
 	onVisibleMessage: (text: string, timestamp: number) => void;
 	/** Path guard: workspace/storage roots for the file tools (null = unset). */

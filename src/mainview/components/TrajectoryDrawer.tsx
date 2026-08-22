@@ -74,6 +74,9 @@ function markerClass(record: TrajectoryRecord): string | null {
 					return "mrm";
 				case "request/header":
 				case "escalation/request":
+				case "turn/start":
+				case "step/start":
+					// a request boundary: the header, or the run/step marker that precedes a request
 					return "mreq";
 				case "escalation/decision":
 					return "mres";
@@ -110,6 +113,14 @@ function chipLabel(record: TrajectoryRecord): string {
 					return "SYS";
 				case "system_reminder":
 					return "RM";
+				case "turn/start":
+					return "TURN";
+				case "turn/end":
+					return "T·END";
+				case "step/start":
+					return "STEP";
+				case "step/end":
+					return "S·END";
 				case "surface_op":
 					return "OP";
 				case "compaction_summary":
@@ -172,6 +183,23 @@ function rowCaption(record: TrajectoryRecord): string {
 					const h = record.data as { toolNames?: unknown } | null;
 					const names = Array.isArray(h?.toolNames) ? h.toolNames.map((n) => String(n)) : [];
 					return names.length > 0 ? names.join(", ") : "request header";
+				}
+				case "tool/call": {
+					const c = record.data as { name?: unknown; args?: unknown } | null;
+					return typeof c?.name === "string" ? `call ${c.name}${c.args && typeof c.args === "object" ? " · " + stringifyArgs(c.args).slice(0, 60) : ""}` : "tool call";
+				}
+				case "turn/start": {
+					const d = record.data as { turn?: unknown } | null;
+					return `run ${typeof d?.turn === "number" ? d.turn : "?"}`;
+				}
+				case "turn/end": {
+					const d = record.data as { turn?: unknown; reason?: unknown } | null;
+					return `run ${typeof d?.turn === "number" ? d.turn : "?"} · ${typeof d?.reason === "string" ? d.reason : ""}`;
+				}
+				case "step/start":
+				case "step/end": {
+					const d = record.data as { step?: unknown } | null;
+					return `step ${typeof d?.step === "number" ? d.step : "?"}`;
 				}
 				default:
 					return record.customType;

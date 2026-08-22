@@ -7,22 +7,29 @@
  * - Outer loop: after a turn settles, drain queued steering / follow-up
  *   messages and keep running until nothing is left.
  *
- * Persistence: every turn is written to the session store (full process
- * data — thinking, tool calls, results). The user only sees `send_message`
- * output, delivered through the bridge's onMessage.
+ * Persistence: pi awaits event listeners (subscription order), so the listener
+ * here doubles as the write path's checkpoint surface — every awaited append
+ * is durable before the loop proceeds:
+ *   - turn_start   → step/start + request/header BEFORE the LLM call is dispatched
+ *   - message_end  → the assistant turn's message, once the stream settles
+ *   - tool_execution_start → tool/call BEFORE the tool runs
+ *   - tool_execution_end   → tool/result, right after the tool finishes
+ *   - turn_end     → step/end (previous step's records are all on disk first)
+ *   - agent_start/end → turn/start · turn/end (one run = one turn)
+ * The user only sees `send_message` output, delivered through the bridge's onMessage.
  */
-import { statSync } from "node:fs";
-import { isAbsolute, resolve, sep } from "node:path";
+import { resolve } from "node:path";
 import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage } from "@earendil-works/pi-ai";
+import type { AssistantMessage, ToolResultMessage } from "@earendil-works/pi-ai";
 import type { RuntimeStatsSnapshot, SessionStats } from "../../shared/rpc";
+import { validateWorkspace } from "../lib/workspace";
+import type { SessionScope } from "../persist";
 import type { SandboxManager } from "../sandbox";
 import type { EscalationDecision, EscalationRequest, SandboxMode } from "../sandbox/types";
 import { createTools } from "../tools";
 import { convertToLlm, resolveModel, STREAM_FN } from "./agent-config";
 import { AgentContext, appendSystemReminder } from "./context";
 import type { PartnerPrompt } from "./prompt";
-import type { SessionStore } from "./session";
 
 export interface AgentBridge {
 	/** A new turn began (one LLM call + tool executions). */
@@ -77,8 +84,8 @@ export interface AgentHandle {
 }
 
 export interface AgentDeps {
-	/** Conversation persistence store. */
-	session: SessionStore;
+	/** Conversation persistence, scoped to this agent's session root. */
+	session: SessionScope;
 	/** The initial message chain to restore (see toAgentMessages). */
 	initialMessages?: AgentMessage[];
 	/** Runtime timing samples from a previous launch (loaded from disk; see runtime-stats.ts). */
@@ -89,25 +96,6 @@ export interface AgentDeps {
 	sandbox?: SandboxManager;
 	/** Human approval gate for escalation retries (wired to escalation records + the inline transcript bubble). */
 	confirmEscalation?: (request: EscalationRequest) => Promise<EscalationDecision>;
-}
-
-/** Whether a path is inside a root (or equal to it). */
-function isInsideOf(target: string, root: string): boolean {
-	return target === root || target.startsWith(root + sep);
-}
-
-/** Validate a set_workspace request: returns an error message, or null when the workspace is accepted. */
-export function validateWorkspace(workspace: string, state: { current: string | null; storagePath: string | null }): string | null {
-	if (state.current) return "Workspace can only be set once per conversation";
-	if (!isAbsolute(workspace)) return "Workspace must be an absolute path";
-	const abs = resolve(workspace);
-	if (state.storagePath && isInsideOf(abs, state.storagePath)) return "Workspace cannot be inside the storage path";
-	try {
-		if (!statSync(abs).isDirectory()) return "Workspace path is not a directory";
-	} catch {
-		return "Workspace directory does not exist";
-	}
-	return null;
 }
 
 /**
@@ -261,24 +249,39 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		deliverText(text);
 	}
 
-	const handleEvent = (event: AgentEvent) => {
+	/** A failed append must never break the run (pi awaits listeners — a rejection would fail it). */
+	const logError = (error: unknown) => console.error("session append failed:", error);
+
+	// Persisted turn/step numbering: one run (agent_start → agent_end) is a turn; each pi turn
+	// (turn_start → turn_end) — one LLM call plus its tool executions — is a step within the run.
+	let runTurn = 0;
+	let step = 0;
+
+	const handleEvent = (event: AgentEvent): Promise<void> | void => {
 		switch (event.type) {
+			case "agent_start":
+				runTurn += 1;
+				step = 0;
+				return deps.session.appendTurnStart(runTurn, Date.now()).catch(logError);
 			case "turn_start":
+				step += 1;
 				bridge.onTurnStart(ctx.beginTurn());
-				// Record the request header (system prompt + resolved tool names) so every model
-				// request is reconstructable from the log (invariant 1: model-visible ⟺ logged).
-				void deps.session
-					.appendRequestHeader(
-						agent.state.systemPrompt,
-						agent.state.tools.map((t) => t.name),
-						Date.now(),
-					)
-					.catch((error) => console.error("session appendRequestHeader failed:", error));
-				// Sampling window: the turn is one LLM call; its start is the closest event to the request being sent
+				// Flush-before-request checkpoint: step marker + request header (system prompt +
+				// resolved tool names — invariant 1: model-visible ⟺ logged) are on disk before
+				// the LLM call is dispatched. Sampling window: the step is one LLM call.
 				turnStartAt = performance.now();
 				firstDeltaAt = 0;
 				lastDeltaAt = 0;
-				break;
+				return Promise.all([
+					deps.session.appendStepStart(runTurn, step, Date.now()),
+					deps.session.appendRequestHeader(
+						agent.state.systemPrompt,
+						agent.state.tools.map((t) => t.name),
+						Date.now(),
+					),
+				])
+					.then(() => undefined)
+					.catch(logError);
 			case "message_update":
 				// First text token = TTFT; keep the last delta for the output speed window
 				if (event.assistantMessageEvent.type === "text_delta") {
@@ -286,12 +289,41 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 					lastDeltaAt = performance.now();
 				}
 				break;
+			case "message_end":
+				// The stream settled: persist the step's assistant message now, before any tool runs
+				// (message_end also fires for user prompts and toolResult bookkeeping — only assistant
+				// output enters the log here). A failed stream lands as its error message entry.
+				if (event.message.role !== "assistant") break;
+				{
+					const assistant = event.message as AssistantMessage;
+					return deps.session.appendAssistant({ blocks: assistant.content, usage: assistant.usage }, assistant.timestamp ?? Date.now()).catch(logError);
+				}
+			case "tool_execution_start":
+				// Flush-before-execute checkpoint: the call is in the log before the tool runs
+				return deps.session.appendToolCall(event.toolCallId, event.toolName, event.args, runTurn, step, Date.now()).catch(logError);
+			case "tool_execution_end": {
+				// The result is durable right after the tool finishes — a mid-turn crash keeps the
+				// call's outcome (the log then folds a complete assistant → tool_result pair)
+				const result: ToolResultMessage = {
+					role: "toolResult",
+					toolCallId: event.toolCallId,
+					toolName: event.toolName,
+					content: event.result?.content ?? [],
+					details: event.result?.details,
+					usage: event.result?.usage,
+					...(event.result?.addedToolNames?.length ? { addedToolNames: event.result.addedToolNames } : {}),
+					isError: event.isError,
+					timestamp: Date.now(),
+				};
+				return deps.session.appendToolResult(result, Date.now()).catch(logError);
+			}
 			case "turn_end":
-				// Notify the trajectory only after persistence completes (fetches are always up to date, never half a turn)
-				void persistAssistantTurn(event).then(() => bridge.onTrajectoryUpdate());
+				// Flush-before-next-step: this step's records are all on disk (the run failed before
+				// turn_start, step stays 0 — no step marker was ever written). Notify the trajectory
+				// only after persistence completes (fetches are always up to date, never half a turn).
 				ctx.endTurn();
 				notifyIfSilent();
-				// Settle the sampling window (text-bearing turns only — tool-only turns have no speed to measure)
+				// Settle the sampling window (text-bearing steps only — tool-only steps have no speed to measure)
 				runtime.runs += 1;
 				if (firstDeltaAt > 0 && lastDeltaAt >= firstDeltaAt) {
 					const ttft = firstDeltaAt - turnStartAt;
@@ -306,30 +338,25 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 				}
 				// Persist the raw timing samples so TTFT/tok-s metrics survive restarts
 				persistRuntime();
-				break;
+				{
+					const persisted = step > 0 ? deps.session.appendStepEnd(runTurn, step, Date.now()).catch(logError) : Promise.resolve();
+					return persisted.then(() => bridge.onTrajectoryUpdate());
+				}
 			case "agent_end":
 				ctx.setRunning(false);
 				enforceDelivery(event);
-				bridge.onEnd(agent.state.errorMessage);
-				break;
+				// turn/end lands before onEnd so the settled state is already in the log when the view refetches
+				return deps.session
+					.appendTurnEnd(runTurn, agent.state.errorMessage ? "error" : "completed", Date.now())
+					.catch(logError)
+					.then(() => {
+						bridge.onTrajectoryUpdate();
+						bridge.onEnd(agent.state.errorMessage);
+					});
 			default:
 				break;
 		}
 	};
-
-	function persistAssistantTurn(event: Extract<AgentEvent, { type: "turn_end" }>): Promise<void> {
-		const assistant = event.message as AssistantMessage;
-		return deps.session
-			.appendAssistant(
-				{
-					blocks: assistant.content,
-					toolResults: event.toolResults,
-					usage: assistant.usage,
-				},
-				assistant.timestamp ?? Date.now(),
-			)
-			.catch((error) => console.error("session appendAssistant failed:", error));
-	}
 
 	agent.subscribe(handleEvent);
 

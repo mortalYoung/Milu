@@ -5,8 +5,8 @@ import { join } from "node:path";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { SurfaceNode } from "../../shared/surface";
 import { applyCompaction, planCompaction, selectCompactableRange } from "../core/compaction";
-import { createSessionStore } from "../core/session";
 import { foldSurface } from "../core/surface";
+import { createSessionStore } from "../persist";
 
 let dirs: string[] = [];
 
@@ -53,16 +53,17 @@ describe("selectCompactableRange", () => {
 describe("compaction transaction (surface-only rewrite, log stays append-only)", () => {
 	it("compacts a head range into a checkpoint summary node; shadowed content stays in the log", async () => {
 		const dir = await tempDir();
-		const session = createSessionStore(dir);
-		await session.appendUser(LONG_Q, 1);
-		await session.appendSendMessage(LONG_A, {}, 2);
-		await session.appendUser(LONG_Q + " (second)", 3);
-		await session.appendSendMessage(LONG_A + " (second)", {}, 4);
-		await session.appendUser(LONG_Q + " (third)", 5);
-		await session.appendSendMessage(LONG_A + " (third)", {}, 6);
+		const session = createSessionStore();
+		const scope = session.scope(dir);
+		await scope.appendUser(LONG_Q, 1);
+		await scope.appendSendMessage(LONG_A, {}, 2);
+		await scope.appendUser(LONG_Q + " (second)", 3);
+		await scope.appendSendMessage(LONG_A + " (second)", {}, 4);
+		await scope.appendUser(LONG_Q + " (third)", 5);
+		await scope.appendSendMessage(LONG_A + " (third)", {}, 6);
 
-		const entries = await session.rawEntries();
-		const surface = await session.surface();
+		const entries = await session.rawEntries(dir);
+		const surface = await session.surface(dir);
 		expect(surface.nodes).toHaveLength(6);
 
 		const plan = planCompaction(entries, surface, 2);
@@ -71,11 +72,11 @@ describe("compaction transaction (surface-only rewrite, log stays append-only)",
 
 		await applyCompaction(session, dir, plan!);
 
-		const after = await session.surface();
+		const after = await session.surface(dir);
 		expect(after.replaceGeneration).toBe(1);
 		expect(after.nodes.map((n) => n.kind)).toEqual(["user", "user", "send_message"]); // checkpoint + tail user + tail reply
 		// the checkpoint text is a user message the model sees
-		const derived = await session.deriveMessages();
+		const derived = await session.deriveMessages(dir);
 		expect(derived[0]).toMatchObject({ role: "user" });
 		expect(contentOf(derived[0])).toContain("[compacted 4 earlier messages]");
 		expect(contentOf(derived[0])).toContain("Can you please explain");
@@ -83,68 +84,71 @@ describe("compaction transaction (surface-only rewrite, log stays append-only)",
 		expect(contentOf(derived[1])).toContain("(third)");
 		expect(derived[derived.length - 1]).toMatchObject({ role: "custom", customType: "send_message" });
 		// nothing was deleted from the log — SSOT preserved
-		const raw = await session.rawEntries();
+		const raw = await session.rawEntries(dir);
 		expect(raw.filter((e) => e.type === "custom" && e.customType === "compaction_summary")).toHaveLength(1);
 		expect(raw.filter((e) => e.type === "custom" && e.customType === "surface_op")).toHaveLength(1);
 		expect(raw.filter((e) => e.type === "message" && e.message.role === "user")).toHaveLength(3);
 		// the human transcript (append-origin) is unaffected
-		expect((await session.visibleHistory()).map((v) => v.kind)).toEqual(["user", "send_message", "user", "send_message", "user", "send_message"]);
+		expect((await session.visibleHistory(dir)).map((v) => v.kind)).toEqual(["user", "send_message", "user", "send_message", "user", "send_message"]);
 	});
 
 	it("aborts when the summary is not smaller than the shadowed content", async () => {
 		const dir = await tempDir();
-		const session = createSessionStore(dir);
+		const session = createSessionStore();
+		const scope = session.scope(dir);
 		// two short messages: the Q/A transcript is not smaller than the content itself
-		await session.appendUser("hi", 1);
-		await session.appendSendMessage("yo", {}, 2);
-		await session.appendUser("bye", 3);
+		await scope.appendUser("hi", 1);
+		await scope.appendSendMessage("yo", {}, 2);
+		await scope.appendUser("bye", 3);
 
-		const entries = await session.rawEntries();
-		const surface = await session.surface();
+		const entries = await session.rawEntries(dir);
+		const surface = await session.surface(dir);
 		expect(planCompaction(entries, surface, 1)).toBeNull();
 	});
 
 	it("supports repeated compactions as the session grows (generation increments)", async () => {
 		const dir = await tempDir();
-		const session = createSessionStore(dir);
+		const session = createSessionStore();
+		const scope = session.scope(dir);
 		for (let i = 0; i < 6; i++) {
-			await session.appendUser(`${LONG_Q} #${i}`, i * 2 + 1);
-			await session.appendSendMessage(`${LONG_A} #${i}`, {}, i * 2 + 2);
+			await scope.appendUser(`${LONG_Q} #${i}`, i * 2 + 1);
+			await scope.appendSendMessage(`${LONG_A} #${i}`, {}, i * 2 + 2);
 		}
-		let entries = await session.rawEntries();
-		let surface = await session.surface();
+		let entries = await session.rawEntries(dir);
+		let surface = await session.surface(dir);
 		const plan1 = planCompaction(entries, surface, 4);
 		expect(plan1).not.toBeNull();
 		await applyCompaction(session, dir, plan1!);
-		expect((await session.surface()).replaceGeneration).toBe(1);
+		expect((await session.surface(dir)).replaceGeneration).toBe(1);
 
 		// the conversation keeps growing; a later compaction rewrites the new head
 		for (let i = 6; i < 10; i++) {
-			await session.appendUser(`${LONG_Q} #${i}`, i * 2 + 1);
-			await session.appendSendMessage(`${LONG_A} #${i}`, {}, i * 2 + 2);
+			await scope.appendUser(`${LONG_Q} #${i}`, i * 2 + 1);
+			await scope.appendSendMessage(`${LONG_A} #${i}`, {}, i * 2 + 2);
 		}
-		entries = await session.rawEntries();
-		surface = await session.surface();
+		entries = await session.rawEntries(dir);
+		surface = await session.surface(dir);
 		expect(surface.nodes).toHaveLength(13); // checkpoint + 12 grown nodes
 		const plan2 = planCompaction(entries, surface, 4);
 		expect(plan2).not.toBeNull();
 		await applyCompaction(session, dir, plan2!);
-		const after = await session.surface();
+		const after = await session.surface(dir);
 		expect(after.replaceGeneration).toBe(2);
 		expect(after.nodes).toHaveLength(5); // checkpoint + tail 4
 		// foldSurface on raw entries deterministically rebuilds the same surface
-		expect(foldSurface(await session.rawEntries()).nodes).toEqual(after.nodes);
+		expect(foldSurface(await session.rawEntries(dir)).nodes).toEqual(after.nodes);
 	});
 
 	it("rejects an invalid transaction (bad checkpoint) at fold time", async () => {
 		const dir = await tempDir();
-		const session = createSessionStore(dir);
-		await session.appendUser("q", 1);
-		await session.appendSendMessage("a", {}, 2);
-		const { nodes } = await session.surface();
+		const session = createSessionStore();
+		const scope = session.scope(dir);
+		await scope.appendUser("q", 1);
+		await scope.appendSendMessage("a", {}, 2);
+		const { nodes } = await session.surface(dir);
 		// checkpoint id references a summary that does not exist
-		await session.appendCompactionSummary("[compacted]", 3);
-		await session.appendSurfaceOp({ op: "replace", start: 0, end: 0, sourceEventSeqs: [nodes[0].id], replaceGeneration: 1, checkpointId: "missing-id" }, 4);
-		await expect(session.surface()).rejects.toThrow();
+		await scope.appendCompactionSummary("[compacted]", 3);
+		await scope.appendSurfaceOp({ op: "replace", start: 0, end: 0, sourceEventSeqs: [nodes[0].id], replaceGeneration: 1, checkpointId: "missing-id" }, 4);
+		await expect(session.surface(dir)).rejects.toThrow();
 	});
 });

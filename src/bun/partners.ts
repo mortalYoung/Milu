@@ -1,41 +1,6 @@
-/**
- * Partner management: settings (~/.config/.partner) and Partner profiles
- * (~/.partner/<name>/profile.json, path configurable).
- */
 import { access, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
-
-// ————— Settings —————
-export interface Settings {
-	/** Root directory for Partner profile storage (where partners get created). */
-	partner_profile_path: string;
-}
-
-const DEFAULT_SETTINGS: Settings = {
-	partner_profile_path: "~/.partner/",
-};
-
-const SETTINGS_PATH = join(homedir(), ".config", ".partner");
-
-/** Expand a leading ~ into the user's home directory. */
-function expandHome(path: string): string {
-	return path.startsWith("~") ? join(homedir(), path.slice(1)) : path;
-}
-
-export async function loadSettings(): Promise<Settings> {
-	try {
-		const parsed = JSON.parse(await readFile(SETTINGS_PATH, "utf8")) as Partial<Settings>;
-		return { ...DEFAULT_SETTINGS, ...parsed };
-	} catch {
-		return { ...DEFAULT_SETTINGS };
-	}
-}
-
-export async function saveSettings(settings: Settings): Promise<void> {
-	await mkdir(join(homedir(), ".config"), { recursive: true });
-	await writeFile(SETTINGS_PATH, JSON.stringify(settings, null, 2) + "\n", "utf8");
-}
+import { getPartnerDir, partnerRoot, type Settings } from "./lib/settings";
 
 // ————— Partner profiles —————
 export interface PartnerProfile {
@@ -96,15 +61,15 @@ function validateName(name: string): void {
 	}
 }
 
-export function partnerRoot(settings: Settings): string {
-	return expandHome(settings.partner_profile_path);
+async function pathExists(path: string): Promise<boolean> {
+	try {
+		await access(path);
+		return true;
+	} catch {
+		return false;
+	}
 }
 
-export function partnerDir(settings: Settings, name: string): string {
-	return join(partnerRoot(settings), name);
-}
-
-/** Create a partner: create the folder under <root>/<name>/ and write profile.json. */
 export async function createPartner(settings: Settings, input: PartnerInput): Promise<PartnerProfile> {
 	const name = input.name.trim();
 	validateName(name);
@@ -114,16 +79,10 @@ export async function createPartner(settings: Settings, input: PartnerInput): Pr
 		tones: input.tones?.trim() || undefined,
 		createdAt: Date.now(),
 	};
-	const dir = partnerDir(settings, name);
+	const dir = getPartnerDir(settings, name);
 	const profilePath = join(dir, "profile.json");
-	try {
-		// Reject when the folder already exists (with or without profile.json) — the name becomes a folder,
-		// so any existing folder of that name is a conflict (case-insensitive on common macOS/Windows setups)
-		await access(dir);
+	if (await pathExists(dir)) {
 		throw new PartnerError(`Partner "${name}" already exists`);
-	} catch (error) {
-		if (error instanceof PartnerError) throw error;
-		// Directory does not exist → proceed with normal creation
 	}
 	await mkdir(dir, { recursive: true });
 	await writeFile(profilePath, JSON.stringify(profile, null, 2) + "\n", "utf8");
@@ -134,7 +93,7 @@ export async function createPartner(settings: Settings, input: PartnerInput): Pr
 export async function deletePartner(settings: Settings, name: string): Promise<void> {
 	const trimmed = name.trim();
 	validateName(trimmed);
-	await rm(partnerDir(settings, trimmed), { recursive: true, force: true });
+	await rm(getPartnerDir(settings, trimmed), { recursive: true, force: true });
 }
 
 /** List all partners (sorted by creation time). */

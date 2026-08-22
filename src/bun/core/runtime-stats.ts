@@ -1,10 +1,10 @@
 /**
  * Runtime timing metrics persistence (runs / TTFT / tok-s samples).
  *
- * These are process-global — one agent instance per process, one runtime object — so they live
- * in a single JSON file at DATABASE_ROOT (not in per-partner session logs, which would fragment
- * the samples across partners). Writes are atomic (tmp + rename), matching the append-only,
- * torn-write-repair philosophy of the JSONL session layer.
+ * One file per partner root — each partner owns an agent with its own runtime object, seeded from
+ * its dir on launch and written through after every sampled turn (per-agent files keep concurrent
+ * runs from clobbering each other's samples). Writes are atomic (tmp + rename), matching the
+ * append-only, torn-write-repair philosophy of the JSONL session layer.
  */
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";

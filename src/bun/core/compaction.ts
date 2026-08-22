@@ -15,7 +15,7 @@
  */
 import type { Entry } from "@earendil-works/pi-agent-core";
 import type { Surface, SurfaceNode } from "../../shared/surface";
-import type { SessionStore } from "./session";
+import type { SessionStore } from "../persist";
 
 export interface CompactRange {
 	start: number;
@@ -89,10 +89,12 @@ export async function applyCompaction(session: SessionStore, dir: string, plan: 
 	const nextGen = surface.replaceGeneration + 1;
 	const shadowed = surface.nodes.slice(plan.range.start, plan.range.end + 1);
 	const sourceEventSeqs = shadowed.map((n) => n.id);
-	await session.appendCompactionRecord("compaction/start", { range: plan.range, generation: nextGen }, ts);
-	const checkpointId = await session.appendCompactionSummary(plan.checkpointText, ts);
-	await session.appendSurfaceOp({ op: "replace", start: plan.range.start, end: plan.range.end, sourceEventSeqs, replaceGeneration: nextGen, checkpointId }, ts);
-	await session.appendCompactionRecord("compaction/end", { ok: true, shadowed: shadowed.length }, ts);
+	// The transaction appends into the target root — one scope per agent owns its root's appends
+	const scope = session.scope(dir);
+	await scope.appendCompactionRecord("compaction/start", { range: plan.range, generation: nextGen }, ts);
+	const checkpointId = await scope.appendCompactionSummary(plan.checkpointText, ts);
+	await scope.appendSurfaceOp({ op: "replace", start: plan.range.start, end: plan.range.end, sourceEventSeqs, replaceGeneration: nextGen, checkpointId }, ts);
+	await scope.appendCompactionRecord("compaction/end", { ok: true, shadowed: shadowed.length }, ts);
 }
 
 /** Total raw text length of the shadowed nodes (the "content replaced" baseline). */
@@ -110,12 +112,14 @@ function textOf(entry: Entry): string {
 	if (entry.type === "message") {
 		const m = entry.message;
 		if (m.role === "user") return typeof m.content === "string" ? m.content : contentText(m.content);
-		if (m.role === "toolResult") return contentText(m.content);
 		return "";
 	}
 	if (entry.type === "custom") {
-		const data = entry.data as { text?: unknown };
-		return typeof data.text === "string" ? data.text : "";
+		const data = entry.data as { text?: unknown; content?: unknown };
+		if (typeof data.text === "string") return data.text;
+		// Persisted tool/result events carry their content blocks (see persist/events.ts)
+		if (entry.customType === "tool/result") return contentText(data.content);
+		return "";
 	}
 	return "";
 }

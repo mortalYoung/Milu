@@ -1,9 +1,15 @@
 /**
- * Conversation persistence: based on pi's JSONL session layer (JsonlSessionRepo + Session).
+ * The persistence layer: a per-root session log backed by pi's JSONL session
+ * repo (append-only, torn-write repaired on load). Everything that writes or
+ * reads the log lives here; the agent loop and compaction consume the
+ * SessionScope / SessionStore contracts and never touch the log format.
  *
- * - Single continuous session: open the newest session in the repo, create one if none exists; keep appending to the same session
- * - Full ingestion: user / assistant (thinking, tool_use blocks verbatim) / toolResult /
- *   send_message custom entries; the frontend only sees user and send_message
+ * - Single continuous session per root: open the newest session in the repo, create one if none exists; keep appending to the same session
+ * - Full ingestion: user / assistant (thinking, tool_use blocks verbatim) as pi messages; the event
+ *   vocabulary (turn/step markers, tool calls/results, request headers, compaction, escalations)
+ *   as custom entries — see persist/events.ts
+ * - One store, many roots: reads take the root dir explicitly; appends go through a per-root
+ *   SessionScope (each partner's agent owns one, so concurrent runs append to their own logs)
  * - Restore: buildSessionContext + entryProjectors reconstruct the AgentMessage chain
  *   (pi's JSONL backend has built-in append-only writes and torn-write repair)
  */
@@ -13,9 +19,10 @@ import { buildSessionContext, JsonlSessionRepo, Session } from "@earendil-works/
 import type { AssistantMessage, ToolResultMessage, Usage } from "@earendil-works/pi-ai";
 import type { EscalationStatus, SandboxMode } from "../../shared/rpc";
 import type { Surface, SurfaceOpRecord } from "../../shared/surface";
+import { PROJECT_ROOT } from "../core/config";
+import { buildResumeTurn, deriveMessages as deriveSurfaceMessages, dropDanglingTurn, foldSurface } from "../core/surface";
 import { createExecutionEnv } from "../tools/execution-env";
-import { DATABASE_ROOT, PROJECT_ROOT } from "./config";
-import { buildResumeTurn, deriveMessages as deriveSurfaceMessages, dropDanglingTurn, foldSurface, projectChain } from "./surface";
+import { EVENTS, type ToolResultEventData, type TurnEndReason } from "./events";
 
 const EMPTY_USAGE: Usage = {
 	input: 0,
@@ -65,36 +72,58 @@ export interface VisibleItem {
 	};
 }
 
-export interface SessionStore {
-	/** Open/restore complete (can be awaited before the first operation). */
-	ready(): Promise<void>;
-	/** Switch the session root (isolated per Partner): rebuild repo/session and replay the new root's history. */
-	setRoot(root: string): Promise<void>;
+/**
+ * The write path: appends bound to one session root — each partner's agent
+ * writes through its own scope. Every method resolves only after the entry is
+ * on disk, so an awaited append is a durability barrier (checkpoint); the
+ * agent loop awaits them at the exact boundaries that need it (see agent.ts).
+ */
+export interface SessionScope {
 	appendUser(content: string, timestamp: number): Promise<void>;
+	/** The turn's assistant message; trailing tool results (batching callers) become tool/result events. */
 	appendAssistant(meta: AssistantMeta, timestamp: number): Promise<void>;
 	appendSendMessage(content: string, details: Record<string, unknown>, timestamp: number): Promise<void>;
 	/** Persist the current system prompt (custom entry; the trajectory view shows it). */
 	appendSystemPrompt(text: string, timestamp: number): Promise<void>;
 	/** Persist a system reminder (custom entry; part of the trajectory timeline). */
 	appendReminder(text: string, timestamp: number): Promise<void>;
-	/** Records visible to the frontend (user + send_message), in session order; active root unless a dir is given. */
-	visibleHistory(dir?: string): Promise<VisibleItem[]>;
-	/** The last visible message (user or send_message), or null for an empty session; active root unless a dir is given. */
-	lastMessage(dir?: string): Promise<VisibleItem | null>;
-	/** The full conversation chain (for agent context restore); active root unless a dir is given. */
-	restoreMessages(dir?: string): Promise<AgentMessage[]>;
-	/** Fold the session log into the model-visible surface (active root unless a dir is given). */
-	surface(dir?: string): Promise<Surface>;
-	/** Project the surface into the pi message chain the model sees (active root unless a dir is given). */
-	deriveMessages(dir?: string): Promise<AgentMessage[]>;
+	/** Persist a request header (system prompt + resolved tool names) so every model request is reconstructable (invariant 1). */
+	appendRequestHeader(systemPrompt: string, toolNames: string[], timestamp: number): Promise<void>;
+	/** A run began (agent_start): the log gets a turn/start marker. */
+	appendTurnStart(turn: number, timestamp: number): Promise<void>;
+	/** A run settled (agent_end): the log gets a turn/end marker with the reason. */
+	appendTurnEnd(turn: number, reason: TurnEndReason, timestamp: number): Promise<void>;
+	/** A step began (pi turn_start): the log gets a step/start marker. */
+	appendStepStart(turn: number, step: number, timestamp: number): Promise<void>;
+	/** A step settled (pi turn_end): the log gets a step/end marker. */
+	appendStepEnd(turn: number, step: number, timestamp: number): Promise<void>;
+	/** A tool call was requested (tool_execution_start): the log gets the call before the tool runs. */
+	appendToolCall(callId: string, name: string, args: unknown, turn: number, step: number, timestamp: number): Promise<void>;
+	/** A tool result landed (tool_execution_end; also the restart-resume path). Becomes a surface node. */
+	appendToolResult(result: ToolResultMessage, timestamp: number): Promise<void>;
+	/** Persist a sandbox-escalation lifecycle record (escalation/request | escalation/decision; log-only). */
+	appendEscalationRecord(type: "escalation/request" | "escalation/decision", details: Record<string, unknown>, timestamp: number): Promise<void>;
 	/** Record a surface replace (compaction checkpoint) as an append-only `surface_op` log entry. */
 	appendSurfaceOp(op: SurfaceOpRecord, timestamp: number): Promise<void>;
 	/** Persist a compaction summary (custom entry; becomes the replacement checkpoint node). Returns its pi entry id. */
 	appendCompactionSummary(text: string, timestamp: number): Promise<string>;
 	/** Persist a compaction transaction marker (compaction/start | compaction/end; log-only). */
 	appendCompactionRecord(type: "compaction/start" | "compaction/end", details: Record<string, unknown>, timestamp: number): Promise<void>;
-	/** Persist a sandbox-escalation lifecycle record (escalation/request | escalation/decision; log-only). */
-	appendEscalationRecord(type: "escalation/request" | "escalation/decision", details: Record<string, unknown>, timestamp: number): Promise<void>;
+}
+
+export interface SessionStore {
+	/** Appends bound to `dir` (the store caches open roots; nothing opens until first use). */
+	scope(dir: string): SessionScope;
+	/** Records visible to the frontend (user + send_message), in session order. */
+	visibleHistory(dir: string): Promise<VisibleItem[]>;
+	/** The last visible message (user or send_message), or null for an empty session. */
+	lastMessage(dir: string): Promise<VisibleItem | null>;
+	/** The full conversation chain (for agent context restore). */
+	restoreMessages(dir: string): Promise<AgentMessage[]>;
+	/** Fold the session log into the model-visible surface. */
+	surface(dir: string): Promise<Surface>;
+	/** Project the surface into the pi message chain the model sees. */
+	deriveMessages(dir: string): Promise<AgentMessage[]>;
 	/** The persisted escalation request by id (restart-resume: command, granted mode, blocked tool call), or null. */
 	escalationRequest(
 		dir: string,
@@ -107,21 +136,14 @@ export interface SessionStore {
 		toolCallId: string;
 		timestamp: number;
 	} | null>;
-	/**
-	 * The blocked assistant turn for a resume: the messages, where the tool result must be inserted,
-	 * and the reconstructed turn itself when the log lacks it (see implementation). Null when unresumable.
-	 */
-	resumeTurn(dir: string, toolCallId: string): Promise<{ messages: AgentMessage[]; insertAt: number; turn: AgentMessage | null } | null>;
-	/** Append a single tool result message (restart-resume: the approved command's output) to the log. */
-	appendToolResult(result: ToolResultMessage, timestamp: number): Promise<void>;
-	/** Persist a request header (system prompt + resolved tool names) so every model request is reconstructable (invariant 1). */
-	appendRequestHeader(systemPrompt: string, toolNames: string[], timestamp: number): Promise<void>;
+	/** The blocked assistant turn for a resume: the messages and where the tool result must be inserted. Null when unresumable. */
+	resumeTurn(dir: string, toolCallId: string): Promise<{ messages: AgentMessage[]; insertAt: number } | null>;
 	/** Fork the log into a new root (raw JSONL copy); the surface re-folds there (fork/restore). */
 	forkTo(sourceDir: string, targetDir: string): Promise<void>;
 	/** Drop a cached root state (partner deletion: a recreated same-name partner must start empty, not replay the old in-memory session). */
 	evictRoot(dir: string): void;
-	/** Raw pi entries (for trajectory folding; thinking/tool content still never enters visibleHistory); active root unless a dir is given. */
-	rawEntries(dir?: string): Promise<Entry[]>;
+	/** Raw pi entries (for trajectory folding; thinking/tool content still never enters visibleHistory). */
+	rawEntries(dir: string): Promise<Entry[]>;
 }
 
 const SEND_MESSAGE_PROJECTOR = (entry: CustomEntry): AgentMessage[] | undefined => {
@@ -138,6 +160,24 @@ const SEND_MESSAGE_PROJECTOR = (entry: CustomEntry): AgentMessage[] | undefined 
 	];
 };
 
+/** Project a persisted tool/result event back into the toolResult message the model chain expects. */
+const TOOL_RESULT_PROJECTOR = (entry: CustomEntry): AgentMessage[] | undefined => {
+	const data = entry.data as Partial<ToolResultEventData> | undefined;
+	if (!data || typeof data.toolCallId !== "string") return undefined;
+	return [
+		{
+			role: "toolResult",
+			toolCallId: data.toolCallId,
+			toolName: typeof data.toolName === "string" ? data.toolName : "",
+			content: Array.isArray(data.content) ? data.content : [],
+			details: data.details,
+			usage: data.usage as ToolResultMessage["usage"] | undefined,
+			isError: data.isError === true,
+			timestamp: (entry.data as { timestamp?: unknown }).timestamp ?? entry.timestamp ?? 0,
+		} as ToolResultMessage,
+	];
+};
+
 /** One open session repo per root directory (sessions isolated per Partner). */
 interface RootState {
 	repo: JsonlSessionRepo;
@@ -145,13 +185,9 @@ interface RootState {
 	entries: Entry[];
 }
 
-export function createSessionStore(root: string = DATABASE_ROOT): SessionStore {
+export function createSessionStore(): SessionStore {
 	// pi's JSONL backend needs a FileSystem adapter; reuse the execution environment directly (pure fs part)
-	// Multiple roots stay open at once: while a partner's run is in flight the active (append) root is
-	// pinned to that partner, but the view still reads other partners' sessions by dir.
 	const roots = new Map<string, RootState>();
-	let activeRoot = root;
-	let opened = false;
 
 	async function openRoot(newRoot: string): Promise<RootState> {
 		const cached = roots.get(newRoot);
@@ -166,19 +202,8 @@ export function createSessionStore(root: string = DATABASE_ROOT): SessionStore {
 		return state;
 	}
 
-	async function ensureOpen() {
-		if (opened) return;
-		await openRoot(activeRoot);
-		opened = true;
-	}
-
-	async function active(): Promise<RootState> {
-		await ensureOpen();
-		return roots.get(activeRoot)!;
-	}
-
-	async function stateFor(dir?: string): Promise<RootState> {
-		return dir && dir !== activeRoot ? openRoot(dir) : active();
+	function stateFor(dir: string): Promise<RootState> {
+		return openRoot(dir);
 	}
 
 	async function refreshEntries(state: RootState) {
@@ -188,64 +213,112 @@ export function createSessionStore(root: string = DATABASE_ROOT): SessionStore {
 		state.entries = walked.reverse();
 	}
 
-	async function appendMessage(message: AgentMessage) {
-		const state = await active();
+	async function appendMessage(dir: string, message: AgentMessage) {
+		const state = await stateFor(dir);
 		await state.session.appendMessage(message);
 		await refreshEntries(state);
 	}
 
+	async function appendCustom(dir: string, customType: string, data: Record<string, unknown>) {
+		const state = await stateFor(dir);
+		await state.session.appendCustomEntry(customType, data);
+		await refreshEntries(state);
+	}
+
+	/** A tool result persisted as a tool/result event (surface node; see core/surface.ts). */
+	function toolResultEventData(result: ToolResultMessage): ToolResultEventData {
+		return stripUndefined({
+			toolCallId: result.toolCallId,
+			toolName: result.toolName,
+			content: result.content,
+			details: result.details,
+			usage: result.usage,
+			isError: result.isError === true,
+		}) as ToolResultEventData;
+	}
+
+	function scope(dir: string): SessionScope {
+		return {
+			async appendUser(content, timestamp) {
+				await appendMessage(dir, { role: "user", content, timestamp });
+			},
+			async appendAssistant(meta, timestamp) {
+				// Messages built by the pi loop may carry undefined fields (e.g. toolResult.details/usage),
+				// which assertJsonSerializable would reject → recursively strip them before appending
+				const assistant: AssistantMessage = {
+					role: "assistant",
+					content: stripUndefined(meta.blocks) as AssistantMessage["content"],
+					timestamp,
+					api: "",
+					provider: "",
+					model: "",
+					usage: meta.usage ?? EMPTY_USAGE,
+					stopReason: "stop",
+				};
+				await appendMessage(dir, assistant);
+				// Batching callers (tests) hand results with the turn; the live loop writes them at
+				// tool_execution_end instead. Either way they land as tool/result events.
+				for (const result of meta.toolResults ?? []) {
+					await appendCustom(dir, EVENTS.toolResult, { ...toolResultEventData(result), timestamp });
+				}
+			},
+			async appendSendMessage(content, details, timestamp) {
+				await appendCustom(dir, EVENTS.sendMessage, { text: content, timestamp, ...details });
+			},
+			async appendSystemPrompt(text, timestamp) {
+				await appendCustom(dir, EVENTS.systemPrompt, { text, timestamp });
+			},
+			async appendReminder(text, timestamp) {
+				await appendCustom(dir, EVENTS.systemReminder, { text, timestamp });
+			},
+			async appendRequestHeader(systemPrompt, toolNames, timestamp) {
+				await appendCustom(dir, EVENTS.requestHeader, { systemPrompt, toolNames, timestamp });
+			},
+			async appendTurnStart(turn, timestamp) {
+				await appendCustom(dir, EVENTS.turnStart, { turn, timestamp });
+			},
+			async appendTurnEnd(turn, reason, timestamp) {
+				await appendCustom(dir, EVENTS.turnEnd, { turn, reason, timestamp });
+			},
+			async appendStepStart(turn, step, timestamp) {
+				await appendCustom(dir, EVENTS.stepStart, { turn, step, timestamp });
+			},
+			async appendStepEnd(turn, step, timestamp) {
+				await appendCustom(dir, EVENTS.stepEnd, { turn, step, timestamp });
+			},
+			async appendToolCall(callId, name, args, turn, step, timestamp) {
+				await appendCustom(dir, EVENTS.toolCall, { callId, name, args, turn, step, timestamp });
+			},
+			async appendToolResult(result, timestamp) {
+				await appendCustom(dir, EVENTS.toolResult, { ...toolResultEventData(result), timestamp });
+			},
+			async appendEscalationRecord(type, details, timestamp) {
+				await appendCustom(dir, type, { ...details, timestamp });
+			},
+			async appendSurfaceOp(op, timestamp) {
+				await appendCustom(dir, EVENTS.surfaceOp, { ...op, timestamp });
+			},
+			async appendCompactionSummary(text, timestamp) {
+				await appendCustom(dir, EVENTS.compactionSummary, { text, timestamp });
+				const state = await stateFor(dir);
+				const entry = state.entries.filter((e) => e.type === "custom" && e.customType === EVENTS.compactionSummary).at(-1);
+				if (!entry) throw new Error("compaction_summary append failed");
+				return entry.id;
+			},
+			async appendCompactionRecord(type, details, timestamp) {
+				await appendCustom(dir, type, { ...details, timestamp });
+			},
+		};
+	}
+
 	return {
-		async ready() {
-			await ensureOpen();
-		},
-		async setRoot(newRoot: string) {
-			activeRoot = newRoot;
-			await openRoot(newRoot);
-		},
-		async appendUser(content, timestamp) {
-			await appendMessage({ role: "user", content, timestamp });
-		},
-		async appendAssistant(meta, timestamp) {
-			const state = await active();
-			// Messages built by the pi loop may carry undefined fields (e.g. toolResult.details/usage),
-			// which assertJsonSerializable would reject → recursively strip them before appending
-			const assistant: AssistantMessage = {
-				role: "assistant",
-				content: stripUndefined(meta.blocks) as AssistantMessage["content"],
-				timestamp,
-				api: "",
-				provider: "",
-				model: "",
-				usage: meta.usage ?? EMPTY_USAGE,
-				stopReason: "stop",
-			};
-			await state.session.appendMessage(assistant);
-			for (const result of meta.toolResults ?? []) {
-				await state.session.appendMessage(stripUndefined(result) as ToolResultMessage);
-			}
-			await refreshEntries(state);
-		},
-		async appendSendMessage(content, details, timestamp) {
-			const state = await active();
-			await state.session.appendCustomEntry("send_message", { text: content, timestamp, ...details });
-			await refreshEntries(state);
-		},
-		async appendSystemPrompt(text, timestamp) {
-			const state = await active();
-			await state.session.appendCustomEntry("system_prompt", { text, timestamp });
-			await refreshEntries(state);
-		},
-		async appendReminder(text, timestamp) {
-			const state = await active();
-			await state.session.appendCustomEntry("system_reminder", { text, timestamp });
-			await refreshEntries(state);
-		},
+		scope,
 		async visibleHistory(dir) {
 			const state = await stateFor(dir);
 			// Escalation decisions by escalation id (a decision may follow its request later in the log)
 			const decisions = new Map<string, { approved: boolean; reason?: string }>();
 			for (const entry of state.entries) {
-				if (entry.type !== "custom" || entry.customType !== "escalation/decision") continue;
+				if (entry.type !== "custom" || entry.customType !== EVENTS.escalationDecision) continue;
 				const data = entry.data as { escalationId?: unknown; approved?: unknown } | undefined;
 				if (data?.escalationId == null) continue;
 				decisions.set(String(data.escalationId), { approved: data.approved === true });
@@ -255,12 +328,12 @@ export function createSessionStore(root: string = DATABASE_ROOT): SessionStore {
 					const content = entry.message.content;
 					return [{ id: entry.id, kind: "user", text: typeof content === "string" ? content : "", time: entry.message.timestamp ?? 0 }];
 				}
-				if (entry.type === "custom" && entry.customType === "send_message") {
+				if (entry.type === "custom" && entry.customType === EVENTS.sendMessage) {
 					const data = entry.data as { text: string; timestamp: number } | undefined;
 					if (!data) return [];
 					return [{ id: entry.id, kind: "send_message", text: data.text, time: data.timestamp }];
 				}
-				if (entry.type === "custom" && entry.customType === "escalation/request") {
+				if (entry.type === "custom" && entry.customType === EVENTS.escalationRequest) {
 					const data = entry.data as { escalationId?: unknown; command?: unknown; from?: unknown; to?: unknown; justification?: unknown; timestamp?: unknown } | undefined;
 					if (data?.escalationId == null) return [];
 					const decision = decisions.get(String(data.escalationId));
@@ -292,7 +365,7 @@ export function createSessionStore(root: string = DATABASE_ROOT): SessionStore {
 				if (entry.type === "message" && entry.message.role === "user") {
 					const content = entry.message.content;
 					last = { id: entry.id, kind: "user", text: typeof content === "string" ? content : "", time: entry.message.timestamp ?? 0 };
-				} else if (entry.type === "custom" && entry.customType === "send_message") {
+				} else if (entry.type === "custom" && entry.customType === EVENTS.sendMessage) {
 					const data = entry.data as { text: string; timestamp: number } | undefined;
 					if (!data) continue;
 					last = { id: entry.id, kind: "send_message", text: data.text, time: data.timestamp };
@@ -303,7 +376,10 @@ export function createSessionStore(root: string = DATABASE_ROOT): SessionStore {
 		async restoreMessages(dir) {
 			const state = await stateFor(dir);
 			const context = buildSessionContext(state.entries, {
-				entryProjectors: { send_message: SEND_MESSAGE_PROJECTOR },
+				entryProjectors: {
+					[EVENTS.sendMessage]: SEND_MESSAGE_PROJECTOR,
+					[EVENTS.toolResult]: TOOL_RESULT_PROJECTOR,
+				},
 			});
 			return dropDanglingTurn(context.messages);
 		},
@@ -315,33 +391,10 @@ export function createSessionStore(root: string = DATABASE_ROOT): SessionStore {
 			const state = await stateFor(dir);
 			return deriveSurfaceMessages(state.entries, foldSurface(state.entries));
 		},
-		async appendSurfaceOp(op, timestamp) {
-			const state = await active();
-			await state.session.appendCustomEntry("surface_op", { ...op, timestamp });
-			await refreshEntries(state);
-		},
-		async appendCompactionSummary(text, timestamp) {
-			const state = await active();
-			await state.session.appendCustomEntry("compaction_summary", { text, timestamp });
-			await refreshEntries(state);
-			const entry = state.entries.filter((e) => e.type === "custom" && e.customType === "compaction_summary").at(-1);
-			if (!entry) throw new Error("compaction_summary append failed");
-			return entry.id;
-		},
-		async appendCompactionRecord(type, details, timestamp) {
-			const state = await active();
-			await state.session.appendCustomEntry(type, { ...details, timestamp });
-			await refreshEntries(state);
-		},
-		async appendEscalationRecord(type, details, timestamp) {
-			const state = await active();
-			await state.session.appendCustomEntry(type, { ...details, timestamp });
-			await refreshEntries(state);
-		},
 		async escalationRequest(dir, id) {
 			const state = await stateFor(dir);
 			for (const entry of state.entries) {
-				if (entry.type !== "custom" || entry.customType !== "escalation/request") continue;
+				if (entry.type !== "custom" || entry.customType !== EVENTS.escalationRequest) continue;
 				const data = entry.data as
 					| { escalationId?: unknown; command?: unknown; from?: unknown; to?: unknown; justification?: unknown; toolCallId?: unknown; timestamp?: unknown }
 					| undefined;
@@ -358,61 +411,12 @@ export function createSessionStore(root: string = DATABASE_ROOT): SessionStore {
 			return null;
 		},
 		async resumeTurn(dir, toolCallId) {
+			// The blocked turn is always in the log: the assistant message lands at message_end,
+			// before any tool runs — a blocked-and-interrupted run still has its turn persisted
+			// (only the tool result is missing). Superseded runs (something followed the turn)
+			// resolve to null — the escalation is orphaned, not resumable.
 			const state = await stateFor(dir);
-			const fromLog = buildResumeTurn(state.entries, toolCallId);
-			if (fromLog) return { ...fromLog, turn: null };
-			// The blocked turn is never in the log: assistant entries land only at turn_end, which a
-			// blocked-and-interrupted run never reaches. Reconstruct it from the escalation record —
-			// but only when nothing followed the request (a later run makes the request stale).
-			let record: { command?: unknown; to?: unknown; justification?: unknown; timestamp?: unknown } | null = null;
-			for (const entry of state.entries) {
-				if (entry.type === "message") record = null; // a message after the request ⇒ superseded
-				if (entry.type !== "custom" || entry.customType !== "escalation/request") continue;
-				const data = entry.data as { toolCallId?: unknown; command?: unknown; from?: unknown; to?: unknown; justification?: unknown; timestamp?: unknown } | undefined;
-				if (data?.toolCallId !== toolCallId) continue;
-				record = data;
-			}
-			if (!record) return null;
-			const messages = dropDanglingTurn(projectChain(state.entries));
-			// Insert before any trailing user messages: the result must follow the call, and queued
-			// follow-ups (persisted during the wait) stay after it — the order the live run would have had.
-			let insertAt = messages.length;
-			for (let i = messages.length - 1; i >= 0; i--) {
-				if (messages[i].role === "user" || messages[i].role === "custom") continue;
-				insertAt = i + 1;
-				break;
-			}
-			// Standard pi assistant shape: consumers assume the full field set — e.g. the stream
-			// path calls calculateContextTokens(assistant.usage) unguarded on every request, so a
-			// missing usage here would crash the resumed run (ERR § usage.totalTokens).
-			const turn: AgentMessage = {
-				role: "assistant",
-				content: [
-					{
-						type: "toolCall",
-						id: toolCallId,
-						name: "bash",
-						args: { command: String(record.command ?? ""), sandbox_mode: record.to, justification: String(record.justification ?? "") },
-					},
-				],
-				api: "",
-				provider: "",
-				model: "",
-				usage: EMPTY_USAGE,
-				stopReason: "stop",
-				timestamp: typeof record.timestamp === "number" ? record.timestamp : 0,
-			} as unknown as AgentMessage;
-			return { messages, insertAt, turn };
-		},
-		async appendToolResult(result, timestamp) {
-			const state = await active();
-			await state.session.appendMessage({ ...result, timestamp } as ToolResultMessage);
-			await refreshEntries(state);
-		},
-		async appendRequestHeader(systemPrompt, toolNames, timestamp) {
-			const state = await active();
-			await state.session.appendCustomEntry("request/header", { systemPrompt, toolNames, timestamp });
-			await refreshEntries(state);
+			return buildResumeTurn(state.entries, toolCallId);
 		},
 		async forkTo(sourceDir, targetDir) {
 			// Load the source first (validates it is a readable session root), then copy the whole log
@@ -424,9 +428,6 @@ export function createSessionStore(root: string = DATABASE_ROOT): SessionStore {
 		},
 		evictRoot(dir) {
 			roots.delete(dir);
-			// Evicting the active root: the next operation re-opens it fresh (the dir may be gone;
-			// re-creating the same-name partner re-creates it before any chat can start).
-			if (dir === activeRoot) opened = false;
 		},
 		async rawEntries(dir) {
 			const state = await stateFor(dir);

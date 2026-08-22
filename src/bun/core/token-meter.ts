@@ -27,6 +27,11 @@ function nodeText(entry: Entry): string {
 		const data = (entry.data ?? {}) as { text?: unknown };
 		return typeof data.text === "string" ? data.text : "";
 	}
+	// Tool results are model-visible surface nodes; the log keeps them as tool/result events (see persist/events.ts)
+	if (entry.type === "custom" && entry.customType === "tool/result") {
+		const data = (entry.data ?? {}) as { content?: unknown };
+		return contentText(data.content);
+	}
 	return "";
 }
 
