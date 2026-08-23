@@ -21,8 +21,8 @@ export interface ToolDeps {
 	sandbox?: SandboxRuntime;
 	/** Human approval gate for escalation retries (wired to escalation records + the inline transcript bubble). */
 	confirmEscalation?: (request: EscalationRequest) => Promise<EscalationDecision>;
-	/** set_workspace: validate + apply; returns an error message or null on success. */
-	onSetWorkspace?: (workspace: string) => string | null;
+	/** set_workspace: validate + apply; returns the resolved path on success, or an error message. */
+	onSetWorkspace?: (workspace: string) => { ok: true; path: string } | { ok: false; error: string };
 }
 
 const sendMessageSchema = Type.Object({
@@ -64,26 +64,42 @@ const workspaceSchema = Type.Object({
 	workspace: Type.String({ description: "Absolute path of the working directory — usually the project root of the code or project the user is asking about" }),
 });
 
+type SetWorkspaceDetails = { ok: boolean; error?: string; workspace?: string; agentMd?: string | null };
+
 /** set_workspace: establish the task's working directory (once per conversation). */
-function setWorkspaceTool(deps: ToolDeps): AgentTool<typeof workspaceSchema> {
+function setWorkspaceTool(deps: ToolDeps): AgentHarnessTool<ExecutionToolContext, TSchema, SetWorkspaceDetails> {
 	return {
 		name: "set_workspace",
 		label: "Set Workspace",
 		description:
-			"Set the working directory of this conversation to an absolute path — the project root of the current task. Only needed when the task actually touches files or paths (read/write/edit, or shell commands that reference the project); conversation-only turns can skip it. When needed, call it first, before other tools. Can only be called once per conversation; afterwards, relative paths resolve against it.",
+			"Set the working directory of this conversation to an absolute path — the project root of the current task. Only needed when the task actually touches files or paths (read/write/edit, or shell commands that reference the project); conversation-only turns can skip it. When needed, call it first, before other tools. Can only be called once per conversation; afterwards, relative paths resolve against it. Also reads the workspace's AGENTS.md (if present) and returns its content — follow the guidance it gives.",
 		parameters: workspaceSchema,
 		// Sequential: the workspace switch must apply to sibling tool calls of the same batch, so the model
 		// listing set_workspace first makes it run before the tools that use it (parallel would race them)
 		executionMode: "sequential",
-		async execute(_toolCallId, { workspace }) {
+		async execute(_toolCallId, { workspace }, signal, _onUpdate, context) {
 			if (!deps.onSetWorkspace) {
 				return { content: [{ type: "text", text: "set_workspace is not available" }], details: { ok: false } };
 			}
-			const error = deps.onSetWorkspace(workspace);
-			if (error) {
-				return { content: [{ type: "text", text: `Error: ${error}` }], details: { ok: false, error } };
+			const set = deps.onSetWorkspace(workspace);
+			if (!set.ok) {
+				return { content: [{ type: "text", text: `Error: ${set.error}` }], details: { ok: false, error: set.error } };
 			}
-			return { content: [{ type: "text", text: `Workspace set to ${workspace}` }], details: { ok: true, workspace } };
+			// Side effect: surface the workspace's AGENTS.md guidance when readable. The tool's success
+			// only reflects the workspace set — a missing or unreadable AGENTS.md stays silent.
+			const agentMd = await context.env.readTextFile(`${set.path}/AGENTS.md`, signal);
+			if (agentMd.ok) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: `Workspace set to ${set.path}.\n\nthe following workspace instructions may be relevant to your work. Use them as guidance when applicable. More specific instructions take precedence over broader ones. They do not override system, developer, or direct user instructions.\nInstructions from: AGENTS.md\n\n${agentMd.value}`,
+						},
+					],
+					details: { ok: true, workspace: set.path, agentMd: agentMd.value },
+				};
+			}
+			return { content: [{ type: "text", text: `Workspace set to ${set.path}.` }], details: { ok: true, workspace: set.path, agentMd: null } };
 		},
 	};
 }
@@ -230,7 +246,7 @@ export function createTools(deps: ToolDeps): AgentTool[] {
 		bindEnv(createEditTool(), env),
 		bindEnv(bashTool(deps), env),
 		sendMessageTool(deps),
-		setWorkspaceTool(deps),
+		bindEnv(setWorkspaceTool(deps), env),
 	];
 }
 

@@ -180,15 +180,16 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 				}
 			: undefined,
 		confirmEscalation: deps.confirmEscalation,
-		// set_workspace: once per conversation, absolute path, must exist, not inside storage
-		onSetWorkspace: (workspace: string): string | null => {
+		// set_workspace: once per conversation, absolute path, must exist, not inside storage.
+		// Returns the resolved path so the tool can read the workspace's AGENT.md from it.
+		onSetWorkspace: (workspace: string): { ok: true; path: string } | { ok: false; error: string } => {
 			const error = validateWorkspace(workspace, { current: ctx.workspace_path, storagePath: ctx.storage_path });
-			if (error) return error;
+			if (error) return { ok: false, error };
 			const resolved = resolve(workspace);
 			ctx.workspace_path = resolved;
 			bridge.onWorkspaceUpdate();
 			bridge.onWorkspaceSet?.(resolved);
-			return null;
+			return { ok: true, path: resolved };
 		},
 	});
 	ctx.setTools(agent.state.tools);

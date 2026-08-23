@@ -323,12 +323,15 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 					marksPending = 0;
 				};
 				for (const b of r.blocks) {
-					if (b.type === "thinking") pushPart({ key: `${headKey}:think:${n.seq}`, node: n, marks: marksPending || undefined, kind: "thinking", block: b });
+					if (b.type !== "thinking") continue;
+					// keys carry the row index — multiple parts of one assistant must not collide
+					pushPart({ key: `${headKey}:think:${current?.rows.length ?? 0}`, node: n, marks: marksPending || undefined, kind: "thinking", block: b });
 				}
 				pendingCalls = new Map();
 				for (const b of r.blocks) {
 					if (b.type !== "toolCall") continue;
-					const idx = pushIndex({ key: `${headKey}:tool:${n.seq}`, node: n, marks: marksPending || undefined, kind: "tool", block: b, callId: String(b.id ?? "") });
+					const at = current?.rows.length ?? 0;
+					const idx = pushIndex({ key: `${headKey}:tool:${at}`, node: n, marks: marksPending || undefined, kind: "tool", block: b, callId: String(b.id ?? "") });
 					if (typeof b.id === "string") pendingCalls.set(b.id, idx);
 				}
 				if (textBlocksArr.length > 0) {
