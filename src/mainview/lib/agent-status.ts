@@ -6,6 +6,7 @@ import type { RPC } from "./rpc";
 export function createAgentStatus(rpc: RPC, getSelectedName: () => string | null) {
 	const [streaming, setStreaming] = createSignal<Record<string, boolean>>({});
 	const [workspacePath, setWorkspacePath] = createSignal<string | null>(null);
+	const [storagePath, setStoragePath] = createSignal<string | null>(null);
 	const [sandboxMode, setSandboxMode] = createSignal<SandboxMode>("workspace-write");
 	// Follow-up messages queued behind the selected partner's run (view-side counter; drained per turn)
 	const [queued, setQueued] = createSignal(0);
@@ -20,6 +21,7 @@ export function createAgentStatus(rpc: RPC, getSelectedName: () => string | null
 		void rpc.request.get_status({}).then((s) => {
 			setStreaming(Object.fromEntries(s.partners.map((p) => [p.name, p.streaming])));
 			setWorkspacePath(s.workspace_path);
+			setStoragePath(s.storage_path);
 			setSandboxMode(s.sandbox_mode);
 		});
 	}
@@ -47,6 +49,7 @@ export function createAgentStatus(rpc: RPC, getSelectedName: () => string | null
 		isBusyForSelected,
 		workingFor,
 		workspacePath,
+		storagePath,
 		sandboxMode,
 		calibrate,
 		onSetSandboxMode,

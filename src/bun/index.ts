@@ -287,6 +287,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				);
 				return {
 					workspace_path: selected?.agent.workspacePath ? tildify(selected.agent.workspacePath) : null,
+					storage_path: selected?.agent.storagePath ? tildify(selected.agent.storagePath) : null,
 					sandbox_mode: selected?.agent.sandboxMode ?? "workspace-write",
 					partners,
 				};

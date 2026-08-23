@@ -44,6 +44,7 @@ Rules an agent must respect:
 - **Comments**: Avoid comments unless necessary; when you do comment, write **why** (why this approach, why not the alternative), not **what** (the code already says what it does).
 - **Tests**: temporarily suspended — new requirements add no test cases, and changes don't need to pass the test suite (typecheck and format still apply).
 - **Format**: don't run `format` after every change — only when asked, or when `format:check` fails.
+- **Build**: no dev view build after changes — don't run `bun run dev` / `bun run build:view` after every change; only when asked, or when a fresh view build is required to verify.
 - **Language**: ONLY English in CLAUDE.md and `src/` — code, comments, test names, UI strings, and this file itself contain no Chinese; other docs are English-first.
 - `index.html` must load the view as `<script type="module" src="index.js">` — the raw `.ts` is not served; a wrong `src` fails silently (view JS never runs).
 

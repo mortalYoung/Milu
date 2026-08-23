@@ -3,11 +3,11 @@
  * a bordered field with a seal focus ring; Enter sends (IME-safe: composition Enter confirms
  * the IME candidate, it must not send), Shift+Enter inserts a newline; the send button appears
  * only when there is something to send (text or a run to stop); it becomes a stop button while
- * running. Context occupancy ring sits inside the field. Meta — workspace (folder icon + path)
+ * running. Context occupancy ring sits inside the field. Meta — workspace/storage path select
  * above, session metrics below — unfolds while the field is focused; a status row above
  * the field shows writing / queued while something is happening.
  */
-import { ArrowUp, Folder, Square } from "lucide-solid";
+import { ArrowUp, Square } from "lucide-solid";
 import { createEffect, createSignal, type JSX } from "solid-js";
 import type { ContextUsage, SandboxMode, SessionStats } from "../../shared/rpc";
 import { formatWorkspacePath, shouldSendOnEnter } from "../lib/composer-input";
@@ -30,6 +30,8 @@ export function Composer(props: {
 	onStop: () => void;
 	/** The workspace set via set_workspace; hidden until then (unset = not needed / not yet set). */
 	workspace?: string | null;
+	/** The storage path (the agent's own directory; shown alongside the workspace, read-only). */
+	storage?: string | null;
 	/** The per-partner sandbox mode (select; human-owned). */
 	sandboxMode: SandboxMode;
 	/** Persist a new per-partner sandbox mode. */
@@ -88,6 +90,17 @@ export function Composer(props: {
 	// Send appears only when there is something to send (or a run to stop)
 	const showSend = () => text().trim() !== "" || props.busy();
 
+	// Path select: one dropdown holding the workspace and storage paths; the chosen one is shown.
+	const [pathChoice, setPathChoice] = createSignal<"workspace" | "storage">(props.workspace ? "workspace" : "storage");
+	// Fall back to whichever path is actually set (e.g. workspace stays unset until set_workspace).
+	const choice = () => {
+		const c = pathChoice();
+		if (c === "workspace" && !props.workspace) return "storage";
+		if (c === "storage" && !props.storage) return "workspace";
+		return c;
+	};
+	const currentPath = () => (choice() === "workspace" ? props.workspace : props.storage);
+
 	// Session metrics line: whole-chat token totals + averaged timing (the trajectory panel still shows per-turn usage)
 	const statsLine = () => {
 		const s = props.stats;
@@ -106,14 +119,19 @@ export function Composer(props: {
 
 	return (
 		<form class="composer" id="composer" onSubmit={submit}>
-			{/* Workspace: folder icon + path, unfolds with focus (unset = hidden entirely) */}
-			{/* Meta row: workspace chip (left) + live status and sandbox-mode select (right), flexed on one line */}
+			{/* Meta row: workspace/storage path select (left) + live status and sandbox-mode select (right), flexed on one line */}
 			<div class="composer-meta">
-				{props.workspace && (
-					<span class="composer-workspace" title={props.workspace}>
-						<Folder size={10} />
-						<span class="composer-workspace-path">{formatWorkspacePath(props.workspace)}</span>
-					</span>
+				{(props.workspace || props.storage) && (
+					<select
+						class="composer-workspace-select"
+						value={choice()}
+						title={currentPath() ?? undefined}
+						aria-label="Path (workspace / storage)"
+						onChange={(e) => setPathChoice(e.currentTarget.value as "workspace" | "storage")}
+					>
+						{props.workspace && <option value="workspace">workspace · {formatWorkspacePath(props.workspace)}</option>}
+						{props.storage && <option value="storage">storage · {formatWorkspacePath(props.storage)}</option>}
+					</select>
 				)}
 				<span class="composer-meta-right">
 					{status() && (

@@ -3,7 +3,7 @@
  * The header title follows the selected Partner.
  */
 import { Activity, ListTree, PanelLeftClose, PanelLeftOpen } from "lucide-solid";
-import { type Accessor, createSignal } from "solid-js";
+import { type Accessor, createEffect, createSignal } from "solid-js";
 import { AnimatePresence, Motion } from "solid-motion";
 import type { ContextUsage, SandboxMode, SessionStats } from "../../shared/rpc";
 import { Button } from "../components/Button";
@@ -37,6 +37,8 @@ export function ConversationPage(props: {
 	onEscalationRespond: (id: string, approved: boolean) => void;
 	/** The current workspace (shown near the input, read-only; hidden until set_workspace). */
 	workspacePath: string | null;
+	/** The current storage path (the agent's own directory, shown near the input, read-only). */
+	storagePath: string | null;
 	/** The per-partner sandbox mode (composer select; human-owned). */
 	sandboxMode: SandboxMode;
 	/** Persist a new per-partner sandbox mode (composer select onChange). */
@@ -53,6 +55,13 @@ export function ConversationPage(props: {
 }) {
 	// Replies outline: hidden by default; the header outline icon toggles it
 	const [outlineOpen, setOutlineOpen] = createSignal(false);
+
+	// With no chat selected the outline toggle is disabled, so close any open outline
+	// (e.g. after the selected partner is deleted) — otherwise it would float over the
+	// empty state with no way to dismiss it.
+	createEffect(() => {
+		if (!props.selected) setOutlineOpen(false);
+	});
 
 	return (
 		<div class="chat-page">
@@ -102,9 +111,10 @@ export function ConversationPage(props: {
 					   rail tabs, which are proven clickable inside the drag-region header. */}
 						<button
 							type="button"
-							class="size-8 rounded-full border-0 electrobun-webkit-app-region-no-drag flex items-center justify-center text-ink hover:bg-paper-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+							class="size-8 rounded-full border-0 electrobun-webkit-app-region-no-drag flex items-center justify-center text-ink hover:bg-paper-hover disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
 							title={outlineOpen() ? "Hide outline" : "Show outline"}
 							aria-label="Toggle replies outline"
+							disabled={!props.selected}
 							onClick={() => setOutlineOpen((v) => !v)}
 						>
 							<ListTree size={16} />
@@ -112,9 +122,10 @@ export function ConversationPage(props: {
 						{/* Trajectory: the whole-log timeline drawer (header right, mirror of the outline toggle) */}
 						<button
 							type="button"
-							class="size-8 rounded-full border-0 electrobun-webkit-app-region-no-drag flex items-center justify-center text-ink hover:bg-paper-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+							class="size-8 rounded-full border-0 electrobun-webkit-app-region-no-drag flex items-center justify-center text-ink hover:bg-paper-hover disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
 							title="Open trajectory"
 							aria-label="Open trajectory"
+							disabled={!props.selected}
 							onClick={() => props.onViewTrajectory?.()}
 						>
 							<Activity size={16} />
@@ -136,6 +147,7 @@ export function ConversationPage(props: {
 							onSend={props.onSend}
 							onStop={props.onStop}
 							workspace={props.workspacePath}
+							storage={props.storagePath}
 							sandboxMode={props.sandboxMode}
 							onSetSandboxMode={props.onSetSandboxMode}
 							contextUsage={props.contextUsage}

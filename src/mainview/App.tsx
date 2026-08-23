@@ -150,6 +150,7 @@ export function App() {
 					flashId={trajectory.flashId}
 					onFlash={trajectory.flash}
 					workspacePath={status.workspacePath()}
+					storagePath={status.storagePath()}
 					sandboxMode={status.sandboxMode()}
 					onSetSandboxMode={(mode) => void status.onSetSandboxMode(mode)}
 					onEscalationRespond={(id, approved) => void rpc.request.sandbox_respond({ id, approved })}

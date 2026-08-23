@@ -989,12 +989,9 @@ body::before {
 	.composer-meta {
 		@apply flex items-center justify-between gap-2 w-[60%] font-mono text-[9px] text-muted;
 	}
-	/* Workspace chip: folder icon + path (unset = hidden entirely) */
-	.composer-workspace {
-		@apply inline-flex items-center gap-1 min-w-0;
-	}
-	.composer-workspace-path {
-		@apply min-w-0 truncate;
+	/* Path select: workspace/storage dropdown (quiet mono, hairline border, inherits the meta row's size) */
+	.composer-workspace-select {
+		@apply font-mono text-[9px] text-muted bg-transparent border border-hairline rounded px-1 py-[1px] cursor-pointer outline-none min-w-0 max-w-[240px] truncate;
 	}
 	/* Session metrics: whole-chat totals + averaged timing, a quiet footnote under the field */
 	.composer-stats {

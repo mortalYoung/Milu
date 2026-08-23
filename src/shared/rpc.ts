@@ -223,6 +223,8 @@ export type AppRPCSchema = __schema<{
 				response: {
 					/** The selected chat's workspace / sandbox (each partner runs its own agent). */
 					workspace_path: string | null;
+					/** The selected chat's storage dir (the agent's own directory; full access, sensitive files allowed). */
+					storage_path: string | null;
 					sandbox_mode: SandboxMode;
 					/** Per-partner view-facing streaming (escalation-paused runs read idle) — drives the list dots. */
 					partners: { name: string; streaming: boolean }[];
