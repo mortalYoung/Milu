@@ -198,7 +198,11 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		void deps.session.appendReminder(`<system_reminder>${text}</system_reminder>`, Date.now()).catch((error) => console.error("session appendReminder failed:", error));
 	}
 
-	/** 20s progress reminder: steering queues a message the outer loop always drains, driving a new turn — so even the final turn gets acted on. */
+	/**
+	 * 20s progress reminder, fired only for tool steps (see turn_end): a text-only step means the model
+	 * already stopped, so there is no work in flight to report — its final text is delivered by enforceDelivery.
+	 * Steering queues a message the outer loop always drains, driving a new turn.
+	 */
 	function notifyIfSilent() {
 		if (!ctx.shouldNotify()) return;
 		const secs = Math.round(ctx.visibleElapsedMs() / 1000);
@@ -255,6 +259,8 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	// (turn_start → turn_end) — one LLM call plus its tool executions — is a step within the run.
 	let runTurn = 0;
 	let step = 0;
+	// Whether this step called any tool — only tool steps get the 20s progress reminder (see turn_end)
+	let stepHadTool = false;
 
 	const handleEvent = (event: AgentEvent): Promise<void> | void => {
 		switch (event.type) {
@@ -264,6 +270,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 				return deps.session.appendTurnStart(runTurn, Date.now()).catch(logError);
 			case "turn_start":
 				step += 1;
+				stepHadTool = false;
 				bridge.onTurnStart(ctx.beginTurn());
 				// Flush-before-request checkpoint: step marker + request header (system prompt +
 				// resolved tool names — invariant 1: model-visible ⟺ logged) are on disk before
@@ -299,6 +306,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 				}
 			case "tool_execution_start":
 				// Flush-before-execute checkpoint: the call is in the log before the tool runs
+				stepHadTool = true;
 				return deps.session.appendToolCall(event.toolCallId, event.toolName, event.args, runTurn, step, Date.now()).catch(logError);
 			case "tool_execution_end": {
 				// The result is durable right after the tool finishes — a mid-turn crash keeps the
@@ -321,7 +329,9 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 				// turn_start, step stays 0 — no step marker was ever written). Notify the trajectory
 				// only after persistence completes (fetches are always up to date, never half a turn).
 				ctx.endTurn();
-				notifyIfSilent();
+				// Only tool steps get nagged: a text-only step means the model already stopped (its final
+				// text is delivered by enforceDelivery) — nagging it only begs "nothing in progress" replies.
+				if (stepHadTool) notifyIfSilent();
 				// Settle the sampling window (text-bearing steps only — tool-only steps have no speed to measure)
 				runtime.runs += 1;
 				if (firstDeltaAt > 0 && lastDeltaAt >= firstDeltaAt) {
