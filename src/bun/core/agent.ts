@@ -163,8 +163,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		bridge.onMessage(text);
 	}
 
-	// Tools need the agent instance (to write visible messages back into the agent context), so mount after construction;
-	// after mounting, rebuild the system prompt so tool guidance is woven into the TOOL-GUIDANCE section.
+	// Tools need the agent instance (to write visible messages back into the agent context), so mount after construction.
 	// The path guard reads the workspace/storage roots from the context (null = unset).
 	agent.state.tools = createTools({
 		store: deps.session,
@@ -192,7 +191,6 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			return { ok: true, path: resolved };
 		},
 	});
-	ctx.setTools(agent.state.tools);
 	agent.state.systemPrompt = ctx.composeSystemPrompt();
 
 	/** Persist a reminder (custom entry) so the trajectory timeline shows it — verbatim as the model sees it, with the <system_reminder> wrapper. */

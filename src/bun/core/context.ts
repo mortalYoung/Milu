@@ -4,15 +4,14 @@
  * Responsibilities:
  * 1) **Record lifecycle values** — state produced during a double-loop run, shared across multiple event callbacks
  *    (turn count, running flag, progress-notification quota, last turn timestamp); event callbacks read and write it;
- * 2) **Provide context** — assemble the four-section system prompt (partner profile + tool guidance table +
- *    runtime framework/model), supplying each request's systemPrompt to the loop.
+ * 2) **Provide context** — assemble the system prompt (partner profile + runtime framework/model),
+ *    supplying each request's systemPrompt to the loop.
  *
  * Created inside createAgent: read at Agent construction time (initial systemPrompt),
  * written by event callbacks (agent_start/turn_start/turn_end/agent_end).
  */
-import type { AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { SandboxMode } from "../../shared/rpc";
-import { TOOL_GUIDANCE } from "../tools";
 import { describeRuntime } from "./agent-config";
 import { buildSystemPrompt, type PartnerPrompt } from "./prompt";
 
@@ -44,7 +43,6 @@ export class AgentContext {
 
 	// ————— Context inputs —————
 	private partner: PartnerPrompt | null = null;
-	private tools: AgentTool[] = [];
 	/** The agent's own storage directory (partner-scoped; must exist). Delivered to the model via system_reminder. */
 	storage_path: string | null = null;
 	/** The agent's current working directory (set once per conversation via set_workspace). Delivered via system_reminder. */
@@ -52,24 +50,19 @@ export class AgentContext {
 	/** The confinement mode for tool effects (per partner; delivered via the opening reminder). */
 	sandbox_mode: SandboxMode = "workspace-write";
 
-	/** Mount the tool list (call after agent.state.tools is mounted). */
-	setTools(tools: AgentTool[]): void {
-		this.tools = tools;
-	}
-
 	/** Switch Partner (takes effect on the next composeSystemPrompt). */
 	setPartner(partner: PartnerPrompt | null): void {
 		this.partner = partner;
 	}
 
-	/** System prompt = IDENTIFY + PERSONA + WORKSPACE + STORAGE + TOOL-GUIDANCE + RESPONSE-FORMAT + Caveats. */
+	/** System prompt = IDENTIFY + PERSONA + WORKSPACE + STORAGE + RESPONSE-FORMAT + Caveats. */
 	composeSystemPrompt(): string {
-		return buildSystemPrompt(this.partner, this.tools, TOOL_GUIDANCE, describeRuntime());
+		return buildSystemPrompt(this.partner, describeRuntime());
 	}
 
 	/** Compose a trial prompt from the given profile (for preview; does not change the current context). */
 	previewSystemPrompt(partner: PartnerPrompt | null): string {
-		return buildSystemPrompt(partner, this.tools, TOOL_GUIDANCE, describeRuntime());
+		return buildSystemPrompt(partner, describeRuntime());
 	}
 
 	// ————— Lifecycle hooks (called by event callbacks) —————

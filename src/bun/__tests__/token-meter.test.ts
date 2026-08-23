@@ -40,11 +40,11 @@ describe("surface-priced token meter", () => {
 
 		const entries = await session.rawEntries(dir);
 		const surface = await session.surface(dir);
-		const breakdown = priceSurface("abcd", { bash: "run" }, entries, surface);
+		const breakdown = priceSurface("abcd", entries, surface);
 
-		// system "abcd" = 1 token; tools "bash: run" = 9 chars → 3 tokens; messages 11+8+4+2 = 25 chars → 7 tokens
+		// system "abcd" = 1 token; tools not in the prompt anymore → 0; messages 11+8+4+2 = 25 chars → 7 tokens
 		expect(breakdown.systemTokens).toBe(1);
-		expect(breakdown.toolsTokens).toBe(3);
+		expect(breakdown.toolsTokens).toBe(0);
 		expect(breakdown.messageTokens).toBe(7);
 	});
 
@@ -62,7 +62,7 @@ describe("surface-priced token meter", () => {
 
 		const entries = await session.rawEntries(dir);
 		const surface = await session.surface(dir);
-		const breakdown = priceSurface("sys", { bash: "run" }, entries, surface);
+		const breakdown = priceSurface("sys", entries, surface);
 		// "first question" (14 chars) is gone; "first reply" (11) + "second question" (16) = 27 chars → 7 tokens
 		expect(breakdown.messageTokens).toBe(7);
 	});

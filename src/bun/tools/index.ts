@@ -46,20 +46,6 @@ const sendMessageTool = (deps: ToolDeps): AgentTool<typeof sendMessageSchema> =>
 	},
 });
 
-/**
- * Tool usage guidance table: one "how to use this tool correctly" entry per tool,
- * dynamically inserted into the TOOL-GUIDANCE section by the prompt builder. Tools not in this
- * table fall back to a name — description list in the prompt.
- */
-export const TOOL_GUIDANCE: Record<string, string> = {
-	read: "Use the read tool — not shell commands like cat — to inspect text files; it reads the exact path you give, line-numbered for precision.",
-	write: "Use the write tool to create or overwrite whole files; prefer edit for targeted changes to existing files.",
-	edit: "Use the edit tool for targeted changes inside existing files — smaller diffs than rewriting the whole file and harder to corrupt. Never rewrite a file wholesale when an edit suffices.",
-	bash: "Check the [exit code: N] marker on every bash result; investigate failures before moving on. Prefer read/write/edit over shell for file inspection and changes.",
-	send_message:
-		"The user only sees what you deliver through send_message — plain text replies are never shown. Do not call it on your own initiative: call it only when the harness instructs you to via a system reminder. You can use Markdown (**bold**, `code`, lists, links) to format your message.",
-};
-
 const workspaceSchema = Type.Object({
 	workspace: Type.String({ description: "Absolute path of the working directory — usually the project root of the code or project the user is asking about" }),
 });

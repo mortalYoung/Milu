@@ -60,16 +60,14 @@ function contentText(content: unknown): string {
 /**
  * Heuristic breakdown of the current context into system / tools / messages.
  * The system prompt is static (one per Partner), so callers may cache it per partner.
+ * Tools are not rendered in the prompt anymore, so nothing is priced for them.
  */
-export function estimateBreakdown(systemPrompt: string, toolGuidance: Record<string, string>, entries: Entry[]): ContextBreakdown {
-	const toolsText = Object.entries(toolGuidance)
-		.map(([name, guidance]) => `${name}: ${guidance}`)
-		.join("\n");
+export function estimateBreakdown(systemPrompt: string, entries: Entry[]): ContextBreakdown {
 	let messageChars = 0;
 	for (const entry of entries) messageChars += entryText(entry).length;
 	return {
 		systemTokens: tokens(systemPrompt.length),
-		toolsTokens: tokens(toolsText.length),
+		toolsTokens: 0,
 		messageTokens: tokens(messageChars),
 	};
 }

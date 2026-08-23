@@ -18,7 +18,7 @@ import { createPartner, deletePartner, listPartners, PartnerError, type PartnerI
 import { createSessionStore, type SessionScope } from "./persist";
 import { SandboxManager } from "./sandbox";
 import type { EscalationDecision, EscalationRequest, SandboxMode } from "./sandbox/types";
-import { runEscalatedBash, TOOL_GUIDANCE } from "./tools";
+import { runEscalatedBash } from "./tools";
 
 const session = createSessionStore();
 const sandbox = new SandboxManager();
@@ -383,7 +383,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					used,
 					window,
 					percent,
-					breakdown: entry ? priceSurface(entry.agent.systemPrompt, TOOL_GUIDANCE, entries, surface) : null,
+					breakdown: entry ? priceSurface(entry.agent.systemPrompt, entries, surface) : null,
 					lastTurn: usage ?? undefined,
 				};
 			},

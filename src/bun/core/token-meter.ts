@@ -58,8 +58,8 @@ function textBlocks(content: unknown): string {
 		.join("\n");
 }
 
-/** Price the model-visible surface: system + tools + surface-node messages. */
-export function priceSurface(systemPrompt: string, toolGuidance: Record<string, string>, entries: Entry[], surface: Surface): ContextBreakdown {
+/** Price the model-visible surface: system + surface-node messages (tools are not in the prompt anymore). */
+export function priceSurface(systemPrompt: string, entries: Entry[], surface: Surface): ContextBreakdown {
 	const byId = new Map<string, Entry>();
 	for (const e of entries) byId.set(e.id, e);
 	let messageChars = 0;
@@ -67,12 +67,9 @@ export function priceSurface(systemPrompt: string, toolGuidance: Record<string, 
 		const entry = byId.get(node.id);
 		if (entry) messageChars += nodeText(entry).length;
 	}
-	const toolsText = Object.entries(toolGuidance)
-		.map(([name, guidance]) => `${name}: ${guidance}`)
-		.join("\n");
 	return {
 		systemTokens: tokens(systemPrompt.length),
-		toolsTokens: tokens(toolsText.length),
+		toolsTokens: 0,
 		messageTokens: tokens(messageChars),
 	};
 }

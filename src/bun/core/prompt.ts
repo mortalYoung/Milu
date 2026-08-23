@@ -1,5 +1,3 @@
-import type { AgentTool } from "@earendil-works/pi-agent-core";
-
 /** Fields required for prompt construction (display fields like name do not enter the prompt). */
 export interface PartnerPrompt {
 	/** Responsibilities, user-filled; omitted when empty. */
@@ -14,9 +12,6 @@ export interface RuntimeInfo {
 	model: string;
 }
 
-/** Tool usage guidance table: one "how to use this tool correctly" entry per tool. */
-export type ToolGuidance = Record<string, string>;
-
 /** IDENTIFY: one sentence establishing "who you are, what framework you run on". */
 export function buildIdentify(runtime: RuntimeInfo): string {
 	return ["# IDENTIFY", `You are an AI partner agent powered by the ${runtime.framework} which is an AI employees harness, running on the ${runtime.model} model.`].join("\n");
@@ -30,12 +25,6 @@ export function buildPersona(partner?: PartnerPrompt | null): string {
 		lines.push("", "## Responsibilities", responsibilities);
 	}
 	return lines.join("\n");
-}
-
-/** TOOL-GUIDANCE: per-tool "how to use it correctly"; tools without guidance fall back to a name — description list. */
-export function buildToolGuidance(tools: AgentTool[] = [], guidance: ToolGuidance = {}): string {
-	const entries = tools.map((t) => (guidance[t.name] ? `- ${t.name}: ${guidance[t.name]}` : `- ${t.name} — ${t.description}`));
-	return ["# TOOL-GUIDANCE", ...entries].join("\n");
 }
 
 /**
@@ -84,22 +73,7 @@ function buildCaveats(): string {
 	return lines.join("\n");
 }
 
-/** System prompt = IDENTIFY + PERSONA + WORKSPACE + STORAGE + TOOL-GUIDANCE + RESPONSE-FORMAT + Caveats. Static: no runtime paths embedded (those arrive via system_reminder). */
-export function buildSystemPrompt(
-	partner: PartnerPrompt | null,
-	// buildToolGuidance is temporarily disabled for comparison (tools/guidance unused while it is off)
-	_tools: AgentTool[] = [],
-	_guidance: ToolGuidance = {},
-	runtime: RuntimeInfo = { framework: "Partner", model: "deepseek-v4-flash" },
-): string {
-	return [
-		buildIdentify(runtime),
-		buildPersona(partner),
-		buildWorkspacePath(),
-		buildStoragePath(),
-		/* buildToolGuidance(_tools, _guidance), */ buildResponseFormat(partner),
-		buildCaveats(),
-	]
-		.filter(Boolean)
-		.join("\n\n");
+/** System prompt = IDENTIFY + PERSONA + WORKSPACE + STORAGE + RESPONSE-FORMAT + Caveats. Static: no runtime paths embedded (those arrive via system_reminder). */
+export function buildSystemPrompt(partner: PartnerPrompt | null, runtime: RuntimeInfo = { framework: "Partner", model: "deepseek-v4-flash" }): string {
+	return [buildIdentify(runtime), buildPersona(partner), buildWorkspacePath(), buildStoragePath(), buildResponseFormat(partner), buildCaveats()].filter(Boolean).join("\n\n");
 }

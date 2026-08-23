@@ -70,17 +70,13 @@ describe("AgentContext lifecycle", () => {
 });
 
 describe("AgentContext prompt assembly", () => {
-	test("composeSystemPrompt has all four sections after setPartner/setTools", () => {
+	test("composeSystemPrompt has all sections after setPartner", () => {
 		const ctx = new AgentContext();
 		ctx.setPartner({ responsibilities: "Ship features" });
-		ctx.setTools([{ name: "read", description: "Read a file" }] as never);
 		const p = ctx.composeSystemPrompt();
 		expect(p).toContain("# IDENTIFY");
 		expect(p).toContain("You are an agent running in Partner App.");
-		expect(p).toContain("# TOOL-GUIDANCE");
 		expect(p).toContain("# RESPONSE-FORMAT");
-		// Matches direct assembly (same guidance table + runtime source)
-		expect(p).toContain("- read: Use the read tool");
 	});
 
 	test("previewSystemPrompt uses the passed profile, does not change the current context", () => {
@@ -96,7 +92,7 @@ describe("AgentContext prompt assembly", () => {
 		const p = ctx.composeSystemPrompt();
 		expect(p).toContain("# PERSONA");
 		expect(p).toContain("You are an agent running in Partner App.");
-		expect(p.indexOf("# IDENTIFY")).toBeLessThan(p.indexOf("# TOOL-GUIDANCE"));
+		expect(p.indexOf("# IDENTIFY")).toBeLessThan(p.indexOf("# PERSONA"));
 		expect(buildSystemPrompt !== undefined).toBe(true);
 	});
 

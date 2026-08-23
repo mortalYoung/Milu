@@ -24,38 +24,31 @@ function sendMessageEntry(text: string): Entry {
 	return entry({ type: "custom", customType: "send_message", data: { text, timestamp: 1000 } });
 }
 
-const SYSTEM = "IDENTIFY: you are an agent. PERSONA: helpful. WORKSPACE/STORAGE as documented. TOOL-GUIDANCE below. RESPONSE-FORMAT: markdown.";
+const SYSTEM = "IDENTIFY: you are an agent. PERSONA: helpful. WORKSPACE/STORAGE as documented. RESPONSE-FORMAT: markdown.";
 
 describe("estimateBreakdown heuristic composition", () => {
 	test("empty conversation → system + tools only, messages 0", () => {
-		const b = estimateBreakdown(SYSTEM, {}, []);
+		const b = estimateBreakdown(SYSTEM, []);
 		expect(b.messageTokens).toBe(0);
 		expect(b.systemTokens).toBeGreaterThan(0);
 		expect(b.toolsTokens).toBe(0);
 	});
 
 	test("4 ASCII chars ≈ 1 token (ceil)", () => {
-		const b = estimateBreakdown("", {}, [userEntry("abcd")]); // 4 chars → 1 token
+		const b = estimateBreakdown("", [userEntry("abcd")]); // 4 chars → 1 token
 		expect(b.messageTokens).toBe(1);
-		const b2 = estimateBreakdown("", {}, [userEntry("abcdef")]); // 6 chars → 2 tokens
+		const b2 = estimateBreakdown("", [userEntry("abcdef")]); // 6 chars → 2 tokens
 		expect(b2.messageTokens).toBe(2);
 	});
 
 	test("user + assistant text + send_message all counted", () => {
-		const b = estimateBreakdown("", {}, [userEntry("hello"), assistantTextEntry("world"), sendMessageEntry("done")]);
+		const b = estimateBreakdown("", [userEntry("hello"), assistantTextEntry("world"), sendMessageEntry("done")]);
 		// hello(5) + world(5) + done(4) = 14 chars → 4 tokens
 		expect(b.messageTokens).toBe(4);
 	});
 
-	test("tools guidance serialized as name: guidance rows", () => {
-		const guidance = { read: "Use the read tool", write: "Use the write tool" };
-		const b = estimateBreakdown("", guidance, []);
-		// "read: Use the read tool\nwrite: Use the write tool" = 49 chars → 13 tokens
-		expect(b.toolsTokens).toBe(13);
-	});
-
 	test("CJK counted by the same 4-char heuristic (systematically underestimated — accepted)", () => {
-		const b = estimateBreakdown("", {}, [userEntry("你好世界")]); // 4 CJK chars → 1 token by heuristic
+		const b = estimateBreakdown("", [userEntry("你好世界")]); // 4 CJK chars → 1 token by heuristic
 		expect(b.messageTokens).toBe(1);
 	});
 
@@ -74,7 +67,7 @@ describe("estimateBreakdown heuristic composition", () => {
 			}),
 			entry({ message: { role: "toolResult", toolCallId: "t", toolName: "bash", content: [{ type: "text", text: "out" }], timestamp: 1000 } }),
 		];
-		const b = estimateBreakdown("", {}, entries);
+		const b = estimateBreakdown("", entries);
 		expect(b.messageTokens).toBe(1); // only the user message "q"
 	});
 });
