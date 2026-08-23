@@ -12,7 +12,11 @@ import { renderMarkdown } from "../lib/markdown";
 const pad = (n: number) => String(n).padStart(2, "0");
 const fmtTime = (ts: number) => {
 	const d = new Date(ts);
-	return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+	// non-today rows show the date too (the full datetime lives in the expanded body)
+	const now = new Date();
+	const sameDay = d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+	const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+	return sameDay ? time : `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${time}`;
 };
 const fmtDateTime = (ts: number) => {
 	const d = new Date(ts);
@@ -74,9 +78,7 @@ function markerClass(record: TrajectoryRecord): string | null {
 					return "mrm";
 				case "request/header":
 				case "escalation/request":
-				case "turn/start":
-				case "step/start":
-					// a request boundary: the header, or the run/step marker that precedes a request
+					// a request boundary: the header, or the escalation that precedes a request
 					return "mreq";
 				case "escalation/decision":
 					return "mres";
@@ -113,14 +115,6 @@ function chipLabel(record: TrajectoryRecord): string {
 					return "SYS";
 				case "system_reminder":
 					return "RM";
-				case "turn/start":
-					return "TURN";
-				case "turn/end":
-					return "T·END";
-				case "step/start":
-					return "STEP";
-				case "step/end":
-					return "S·END";
 				case "surface_op":
 					return "OP";
 				case "compaction_summary":
@@ -184,23 +178,6 @@ function rowCaption(record: TrajectoryRecord): string {
 					const names = Array.isArray(h?.toolNames) ? h.toolNames.map((n) => String(n)) : [];
 					return names.length > 0 ? names.join(", ") : "request header";
 				}
-				case "tool/call": {
-					const c = record.data as { name?: unknown; args?: unknown } | null;
-					return typeof c?.name === "string" ? `call ${c.name}${c.args && typeof c.args === "object" ? " · " + stringifyArgs(c.args).slice(0, 60) : ""}` : "tool call";
-				}
-				case "turn/start": {
-					const d = record.data as { turn?: unknown } | null;
-					return `run ${typeof d?.turn === "number" ? d.turn : "?"}`;
-				}
-				case "turn/end": {
-					const d = record.data as { turn?: unknown; reason?: unknown } | null;
-					return `run ${typeof d?.turn === "number" ? d.turn : "?"} · ${typeof d?.reason === "string" ? d.reason : ""}`;
-				}
-				case "step/start":
-				case "step/end": {
-					const d = record.data as { step?: unknown } | null;
-					return `step ${typeof d?.step === "number" ? d.step : "?"}`;
-				}
 				default:
 					return record.customType;
 			}
@@ -245,10 +222,20 @@ type DisplayRow = { key: string; node: TimelineNode; marks?: number } & (
 	| { kind: "assistant"; textBlocks: TrajectoryBlock[]; otherBlocks: TrajectoryBlock[] }
 	| { kind: "thinking"; block: TrajectoryBlock }
 	| { kind: "tool"; block: TrajectoryBlock; callId: string; result?: { text: string; isError: boolean } }
+	| { kind: "stepLabel" }
 );
+
+/** One foldable run: its divider head (RUN label; seal-tinted on failure) and its content rows. */
+interface RunSection {
+	turn: number;
+	reason: string;
+	rows: DisplayRow[];
+}
 
 export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: boolean) => void; records: TrajectoryRecord[] }) {
 	const [expandedKey, setExpandedKey] = createSignal<string | null>(null);
+	// Folded runs (by run number); everything is expanded by default
+	const [foldedRuns, setFoldedRuns] = createSignal<Set<number>>(new Set());
 
 	const summary = createMemo(() => timelineNodes(props.records));
 	const nodes = () => summary().nodes;
@@ -258,15 +245,72 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 	const turnOf = (n: TimelineNode) => turns().find((t) => t.turn === n.turn);
 
 	/**
-	 * Expand the list into display rows: an assistant record splits into its head row plus a
-	 * thinking row per thinking block and a tool row per tool call; a toolResult that answers
-	 * one of those calls merges into its tool row (unmatched ones stay as standalone rows).
+	 * Group the log into foldable run sections. turn/step are block concepts, not rows:
+	 * - turn/start opens a section (or reopens it when its user question already did) and becomes
+	 *   the run's divider head; turn/end attaches the end reason to that head and closes it
+	 * - step/start becomes a corner label row at the top of its step's region; step/end renders nothing
+	 * - a user question opens a section when none is open (the run that follows it), while a
+	 *   mid-run follow-up stays inside its run
+	 * - everything else becomes a content row (assistant split, tool results merged into their
+	 *   tool row, harness-delivery SEND rows skipped — the MSG row already shows that text)
 	 */
-	const displayRows = createMemo<DisplayRow[]>(() => {
-		const out: DisplayRow[] = [];
-		let pendingCalls = new Map<string, number>(); // toolCallId → tool row index in out
+	const sections = createMemo<{ sections: RunSection[]; seqTurn: Map<number, number> }>(() => {
+		const all: RunSection[] = [];
+		const seqTurn = new Map<number, number>();
+		let current: RunSection | null = null;
+		let closed = true; // no open section: a user question or turn/start opens one
+		let pendingCalls = new Map<string, number>(); // toolCallId → tool row index in current.rows
+		const push = (row: DisplayRow) => {
+			if (!current) {
+				// the log's first record (e.g. system_prompt) opens run 1 and the section is open —
+				// otherwise the next user question would split run 1 into two RUN 1 sections
+				current = { turn: 1, reason: "", rows: [] };
+				all.push(current);
+				closed = false;
+			}
+			current.rows.push(row);
+			seqTurn.set(row.node.seq, current.turn);
+		};
+		/** Push a row and return its index in the section (the section exists after the push). */
+		const pushIndex = (row: DisplayRow) => {
+			push(row);
+			return current!.rows.length - 1;
+		};
 		for (const n of rows()) {
 			const r = n.record;
+			if (r.kind === "custom" && (r.customType === "turn/start" || r.customType === "turn/end" || r.customType === "step/start" || r.customType === "step/end")) {
+				const data = (r.data ?? {}) as { turn?: unknown; step?: unknown; reason?: unknown };
+				if (r.customType === "turn/start") {
+					if (!current || closed) {
+						current = { turn: typeof data.turn === "number" ? data.turn : (all.at(-1)?.turn ?? 0) + 1, reason: "", rows: [] };
+						all.push(current);
+						closed = false;
+					}
+				} else if (r.customType === "step/start") {
+					// a corner label at the top of each step's region — no divider lines
+					if (!current || closed) {
+						current = { turn: (all.at(-1)?.turn ?? 0) + 1, reason: "", rows: [] };
+						all.push(current);
+						closed = false;
+					}
+					current.rows.push({ key: `sl:${n.seq}`, node: n, kind: "stepLabel" });
+				} else if (r.customType === "turn/end") {
+					if (current && typeof data.turn === "number" && current.turn === data.turn) current.reason = String(data.reason ?? "completed");
+					closed = true;
+				}
+				// step/end renders nothing
+				continue;
+			}
+			if (r.kind === "user") {
+				if (!current || closed) {
+					// a user question opens the run that follows it — the run number comes from its turn/start
+					const next = rows().find((m) => m.seq > n.seq && m.record.kind === "custom" && m.record.customType === "turn/start");
+					const nextData = (next?.record.kind === "custom" ? (next.record.data ?? {}) : {}) as { turn?: unknown };
+					current = { turn: next && typeof nextData.turn === "number" ? nextData.turn : (all.at(-1)?.turn ?? 0) + 1, reason: "", rows: [] };
+					all.push(current);
+					closed = false;
+				}
+			}
 			if (r.kind === "assistant") {
 				const headKey = `a:${n.seq}`;
 				const textBlocksArr = r.blocks.filter((b) => b.type === "text");
@@ -275,20 +319,20 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 				// its head row entirely; request marks go to the first part row.
 				let marksPending = n.requestMarks;
 				const pushPart = (row: DisplayRow) => {
-					out.push(row);
+					pushIndex(row);
 					marksPending = 0;
 				};
 				for (const b of r.blocks) {
-					if (b.type === "thinking") pushPart({ key: `${headKey}:think:${out.length}`, node: n, marks: marksPending || undefined, kind: "thinking", block: b });
+					if (b.type === "thinking") pushPart({ key: `${headKey}:think:${n.seq}`, node: n, marks: marksPending || undefined, kind: "thinking", block: b });
 				}
 				pendingCalls = new Map();
 				for (const b of r.blocks) {
 					if (b.type !== "toolCall") continue;
-					pushPart({ key: `${headKey}:tool:${out.length}`, node: n, marks: marksPending || undefined, kind: "tool", block: b, callId: String(b.id ?? "") });
-					if (typeof b.id === "string") pendingCalls.set(b.id, out.length - 1);
+					const idx = pushIndex({ key: `${headKey}:tool:${n.seq}`, node: n, marks: marksPending || undefined, kind: "tool", block: b, callId: String(b.id ?? "") });
+					if (typeof b.id === "string") pendingCalls.set(b.id, idx);
 				}
 				if (textBlocksArr.length > 0) {
-					out.push({
+					push({
 						key: headKey,
 						node: n,
 						marks: marksPending || undefined,
@@ -297,26 +341,58 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 						otherBlocks: r.blocks.filter((b) => b.type !== "text" && b.type !== "toolCall" && b.type !== "thinking"),
 					});
 				}
-			} else if (r.kind === "toolResult") {
-				const target = pendingCalls.get(r.toolCallId);
-				if (target != null && out[target].kind === "tool") {
-					out[target] = { ...out[target], result: { text: r.content, isError: r.isError }, marks: (out[target].marks ?? 0) + (n.requestMarks ?? 0) };
-				} else {
-					out.push({ key: `r:${n.seq}`, node: n, marks: n.requestMarks, kind: "row" });
-				}
-			} else {
-				out.push({ key: `r:${n.seq}`, node: n, marks: n.requestMarks, kind: "row" });
+				continue;
 			}
+			if (r.kind === "toolResult") {
+				const target = pendingCalls.get(r.toolCallId);
+				if (current && target != null && current.rows[target].kind === "tool") {
+					const merged = current.rows[target];
+					if (merged.kind === "tool") {
+						current.rows[target] = { ...merged, result: { text: r.content, isError: r.isError }, marks: (merged.marks ?? 0) + (n.requestMarks ?? 0) };
+					}
+				} else {
+					push({ key: `r:${n.seq}`, node: n, marks: n.requestMarks, kind: "row" });
+				}
+				continue;
+			}
+			if (r.kind === "custom" && r.customType === "send_message" && (r.data as { toolCallId?: unknown } | null)?.toolCallId === "harness-delivery") {
+				// harness-delivery: the backstop persisted the assistant's own final text — the MSG row
+				// already shows it, so no separate SEND row (the fold keeps the record for the band and
+				// turn hasMessage)
+				continue;
+			}
+			if (r.kind === "custom" && r.customType === "tool/call") {
+				// tool/call is the call-time durability record — the TOOL row (from the assistant's
+				// toolCall block) already shows name/args/result, so no separate CUSTOM row
+				continue;
+			}
+			push({ key: `r:${n.seq}`, node: n, marks: n.requestMarks, kind: "row" });
 		}
-		return out;
+		return { sections: all, seqTurn };
 	});
 
-	const expandedNode = () => displayRows().find((r) => r.key === expandedKey())?.node;
+	const allRows = createMemo(() => sections().sections.flatMap((s) => s.rows));
+	const expandedNode = () => allRows().find((r) => r.key === expandedKey())?.node;
 
-	// Expand the first display row of a node (band click): merged toolResults expand their tool row
+	const toggleRun = (turn: number) => {
+		const next = new Set(foldedRuns());
+		if (next.has(turn)) next.delete(turn);
+		else next.add(turn);
+		// collapsing a run hides its expanded row — drop the stale expansion
+		if (next.has(turn) && expandedKey() != null) {
+			const row = allRows().find((r) => r.key === expandedKey());
+			if (row && sections().seqTurn.get(row.node.seq) === turn) setExpandedKey(null);
+		}
+		setFoldedRuns(next);
+	};
+
+	// Expand the first display row of a node (band click): merged toolResults expand their tool row;
+	// a node inside a folded run unfolds the run first
 	const expandNode = (n: TimelineNode) => {
-		const row = displayRows().find((r) => r.node.seq === n.seq);
+		const row = allRows().find((r) => r.node.seq === n.seq);
 		if (!row) return; // position-only marks have no list row
+		const run = sections().seqTurn.get(n.seq);
+		if (run != null && foldedRuns().has(run)) toggleRun(run);
 		setExpandedKey(expandedKey() === row.key ? null : row.key);
 	};
 
@@ -359,6 +435,17 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 	// For item callbacks run in an untracked context — every signal read must sit in a JSX
 	// expression (compiled to tracked template computations), never hoisted to a local
 	const nodeColumn = (n: TimelineNode, i: number) => {
+		// turn/step markers are block concepts now — the run/step lines in the list carry them;
+		// tool/call is the call-time record the TOOL row already shows (no band column either)
+		if (
+			n.record.kind === "custom" &&
+			(n.record.customType === "turn/start" ||
+				n.record.customType === "turn/end" ||
+				n.record.customType === "step/start" ||
+				n.record.customType === "step/end" ||
+				n.record.customType === "tool/call")
+		)
+			return null;
 		const boundary = i > 0 && nodes()[i - 1].turn !== n.turn ? <span class="traj-boundary" /> : null;
 		if (n.record.kind === "assistant") {
 			const t = turnOf(n);
@@ -401,7 +488,18 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 		if (row.kind === "thinking") return firstLine(String(row.block.thinking ?? ""));
 		if (row.kind === "tool") {
 			const name = String(row.block.name ?? "");
-			const args = firstLine(stringifyArgs(row.block.arguments));
+			// JSON args flatten to one line for the caption; a non-JSON string shows its first line verbatim
+			const raw = row.block.arguments;
+			const args =
+				typeof raw === "string"
+					? firstLine(raw)
+					: (() => {
+							try {
+								return JSON.stringify(raw).replace(/\s+/g, " ").trim();
+							} catch {
+								return String(raw);
+							}
+						})();
 			return args ? `${name} · ${args}` : name;
 		}
 		if (row.kind === "assistant") return firstLine(textBlocks(row.textBlocks).join("\n")) || "assistant";
@@ -623,23 +721,46 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 							</div>
 						</div>
 
-						{/* Bottom: one expandable row per display part; request dots float on the divider */}
+						{/* Bottom: foldable run sections — a RUN divider line folds its run; every other
+						    part is an expandable row (request dots float on rows). Signal reads stay
+						    inline in JSX — For callbacks run untracked, a hoisted read never re-renders. */}
 						<div class="traj-all" ref={listRef}>
-							<For each={displayRows()}>
-								{(row) => (
-									<div class={"traj-row " + rowClassFor(row) + (expandedKey() === row.key ? " open" : "")}>
-										{row.marks ? <span class="req-dot" /> : null}
-										<button class="traj-row-head" onClick={() => setExpandedKey(expandedKey() === row.key ? null : row.key)} aria-expanded={expandedKey() === row.key}>
-											<b>{chipFor(row)}</b>
-											<span class="row-cap">{short(captionFor(row))}</span>
-											<span class="row-time">{fmtTime(row.node.record.time)}</span>
+							<For each={sections().sections}>
+								{(sec) => (
+									<div class="traj-run">
+										<button
+											class={"traj-run-head" + (sec.reason && sec.reason !== "completed" ? " err" : "")}
+											onClick={() => toggleRun(sec.turn)}
+											aria-expanded={!foldedRuns().has(sec.turn)}
+										>
+											<span class="run-label">{foldedRuns().has(sec.turn) ? "▸" : "▾"} RUN</span>
 										</button>
-										{expandedKey() === row.key && (
-											<div class="traj-body">
-												{rowBody(row)}
-												{(row.kind === "row" || row.kind === "assistant") && bodyMeta(row.node)}
+										<Show when={!foldedRuns().has(sec.turn)}>
+											<div class="traj-run-body traj-run-enter">
+												<For each={sec.rows}>
+													{(row) =>
+														row.kind === "stepLabel" ? (
+															<div class="traj-step-label">STEP</div>
+														) : (
+															<div class={"traj-row " + rowClassFor(row) + (expandedKey() === row.key ? " open" : "")}>
+																{row.marks ? <span class="req-dot" /> : null}
+																<button class="traj-row-head" onClick={() => setExpandedKey(expandedKey() === row.key ? null : row.key)} aria-expanded={expandedKey() === row.key}>
+																	<b>{chipFor(row)}</b>
+																	<span class="row-cap">{short(captionFor(row))}</span>
+																	<span class="row-time">{fmtTime(row.node.record.time)}</span>
+																</button>
+																{expandedKey() === row.key && (
+																	<div class="traj-body">
+																		{rowBody(row)}
+																		{(row.kind === "row" || row.kind === "assistant") && bodyMeta(row.node)}
+																	</div>
+																)}
+															</div>
+														)
+													}
+												</For>
 											</div>
-										)}
+										</Show>
 									</div>
 								)}
 							</For>
@@ -647,7 +768,7 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 					</>
 				)}
 
-				<div class="traj-foot">the whole log · click a row to expand</div>
+				<div class="traj-foot">the whole log · fold a run from its RUN line</div>
 			</aside>
 		</Show>
 	);

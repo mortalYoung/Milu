@@ -36,16 +36,23 @@ export interface TimelineNode {
 }
 
 /**
+ * Records that open a turn block: they precede their run's first assistant in the log
+ * (the run markers, the request head, and the reminders injected for the upcoming turn).
+ */
+const TURN_OPENERS = new Set(["system_prompt", "system_reminder", "turn/start", "step/start", "request/header"]);
+
+/**
  * A record's band turn: assistant starts its own turn, toolResult keeps the turn of the
- * assistant that called the tool, user carries the turn that follows. Everything else
- * (send_message and log-only records like request/header or surface ops) belongs to the
- * current turn — mid-turn records must never push the band past the turn of the tool
- * results that follow them (an inner-loop request/header sits between the assistant and
- * its toolResults, so "turn of the next assistant" would regress the sequence 1,2,1).
+ * assistant that called the tool, user carries the turn that follows. Records that open a
+ * turn (run/step markers, request heads) belong to the assistant they precede; everything
+ * else (tool calls, results, step/end, send_message, turn/end, escalation, compaction)
+ * belongs to the current turn. The log's own order is the display order, so turn numbers
+ * along the log are non-decreasing — no reordering happens downstream.
  */
 function turnFor(r: TrajectoryRecord, turnOf: number): number {
 	if (r.kind === "assistant" || r.kind === "toolResult") return r.turn;
 	if (r.kind === "user") return turnOf + 1;
+	if (r.kind === "custom" && TURN_OPENERS.has(r.customType)) return turnOf + 1;
 	return turnOf || 1;
 }
 
@@ -89,10 +96,9 @@ export function timelineNodes(records: TrajectoryRecord[]): { nodes: TimelineNod
 		}
 		nodes.push({ seq: r.seq, turn: turnFor(r, turnOf), record: r });
 	}
-	// Display order within a turn block (the band and the list share it): system_prompt →
-	// request/header (the head, showing tools) → user question → reminder → send_message →
-	// everything else in log order. Turn blocks themselves stay chronological.
-	nodes.sort((a, b) => a.turn - b.turn || blockRank(a.record) - blockRank(b.record) || a.seq - b.seq);
+	// The log's append order is the display order (user → run markers → request head →
+	// assistant → tools → step/end → … → send_message → turn/end), and turn assignment above
+	// is non-decreasing along it — no sort, no intra-block reordering.
 	// Dedupe for readability: one system_prompt total (the first). Request headers are not
 	// rows at all — every one is a band-only position mark (their content is the request
 	// that produced the following work).
@@ -116,24 +122,6 @@ export function timelineNodes(records: TrajectoryRecord[]): { nodes: TimelineNod
 		if (n.record.kind === "user") n.requestMarks = 1;
 	}
 	return { nodes: out, turns };
-}
-
-/** Sort rank of a record inside its turn block. */
-function blockRank(r: TrajectoryRecord): number {
-	if (r.kind === "user") return 2;
-	if (r.kind === "custom") {
-		switch (r.customType) {
-			case "system_prompt":
-				return 0;
-			case "request/header":
-				return 1;
-			case "system_reminder":
-				return 3;
-			case "send_message":
-				return 4;
-		}
-	}
-	return 5;
 }
 
 /** Text blocks of an assistant record, in order (thinking/toolCall/image never count as text). */

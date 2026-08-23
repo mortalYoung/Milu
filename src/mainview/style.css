@@ -638,8 +638,10 @@ body::before {
 	}
 	/* Trajectory drawer (density strip, direction B): the whole origin log.
    Width is capped so the chat stays visible to its left; the drawer is standalone (no chat linkage). */
+	/* No horizontal padding at the drawer level: divider lines (run heads) span edge to edge.
+	   Every text element carries its own px-4 so the content inset stays the same. */
 	.traj-drawer {
-		@apply absolute top-0 right-0 bottom-0 z-20 w-[440px] max-w-[72vw] bg-letter border-l border-hairline flex flex-col p-4;
+		@apply absolute top-0 right-0 bottom-0 z-20 w-[440px] max-w-[72vw] bg-letter border-l border-hairline flex flex-col py-4;
 	}
 	/* Entry is a CSS animation (no solid-motion wrapper — AnimatePresence freezes child reactivity) */
 	.traj-enter {
@@ -652,7 +654,7 @@ body::before {
 		}
 	}
 	.traj-head {
-		@apply flex items-baseline gap-2 pb-3 border-b border-hairline;
+		@apply flex items-baseline gap-2 px-4 pb-3 border-b border-hairline;
 	}
 	.traj-title {
 		@apply font-sans text-[9px] uppercase tracking-[0.2em] text-body-muted;
@@ -665,7 +667,7 @@ body::before {
 	}
 	/* Layers 1+2: the timeline band — one horizontally scrollable block, a column per log entry */
 	.traj-scroll {
-		@apply overflow-x-auto;
+		@apply overflow-x-auto px-4;
 	}
 	.traj-band {
 		@apply flex items-end gap-[2px] h-[42px] pt-2 pb-1.5 min-w-max;
@@ -782,7 +784,7 @@ body::before {
 		@apply flex-1 min-h-0 overflow-y-auto mt-2 pt-2;
 	}
 	.traj-row {
-		@apply relative w-full;
+		@apply relative w-full px-4;
 	}
 	.traj-row-head {
 		@apply flex items-baseline gap-2 w-full text-left py-[5px] border-b border-hairline-soft cursor-pointer bg-transparent;
@@ -803,6 +805,68 @@ body::before {
 	}
 	.traj-row-head .row-time {
 		@apply flex-none font-mono text-[8.5px] text-muted;
+	}
+	/* Run folder head: a divider line with the label riding it — click to fold/unfold the run.
+	   The label sits between two line segments (flex gap), so the line never passes under the text. */
+	.traj-run-head {
+		@apply w-full flex items-center gap-2 py-[7px] bg-transparent border-0 cursor-pointer;
+		/* the button spans edge to edge; the label stays centered in the content inset */
+		padding-left: 1rem;
+		padding-right: 1rem;
+	}
+	.traj-run-head::before,
+	.traj-run-head::after {
+		content: "";
+		flex: 1;
+		height: 1px;
+		background: var(--color-hairline);
+		transition: background 120ms ease;
+	}
+	/* pull the lines across the button padding so they reach the drawer edges */
+	.traj-run-head::before {
+		margin-left: -1rem;
+	}
+	.traj-run-head::after {
+		margin-right: -1rem;
+	}
+	.traj-run-head .run-label {
+		@apply flex-none font-sans text-[9.5px] font-semibold text-ink;
+		letter-spacing: 0.06em;
+		white-space: nowrap;
+		transition: color 120ms ease;
+	}
+	.traj-run-head:hover .run-label {
+		color: var(--color-seal);
+	}
+	.traj-run-head.err .run-label {
+		color: var(--color-seal);
+	}
+	.traj-run-head:focus-visible {
+		outline: 1.5px solid var(--color-seal);
+		outline-offset: 1px;
+		border-radius: 3px;
+	}
+	/* Step corner label: a small tag at the top of each step's region — no divider line */
+	.traj-step-label {
+		@apply font-sans text-[8.5px] font-medium text-muted px-4;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		padding-top: 5px;
+		padding-bottom: 1px;
+		user-select: none;
+	}
+	/* Folded runs hide their body; expanding a run enters with the same soft slide as a row body */
+	.traj-run-body {
+		@apply flex flex-col;
+	}
+	.traj-run-enter {
+		animation: traj-run-in 180ms cubic-bezier(0.23, 1, 0.32, 1);
+	}
+	@keyframes traj-run-in {
+		from {
+			opacity: 0;
+			transform: translateY(-3px);
+		}
 	}
 	/* Row tint per family — every row shares the base style (seal chip + ink caption);
 	   only these families differ, so only their overrides exist */
@@ -828,7 +892,7 @@ body::before {
 	   (inside the scroll container, so overflow never clips it). A letter-colored rim separates
 	   the seal bead from the hairline it sits on. */
 	.req-dot {
-		@apply absolute left-0 top-0 -translate-y-1/2 w-[9px] h-[9px] rounded-full z-10 pointer-events-none;
+		@apply absolute left-4 top-0 -translate-y-1/2 w-[9px] h-[9px] rounded-full z-10 pointer-events-none;
 		background: var(--color-seal);
 		border: 2px solid var(--color-letter);
 	}
@@ -886,15 +950,16 @@ body::before {
 		@apply text-seal;
 	}
 	.traj-foot {
-		@apply pt-2 font-sans text-[8px] text-muted text-right;
+		@apply px-4 pt-2 font-sans text-[8px] text-muted text-right;
 	}
 	/* Empty state: the drawer with no persisted entries yet */
 	.traj-empty {
-		@apply flex-1 flex items-center justify-center font-serif text-[14px] text-muted;
+		@apply flex-1 flex items-center justify-center px-4 font-serif text-[14px] text-muted;
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.traj-cell,
-		.traj-body {
+		.traj-body,
+		.traj-run-enter {
 			animation: none;
 		}
 	}
