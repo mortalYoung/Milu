@@ -1,36 +1,29 @@
 /**
  * Markdown → HTML renderer: markdown-it (full CommonMark) + shiki (TextMate highlighting).
  *
- * The highlighter is a cached singleton built once at module load (async warm-up, ~100ms), then
- * `codeToHtml` is synchronous and every render reuses the same instance. Bundle is fine-grained:
- * only tsx/ts/js/python/html/css grammars are imported (via shiki/core + per-language entries) plus
- * a single light theme and the JavaScript regex engine — no WASM, no full grammar dump.
- * While the highlighter is still warming up, a plain markdown-it instance renders without
- * highlighting — the layout never blocks on async work.
+ * The render path is synchronous: `renderMarkdown` never blocks. The shiki stack is a cached
+ * singleton built once (async warm-up) and reused forever; until it is ready a plain markdown-it
+ * instance renders without highlighting.
+ *
+ * Bundle strategy (performance): markdown-it stays in the main chunk (it's on every message's hot
+ * path), but the whole shiki stack — core, JS regex engine, the six grammars, and the theme — is
+ * imported via dynamic `import()` inside the builder, so Vite/Rolldown emits it as a separate chunk
+ * that loads only on first code-block render. The warm-up is kicked off from App mount
+ * (`warmUpMarkdown`), off the module-load critical path, so cold start doesn't pay for the
+ * highlighter build unless/until it's needed.
  *
  * HTML is escaped by markdown-it (`html: false`), so user content is never executed as tags.
  */
 
-import { fromHighlighter } from "@shikijs/markdown-it";
+import type { MarkdownItShikiSetupOptions } from "@shikijs/markdown-it/core";
 import type { HighlighterCore } from "@shikijs/types";
 import MarkdownIt, { type MarkdownIt as MarkdownItType, type Renderer, type RendererRule } from "markdown-it";
-import { createHighlighterCore } from "shiki/core";
-import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
-import css from "shiki/langs/css.mjs";
-import html from "shiki/langs/html.mjs";
-import js from "shiki/langs/js.mjs";
-import python from "shiki/langs/python.mjs";
-import ts from "shiki/langs/ts.mjs";
-import tsx from "shiki/langs/tsx.mjs";
-import githubLight from "shiki/themes/github-light.mjs";
 
-/** The only languages we bundle — keep the grammar payload small. */
-const HIGHLIGHT_LANGS = [ts, tsx, js, python, html, css];
 /** The single light theme (shiki inline-styles token colors; matches the light letter paper). */
 const HIGHLIGHT_THEME = "github-light";
 // shiki treats "text" as the built-in plain-text language at runtime, but it is not a member of the
 // BundledLanguage union — cast it through unknown once.
-const TEXT_LANG = "text" as unknown as Parameters<typeof fromHighlighter>[1]["defaultLanguage"];
+const TEXT_LANG = "text" as unknown as MarkdownItShikiSetupOptions["defaultLanguage"];
 
 /** Plain markdown-it (no highlighting) — the fallback while the highlighter warms up. */
 const mdPlain = new MarkdownIt({ html: false, linkify: true });
@@ -50,10 +43,27 @@ function patchLinkTarget(md: MarkdownItType) {
 	};
 }
 
+/**
+ * Build the shiki-wired markdown-it instance. All shiki modules are dynamic imports so the bundler
+ * code-splits them into a lazy chunk — the main bundle only pays for markdown-it + app code.
+ */
 async function buildShikiMd(): Promise<MarkdownItType> {
+	const [{ createHighlighterCore }, { createJavaScriptRegexEngine }, { fromHighlighter }, ts, tsx, js, python, html, css, githubLight] = await Promise.all([
+		import("shiki/core"),
+		import("shiki/engine/javascript"),
+		import("@shikijs/markdown-it/core"),
+		import("shiki/langs/ts.mjs"),
+		import("shiki/langs/tsx.mjs"),
+		import("shiki/langs/js.mjs"),
+		import("shiki/langs/python.mjs"),
+		import("shiki/langs/html.mjs"),
+		import("shiki/langs/css.mjs"),
+		import("shiki/themes/github-light.mjs"),
+	]);
+
 	const highlighter: HighlighterCore = await createHighlighterCore({
-		themes: [githubLight],
-		langs: HIGHLIGHT_LANGS,
+		themes: [githubLight.default],
+		langs: [ts.default, tsx.default, js.default, python.default, html.default, css.default],
 		engine: createJavaScriptRegexEngine(),
 	});
 	const plugin = fromHighlighter(highlighter, {
@@ -76,8 +86,13 @@ function getShikiMd(): Promise<MarkdownItType> {
 	return mdShikiPromise;
 }
 
-// Kick off the highlighter warm-up immediately so the first render is highlighted.
-void getShikiMd();
+/**
+ * Kick off the highlighter build. Call from app mount (after first paint) so cold start doesn't
+ * compete with the lazy shiki chunk; no-op once the singleton is built.
+ */
+export function warmUpMarkdown(): void {
+	void getShikiMd();
+}
 
 /**
  * Render markdown → HTML. Synchronous: uses the cached shiki instance once ready, otherwise the

@@ -4,6 +4,7 @@
  * settings views. Partners are created via a modal and saved as folders (see src/bun/partners.ts).
  */
 
+import { onMount } from "solid-js";
 import { AppRail } from "./components/AppRail";
 import { PartnerDetailsDialog } from "./components/PartnerDetailsDialog";
 import { PartnerModal } from "./components/PartnerModal";
@@ -12,6 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./components/u
 import { makeSysEntry } from "./layouts/Transcript";
 import { createAgentStatus } from "./lib/agent-status";
 import { createComposer } from "./lib/composer";
+import { warmUpMarkdown } from "./lib/markdown";
 import { createMetrics } from "./lib/metrics";
 import type { PartnerFormData } from "./lib/partner-form";
 import { rpc } from "./lib/rpc";
@@ -126,6 +128,9 @@ export function App() {
 	void settings.refresh();
 	status.calibrate();
 	void metrics.refresh();
+	// Highlighter warm-up: deferred past first paint so cold start doesn't compete with the lazy
+	// shiki chunk; once built, `renderMarkdown` highlights synchronously for every later render.
+	onMount(() => warmUpMarkdown());
 
 	// ————— shell —————
 	return (
