@@ -35,6 +35,7 @@ export const EVENTS = {
 	sendMessage: "send_message",
 	systemPrompt: "system_prompt",
 	systemReminder: "system_reminder",
+	followUp: "message/follow_up",
 	escalationRequest: "escalation/request",
 	escalationDecision: "escalation/decision",
 	surfaceOp: "surface_op",

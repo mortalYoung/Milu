@@ -377,6 +377,17 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		}
 	}
 
+	/** Queue a user message as a follow-up, marking it in the log (the mark is the log's explicit
+	 * record that this was a mid-run insert — recovery pairs tool results regardless). */
+	function queueFollowUp(text: string) {
+		void deps.session.appendFollowUp(Date.now()).catch(logError);
+		agent.followUp({
+			role: "user",
+			content: text,
+			timestamp: Date.now(),
+		});
+	}
+
 	async function runPrompt(text: string) {
 		// Opening reminder: the workflow plus the current workspace/storage paths (the prompt itself is static).
 		// The default workspace path is included so the model can establish it without running pwd first.
@@ -387,18 +398,9 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			`Current sandbox mode: ${ctx.sandbox_mode}.`;
 		persistReminder(opening);
 		appendSystemReminder(agent.state.messages, opening);
-		try {
-			await agent.prompt(text);
-		} catch (err) {
-			// The only realistic throw is "Agent is already processing." —
-			// a previous run is still settling (awaited agent_end listeners).
-			// Queue it as a follow-up: the next run's drain point picks it up.
-			agent.followUp({
-				role: "user",
-				content: text,
-				timestamp: Date.now(),
-			});
-		}
+		// A racing prompt throws "Agent is already processing." — the caller that decided
+		// "prompt" owns the demotion to follow-up, not this function.
+		await agent.prompt(text);
 	}
 
 	return {
@@ -444,15 +446,13 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			if (ctx.running) {
 				// Outer loop: queue it; the loop drains follow-up messages
 				// after the current turn settles.
-				agent.followUp({
-					role: "user",
-					content: text,
-					timestamp: Date.now(),
-				});
+				queueFollowUp(text);
 				return;
 			}
 			ctx.setRunning(true);
-			void runPrompt(text);
+			// The prompt can still race a settling run ("Agent is already processing.") — the caller
+			// that decided "prompt" owns the demotion to follow-up.
+			void runPrompt(text).catch(() => queueFollowUp(text));
 		},
 		stop() {
 			agent.abort();

@@ -20,7 +20,7 @@ import type { AssistantMessage, ToolResultMessage, Usage } from "@earendil-works
 import type { EscalationStatus, SandboxMode } from "../../shared/rpc";
 import type { Surface, SurfaceOpRecord } from "../../shared/surface";
 import { PROJECT_ROOT } from "../core/config";
-import { buildResumeTurn, deriveMessages as deriveSurfaceMessages, dropDanglingTurn, foldSurface } from "../core/surface";
+import { buildResumeTurn, deriveMessages as deriveSurfaceMessages, dropDanglingTurn, foldSurface, pairToolResults } from "../core/surface";
 import { createExecutionEnv } from "../tools/execution-env";
 import { EVENTS, type ToolResultEventData, type TurnEndReason } from "./events";
 
@@ -87,6 +87,8 @@ export interface SessionScope {
 	appendSystemPrompt(text: string, timestamp: number): Promise<void>;
 	/** Persist a system reminder (custom entry; part of the trajectory timeline). */
 	appendReminder(text: string, timestamp: number): Promise<void>;
+	/** Mark the preceding user message as a follow-up (queued mid-run; log-only). */
+	appendFollowUp(timestamp: number): Promise<void>;
 	/** Persist a request header (system prompt + resolved tool names) so every model request is reconstructable (invariant 1). */
 	appendRequestHeader(systemPrompt: string, toolNames: string[], timestamp: number): Promise<void>;
 	/** A run began (agent_start): the log gets a turn/start marker. */
@@ -283,6 +285,9 @@ export function createSessionStore(): SessionStore {
 			async appendReminder(text, timestamp) {
 				await appendCustom(dir, EVENTS.systemReminder, { text, timestamp });
 			},
+			async appendFollowUp(timestamp) {
+				await appendCustom(dir, EVENTS.followUp, { timestamp });
+			},
 			async appendRequestHeader(systemPrompt, toolNames, timestamp) {
 				await appendCustom(dir, EVENTS.requestHeader, { systemPrompt, toolNames, timestamp });
 			},
@@ -399,7 +404,9 @@ export function createSessionStore(): SessionStore {
 					[EVENTS.toolResult]: TOOL_RESULT_PROJECTOR,
 				},
 			});
-			return dropDanglingTurn(context.messages);
+			// The log records arrival order — a user message persisted mid-tool lands before the
+			// tool/result — so pair tool results back to their assistant before exposing the chain.
+			return dropDanglingTurn(pairToolResults(context.messages));
 		},
 		async surface(dir) {
 			const state = await stateFor(dir);

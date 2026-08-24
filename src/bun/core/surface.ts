@@ -178,6 +178,45 @@ export function projectChain(entries: Entry[], surface?: Surface): AgentMessage[
 		const msg = deriveEventMessage(entry);
 		if (msg) out.push(msg);
 	}
+	return pairToolResults(out);
+}
+
+/**
+ * The OpenAI-compatible API requires each tool message to immediately follow the assistant that
+ * called it. The log records events in arrival order — a user message persisted mid-tool (a
+ * follow-up while an escalation paused the run) lands before the tool/result — so flat rebuilding
+ * would put a user between an assistant's tool_calls and its results and 400. Move each tool
+ * result back next to its owning assistant (by toolCallId), preserving relative order.
+ */
+export function pairToolResults(messages: AgentMessage[]): AgentMessage[] {
+	const out: AgentMessage[] = [];
+	for (const m of messages) {
+		if (m.role !== "toolResult") {
+			out.push(m);
+			continue;
+		}
+		// Owning assistant = the nearest assistant whose tool_calls include this result's id,
+		// scanning back across anything (user/custom/other results).
+		let owner = -1;
+		for (let i = out.length - 1; i >= 0; i--) {
+			const prev = out[i];
+			if (prev.role !== "assistant") continue;
+			const blocks = Array.isArray(prev.content) ? prev.content : [];
+			const ids = blocks.filter((b) => b.type === "toolCall").map((b) => (b as { id: string }).id);
+			if (ids.includes((m as ToolResultMessage).toolCallId)) {
+				owner = i;
+				break;
+			}
+		}
+		if (owner < 0) {
+			out.push(m); // orphaned result (dropped turn) — keep its log position
+			continue;
+		}
+		// Insert after the assistant's contiguous tool results (before anything that followed them).
+		let k = owner;
+		while (k + 1 < out.length && out[k + 1].role === "toolResult") k++;
+		out.splice(k + 1, 0, m);
+	}
 	return out;
 }
 
