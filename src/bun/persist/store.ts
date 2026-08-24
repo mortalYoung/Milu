@@ -187,17 +187,29 @@ interface RootState {
 
 export function createSessionStore(): SessionStore {
 	// pi's JSONL backend needs a FileSystem adapter; reuse the execution environment directly (pure fs part)
-	const roots = new Map<string, RootState>();
+	// Promise-valued: first opens race (mount-time history + set_partner can both touch a fresh root) —
+	// sharing the in-flight open keeps concurrent callers on one session instead of creating a second file.
+	const roots = new Map<string, Promise<RootState>>();
 
-	async function openRoot(newRoot: string): Promise<RootState> {
+	function openRoot(newRoot: string): Promise<RootState> {
 		const cached = roots.get(newRoot);
 		if (cached) return cached;
+		const opening = openRootUncached(newRoot).catch((error) => {
+			// A failed open must not poison the cache for later retries
+			if (roots.get(newRoot) === opening) roots.delete(newRoot);
+			throw error;
+		});
+		roots.set(newRoot, opening);
+		return opening;
+	}
+
+	async function openRootUncached(newRoot: string): Promise<RootState> {
 		const repo = new JsonlSessionRepo({ fs: createExecutionEnv(newRoot), sessionsRoot: newRoot });
 		const sessions = await repo.list();
 		// Single continuous session: take the newest
 		const session = sessions.length > 0 ? await repo.open(sessions[sessions.length - 1]) : await repo.create({ cwd: PROJECT_ROOT });
 		const state: RootState = { repo, session, entries: [] };
-		roots.set(newRoot, state);
+		roots.set(newRoot, Promise.resolve(state));
 		await refreshEntries(state);
 		return state;
 	}
