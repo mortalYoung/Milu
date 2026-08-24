@@ -180,7 +180,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			: undefined,
 		confirmEscalation: deps.confirmEscalation,
 		// set_workspace: once per conversation, absolute path, must exist, not inside storage.
-		// Returns the resolved path so the tool can read the workspace's AGENT.md from it.
+		// Returns the resolved path so the tool can read the workspace's instructions file from it.
 		onSetWorkspace: (workspace: string): { ok: true; path: string } | { ok: false; error: string } => {
 			const error = validateWorkspace(workspace, { current: ctx.workspace_path, storagePath: ctx.storage_path });
 			if (error) return { ok: false, error };

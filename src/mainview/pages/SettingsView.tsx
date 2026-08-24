@@ -9,6 +9,7 @@ import { TextField, TextFieldInput, TextFieldLabel } from "../components/ui/text
 
 export interface SettingsData {
 	partner_profile_path: string;
+	detect_instructions_file: string;
 }
 
 export interface RuntimeInfo {
@@ -18,15 +19,22 @@ export interface RuntimeInfo {
 
 export function SettingsView(props: { settings: SettingsData | null; runtime: RuntimeInfo | null; onSave: (settings: SettingsData) => Promise<void>; onLoad: () => void }) {
 	const [path, setPath] = createSignal("");
+	const [instructionsFile, setInstructionsFile] = createSignal("");
 	const [saved, setSaved] = createSignal(false);
 
 	if (props.settings && path() === "" && props.settings.partner_profile_path !== path()) {
 		setPath(props.settings.partner_profile_path);
 	}
+	if (props.settings && instructionsFile() === "" && props.settings.detect_instructions_file !== instructionsFile()) {
+		setInstructionsFile(props.settings.detect_instructions_file);
+	}
 	if (!props.settings) props.onLoad();
 
 	const save = async () => {
-		await props.onSave({ partner_profile_path: path().trim() || "~/.partner/" });
+		await props.onSave({
+			partner_profile_path: path().trim() || "~/.partner/",
+			detect_instructions_file: instructionsFile().trim() || "AGENTS.md",
+		});
 		setSaved(true);
 		setTimeout(() => setSaved(false), 1500);
 	};
@@ -47,6 +55,17 @@ export function SettingsView(props: { settings: SettingsData | null; runtime: Ru
 					/>
 				</TextField>
 				<span class="text-[12px] text-[#757575]">Directory where partner profiles are saved when created.</span>
+				<TextField>
+					<TextFieldLabel class="text-[#757575]">detect_instructions_file</TextFieldLabel>
+					<TextFieldInput
+						class="bg-white border-print-line focus-visible:border-print"
+						value={instructionsFile()}
+						onInput={(e) => setInstructionsFile(e.currentTarget.value)}
+						placeholder="AGENTS.md"
+						spellcheck={false}
+					/>
+				</TextField>
+				<span class="text-[12px] text-[#757575]">Instructions file read by set_workspace (relative to the workspace root).</span>
 			</div>
 
 			{/* RUNTIME */}

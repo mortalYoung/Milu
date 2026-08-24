@@ -11,7 +11,7 @@ import { join } from "node:path";
 import { createPartner, PartnerError } from "../partners";
 
 let root: string;
-const settings = { partner_profile_path: "" };
+const settings = { partner_profile_path: "", detect_instructions_file: "AGENTS.md" };
 
 beforeAll(async () => {
 	root = await mkdtemp(join(tmpdir(), "partner-test-"));

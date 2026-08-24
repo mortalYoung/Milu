@@ -5,10 +5,13 @@ import { join } from "node:path";
 export interface Settings {
 	/** Root directory for Partner profile storage (where partners get created). */
 	partner_profile_path: string;
+	/** Instructions file read by set_workspace (relative to the workspace root). */
+	detect_instructions_file: string;
 }
 
 const DEFAULT_SETTINGS: Settings = {
 	partner_profile_path: "~/.partner/",
+	detect_instructions_file: "AGENTS.md",
 };
 
 const SETTINGS_PATH = join(homedir(), ".config", ".partner");

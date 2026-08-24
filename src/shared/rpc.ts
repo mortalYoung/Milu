@@ -265,16 +265,16 @@ export type AppRPCSchema = __schema<{
 				params: {};
 				response: { ok: boolean; error?: string; compacted?: number };
 			};
-			/** Settings (partner profile path etc.) + runtime info (model / API key status). */
+			/** Settings (partner profile path, detected instructions file) + runtime info (model / API key status). */
 			get_settings: {
 				params: {};
 				response: {
-					settings: { partner_profile_path: string };
+					settings: { partner_profile_path: string; detect_instructions_file: string };
 					runtime: { model: string; apiKeyConfigured: boolean };
 				};
 			};
 			update_settings: {
-				params: { settings: { partner_profile_path: string } };
+				params: { settings: { partner_profile_path: string; detect_instructions_file: string } };
 				response: { ok: boolean };
 			};
 			/** Partner list (by creation time), each with the last visible message for its list-row preview. */

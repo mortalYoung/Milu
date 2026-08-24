@@ -6,6 +6,7 @@ import type { AgentHarnessTool, AgentTool, ExecutionEnv, ExecutionToolContext } 
 import { createEditTool, createReadTool, createWriteTool } from "@earendil-works/pi-agent-core";
 import { type TSchema, Type } from "@earendil-works/pi-ai";
 import { PROJECT_ROOT } from "../core/config";
+import { loadSettings } from "../lib/settings";
 import type { SessionScope } from "../persist";
 import type { EscalationDecision, EscalationRequest, SandboxMode } from "../sandbox/types";
 import { createExecutionEnv, type EnvGuard, type SandboxedExecOptions, type SandboxRuntime } from "./execution-env";
@@ -58,7 +59,7 @@ function setWorkspaceTool(deps: ToolDeps): AgentHarnessTool<ExecutionToolContext
 		name: "set_workspace",
 		label: "Set Workspace",
 		description:
-			"Set the working directory of this conversation to an absolute path — the project root of the current task. Only needed when the task actually touches files or paths (read/write/edit, or shell commands that reference the project); conversation-only turns can skip it. When needed, call it first, before other tools. Can only be called once per conversation; afterwards, relative paths resolve against it. Also reads the workspace's AGENTS.md (if present) and returns its content — follow the guidance it gives.",
+			"Set the working directory of this conversation to an absolute path — the project root of the current task. Only needed when the task actually touches files or paths (read/write/edit, or shell commands that reference the project); conversation-only turns can skip it. When needed, call it first, before other tools. Can only be called once per conversation; afterwards, relative paths resolve against it. Also reads the workspace's instructions file (AGENTS.md by default, configurable via settings) if present and returns its content — follow the guidance it gives.",
 		parameters: workspaceSchema,
 		// Sequential: the workspace switch must apply to sibling tool calls of the same batch, so the model
 		// listing set_workspace first makes it run before the tools that use it (parallel would race them)
@@ -71,15 +72,17 @@ function setWorkspaceTool(deps: ToolDeps): AgentHarnessTool<ExecutionToolContext
 			if (!set.ok) {
 				return { content: [{ type: "text", text: `Error: ${set.error}` }], details: { ok: false, error: set.error } };
 			}
-			// Side effect: surface the workspace's AGENTS.md guidance when readable. The tool's success
-			// only reflects the workspace set — a missing or unreadable AGENTS.md stays silent.
-			const agentMd = await context.env.readTextFile(`${set.path}/AGENTS.md`, signal);
+			// Side effect: surface the workspace's instructions file (AGENTS.md by default, configurable via
+			// settings) when readable. The tool's success only reflects the workspace set — a missing or
+			// unreadable instructions file stays silent.
+			const { detect_instructions_file } = await loadSettings();
+			const agentMd = await context.env.readTextFile(`${set.path}/${detect_instructions_file}`, signal);
 			if (agentMd.ok) {
 				return {
 					content: [
 						{
 							type: "text",
-							text: `Workspace set to ${set.path}.\n\nthe following workspace instructions may be relevant to your work. Use them as guidance when applicable. More specific instructions take precedence over broader ones. They do not override system, developer, or direct user instructions.\nInstructions from: AGENTS.md\n\n${agentMd.value}`,
+							text: `Workspace set to ${set.path}.\n\nthe following workspace instructions may be relevant to your work. Use them as guidance when applicable. More specific instructions take precedence over broader ones. They do not override system, developer, or direct user instructions.\nInstructions from: ${detect_instructions_file}\n\n${agentMd.value}`,
 						},
 					],
 					details: { ok: true, workspace: set.path, agentMd: agentMd.value },
