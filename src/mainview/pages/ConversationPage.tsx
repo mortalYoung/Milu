@@ -3,7 +3,7 @@
  * The header title follows the selected Partner.
  */
 import { Activity, ListTree, PanelLeftClose, PanelLeftOpen } from "lucide-solid";
-import { type Accessor, createEffect, createSignal } from "solid-js";
+import { type Accessor, createEffect, createSignal, onCleanup } from "solid-js";
 import { AnimatePresence, Motion } from "solid-motion";
 import type { ContextUsage, SandboxMode, SessionStats } from "../../shared/rpc";
 import { Button } from "../components/Button";
@@ -29,6 +29,8 @@ export function ConversationPage(props: {
 	onStop: () => void;
 	/** Open the trajectory drawer (the whole origin-log timeline; no chat linkage). */
 	onViewTrajectory?: () => void;
+	/** Close the trajectory drawer (the outline and the drawer are mutually exclusive). */
+	onCloseTrajectory?: () => void;
 	/** Locate flash: the target bubble briefly flashes seal-soft (replies outline locate). */
 	flashId: Accessor<number | null>;
 	/** Flash a transcript bubble by entry id (replies pane locate). */
@@ -61,6 +63,15 @@ export function ConversationPage(props: {
 	// empty state with no way to dismiss it.
 	createEffect(() => {
 		if (!props.selected) setOutlineOpen(false);
+	});
+
+	// ESC closes the replies outline (the trajectory drawer already handles its own ESC).
+	createEffect(() => {
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key === "Escape") setOutlineOpen(false);
+		};
+		window.addEventListener("keydown", onKey);
+		onCleanup(() => window.removeEventListener("keydown", onKey));
 	});
 
 	return (
@@ -115,7 +126,11 @@ export function ConversationPage(props: {
 							title={outlineOpen() ? "Hide outline" : "Show outline"}
 							aria-label="Toggle replies outline"
 							disabled={!props.selected}
-							onClick={() => setOutlineOpen((v) => !v)}
+							onClick={() => {
+								// The outline and the trajectory drawer are mutually exclusive: opening one closes the other
+								if (!outlineOpen()) props.onCloseTrajectory?.();
+								setOutlineOpen((v) => !v);
+							}}
 						>
 							<ListTree size={16} />
 						</button>
@@ -126,7 +141,11 @@ export function ConversationPage(props: {
 							title="Open trajectory"
 							aria-label="Open trajectory"
 							disabled={!props.selected}
-							onClick={() => props.onViewTrajectory?.()}
+							onClick={() => {
+								// The outline and the trajectory drawer are mutually exclusive: opening one closes the other
+								setOutlineOpen(false);
+								props.onViewTrajectory?.();
+							}}
 						>
 							<Activity size={16} />
 						</button>

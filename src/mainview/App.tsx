@@ -147,6 +147,7 @@ export function App() {
 					onSend={onSend}
 					onStop={() => void rpc.request.stop({})}
 					onViewTrajectory={trajectory.view}
+					onCloseTrajectory={() => trajectory.setOpen(false)}
 					flashId={trajectory.flashId}
 					onFlash={trajectory.flash}
 					workspacePath={status.workspacePath()}

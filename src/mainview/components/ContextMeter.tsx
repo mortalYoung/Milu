@@ -47,7 +47,7 @@ export function ContextMeter(props: { usage: ContextUsage }) {
 	});
 
 	const percent = () => props.usage.percent;
-	const reading = () => `上下文已用 ${percent()}% · ${formatTokens(props.usage.used)} / ${formatTokens(props.usage.window)}`;
+	const reading = () => `context ${percent()}% · ${formatTokens(props.usage.used)} / ${formatTokens(props.usage.window)}`;
 	// Color levels: ≤60% brand seal, 60–90% amber, >90% red (visual warning near the ceiling).
 	const level = () => (percent() > 90 ? "meter-danger" : percent() > 60 ? "meter-warn" : "meter-ok");
 
@@ -75,7 +75,7 @@ export function ContextMeter(props: { usage: ContextUsage }) {
 				<span class="context-meter-percent">{percent()}%</span>
 			</button>
 			<Show when={open()}>
-				<div class="context-meter-panel" role="dialog" aria-label="上下文占用">
+				<div class="context-meter-panel" role="dialog" aria-label="Context usage">
 					<div class="meter-headline">
 						<span class="meter-title">
 							~{formatTokens(props.usage.used)} / {formatTokens(props.usage.window)}

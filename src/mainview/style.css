@@ -440,6 +440,10 @@ body::before {
 	.outline-a {
 		@apply font-sans text-[12.5px] leading-[1.45] text-ink truncate;
 	}
+	/* Stack badge: the row represents a deck of consecutive replies (transcript MessageStack) */
+	.outline-stack {
+		@apply self-start font-mono text-[9px] text-seal/80;
+	}
 	/* Locate feedback: the target bubble flashes, then fades back (agent = seal-soft paper; user = seal outline on ink) */
 	@keyframes locate-flash {
 		0% {
@@ -539,6 +543,21 @@ body::before {
 	/* Signature line: seal red, right-aligned */
 	.msg-sign {
 		@apply font-sans text-[12px] text-seal tracking-[0.03em] text-right mt-[9px];
+	}
+	/* Per-letter chrome (postmark + signature) is archival, not immediate — collapsed until hover.
+	   The speaking bubble keeps its signature: it reports live activity. */
+	.msg-letter:not(.msg-speaking) .msg-postmark,
+	.msg-letter:not(.msg-speaking) .msg-sign {
+		opacity: 0;
+		visibility: hidden;
+		transition: opacity 150ms ease;
+	}
+	.msg-letter:not(.msg-speaking):hover .msg-postmark,
+	.msg-letter:not(.msg-speaking):hover .msg-sign,
+	.msg-letter:not(.msg-speaking):focus-within .msg-postmark,
+	.msg-letter:not(.msg-speaking):focus-within .msg-sign {
+		opacity: 1;
+		visibility: visible;
 	}
 	/* Working indicator: three staggered breathing ink dots (paper color on dark backgrounds, ink color on light ones, overridden by the various .xxx .work-dot rules) */
 	.work-dot {
@@ -985,9 +1004,18 @@ body::before {
 	.composer-field {
 		@apply flex items-center gap-2 w-[60%] min-h-11 bg-letter border border-hairline rounded-[10px] px-[14px] py-0 transition-colors focus-within:border-seal;
 	}
-	/* Meta rows: workspace + status share one flex line above the field — workspace left, live status right */
+	/* Meta rows (path select, sandbox mode, session stats): not immediate info — collapsed until
+	   the composer is focused or hovered. visibility keeps the row's space so nothing jumps. */
 	.composer-meta {
 		@apply flex items-center justify-between gap-2 w-[60%] font-mono text-[9px] text-muted;
+		opacity: 0;
+		visibility: hidden;
+		transition: opacity 150ms ease;
+	}
+	.composer:hover .composer-meta,
+	.composer:focus-within .composer-meta {
+		opacity: 1;
+		visibility: visible;
 	}
 	/* Path select: workspace/storage dropdown (quiet mono, hairline border, inherits the meta row's size) */
 	.composer-workspace-select {
