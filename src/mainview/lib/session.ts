@@ -1,6 +1,7 @@
 import { createSignal } from "solid-js";
 import type { PartnerItem } from "../components/ConversationList";
 import { type Entry, makeAgentEntry, makeEscalationEntry, makeSepEntry, makeSysEntry, makeUserEntry } from "../layouts/Transcript";
+import { createInFlightBoolean } from "./inflight";
 import type { RPC } from "./rpc";
 
 /**
@@ -15,9 +16,9 @@ export function createSession(rpc: RPC, opts: { onSessionLoaded: () => void }) {
 	const [tick, setTick] = createSignal(0);
 	// True while persisted history is being (re)read — the transcript shows a "reading the
 	// archives…" placeholder instead of the misleading "waiting for your first prompt" empty state.
-	// A counter, not a bare boolean: refreshes (select, agent_message, escalation, mount) can overlap.
-	const [historyLoading, setHistoryLoading] = createSignal(false);
-	let historyInflight = 0;
+	// Counter-backed (not a bare boolean): refreshes (select, agent_message, escalation, mount) can
+	// overlap, and the flag stays true until the LAST in-flight refresh settles.
+	const historyLoading = createInFlightBoolean();
 
 	// Render source = the persisted JSONL; dedupe by id, only append new records.
 	// Escalation entries are synced in place instead: a request's status flips pending → approved/rejected
@@ -35,41 +36,61 @@ export function createSession(rpc: RPC, opts: { onSessionLoaded: () => void }) {
 		bump();
 	};
 
-	function maybeTimeSeparator(d: Date) {
+	function maybeTimeSeparator(d: Date, buffer: Entry[]) {
 		const day = `${WEEKDAYS[d.getDay()]} · ${MONTHS[d.getMonth()]} ${d.getDate()}`;
-		if (lastMsgDay && day !== lastMsgDay) push(makeSepEntry(day));
+		if (lastMsgDay && day !== lastMsgDay) buffer.push(makeSepEntry(day));
 		lastMsgDay = day;
 	}
 
 	async function refreshHistory() {
-		historyInflight++;
-		setHistoryLoading(true);
+		historyLoading.begin();
+		const t0 = performance.now();
 		try {
 			const { items } = await rpc.request.history({});
+			const t1 = performance.now();
+			// Batch build: collect appends + in-place escalation replacements locally, then commit
+			// ONCE (single setEntries + single bump). One push per item would re-render the whole
+			// transcript each time (Solid doesn't auto-batch signal writes) — O(n²) markdown renders.
+			const pending: Entry[] = [];
+			const replacements = new Map<string, Entry>();
 			for (const item of items) {
 				if (item.kind === "error") {
-					push(makeSysEntry(`ERR § ${item.text}`, true));
+					pending.push(makeSysEntry(`ERR § ${item.text}`, true));
 					continue;
 				}
 				if (item.kind === "escalation" && item.escalation) {
 					const entry = makeEscalationEntry({ text: item.text, time: item.time, escalation: item.escalation });
 					const existing = entries().find((e) => e.kind === "escalation" && e.escalation?.id === item.escalation!.id);
 					if (existing) {
-						setEntries((prev) => prev.map((e) => (e.kind === "escalation" && e.escalation?.id === item.escalation!.id ? entry : e)));
+						replacements.set(item.escalation.id, entry);
 					} else {
-						maybeTimeSeparator(new Date(item.time));
-						push(entry);
+						maybeTimeSeparator(new Date(item.time), pending);
+						pending.push(entry);
 					}
 					continue;
 				}
 				if (renderedIds.has(item.id)) continue;
 				renderedIds.add(item.id);
-				maybeTimeSeparator(new Date(item.time));
-				push(item.kind === "user" ? makeUserEntry(item.text, item.time) : makeAgentEntry(item.text, item.time));
+				maybeTimeSeparator(new Date(item.time), pending);
+				pending.push(item.kind === "user" ? makeUserEntry(item.text, item.time) : makeAgentEntry(item.text, item.time));
 			}
+			const tBuild = performance.now();
+			if (replacements.size > 0 || pending.length > 0) {
+				setEntries((prev) => {
+					let next = prev;
+					if (replacements.size > 0) {
+						next = next.map((e) => (e.kind === "escalation" && e.escalation && replacements.has(e.escalation.id) ? replacements.get(e.escalation.id)! : e));
+					}
+					return pending.length > 0 ? [...next, ...pending] : next;
+				});
+				bump();
+			}
+			const t2 = performance.now();
+			// Timing probe (view-side): RPC round-trip vs batch-build vs the single commit render —
+			// sent to bun (history_timing) so it appears in the terminal log next to the bun-side numbers.
+			rpc.send.history_timing({ partner: selected() ?? "?", rpcMs: t1 - t0, buildMs: tBuild - t1, renderMs: t2 - tBuild, items: items.length });
 		} finally {
-			historyInflight--;
-			if (historyInflight === 0) setHistoryLoading(false);
+			historyLoading.end();
 		}
 	}
 
@@ -85,8 +106,7 @@ export function createSession(rpc: RPC, opts: { onSessionLoaded: () => void }) {
 		setEntries([]);
 		// History is cleared before the async re-read: hold the loading state across the
 		// set_partner round-trip so the "reading the archives…" placeholder covers the whole gap.
-		historyInflight++;
-		setHistoryLoading(true);
+		historyLoading.begin();
 		renderedIds.clear();
 		lastMsgDay = "";
 		void rpc.request
@@ -94,17 +114,16 @@ export function createSession(rpc: RPC, opts: { onSessionLoaded: () => void }) {
 				profile: partner ? { name: partner.name, responsibilities: partner.responsibilities, tones: partner.tones } : null,
 			})
 			.then(() => {
-				historyInflight--;
+				historyLoading.end();
 				refreshHistory();
 				// The session is loaded now (entries restored from JSONL): refresh the context meter too,
 				// so persisted usage survives restart instead of sitting at 0% until the next turn.
 				opts.onSessionLoaded();
 			})
 			.catch(() => {
-				historyInflight--;
-				if (historyInflight === 0) setHistoryLoading(false);
+				historyLoading.end();
 			});
 	}
 
-	return { selected, partners, entries, tick, push, bump, refreshHistory, refreshPartners, select, historyLoading };
+	return { selected, partners, entries, tick, push, bump, refreshHistory, refreshPartners, select, historyLoading: historyLoading.loading };
 }

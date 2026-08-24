@@ -334,7 +334,21 @@ export type AppRPCSchema = __schema<{
 				response: { ok: boolean; error?: string };
 			};
 		};
-		messages: {};
+		messages: {
+			/** The view's per-load timing report for history (RPC round-trip + render loop) — logged by bun to the terminal. */
+			history_timing: {
+				/** Partner whose history was loaded. */
+				partner: string;
+				/** View-side wall time of the history RPC round-trip, ms. */
+				rpcMs: number;
+				/** View-side wall time of the batch-build loop (no signal writes), ms. */
+				buildMs: number;
+				/** View-side wall time of the single commit render (setEntries + bump), ms. */
+				renderMs: number;
+				/** Number of visible items returned. */
+				items: number;
+			};
+		};
 	};
 	webview: {
 		requests: {};

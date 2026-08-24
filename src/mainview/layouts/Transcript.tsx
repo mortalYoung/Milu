@@ -5,7 +5,7 @@
  * agent = letter paper + dashed postmark + markdown body + signature line; running indicator = a "speaking"
  * letter bubble at the end (three ink dots + signature line); messages arriving mid-run render above it.
  */
-import { type Accessor, createEffect, createMemo, createSignal, For } from "solid-js";
+import { type Accessor, createEffect, createMemo, createSignal, For, onCleanup } from "solid-js";
 import { AnimatePresence, Motion, MotionConfigProvider } from "solid-motion";
 import type { EscalationStatus, SandboxMode } from "../../shared/rpc";
 import { renderMarkdown } from "../lib/markdown";
@@ -149,6 +149,10 @@ const STACK_PEEK = 10;
 const STACK_PEEK_STEP = 5;
 /** Hard cap on back-card tilt: depth-based rotation + jitter never exceeds this magnitude. */
 const STACK_MAX_ROTATION = 2.8;
+/** Render window: only the latest N blocks render on load; scrolling near the top prepends older ones. */
+const HISTORY_WINDOW = 30;
+/** Within this many px of the rendered top, the window expands upward. */
+const WINDOW_EXPAND_EDGE = 40;
 
 function MessageStack(props: { cards: Entry[]; worker?: string; locateFlashId?: Accessor<number | null>; onEscalationRespond?: (id: string, approved: boolean) => void }) {
 	const [current, setCurrent] = createSignal(props.cards.length - 1);
@@ -236,12 +240,19 @@ export function Transcript(props: {
 }) {
 	let container: HTMLElement | undefined;
 
-	createEffect(() => {
-		props.tick(); // push, history, turn, end — all bump it
-		container && (container.scrollTop = container.scrollHeight);
-	});
+	// Render window: which block index to start rendering from (tail first, expands upward on
+	// scroll). Keeping older blocks unrendered avoids the O(n) markdown+shiki cost of rendering
+	// the whole history at once — entries stay fully loaded in memory; only the DOM is windowed.
+	const [windowStart, setWindowStart] = createSignal(0);
+	// Whether the scrollbar sits at the bottom: auto-scroll on new content only then (scroll
+	// anchoring — a user reading older messages is never yanked to the bottom).
+	let atBottom = true;
+	// Fresh-load detection: entries were cleared (select) then repopulated — restart the window at the tail.
+	let prevBlocksLen = 0;
 
-	// Consecutive agent replies and sandbox escalations group into one deck per burst; user/sys/sep stay standalone
+	// Consecutive agent replies and sandbox escalations group into one deck per burst; user/sys/sep stay standalone.
+	// Declared FIRST: Solid effects run synchronously at creation (inside the component body), so anything that
+	// reads `blocks` before this const is initialized would hit the TDZ (Cannot access before initialization).
 	const blocks = createMemo(() => {
 		const out: (Entry | Entry[])[] = [];
 		let stack: Entry[] | null = null;
@@ -258,6 +269,65 @@ export function Transcript(props: {
 		}
 		if (stack) out.push(stack);
 		return out;
+	});
+
+	const visibleBlocks = createMemo(() => {
+		const all = blocks();
+		const start = Math.min(windowStart(), all.length);
+		return start > 0 ? all.slice(start) : all;
+	});
+
+	// A fresh conversation load (entries 0 → N) starts the window at the tail and sticks to the bottom.
+	createEffect(() => {
+		const len = blocks().length;
+		if (prevBlocksLen === 0 && len > 0) {
+			setWindowStart(Math.max(0, len - HISTORY_WINDOW));
+			atBottom = true;
+		}
+		prevBlocksLen = len;
+	});
+
+	// Scroll handling: track bottom-ness (anchor) and expand the window upward near the rendered top.
+	createEffect(() => {
+		const el = container;
+		if (!el) return;
+		const onScroll = () => {
+			atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+			if (el.scrollTop < WINDOW_EXPAND_EDGE && windowStart() > 0) {
+				const before = el.scrollHeight;
+				setWindowStart(Math.max(0, windowStart() - HISTORY_WINDOW));
+				// The prepended older blocks grow the document above the viewport — shift scrollTop by
+				// the delta so the visible content stays put (scroll anchoring).
+				queueMicrotask(() => {
+					el.scrollTop += el.scrollHeight - before;
+				});
+			}
+		};
+		el.addEventListener("scroll", onScroll);
+		onCleanup(() => el.removeEventListener("scroll", onScroll));
+	});
+
+	// Outline/trajectory locate: if the target block isn't rendered yet, expand the window to include it.
+	createEffect(() => {
+		const id = props.locateFlashId?.();
+		if (id == null) return;
+		const all = blocks();
+		const idx = all.findIndex((b) => {
+			const cards = Array.isArray(b) ? b : [b];
+			return cards.some((c) => c.id === id);
+		});
+		if (idx >= 0 && idx < windowStart()) {
+			setWindowStart(idx);
+			queueMicrotask(() => {
+				document.getElementById("entry-" + id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+			});
+		}
+	});
+
+	createEffect(() => {
+		props.tick(); // push, history, turn, end — all bump it
+		// Auto-scroll to the bottom only when the user is already there (scroll anchoring).
+		if (atBottom && container) container.scrollTop = container.scrollHeight;
 	});
 
 	return (
@@ -279,7 +349,7 @@ export function Transcript(props: {
 							)}
 						</div>
 					)}
-					<For each={blocks()}>
+					<For each={visibleBlocks()}>
 						{(block) => {
 							if (Array.isArray(block)) {
 								const card = block[0];

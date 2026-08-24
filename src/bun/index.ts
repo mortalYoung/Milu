@@ -261,7 +261,9 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 			history: async () => {
 				const target = viewPartner;
 				if (!target) return { items: [] };
+				const tRead = performance.now();
 				const items = await session.visibleHistory(target.dir);
+				const tResolve = performance.now();
 				// A pending request with no live promise is only actionable when its blocked tool call
 				// still exists in the log (restart-resume); otherwise it is orphaned — render as
 				// "dropped" (no buttons) so a click can never pretend a decision ran a dead request.
@@ -272,6 +274,11 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					const resumable = request?.toolCallId ? (await session.resumeTurn(target.dir, request.toolCallId)) !== null : false;
 					if (!resumable) item.escalation.status = "dropped";
 				}
+				const tEnd = performance.now();
+				// Timing probe: where does loading a large history spend its time? (read vs escalation resolve)
+				console.log(
+					`[timing] bun history: read=${(tResolve - tRead).toFixed(1)}ms escalate=${(tEnd - tResolve).toFixed(1)}ms total=${(tEnd - tRead).toFixed(1)}ms items=${items.length} partner=${target.name}`,
+				);
 				return { items };
 			},
 			// The bun-side ground truth: per-partner streaming (view-facing: an escalation-paused run
@@ -471,7 +478,14 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				}
 			},
 		},
-		messages: {},
+		messages: {
+			history_timing: ({ partner, rpcMs, buildMs, renderMs, items }) => {
+				// Timing probe (view-reported): RPC round-trip vs batch-build vs single commit render
+				console.log(
+					`[timing] view history: rpc=${rpcMs.toFixed(1)}ms build=${buildMs.toFixed(1)}ms render=${renderMs.toFixed(1)}ms total=${(rpcMs + buildMs + renderMs).toFixed(1)}ms items=${items} partner=${partner}`,
+				);
+			},
+		},
 	},
 });
 
