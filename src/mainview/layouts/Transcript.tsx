@@ -76,6 +76,16 @@ function seededUnit(seed: number): number {
 	return (x - Math.floor(x)) * 2 - 1;
 }
 
+/** Deterministic 32-bit string hash (FNV-1a) — a stable content-derived seed for jitter/rotation. */
+function hashString(s: string): number {
+	let h = 0x811c9dc5;
+	for (let i = 0; i < s.length; i++) {
+		h ^= s.charCodeAt(i);
+		h = Math.imul(h, 0x01000193);
+	}
+	return h >>> 0;
+}
+
 /** A letter's body: postmark + markdown + signature line (shared by single replies and stack cards). */
 function letterBody(card: Entry, worker?: string, showPostmark = true) {
 	const stamp = showPostmark ? parseStamp(card.time) : null;
@@ -137,6 +147,8 @@ const STACK_CARD_MIN_HEIGHT = 96;
 /** Reserved strip above the front card where the back cards' top edges peek out. */
 const STACK_PEEK = 10;
 const STACK_PEEK_STEP = 5;
+/** Hard cap on back-card tilt: depth-based rotation + jitter never exceeds this magnitude. */
+const STACK_MAX_ROTATION = 2.8;
 
 function MessageStack(props: { cards: Entry[]; worker?: string; locateFlashId?: Accessor<number | null>; onEscalationRespond?: (id: string, approved: boolean) => void }) {
 	const [current, setCurrent] = createSignal(props.cards.length - 1);
@@ -159,20 +171,31 @@ function MessageStack(props: { cards: Entry[]; worker?: string; locateFlashId?: 
 			<For each={props.cards}>
 				{(card, i) => {
 					// Depth relative to the top card: 0 = visible, 1 = first behind, …
-					const depth = () => (i() - current() + props.cards.length) % props.cards.length;
+					// Backward distance from `current`: the card directly behind the newest (the default
+					// view) is the second-newest, not the oldest — a forward wrap would reverse the fan.
+					const depth = () => (current() - i() + props.cards.length) % props.cards.length;
+					// Visual layer capped at the two visible back cards: deeper cards stack with the same
+					// lift/tilt as the second card so the deck never fans into a messy spread (rotation
+					// must not keep growing with depth, and jitter must not scatter cards that should
+					// be hidden behind the depth-2 card).
+					const layer = () => Math.min(depth(), 2);
 					// Back cards lift UP into the peek strip (capped at two visible edges)
-					const peek = () => Math.min(depth(), STACK_PEEK / STACK_PEEK_STEP) * STACK_PEEK_STEP;
-					// Stable per-card randomness (seeded by the entry id): a slight organic jitter in
-					// lift (peek), angle (rotation) and horizontal spread (depth feel) — never flickers
-					// on navigation or when the deck grows.
-					const jitter = seededUnit(card.id);
+					const peek = () => layer() * STACK_PEEK_STEP;
+					// Stable per-card randomness (seeded by the message content via FNV-1a hash): a slight
+					// organic jitter in lift (peek), angle (rotation) and horizontal spread (depth feel) —
+					// deterministic, so it never flickers on re-renders, navigation, or restarts. Only the
+					// two visible back cards jitter; deeper cards sit dead-center behind them so they stay
+					// hidden.
+					const jitter = depth() <= 2 ? seededUnit(hashString(card.text)) : 0;
+					// Rotation: depth-based tilt (alternating sign, two visible layers) + organic jitter,
+					// clamped to ±STACK_MAX_ROTATION so a card never tilts past the cap even with jitter.
+					const rotation = Math.max(-STACK_MAX_ROTATION, Math.min(STACK_MAX_ROTATION, (layer() % 2 ? 1 : -1) * layer() * 1.4 + jitter * 0.8));
 					return (
 						<div
 							class={"msg-letter msg-stack-card" + (depth() === 0 ? " on-top" : "") + (props.locateFlashId?.() === card.id ? " locate-flash" : "")}
 							id={"entry-" + card.id}
 							style={{
-								transform:
-									depth() === 0 ? undefined : `translate(${jitter * 3}px, ${-(peek() + jitter * 2)}px) rotate(${(depth() % 2 ? 1 : -1) * depth() * 1.4 + jitter * 0.8}deg)`,
+								transform: depth() === 0 ? undefined : `translate(${jitter * 3}px, ${-(peek() + jitter * 2)}px) rotate(${rotation}deg)`,
 								"z-index": 10 - depth(),
 								...(depth() === 0 ? { "min-height": `${STACK_CARD_MIN_HEIGHT}px` } : { height: `${STACK_CARD_MIN_HEIGHT}px`, overflow: "hidden" }),
 							}}
