@@ -50,10 +50,11 @@ function previewFor(partner: PartnerItem): string {
 }
 
 function PartnerAvatar(props: { partner: PartnerItem; selected: boolean }) {
-	// Selected row = warm-ink solid initial; others = paper-outlined initial
-	const cls = props.selected ? "avatar-ink" : "avatar-paper";
+	// Selected row = warm-ink solid initial; others = paper-outlined initial.
+	// Inline the conditional into the class binding: `props.selected` is a getter prop, so hoisting
+	// it into a const would snapshot the initial value once and never react to selection changes.
 	return (
-		<span class={`conv-avatar ${cls}`}>
+		<span class={`conv-avatar ${props.selected ? "avatar-ink" : "avatar-paper"}`}>
 			<span class="avatar-initial">{props.partner.name.charAt(0)}</span>
 		</span>
 	);
