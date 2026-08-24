@@ -203,6 +203,8 @@ export function Transcript(props: {
 	entries: Accessor<Entry[]>;
 	working: Accessor<boolean>;
 	tick: Accessor<number>;
+	/** True while persisted history is being (re)read — show the archives placeholder instead of the empty prompt. */
+	historyLoading: Accessor<boolean>;
 	worker?: string;
 	/** Outline locate target: the matching bubble briefly flashes seal-soft. */
 	locateFlashId?: Accessor<number | null>;
@@ -241,8 +243,17 @@ export function Transcript(props: {
 				<div class="transcript-inner">
 					{props.entries().length === 0 && !props.working() && (
 						<div class="text-center pt-16">
-							<p class="font-serif text-[17px] text-ink-soft">— waiting for your first prompt —</p>
-							<p class="eyebrow mt-3">ask it to read a file, run a command, or just talk</p>
+							{props.historyLoading() ? (
+								<>
+									<p class="font-serif text-[17px] text-ink-soft">— reading the archives… —</p>
+									<p class="eyebrow mt-3">restoring the conversation from disk</p>
+								</>
+							) : (
+								<>
+									<p class="font-serif text-[17px] text-ink-soft">— waiting for your first prompt —</p>
+									<p class="eyebrow mt-3">ask it to read a file, run a command, or just talk</p>
+								</>
+							)}
 						</div>
 					)}
 					<For each={blocks()}>

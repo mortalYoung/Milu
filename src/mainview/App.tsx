@@ -143,6 +143,7 @@ export function App() {
 					entries={session.entries}
 					working={status.isBusyForSelected}
 					tick={session.tick}
+					historyLoading={session.historyLoading}
 					busy={status.isBusyForSelected}
 					onSend={onSend}
 					onStop={() => void rpc.request.stop({})}

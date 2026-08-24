@@ -24,6 +24,8 @@ export function ConversationPage(props: {
 	entries: Accessor<Entry[]>;
 	working: Accessor<boolean>;
 	tick: Accessor<number>;
+	/** True while persisted history is being (re)read for the selected chat (transcript placeholder). */
+	historyLoading: Accessor<boolean>;
 	busy: Accessor<boolean>;
 	onSend: (text: string) => void;
 	onStop: () => void;
@@ -157,6 +159,7 @@ export function ConversationPage(props: {
 							entries={props.entries}
 							working={props.working}
 							tick={props.tick}
+							historyLoading={props.historyLoading}
 							worker={props.selected}
 							locateFlashId={props.flashId}
 							onEscalationRespond={props.onEscalationRespond}
