@@ -7,7 +7,6 @@
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import type { TrajectoryBlock, TrajectoryRecord, TrajectoryUsage } from "../../shared/rpc";
 import { stringifyArgs, type TimelineNode, timelineNodes } from "../../shared/trajectory";
-import { renderMarkdown } from "../lib/markdown";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const fmtTime = (ts: number) => {
@@ -542,7 +541,7 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 		if (r.kind !== "assistant") return null;
 		return (
 			<>
-				<For each={row.textBlocks}>{(b) => <div class="md one-cap" innerHTML={renderMarkdown(String(b.text ?? ""))} />}</For>
+				<For each={row.textBlocks}>{(b) => <div class="one-cap">{String(b.text ?? "")}</div>}</For>
 				<For each={row.otherBlocks}>{(b) => <pre class="one-args">{json(b)}</pre>}</For>
 				<div class="traj-meta">
 					<span>{r.model}</span>
@@ -571,7 +570,7 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 		const r = n.record;
 		switch (r.kind) {
 			case "user":
-				return <div class="md one-cap" innerHTML={renderMarkdown(r.content)} />;
+				return <div class="one-cap">{r.content}</div>;
 			case "toolResult":
 				return (
 					<>
@@ -631,7 +630,7 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 			case "custom":
 				switch (r.customType) {
 					case "send_message":
-						return <div class="md one-cap" innerHTML={renderMarkdown(dataText(r.data))} />;
+						return <div class="one-cap">{dataText(r.data)}</div>;
 					case "system_prompt":
 					case "compaction_summary":
 						return <pre class="one-args">{dataText(r.data)}</pre>;

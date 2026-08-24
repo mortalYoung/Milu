@@ -1,144 +1,97 @@
 /**
- * Mini markdown → HTML renderer (safe subset).
- * Supports: headings (#/##/###), bold, italic, inline code, fenced code blocks, unordered/ordered lists,
- * quotes, links, pipe tables (including :---: alignment). HTML is escaped before any transformation,
- * so user content is never executed as tags.
+ * Markdown → HTML renderer: markdown-it (full CommonMark) + shiki (TextMate highlighting).
+ *
+ * The highlighter is a cached singleton built once at module load (async warm-up, ~100ms), then
+ * `codeToHtml` is synchronous and every render reuses the same instance. Bundle is fine-grained:
+ * only tsx/ts/js/python/html/css grammars are imported (via shiki/core + per-language entries) plus
+ * a single light theme and the JavaScript regex engine — no WASM, no full grammar dump.
+ * While the highlighter is still warming up, a plain markdown-it instance renders without
+ * highlighting — the layout never blocks on async work.
+ *
+ * HTML is escaped by markdown-it (`html: false`), so user content is never executed as tags.
  */
 
-const esc = (s: string): string => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+import { fromHighlighter } from "@shikijs/markdown-it";
+import type { HighlighterCore } from "@shikijs/types";
+import MarkdownIt, { type MarkdownIt as MarkdownItType, type Renderer, type RendererRule } from "markdown-it";
+import { createHighlighterCore } from "shiki/core";
+import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
+import css from "shiki/langs/css.mjs";
+import html from "shiki/langs/html.mjs";
+import js from "shiki/langs/js.mjs";
+import python from "shiki/langs/python.mjs";
+import ts from "shiki/langs/ts.mjs";
+import tsx from "shiki/langs/tsx.mjs";
+import githubLight from "shiki/themes/github-light.mjs";
 
-/** Inline transforms: escape → inline code → bold → italic → links. */
-function inline(s: string): string {
-	return (
-		esc(s)
-			.replace(/`([^`]+)`/g, "<code>$1</code>")
-			.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
-			// single asterisks: *italic* (double-asterisk pairs were consumed above, so ** stays intact)
-			.replace(/\*([^*\n]+)\*/g, "<em>$1</em>")
-			.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
-	);
+/** The only languages we bundle — keep the grammar payload small. */
+const HIGHLIGHT_LANGS = [ts, tsx, js, python, html, css];
+/** The single light theme (shiki inline-styles token colors; matches the light letter paper). */
+const HIGHLIGHT_THEME = "github-light";
+// shiki treats "text" as the built-in plain-text language at runtime, but it is not a member of the
+// BundledLanguage union — cast it through unknown once.
+const TEXT_LANG = "text" as unknown as Parameters<typeof fromHighlighter>[1]["defaultLanguage"];
+
+/** Plain markdown-it (no highlighting) — the fallback while the highlighter warms up. */
+const mdPlain = new MarkdownIt({ html: false, linkify: true });
+patchLinkTarget(mdPlain);
+
+/** Cached singleton: markdown-it wired to the shiki highlighter. Built once, reused forever. */
+let mdShiki: MarkdownItType | null = null;
+let mdShikiPromise: Promise<MarkdownItType> | null = null;
+
+/** Ensure links open in a new tab with noreferrer, like the old hand-rolled renderer. */
+function patchLinkTarget(md: MarkdownItType) {
+	const defaultRender: RendererRule = md.renderer.rules["link_open"] ?? ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
+	md.renderer.rules["link_open"] = (tokens, idx, options, env, self: Renderer) => {
+		tokens[idx].attrSet("target", "_blank");
+		tokens[idx].attrSet("rel", "noreferrer");
+		return defaultRender(tokens, idx, options, env, self);
+	};
 }
 
-/** Pipe tables: strip the leading/trailing pipes, then split by | and trim. */
-function cellSplit(line: string): string[] {
-	const inner = line.trim();
-	const body = inner.startsWith("|") ? inner.slice(1) : inner;
-	const trimmed = body.endsWith("|") ? body.slice(0, -1) : body;
-	return trimmed.split("|").map((s) => s.trim());
+async function buildShikiMd(): Promise<MarkdownItType> {
+	const highlighter: HighlighterCore = await createHighlighterCore({
+		themes: [githubLight],
+		langs: HIGHLIGHT_LANGS,
+		engine: createJavaScriptRegexEngine(),
+	});
+	const plugin = fromHighlighter(highlighter, {
+		theme: HIGHLIGHT_THEME,
+		defaultLanguage: TEXT_LANG,
+		// Unknown fence languages (```ruby etc.) degrade to plain text instead of throwing.
+		fallbackLanguage: TEXT_LANG,
+	});
+	const md = new MarkdownIt({ html: false, linkify: true });
+	md.use(plugin);
+	patchLinkTarget(md);
+	return md;
 }
 
-/** Separator row: every cell matches :?---:? and at least one contains -. */
-function isSeparatorRow(cells: string[]): boolean {
-	return cells.length > 0 && cells.every((c) => /^:?-{1,}:?$/.test(c)) && cells.some((c) => c.includes("-"));
+function getShikiMd(): Promise<MarkdownItType> {
+	mdShikiPromise ??= buildShikiMd().then((md) => {
+		mdShiki = md;
+		return md;
+	});
+	return mdShikiPromise;
 }
 
-/** Aligned-column style (value comes from the parsed fixed three-way choice, not user input). */
-function alignAttr(align: string): string {
-	return align === "left" ? "" : ` style="text-align:${align}"`;
-}
+// Kick off the highlighter warm-up immediately so the first render is highlighted.
+void getShikiMd();
 
+/**
+ * Render markdown → HTML. Synchronous: uses the cached shiki instance once ready, otherwise the
+ * plain markdown-it fallback (the async highlighter build never blocks rendering).
+ */
 export function renderMarkdown(src: string): string {
-	const lines = src.split("\n");
-	const out: string[] = [];
-	let inCode = false;
-	let codeBuf: string[] = [];
-	let list: { type: "ul" | "ol"; items: string[] } | null = null;
-	let para: string[] = [];
+	return (mdShiki ?? mdPlain).render(src);
+}
 
-	const flushList = () => {
-		if (list) {
-			const tag = list.type === "ol" ? "ol" : "ul";
-			out.push(`<${tag}>${list.items.map((li) => `<li>${li}</li>`).join("")}</${tag}>`);
-			list = null;
-		}
-	};
-	const flushPara = () => {
-		if (para.length) {
-			out.push(`<p>${para.join(" ")}</p>`);
-			para = [];
-		}
-	};
-	const flushAll = () => {
-		flushList();
-		flushPara();
-	};
-
-	for (let i = 0; i < lines.length; i++) {
-		const raw = lines[i];
-		// Fenced code blocks
-		if (raw.trimStart().startsWith("```")) {
-			flushAll();
-			if (inCode) {
-				out.push(`<pre><code>${codeBuf.join("\n")}</code></pre>`);
-				inCode = false;
-				codeBuf = [];
-			} else {
-				inCode = true;
-			}
-			continue;
-		}
-		if (inCode) {
-			codeBuf.push(esc(raw));
-			continue;
-		}
-
-		const t = raw.trim();
-		// Pipe table: the current line contains | and the next line is a separator row (---)
-		if (t.includes("|")) {
-			const headCells = cellSplit(raw);
-			const sepCells = lines[i + 1] ? cellSplit(lines[i + 1]) : [];
-			if (headCells.length > 0 && isSeparatorRow(sepCells) && sepCells.length === headCells.length) {
-				flushAll();
-				const aligns = sepCells.map((c) => (c.startsWith(":") && c.endsWith(":") ? "center" : c.endsWith(":") ? "right" : "left"));
-				const rows: string[][] = [headCells];
-				i += 2;
-				while (i < lines.length && lines[i].trim().includes("|")) {
-					rows.push(cellSplit(lines[i]));
-					i += 1;
-				}
-				const head = rows[0].map((c, j) => `<th${alignAttr(aligns[j] ?? "left")}>${inline(c)}</th>`).join("");
-				const body = rows
-					.slice(1)
-					.filter((r) => r.length > 0)
-					.map((r) => `<tr>${r.map((c, j) => `<td${alignAttr(aligns[j] ?? "left")}>${inline(c)}</td>`).join("")}</tr>`)
-					.join("");
-				out.push(`<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`);
-				continue;
-			}
-		}
-
-		if (!t) {
-			flushAll();
-			continue;
-		}
-		// Heading
-		const h = t.match(/^(#{1,6}) (.*)$/);
-		if (h) {
-			flushAll();
-			out.push(`<h${h[1].length}>${inline(h[2])}</h${h[1].length}>`);
-			continue;
-		}
-		// Quote
-		if (t.startsWith("> ")) {
-			flushAll();
-			out.push(`<blockquote>${inline(t.slice(2))}</blockquote>`);
-			continue;
-		}
-		// List
-		const listMatch = t.match(/^(?:[-*] |\d+\. )(.*)$/);
-		if (listMatch) {
-			flushPara();
-			const type = /^\d+\. /.test(t) ? "ol" : "ul";
-			if (list && list.type !== type) flushList();
-			(list ??= { type, items: [] }).items.push(inline(listMatch[1]));
-			continue;
-		}
-		// Plain paragraph line
-		flushList();
-		para.push(inline(t));
-	}
-
-	if (inCode) out.push(`<pre><code>${codeBuf.join("\n")}</code></pre>`);
-	flushAll();
-	return out.join("\n");
+/**
+ * Render markdown → HTML, waiting for the highlighter if it is still warming up.
+ * Use at mount/startup when you want highlighting guaranteed on first paint.
+ */
+export async function renderMarkdownReady(src: string): Promise<string> {
+	const md = await getShikiMd();
+	return md.render(src);
 }

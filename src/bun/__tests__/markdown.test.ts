@@ -1,16 +1,18 @@
 /**
- * renderMarkdown unit tests: pipe table parsing (header/body/alignment/escaping), and distinguishing
- * tables from ordinary paragraphs containing |.
+ * renderMarkdown unit tests (markdown-it + shiki): pipe tables (header/body/alignment/escaping),
+ * distinguishing tables from ordinary paragraphs containing |, and inline formatting.
  */
 import { describe, expect, test } from "bun:test";
-import { renderMarkdown } from "../../mainview/lib/markdown";
+import { renderMarkdown, renderMarkdownReady } from "../../mainview/lib/markdown";
 
 describe("renderMarkdown pipe tables", () => {
 	test("basic table → thead + tbody", () => {
 		const html = renderMarkdown("| A | B |\n| --- | --- |\n| 1 | 2 |");
 		expect(html).toContain("<table>");
-		expect(html).toContain("<thead><tr><th>A</th><th>B</th></tr></thead>");
-		expect(html).toContain("<tbody><tr><td>1</td><td>2</td></tr></tbody>");
+		expect(html).toContain("<th>A</th>");
+		expect(html).toContain("<th>B</th>");
+		expect(html).toContain("<td>1</td>");
+		expect(html).toContain("<td>2</td>");
 	});
 
 	test("aligned columns (:---: center / ---: right) → style attribute", () => {
@@ -19,6 +21,7 @@ describe("renderMarkdown pipe tables", () => {
 		expect(html).toContain('<th style="text-align:right">B</th>');
 		expect(html).toContain("<th>C</th>");
 		expect(html).toContain('<td style="text-align:center">1</td>');
+		expect(html).toContain('<td style="text-align:right">2</td>');
 	});
 
 	test("cell content escaped + inline formatting", () => {
@@ -41,9 +44,10 @@ describe("renderMarkdown pipe tables", () => {
 		expect(html).toContain("<p>hello</p>");
 	});
 
-	test("body row with missing columns renders with the columns present", () => {
+	test("body row with missing columns renders with an empty cell", () => {
 		const html = renderMarkdown("| A | B |\n| --- | --- |\n| 1 |");
-		expect(html).toContain("<tr><td>1</td></tr>");
+		expect(html).toContain("<td>1</td>");
+		expect(html).toContain("<td></td>");
 	});
 
 	test("single-asterisk italic renders as <em>, bold stays intact", () => {
@@ -59,5 +63,24 @@ describe("renderMarkdown pipe tables", () => {
 	test("italic inside table cells and Chinese text", () => {
 		const table = renderMarkdown("| K |\n| --- |\n| *小信息* |");
 		expect(table).toContain("<td><em>小信息</em></td>");
+	});
+});
+
+describe("renderMarkdown code blocks (shiki highlighting)", () => {
+	test("fenced code block with language is highlighted", async () => {
+		const html = await renderMarkdownReady("```ts\nconst x: number = 1\n```");
+		expect(html).toContain("<pre");
+		expect(html).toContain("shiki");
+		expect(html).toContain("language-ts");
+		// shiki wraps tokens in spans with color styles
+		expect(html).toContain("<span");
+	});
+
+	test("unknown language falls back to plain text, content still escaped", async () => {
+		const html = await renderMarkdownReady("```nosuchlang\n<script>alert(1)</script>\n```");
+		expect(html).toContain("<pre");
+		expect(html).toContain("language-text");
+		// shiki escapes HTML as numeric entities (&#x3C;), never raw tags
+		expect(html).not.toContain("<script>alert");
 	});
 });
