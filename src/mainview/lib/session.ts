@@ -1,6 +1,6 @@
 import { createSignal } from "solid-js";
 import type { PartnerItem } from "../components/ConversationList";
-import { type Entry, makeAgentEntry, makeEscalationEntry, makeSepEntry, makeUserEntry } from "../layouts/Transcript";
+import { type Entry, makeAgentEntry, makeEscalationEntry, makeSepEntry, makeSysEntry, makeUserEntry } from "../layouts/Transcript";
 import type { RPC } from "./rpc";
 
 /**
@@ -47,6 +47,10 @@ export function createSession(rpc: RPC, opts: { onSessionLoaded: () => void }) {
 		try {
 			const { items } = await rpc.request.history({});
 			for (const item of items) {
+				if (item.kind === "error") {
+					push(makeSysEntry(`ERR § ${item.text}`, true));
+					continue;
+				}
 				if (item.kind === "escalation" && item.escalation) {
 					const entry = makeEscalationEntry({ text: item.text, time: item.time, escalation: item.escalation });
 					const existing = entries().find((e) => e.kind === "escalation" && e.escalation?.id === item.escalation!.id);

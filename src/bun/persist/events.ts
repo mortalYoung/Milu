@@ -53,6 +53,8 @@ export interface TurnStartEventData {
 export interface TurnEndEventData {
 	turn: number;
 	reason: TurnEndReason;
+	/** The run's error message (reason "error" only) — persisted so a failed run is reconstructable after restart. */
+	error?: string;
 }
 
 export interface StepStartEventData {

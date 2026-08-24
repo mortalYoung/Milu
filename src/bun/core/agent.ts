@@ -356,7 +356,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 				enforceDelivery(event);
 				// turn/end lands before onEnd so the settled state is already in the log when the view refetches
 				return deps.session
-					.appendTurnEnd(runTurn, agent.state.errorMessage ? "error" : "completed", Date.now())
+					.appendTurnEnd(runTurn, agent.state.errorMessage ? "error" : "completed", Date.now(), agent.state.errorMessage ?? undefined)
 					.catch(logError)
 					.then(() => {
 						bridge.onTrajectoryUpdate();

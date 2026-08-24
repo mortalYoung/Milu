@@ -303,7 +303,15 @@ export function Transcript(props: {
 								);
 							}
 							if (e.kind === "sys") {
-								return <div class={e.error ? "sys sys-error" : "sys"}>{e.text}</div>;
+								if (e.error) {
+									return (
+										<div class="sys-error">
+											<span class="sys-error-tag">ERR</span>
+											<span class="sys-error-text">{e.text}</span>
+										</div>
+									);
+								}
+								return <div class="sys">{e.text}</div>;
 							}
 							return <div class="time-sep">{e.text}</div>;
 						}}

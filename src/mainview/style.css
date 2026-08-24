@@ -860,6 +860,10 @@ body::before {
 	.traj-run-head.err .run-label {
 		color: var(--color-seal);
 	}
+	.traj-run-head .run-error {
+		@apply flex-none font-mono text-[9px] text-seal truncate;
+		max-width: 55%;
+	}
 	.traj-run-head:focus-visible {
 		outline: 1.5px solid var(--color-seal);
 		outline-offset: 1px;
@@ -982,9 +986,15 @@ body::before {
 			animation: none;
 		}
 	}
-	/* System row: eyebrow; errors in seal red */
+	/* Error notice: seal-tagged mono card (failed runs — ERR § in the transcript) */
 	.sys-error {
-		@apply text-seal;
+		@apply flex items-start gap-2 px-2 py-1 rounded-md border border-seal/30;
+	}
+	.sys-error-tag {
+		@apply flex-none font-sans text-[9px] font-semibold tracking-[0.08em] text-seal border border-seal rounded-sm px-1 py-[1px] mt-[1px];
+	}
+	.sys-error-text {
+		@apply font-mono text-[11px] leading-snug text-seal break-all min-w-0;
 	}
 	/* Date separator: small text + short lines on both sides (44px) */
 	.time-sep {

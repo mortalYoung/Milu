@@ -46,7 +46,9 @@ export function App() {
 	rpc.addMessageListener("agent_end", ({ error: err, partner }) => {
 		const errForSelected = err && partner === session.selected();
 		status.endTurn(partner);
-		if (errForSelected) session.push(makeSysEntry(`ERR § ${err}`, true));
+		// Errors render from the persisted turn/end entry (visibleHistory), so they survive
+		// restarts — the entry is already on disk before this event lands.
+		if (errForSelected) void session.refreshHistory();
 		session.bump();
 		status.calibrate();
 		void metrics.refresh();

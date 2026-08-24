@@ -203,7 +203,7 @@ export type AppRPCSchema = __schema<{
 				response: {
 					items: {
 						id: string;
-						kind: "user" | "send_message" | "escalation";
+						kind: "user" | "send_message" | "escalation" | "error";
 						text: string;
 						time: number;
 						escalation?: {

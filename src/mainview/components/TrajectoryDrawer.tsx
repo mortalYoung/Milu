@@ -224,10 +224,11 @@ type DisplayRow = { key: string; node: TimelineNode; marks?: number } & (
 	| { kind: "stepLabel" }
 );
 
-/** One foldable run: its divider head (RUN label; seal-tinted on failure) and its content rows. */
+/** One foldable run: its divider head (RUN label; seal-tinted on failure, error text on the head) and its content rows. */
 interface RunSection {
 	turn: number;
 	reason: string;
+	error: string;
 	rows: DisplayRow[];
 }
 
@@ -263,7 +264,7 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 			if (!current) {
 				// the log's first record (e.g. system_prompt) opens run 1 and the section is open —
 				// otherwise the next user question would split run 1 into two RUN 1 sections
-				current = { turn: 1, reason: "", rows: [] };
+				current = { turn: 1, reason: "", error: "", rows: [] };
 				all.push(current);
 				closed = false;
 			}
@@ -278,23 +279,26 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 		for (const n of rows()) {
 			const r = n.record;
 			if (r.kind === "custom" && (r.customType === "turn/start" || r.customType === "turn/end" || r.customType === "step/start" || r.customType === "step/end")) {
-				const data = (r.data ?? {}) as { turn?: unknown; step?: unknown; reason?: unknown };
+				const data = (r.data ?? {}) as { turn?: unknown; step?: unknown; reason?: unknown; error?: unknown };
 				if (r.customType === "turn/start") {
 					if (!current || closed) {
-						current = { turn: typeof data.turn === "number" ? data.turn : (all.at(-1)?.turn ?? 0) + 1, reason: "", rows: [] };
+						current = { turn: typeof data.turn === "number" ? data.turn : (all.at(-1)?.turn ?? 0) + 1, reason: "", error: "", rows: [] };
 						all.push(current);
 						closed = false;
 					}
 				} else if (r.customType === "step/start") {
 					// a corner label at the top of each step's region — no divider lines
 					if (!current || closed) {
-						current = { turn: (all.at(-1)?.turn ?? 0) + 1, reason: "", rows: [] };
+						current = { turn: (all.at(-1)?.turn ?? 0) + 1, reason: "", error: "", rows: [] };
 						all.push(current);
 						closed = false;
 					}
 					current.rows.push({ key: `sl:${n.seq}`, node: n, kind: "stepLabel" });
 				} else if (r.customType === "turn/end") {
-					if (current && typeof data.turn === "number" && current.turn === data.turn) current.reason = String(data.reason ?? "completed");
+					if (current && typeof data.turn === "number" && current.turn === data.turn) {
+						current.reason = String(data.reason ?? "completed");
+						if (typeof data.error === "string") current.error = data.error;
+					}
 					closed = true;
 				}
 				// step/end renders nothing
@@ -305,7 +309,7 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 					// a user question opens the run that follows it — the run number comes from its turn/start
 					const next = rows().find((m) => m.seq > n.seq && m.record.kind === "custom" && m.record.customType === "turn/start");
 					const nextData = (next?.record.kind === "custom" ? (next.record.data ?? {}) : {}) as { turn?: unknown };
-					current = { turn: next && typeof nextData.turn === "number" ? nextData.turn : (all.at(-1)?.turn ?? 0) + 1, reason: "", rows: [] };
+					current = { turn: next && typeof nextData.turn === "number" ? nextData.turn : (all.at(-1)?.turn ?? 0) + 1, reason: "", error: "", rows: [] };
 					all.push(current);
 					closed = false;
 				}
@@ -736,6 +740,11 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 											aria-expanded={!foldedRuns().has(sec.turn)}
 										>
 											<span class="run-label">{foldedRuns().has(sec.turn) ? "▸" : "▾"} RUN</span>
+											{sec.error && (
+												<span class="run-error" title={sec.error}>
+													{short(sec.error)}
+												</span>
+											)}
 										</button>
 										<Show when={!foldedRuns().has(sec.turn)}>
 											<div class="traj-run-body traj-run-enter">

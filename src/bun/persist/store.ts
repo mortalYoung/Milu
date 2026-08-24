@@ -58,7 +58,7 @@ export interface AssistantMeta {
 export interface VisibleItem {
 	/** pi entry id; the view dedupes incremental renders by it. */
 	id: string;
-	kind: "user" | "send_message" | "escalation";
+	kind: "user" | "send_message" | "escalation" | "error";
 	text: string;
 	time: number;
 	/** Escalation payload (kind "escalation" only): the approval request + current status. */
@@ -91,8 +91,8 @@ export interface SessionScope {
 	appendRequestHeader(systemPrompt: string, toolNames: string[], timestamp: number): Promise<void>;
 	/** A run began (agent_start): the log gets a turn/start marker. */
 	appendTurnStart(turn: number, timestamp: number): Promise<void>;
-	/** A run settled (agent_end): the log gets a turn/end marker with the reason. */
-	appendTurnEnd(turn: number, reason: TurnEndReason, timestamp: number): Promise<void>;
+	/** A run settled (agent_end): the log gets a turn/end marker with the reason (and the error on failure). */
+	appendTurnEnd(turn: number, reason: TurnEndReason, timestamp: number, error?: string): Promise<void>;
 	/** A step began (pi turn_start): the log gets a step/start marker. */
 	appendStepStart(turn: number, step: number, timestamp: number): Promise<void>;
 	/** A step settled (pi turn_end): the log gets a step/end marker. */
@@ -289,8 +289,8 @@ export function createSessionStore(): SessionStore {
 			async appendTurnStart(turn, timestamp) {
 				await appendCustom(dir, EVENTS.turnStart, { turn, timestamp });
 			},
-			async appendTurnEnd(turn, reason, timestamp) {
-				await appendCustom(dir, EVENTS.turnEnd, { turn, reason, timestamp });
+			async appendTurnEnd(turn, reason, timestamp, error) {
+				await appendCustom(dir, EVENTS.turnEnd, { turn, reason, timestamp, ...(error !== undefined ? { error } : {}) });
 			},
 			async appendStepStart(turn, step, timestamp) {
 				await appendCustom(dir, EVENTS.stepStart, { turn, step, timestamp });
@@ -344,6 +344,12 @@ export function createSessionStore(): SessionStore {
 					const data = entry.data as { text: string; timestamp: number } | undefined;
 					if (!data) return [];
 					return [{ id: entry.id, kind: "send_message", text: data.text, time: data.timestamp }];
+				}
+				if (entry.type === "custom" && entry.customType === EVENTS.turnEnd) {
+					// A failed run renders its persisted error (reason "error" carries the message)
+					const data = entry.data as { reason?: unknown; error?: unknown; timestamp?: unknown } | undefined;
+					if (data?.reason !== "error" || typeof data.error !== "string") return [];
+					return [{ id: entry.id, kind: "error", text: data.error, time: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0) }];
 				}
 				if (entry.type === "custom" && entry.customType === EVENTS.escalationRequest) {
 					const data = entry.data as { escalationId?: unknown; command?: unknown; from?: unknown; to?: unknown; justification?: unknown; timestamp?: unknown } | undefined;
