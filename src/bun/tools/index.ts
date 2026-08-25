@@ -7,21 +7,18 @@ import { createEditTool, createReadTool, createWriteTool } from "@earendil-works
 import { type TSchema, Type } from "@earendil-works/pi-ai";
 import { PROJECT_ROOT } from "../core/config";
 import { loadSettings } from "../lib/settings";
+import type { SandboxMode } from "../permission";
+import { Permission } from "../permission";
 import type { SessionScope } from "../persist";
-import type { EscalationDecision, EscalationRequest, SandboxMode } from "../sandbox/types";
-import { createExecutionEnv, type EnvGuard, type SandboxedExecOptions, type SandboxRuntime } from "./execution-env";
+import { createExecutionEnv, type SandboxedExecOptions } from "./execution-env";
 
 export interface ToolDeps {
 	/** Conversation persistence, scoped to the owning agent's session root. */
 	store: SessionScope;
 	/** On send_message: write the visible message into the agent context (a display:true custom message). */
 	onVisibleMessage: (text: string, timestamp: number) => void;
-	/** Path guard: workspace/storage roots for the file tools (null = unset). */
-	guard?: EnvGuard;
-	/** Sandbox runtime (mounted on macOS); absent ⇒ bash + fs run unconfined. */
-	sandbox?: SandboxRuntime;
-	/** Human approval gate for escalation retries (wired to escalation records + the inline transcript bubble). */
-	confirmEscalation?: (request: EscalationRequest) => Promise<EscalationDecision>;
+	/** The permission facade: fs fence, sensitive scan, sandbox wrap, escalation (absent ⇒ unconfined). */
+	permission?: Permission;
 	/** set_workspace: validate + apply; returns the resolved path on success, or an error message. */
 	onSetWorkspace?: (workspace: string) => { ok: true; path: string } | { ok: false; error: string };
 }
@@ -93,12 +90,6 @@ function setWorkspaceTool(deps: ToolDeps): AgentHarnessTool<ExecutionToolContext
 	};
 }
 
-/** Strictly-wider ordering for escalation: read-only < workspace-write < danger-full-access. */
-const MODE_RANK: Record<SandboxMode, number> = { "read-only": 0, "workspace-write": 1, "danger-full-access": 2 };
-function isStrictlyWider(from: SandboxMode, to: SandboxMode): boolean {
-	return MODE_RANK[to] > MODE_RANK[from];
-}
-
 /** Tail-truncate output the way pi's bash tool does (last ~50KB). */
 const MAX_OUTPUT_CHARS = 50 * 1024;
 function tail(text: string): { text: string; truncated: boolean } {
@@ -125,20 +116,21 @@ async function runBash(
 type BashDetails = {
 	exitCode?: number;
 	truncated?: boolean;
-	sandbox?: { mode?: SandboxMode; rejected?: boolean; from?: SandboxMode; to?: SandboxMode; escalation?: boolean };
+	sandbox?: { mode?: SandboxMode; rejected?: boolean; from?: SandboxMode; to?: SandboxMode; escalation?: boolean; code?: string };
 };
 
 /**
  * Bash tool (custom, replaces pi's): same contract, plus capability-gated escalation.
- * When a sandbox runtime is mounted, the schema gains `sandbox_mode` + `justification`;
- * a retry with a strictly wider mode pauses on the human approval gate before executing.
+ * When a confining backend is mounted, the schema gains `sandbox_mode` + `justification`;
+ * a retry with a strictly wider mode pauses on the human approval gate before executing
+ * (the rules live in Permission.escalate).
  */
 function bashTool(deps: ToolDeps): AgentHarnessTool<ExecutionToolContext, TSchema, BashDetails> {
 	const baseProps = {
 		command: Type.String({ description: "Bash command to execute" }),
 		timeout: Type.Optional(Type.Number({ description: "Timeout in seconds (optional, no default timeout)" })),
 	};
-	const schema = deps.sandbox
+	const schema = deps.permission?.isConfining()
 		? Type.Object({
 				...baseProps,
 				sandbox_mode: Type.Optional(
@@ -154,7 +146,7 @@ function bashTool(deps: ToolDeps): AgentHarnessTool<ExecutionToolContext, TSchem
 		label: "bash",
 		description:
 			"Execute a bash command in the current working directory. Returns stdout and stderr (last ~50KB, truncated)." +
-			(deps.sandbox
+			(deps.permission?.isConfining()
 				? " Sandboxed: writes outside the workspace/storage are denied by the kernel and return `[sandbox: file access denied under <mode> mode]`. On a denial you may retry ONCE in the same turn with a strictly wider `sandbox_mode` plus a `justification` — a human must approve."
 				: ""),
 		parameters: schema,
@@ -163,25 +155,11 @@ function bashTool(deps: ToolDeps): AgentHarnessTool<ExecutionToolContext, TSchem
 			// escalation: validate wider + justification, then wait for the human gate
 			let grantedMode: SandboxMode | undefined;
 			if (sandbox_mode) {
-				if (!deps.sandbox || !deps.confirmEscalation) {
-					return { content: [{ type: "text", text: "[sandbox: escalation unavailable — no confining backend mounted]" }], details: { sandbox: { escalation: false } } };
-				}
-				const from = deps.sandbox.getMode();
-				if (!isStrictlyWider(from, sandbox_mode)) {
-					return {
-						content: [{ type: "text", text: `[sandbox: escalation rejected — ${sandbox_mode} is not strictly wider than ${from}]` }],
-						details: { sandbox: { rejected: true, from, to: sandbox_mode } },
-					};
-				}
-				if (!justification) {
-					return {
-						content: [{ type: "text", text: "[sandbox: escalation rejected — justification is required]" }],
-						details: { sandbox: { rejected: true, from, to: sandbox_mode } },
-					};
-				}
-				const decision = await deps.confirmEscalation({ command, from, to: sandbox_mode, justification, toolCallId });
-				if (!decision.approved) {
-					return { content: [{ type: "text", text: `[sandbox: escalation rejected — ${decision.reason}]` }], details: { sandbox: { rejected: true, from, to: sandbox_mode } } };
+				const decision = await deps.permission!.escalate({ command, to: sandbox_mode, justification: justification ?? "", toolCallId });
+				if (!decision.allowed) {
+					const details: BashDetails["sandbox"] =
+						decision.code === "sandbox_unavailable" ? { escalation: false } : { rejected: true, from: deps.permission!.getMode(), to: sandbox_mode, code: decision.code };
+					return { content: [{ type: "text", text: decision.reason }], details: { sandbox: details } };
 				}
 				grantedMode = decision.mode;
 			}
@@ -197,12 +175,12 @@ function bashTool(deps: ToolDeps): AgentHarnessTool<ExecutionToolContext, TSchem
 					details: {
 						exitCode,
 						truncated: out.truncated,
-						sandbox: deps.sandbox ? { mode: grantedMode ?? deps.sandbox.getMode() } : undefined,
+						sandbox: deps.permission ? { mode: grantedMode ?? deps.permission.getMode() } : undefined,
 					},
 				};
 			} catch (e) {
 				const message = e instanceof Error ? e.message : String(e);
-				return { content: [{ type: "text", text: message }], details: { sandbox: deps.sandbox ? { mode: grantedMode ?? deps.sandbox.getMode() } : undefined } };
+				return { content: [{ type: "text", text: message }], details: { sandbox: deps.permission ? { mode: grantedMode ?? deps.permission.getMode() } : undefined } };
 			}
 		},
 	};
@@ -212,12 +190,8 @@ function bashTool(deps: ToolDeps): AgentHarnessTool<ExecutionToolContext, TSchem
  * Execute an approved escalation command outside a live agent run (restart-resume path):
  * a fresh env confined under the granted mode, output shaped exactly like the bash tool's.
  */
-export async function runEscalatedBash(
-	command: string,
-	mode: SandboxMode,
-	deps: { guard: EnvGuard; sandbox: SandboxRuntime },
-): Promise<{ text: string; exitCode?: number; truncated: boolean }> {
-	const env = createExecutionEnv(PROJECT_ROOT, deps.guard, deps.sandbox);
+export async function runEscalatedBash(command: string, mode: SandboxMode, deps: { permission: Permission }): Promise<{ text: string; exitCode?: number; truncated: boolean }> {
+	const env = createExecutionEnv(PROJECT_ROOT, deps.permission);
 	const { stdout, stderr, exitCode } = await runBash(env, command, { sandboxMode: mode });
 	const out = tail([stdout, stderr].filter((s) => s).join("\n"));
 	let text = out.text || "(no output)";
@@ -225,10 +199,10 @@ export async function runEscalatedBash(
 	return { text, exitCode, truncated: out.truncated };
 }
 
-/** The standard pi toolset (read, write, edit, bash) + send_message + set_workspace, bound to the path-guarded, sandboxed env. */
+/** The standard pi toolset (read, write, edit, bash) + send_message + set_workspace, bound to the permission-gated env. */
 export function createTools(deps: ToolDeps): AgentTool[] {
-	// The env is created per toolset so it can carry the path guard (workspace/storage roots, read dynamically)
-	const env = createExecutionEnv(PROJECT_ROOT, deps.guard, deps.sandbox);
+	// The env is created per toolset so it can carry the permission facade (policy read dynamically)
+	const env = createExecutionEnv(PROJECT_ROOT, deps.permission);
 	return [
 		bindEnv(createReadTool(), env),
 		bindEnv(createWriteTool(), env),

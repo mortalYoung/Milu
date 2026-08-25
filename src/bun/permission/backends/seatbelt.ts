@@ -7,7 +7,7 @@
  */
 import { spawnSync } from "node:child_process";
 import { writableRoots } from "../roots";
-import type { ConfinedArgv, SandboxBackend, SandboxPolicy } from "../types";
+import type { ConfinedArgv, PermissionPolicy, SandboxBackend } from "../types";
 
 const SEATBELT = "/usr/bin/sandbox-exec";
 
@@ -24,7 +24,7 @@ function sbplEscape(s: string): string {
  * The SBPL profile arguments for a policy.
  * read-only → only the /dev/null sink; workspace-write → one subpath grant per writable root.
  */
-export function seatbeltProfileArgs(policy: SandboxPolicy): string[] {
+export function seatbeltProfileArgs(policy: PermissionPolicy): string[] {
 	const forms = ["(version 1)", "(allow default)", "(deny file-write*)", '(allow file-write* (literal "/dev/null"))'];
 	const roots = writableRoots(policy);
 	if (roots.length > 0) {
@@ -48,7 +48,7 @@ export const seatbeltBackend: SandboxBackend = {
 			return false;
 		}
 	},
-	confine(argv: string[], policy: SandboxPolicy): ConfinedArgv {
+	confine(argv: string[], policy: PermissionPolicy): ConfinedArgv {
 		return {
 			argv: [SEATBELT, ...seatbeltProfileArgs(policy), "--", ...argv],
 			enforcement: "full",

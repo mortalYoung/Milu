@@ -4,10 +4,8 @@
  */
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { SandboxMode } from "../../shared/rpc";
-import { workspaceFilePath } from "./partner-files";
-import { isSandboxMode, sandboxFilePath } from "./sandbox";
-import { validateWorkspace } from "./workspace";
+import type { SandboxMode } from "../permission";
+import { isSandboxMode, sandboxFilePath, validateWorkspace, workspaceFilePath } from "../permission";
 
 /** Create the partner's storage subdirectory (the agent's freely-writable area) and return its path — it must exist before the prompt mentions it. */
 export async function ensureStoragePath(dir: string): Promise<string> {

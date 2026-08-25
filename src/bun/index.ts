@@ -12,12 +12,11 @@ import { priceSurface } from "./core/token-meter";
 import { aggregateUsage, fold, lastUsage } from "./core/trajectory";
 import { ensureSandboxMode, ensureStoragePath, ensureWorkspace } from "./lib/ensure";
 import { partnerDirFor, persistSandboxMode, persistWorkspace, promptChangedSinceLastPersist, recordPrompt } from "./lib/partner-files";
-import { isSandboxMode } from "./lib/sandbox";
 import { getPartnerDir, loadSettings, saveSettings } from "./lib/settings";
 import { createPartner, deletePartner, listPartners, PartnerError, type PartnerInput } from "./partners";
+import type { EscalationDecision, EscalationRequest, SandboxMode } from "./permission";
+import { isSandboxMode, SandboxManager } from "./permission";
 import { createSessionStore, type SessionScope } from "./persist";
-import { SandboxManager } from "./sandbox";
-import type { EscalationDecision, EscalationRequest, SandboxMode } from "./sandbox/types";
 import { runEscalatedBash } from "./tools";
 
 const session = createSessionStore();
@@ -175,10 +174,7 @@ type ResumeTurn = NonNullable<Awaited<ReturnType<typeof session.resumeTurn>>>;
  */
 async function resumeApprovedEscalation(entry: PartnerAgent, request: EscalationRequestRecord, turn: ResumeTurn) {
 	try {
-		const { text, exitCode } = await runEscalatedBash(request.command, request.to, {
-			guard: { workspaceRoot: () => entry.agent.workspacePath, storageRoot: () => entry.agent.storagePath },
-			sandbox: { manager: sandbox, getMode: () => request.to },
-		});
+		const { text, exitCode } = await runEscalatedBash(request.command, request.to, { permission: entry.agent.permission });
 		const result: ToolResultMessage = {
 			role: "toolResult",
 			toolCallId: request.toolCallId,

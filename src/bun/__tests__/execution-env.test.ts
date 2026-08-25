@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Permission } from "../permission";
 import { createExecutionEnv } from "../tools/execution-env";
 
 let root: string;
@@ -24,10 +25,8 @@ beforeAll(async () => {
 	await writeFile(join(workspace, "a.txt"), "hello");
 	await writeFile(join(workspace, ".env"), "SECRET=1");
 	await writeFile(join(storage, ".env"), "STORAGE_SECRET=1");
-	env = createExecutionEnv(workspace, {
-		workspaceRoot: () => workspace,
-		storageRoot: () => storage,
-	});
+	await writeFile(join(root, "outside.txt"), "outside");
+	env = createExecutionEnv(workspace, new Permission({ getPolicy: () => ({ workspace, storage, mode: "workspace-write" }) }));
 	plain = createExecutionEnv(workspace);
 });
 
@@ -56,10 +55,10 @@ describe("execution-env path guard", () => {
 		if (r.ok) expect(r.value).toBe("STORAGE_SECRET=1");
 	});
 
-	test("paths outside workspace and storage are denied", async () => {
+	test("reads outside workspace and storage are allowed", async () => {
 		const r = await env.readTextFile(join(root, "outside.txt"));
-		expect(r.ok).toBe(false);
-		if (!r.ok) expect(r.error.message).toContain("outside the workspace");
+		expect(r.ok).toBe(true);
+		if (r.ok) expect(r.value).toBe("outside");
 	});
 
 	test("write outside the workspace is denied", async () => {

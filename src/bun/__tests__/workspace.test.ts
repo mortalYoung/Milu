@@ -6,7 +6,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { validateWorkspace } from "../lib/workspace";
+import { validateWorkspace } from "../permission";
 
 const NONE = { current: null, storagePath: null };
 

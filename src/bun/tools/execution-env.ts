@@ -1,48 +1,19 @@
 /**
  * Tool execution environment: Bun filesystem + shell, implementing pi's ExecutionEnv.
  * Session persistence (pi JSONL backend) also reuses its pure fs part.
+ * All permission decisions (fs fence, sensitive scan, sandbox wrap) go through the
+ * injected Permission facade — this file is pure fs/shell plumbing.
  */
 import { appendFile, lstat, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, resolve, sep } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { type ExecutionEnv, ExecutionError, err, FileError, type FileInfo, ok, type Result, type ShellExecOptions } from "@earendil-works/pi-agent-core";
-import { type SandboxManager, SandboxUnavailableError } from "../sandbox";
-import type { SandboxMode, SandboxPolicy } from "../sandbox/types";
-
-/** Path guard for the tool environment: which roots the agent may touch, and which files are sensitive. */
-export interface EnvGuard {
-	/** The current workspace root (null = unset; relative paths resolve against the default cwd). */
-	workspaceRoot(): string | null;
-	/** The agent storage root: full access, sensitive files allowed. */
-	storageRoot(): string | null;
-}
-
-/** Sandbox runtime bound to the environment: the manager + the session's effective mode. */
-export interface SandboxRuntime {
-	manager: SandboxManager;
-	/** Session effective mode (per partner; may be overridden per call for escalation). */
-	getMode: () => SandboxMode;
-}
+import type { SandboxMode } from "../permission";
+import { Permission, PermissionError, SandboxUnavailableError, sandboxDenialMarker } from "../permission";
 
 /** exec options extended with a per-call sandbox mode (escalation path). */
 export interface SandboxedExecOptions extends ShellExecOptions {
 	sandboxMode?: SandboxMode;
-}
-
-/** Sensitive filenames: never readable/writable outside the storage path. */
-const SENSITIVE_PATTERNS: RegExp[] = [/^\.env(?:\.\w+)?$/, /\.pem$/, /\.key$/, /^id_rsa$/, /^id_ed25519$/, /^\.git-credentials$/, /^\.npmrc$/];
-
-function isSensitiveName(name: string): boolean {
-	return SENSITIVE_PATTERNS.some((p) => p.test(name));
-}
-
-function isInside(target: string, root: string): boolean {
-	return target === root || target.startsWith(root + sep);
-}
-
-/** Best-effort scan for sensitive files in a shell command (strict sandboxing is a follow-up). */
-function commandMentionsSensitive(command: string): boolean {
-	return /(?:^|[^A-Za-z0-9_./-])(?:\.env(?:\.\w+)?|[\w./-]*\.(?:pem|key)|id_rsa|id_ed25519|\.git-credentials|\.npmrc)(?:$|[^A-Za-z0-9_./-])/.test(command);
 }
 
 function mapFileError(path: string, cause: unknown): FileError {
@@ -65,32 +36,20 @@ function toFileInfo(path: string, s: { size: number; mtimeMs: number; isDirector
 	};
 }
 
-/** Filesystem + shell against the current working directory, optionally path-guarded and sandboxed. */
-export function createExecutionEnv(cwd: string, guard?: EnvGuard, sandbox?: SandboxRuntime): ExecutionEnv {
+/** Filesystem + shell against the current working directory, optionally permission-gated. */
+export function createExecutionEnv(cwd: string, permission?: Permission): ExecutionEnv {
 	const checkAbort = (signal?: AbortSignal) => signal?.throwIfAborted();
 	// Relative paths resolve against the workspace when set; without a workspace the default
 	// working directory is the storage path (the agent's own directory), else the static cwd
-	const base = () => guard?.workspaceRoot() ?? guard?.storageRoot() ?? cwd;
+	const base = () => permission?.workspaceRoot() ?? permission?.storageRoot() ?? cwd;
 	const absolute = (path: string) => resolve(base(), path);
 
-	// Returns an error message when the path is off-limits, null when allowed
-	const check = (path: string, op: "read" | "write"): string | null => {
-		if (!guard) return null;
-		const target = resolve(base(), path);
-		const storage = guard.storageRoot();
-		if (storage && isInside(target, storage)) return null; // storage: full access, sensitive files allowed
-		const workspace = guard.workspaceRoot() ?? guard.storageRoot() ?? cwd;
-		if (!isInside(target, workspace)) return "Path is outside the workspace and the storage path";
-		if (op === "write" && sandbox && sandbox.getMode() === "read-only") {
-			return "[sandbox: write denied under read-only mode]";
-		}
-		if (isSensitiveName(basename(target))) return "Sensitive file access is not allowed (except inside the storage path)";
-		return null;
-	};
 	// Result<never, …> so returning it from any method narrows cleanly (never is assignable to every value type)
 	const denied = (path: string, op: "read" | "write"): Result<never, FileError> | null => {
-		const message = check(path, op);
-		return message ? err(new FileError("permission_denied", message, path)) : null;
+		if (!permission) return null;
+		const target = absolute(path);
+		const decision = permission.checkFile(target, op);
+		return decision.allowed ? null : err(new PermissionError(decision.reason, target, decision.code));
 	};
 
 	return {
@@ -162,7 +121,9 @@ export function createExecutionEnv(cwd: string, guard?: EnvGuard, sandbox?: Sand
 		},
 		async renameFile(sourcePath, destinationPath, signal) {
 			checkAbort(signal);
-			const deniedPath = denied(sourcePath, "read") ?? denied(destinationPath, "write");
+			// rename moves the source — a write effect — so both sides are checked as writes
+			// (read is unrestricted, but moving an outside file into the workspace would mutate it)
+			const deniedPath = denied(sourcePath, "write") ?? denied(destinationPath, "write");
 			if (deniedPath) return deniedPath;
 			try {
 				await rename(absolute(sourcePath), absolute(destinationPath));
@@ -268,27 +229,24 @@ export function createExecutionEnv(cwd: string, guard?: EnvGuard, sandbox?: Sand
 		},
 		async exec(command, options) {
 			const opts: SandboxedExecOptions = options ?? {};
-			if (guard && commandMentionsSensitive(command)) {
-				return err(new ExecutionError("spawn_error", "Sensitive file access is not allowed (except inside the storage path)"));
+			// sensitive scan (defense-in-depth; the kernel profile is the boundary for writes)
+			if (permission) {
+				const scan = permission.checkCommand(command);
+				if (!scan.allowed) return err(new ExecutionError("spawn_error", scan.reason));
 			}
 			// sandbox wrap: confine argv under the session mode (or the per-call escalation mode)
 			let argv = ["/bin/sh", "-c", command];
 			let denialSignatures: string[] = [];
 			let runnerFailureRules: string[] = [];
 			let marker: string | undefined;
-			if (sandbox) {
-				const mode = opts.sandboxMode ?? sandbox.getMode();
-				const policy: SandboxPolicy = {
-					mode,
-					workspaceRoot: guard?.workspaceRoot() ?? null,
-					storageRoot: guard?.storageRoot() ?? null,
-				};
+			if (permission) {
+				const mode = opts.sandboxMode ?? permission.getMode();
 				try {
-					const confined = await sandbox.manager.confine(argv, policy);
+					const confined = await permission.confine(argv, { sandboxMode: mode });
 					argv = confined.argv;
 					denialSignatures = confined.denialSignatures;
 					runnerFailureRules = confined.runnerFailureRules;
-					if (confined.enforcement !== "none") marker = `[sandbox: file access denied under ${mode} mode]`;
+					if (confined.enforcement !== "none") marker = sandboxDenialMarker(mode);
 				} catch (e) {
 					if (e instanceof SandboxUnavailableError) {
 						return err(new ExecutionError("spawn_error", "sandbox unavailable — cannot execute confined command"));

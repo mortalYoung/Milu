@@ -18,14 +18,12 @@
  *   - agent_start/end → turn/start · turn/end (one run = one turn)
  * The user only sees `send_message` output, delivered through the bridge's onMessage.
  */
-import { resolve } from "node:path";
 import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage, ToolResultMessage } from "@earendil-works/pi-ai";
 import type { RuntimeStatsSnapshot, SessionStats } from "../../shared/rpc";
-import { validateWorkspace } from "../lib/workspace";
+import type { EscalationDecision, EscalationRequest, SandboxManager, SandboxMode } from "../permission";
+import { Permission, policyFor } from "../permission";
 import type { SessionScope } from "../persist";
-import type { SandboxManager } from "../sandbox";
-import type { EscalationDecision, EscalationRequest, SandboxMode } from "../sandbox/types";
 import { createTools } from "../tools";
 import { convertToLlm, resolveModel, STREAM_FN } from "./agent-config";
 import { AgentContext, appendSystemReminder } from "./context";
@@ -65,6 +63,8 @@ export interface AgentHandle {
 	chat: (text: string) => Promise<void>;
 	/** Resume a run from a restored context ending in a tool result (restart-resume after an approved escalation). */
 	continue: () => Promise<void>;
+	/** The permission facade bound to this agent's context (restart-resume re-runs the escalated command under it). */
+	readonly permission: Permission;
 	/** Abort the current run. */
 	stop: () => void;
 	/** User sent a message: refresh the visible clock (the progress-notification countdown restarts). */
@@ -108,6 +108,14 @@ export interface AgentDeps {
 
 export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	const ctx = new AgentContext();
+
+	// The permission facade is assembled here — it reads the policy from this agent's context
+	// per call, so workspace/mode changes apply to the very next decision.
+	const permission = new Permission({
+		sandbox: deps.sandbox,
+		getPolicy: () => policyFor(ctx.workspace_path, ctx.storage_path, ctx.sandbox_mode),
+		confirmEscalation: deps.confirmEscalation,
+	});
 
 	const runtime: RuntimeStatsSnapshot = {
 		runs: deps.runtimeStats?.runs ?? 0,
@@ -164,31 +172,21 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	}
 
 	// Tools need the agent instance (to write visible messages back into the agent context), so mount after construction.
-	// The path guard reads the workspace/storage roots from the context (null = unset).
+	// The permission facade reads the workspace/storage roots from the context (null = unset).
 	agent.state.tools = createTools({
 		store: deps.session,
 		onVisibleMessage: (text, timestamp) => deliverVisible(text, timestamp),
-		guard: {
-			workspaceRoot: () => ctx.workspace_path,
-			storageRoot: () => ctx.storage_path,
-		},
-		sandbox: deps.sandbox
-			? {
-					manager: deps.sandbox,
-					getMode: () => ctx.sandbox_mode,
-				}
-			: undefined,
-		confirmEscalation: deps.confirmEscalation,
-		// set_workspace: once per conversation, absolute path, must exist, not inside storage.
+		permission,
+		// set_workspace: the facade resolves the policy change (once per conversation, absolute
+		// path, must exist, not inside storage); applying it is the agent's job.
 		// Returns the resolved path so the tool can read the workspace's instructions file from it.
 		onSetWorkspace: (workspace: string): { ok: true; path: string } | { ok: false; error: string } => {
-			const error = validateWorkspace(workspace, { current: ctx.workspace_path, storagePath: ctx.storage_path });
-			if (error) return { ok: false, error };
-			const resolved = resolve(workspace);
-			ctx.workspace_path = resolved;
+			const decision = permission.setWorkspace(workspace);
+			if (!decision.allowed) return { ok: false, error: decision.reason };
+			ctx.workspace_path = decision.resolved;
 			bridge.onWorkspaceUpdate();
-			bridge.onWorkspaceSet?.(resolved);
-			return { ok: true, path: resolved };
+			bridge.onWorkspaceSet?.(decision.resolved);
+			return { ok: true, path: decision.resolved };
 		},
 	});
 	agent.state.systemPrompt = ctx.composeSystemPrompt();
@@ -435,6 +433,9 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		get runtimeStats(): SessionStats["runtime"] {
 			const avg = (xs: number[]) => (xs.length > 0 ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
 			return { runs: runtime.runs, avgTtftMs: avg(runtime.ttfts), avgTps: avg(runtime.speeds), lastTtftMs: runtime.lastTtft };
+		},
+		get permission() {
+			return permission;
 		},
 		/** Resume a run from a restored context whose last message is a tool result (restart-resume after an approved escalation). */
 		async continue() {

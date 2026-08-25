@@ -1,8 +1,8 @@
 import type { ElectrobunRPCSchema } from "electrobun";
+import type { SandboxMode } from "../bun/permission/types";
 import type { SurfaceNode } from "./surface";
 
-/** File-effect sandbox mode (per partner; human-owned via the composer select). */
-export type SandboxMode = "read-only" | "workspace-write" | "danger-full-access";
+export type { SandboxMode };
 
 /** Lifecycle of a sandbox escalation request as the transcript shows it: awaiting the human,
  * decided by the human, or orphaned (no live run awaits it — not actionable, no buttons). */

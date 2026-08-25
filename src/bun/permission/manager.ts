@@ -4,7 +4,7 @@
  * throw SANDBOX_UNAVAILABLE. `danger-full-access` bypasses the seam entirely.
  */
 import { seatbeltBackend } from "./backends/seatbelt";
-import type { ConfinedArgv, SandboxBackend, SandboxMode, SandboxPolicy } from "./types";
+import type { ConfinedArgv, PermissionPolicy, SandboxBackend } from "./types";
 
 export class SandboxUnavailableError extends Error {
 	constructor(message = "SANDBOX_UNAVAILABLE — no usable sandbox backend on this platform") {
@@ -60,19 +60,12 @@ export class SandboxManager {
 	 * Confine argv under a policy. danger-full-access bypasses the seam (original argv,
 	 * enforcement "none"). Throws SandboxUnavailableError when no backend is usable.
 	 */
-	async confine(argv: string[], policy: SandboxPolicy): Promise<ConfinedArgv> {
+	async confine(argv: string[], policy: PermissionPolicy): Promise<ConfinedArgv> {
 		if (policy.mode === "danger-full-access") {
 			return { argv, enforcement: "none", denialSignatures: [], runnerFailureRules: [] };
 		}
 		const backend = await this.resolve();
 		if (!backend) throw new SandboxUnavailableError();
 		return backend.confine(argv, policy);
-	}
-
-	/** Modes strictly wider than the current one (escalation may only go wider). */
-	widerModes(mode: SandboxMode): SandboxMode[] {
-		if (mode === "read-only") return ["workspace-write", "danger-full-access"];
-		if (mode === "workspace-write") return ["danger-full-access"];
-		return [];
 	}
 }

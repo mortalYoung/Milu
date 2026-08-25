@@ -1,12 +1,11 @@
 import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import type { SandboxMode } from "../../shared/rpc";
-import { sandboxFilePath } from "./sandbox";
+import type { SandboxMode } from "../permission";
+import { sandboxFilePath, workspaceFilePath } from "../permission";
 import { getPartnerDir, loadSettings } from "./settings";
 
 // Workspace persistence: per-partner file (survives restart; re-validated on restore).
-export const workspaceFilePath = (dir: string) => join(dir, "workspace.json");
 export async function persistWorkspace(dir: string, path: string) {
 	try {
 		await writeFile(workspaceFilePath(dir), JSON.stringify({ path }, null, 2), "utf8");
