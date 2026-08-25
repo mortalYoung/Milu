@@ -5,7 +5,6 @@
 import type { AgentHarnessTool, AgentTool, ExecutionEnv, ExecutionToolContext } from "@earendil-works/pi-agent-core";
 import { createEditTool, createReadTool, createWriteTool } from "@earendil-works/pi-agent-core";
 import { type TSchema, Type } from "@earendil-works/pi-ai";
-import { PROJECT_ROOT } from "../core/config";
 import { loadSettings } from "../lib/settings";
 import type { SandboxMode } from "../permission";
 import { Permission } from "../permission";
@@ -191,7 +190,8 @@ function bashTool(deps: ToolDeps): AgentHarnessTool<ExecutionToolContext, TSchem
  * a fresh env confined under the granted mode, output shaped exactly like the bash tool's.
  */
 export async function runEscalatedBash(command: string, mode: SandboxMode, deps: { permission: Permission }): Promise<{ text: string; exitCode?: number; truncated: boolean }> {
-	const env = createExecutionEnv(PROJECT_ROOT, deps.permission);
+	// cwd is unused while a permission facade is mounted — the env resolves against workspace/storage
+	const env = createExecutionEnv("", deps.permission);
 	const { stdout, stderr, exitCode } = await runBash(env, command, { sandboxMode: mode });
 	const out = tail([stdout, stderr].filter((s) => s).join("\n"));
 	let text = out.text || "(no output)";
@@ -202,7 +202,7 @@ export async function runEscalatedBash(command: string, mode: SandboxMode, deps:
 /** The standard pi toolset (read, write, edit, bash) + send_message + set_workspace, bound to the permission-gated env. */
 export function createTools(deps: ToolDeps): AgentTool[] {
 	// The env is created per toolset so it can carry the permission facade (policy read dynamically)
-	const env = createExecutionEnv(PROJECT_ROOT, deps.permission);
+	const env = createExecutionEnv("", deps.permission);
 	return [
 		bindEnv(createReadTool(), env),
 		bindEnv(createWriteTool(), env),

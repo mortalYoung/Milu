@@ -79,14 +79,6 @@ describe("AgentContext prompt assembly", () => {
 		expect(p).toContain("# STORAGE");
 	});
 
-	test("previewSystemPrompt uses the passed profile, does not change the current context", () => {
-		const ctx = new AgentContext();
-		ctx.setPartner({ responsibilities: "A" });
-		const preview = ctx.previewSystemPrompt({ responsibilities: "B" });
-		expect(preview).toContain("B");
-		expect(ctx.composeSystemPrompt()).toContain("A");
-	});
-
 	test("composeSystemPrompt includes PERSONA when responsibilities exist", () => {
 		const ctx = new AgentContext();
 		ctx.setPartner({ responsibilities: "Ship features" });

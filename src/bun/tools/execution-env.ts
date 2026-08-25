@@ -39,9 +39,20 @@ function toFileInfo(path: string, s: { size: number; mtimeMs: number; isDirector
 /** Filesystem + shell against the current working directory, optionally permission-gated. */
 export function createExecutionEnv(cwd: string, permission?: Permission): ExecutionEnv {
 	const checkAbort = (signal?: AbortSignal) => signal?.throwIfAborted();
-	// Relative paths resolve against the workspace when set; without a workspace the default
-	// working directory is the storage path (the agent's own directory), else the static cwd
-	const base = () => permission?.workspaceRoot() ?? permission?.storageRoot() ?? cwd;
+	// Relative paths resolve against the workspace when set; without a workspace, the storage
+	// path (the agent's own directory). A permissioned env with neither root fails loudly —
+	// silently resolving against a static cwd would misplace file effects. The static cwd
+	// serves only permission-less pure-fs envs (the session store).
+	const base = () => {
+		if (permission) {
+			const workspace = permission.workspaceRoot();
+			if (workspace) return workspace;
+			const storage = permission.storageRoot();
+			if (!storage) throw new Error("permission env has no workspace or storage root");
+			return storage;
+		}
+		return cwd;
+	};
 	const absolute = (path: string) => resolve(base(), path);
 
 	// Result<never, …> so returning it from any method narrows cleanly (never is assignable to every value type)

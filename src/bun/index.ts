@@ -6,7 +6,6 @@ import type { AppRPCSchema } from "../shared/rpc";
 import { type AgentHandle, createAgent } from "./core/agent";
 import { contextWindow } from "./core/agent-config";
 import { applyCompaction, type CompactionPlan, planCompaction } from "./core/compaction";
-import { DATABASE_ROOT } from "./core/config";
 import { loadRuntimeStats, saveRuntimeStats } from "./core/runtime-stats";
 import { priceSurface } from "./core/token-meter";
 import { aggregateUsage, fold, lastUsage } from "./core/trajectory";
@@ -220,13 +219,6 @@ async function maybeAutoCompact(entry: PartnerAgent): Promise<void> {
 	}
 }
 
-// preview_system_prompt composes purely from the profile; a throwaway agent with a no-op bridge
-// serves it before any partner agent exists (nothing opens — scopes are lazy).
-const previewAgent = createAgent(
-	{ onTurnStart: () => {}, onMessage: () => {}, onTrajectoryUpdate: () => {}, onWorkspaceUpdate: () => {}, onEnd: () => {} },
-	{ session: session.scope(DATABASE_ROOT) },
-);
-
 const rpc = BrowserView.defineRPC<AppRPCSchema>({
 	handlers: {
 		requests: {
@@ -438,9 +430,6 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					console.error("create_partner failed:", error);
 					return { ok: false, error: "Failed to create partner" };
 				}
-			},
-			preview_system_prompt: ({ profile }) => {
-				return { prompt: previewAgent.previewSystemPrompt(profile) };
 			},
 			// The view's selection: no deferral needed — every partner runs on its own agent, so the
 			// switch is instant (only the transcript shown changes). The agent is created on demand.

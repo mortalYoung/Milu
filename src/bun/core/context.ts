@@ -59,11 +59,6 @@ export class AgentContext {
 		return buildSystemPrompt(this.partner);
 	}
 
-	/** Compose a trial prompt from the given profile (for preview; does not change the current context). */
-	previewSystemPrompt(partner: PartnerPrompt | null): string {
-		return buildSystemPrompt(partner);
-	}
-
 	// ————— Lifecycle hooks (called by event callbacks) —————
 	/** Each turn start (turn_start): count +1, return the new turn number. */
 	beginTurn(): number {

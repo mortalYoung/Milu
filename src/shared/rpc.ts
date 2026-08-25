@@ -321,13 +321,6 @@ export type AppRPCSchema = __schema<{
 				};
 				response: { ok: boolean };
 			};
-			/** Compose a trial four-section system prompt (identify/tool-guidance shown read-only, for the create dialog preview). */
-			preview_system_prompt: {
-				params: {
-					profile: { responsibilities?: string; tones?: string };
-				};
-				response: { prompt: string };
-			};
 			/** Delete a Partner: remove its profile directory. */
 			delete_partner: {
 				params: { name: string };

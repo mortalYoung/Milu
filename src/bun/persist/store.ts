@@ -19,7 +19,6 @@ import { buildSessionContext, JsonlSessionRepo, Session } from "@earendil-works/
 import type { AssistantMessage, ToolResultMessage, Usage } from "@earendil-works/pi-ai";
 import type { EscalationStatus, SandboxMode } from "../../shared/rpc";
 import type { Surface, SurfaceOpRecord } from "../../shared/surface";
-import { PROJECT_ROOT } from "../core/config";
 import { buildResumeTurn, deriveMessages as deriveSurfaceMessages, dropDanglingTurn, foldSurface, pairToolResults } from "../core/surface";
 import { createExecutionEnv } from "../tools/execution-env";
 import { EVENTS, type ToolResultEventData, type TurnEndReason } from "./events";
@@ -209,7 +208,7 @@ export function createSessionStore(): SessionStore {
 		const repo = new JsonlSessionRepo({ fs: createExecutionEnv(newRoot), sessionsRoot: newRoot });
 		const sessions = await repo.list();
 		// Single continuous session: take the newest
-		const session = sessions.length > 0 ? await repo.open(sessions[sessions.length - 1]) : await repo.create({ cwd: PROJECT_ROOT });
+		const session = sessions.length > 0 ? await repo.open(sessions[sessions.length - 1]) : await repo.create({ cwd: newRoot });
 		const state: RootState = { repo, session, entries: [] };
 		roots.set(newRoot, Promise.resolve(state));
 		await refreshEntries(state);

@@ -79,8 +79,6 @@ export interface AgentHandle {
 	setStoragePath: (path: string | null) => void;
 	/** Set the agent's workspace (delivered via system_reminder; the prompt stays static). */
 	setWorkspace: (path: string | null) => void;
-	/** Compose a trial system prompt from the profile fields (for preview; does not change agent state). */
-	previewSystemPrompt: (partner: PartnerPrompt | null) => string;
 }
 
 export interface AgentDeps {
@@ -489,9 +487,6 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		setWorkspace(path: string | null) {
 			ctx.workspace_path = path;
 			bridge.onWorkspaceUpdate();
-		},
-		previewSystemPrompt(partner: PartnerPrompt | null) {
-			return ctx.previewSystemPrompt(partner);
 		},
 	};
 }
