@@ -36,6 +36,12 @@ export function Composer(props: {
 	sandboxMode: SandboxMode;
 	/** Persist a new per-partner sandbox mode. */
 	onSetSandboxMode: (mode: SandboxMode) => void;
+	/** The per-partner model selection (null → deepseek default). */
+	model: { provider: string; modelId?: string } | null;
+	/** Catalog models of every added provider, grouped for the select. */
+	models: { provider: string; models: { id: string; name: string }[] }[];
+	/** Persist a new per-partner model selection. */
+	onSetModel: (model: { provider: string; modelId?: string }) => void;
 	contextUsage?: ContextUsage | null;
 	/** Session-wide metrics: whole-chat usage totals + averaged TTFT / tok/s. */
 	stats?: SessionStats | null;
@@ -139,6 +145,27 @@ export function Composer(props: {
 							<span class="composer-status-dot" />
 							<span>{status()}</span>
 						</span>
+					)}
+					{props.models.length > 0 && (
+						<select
+							class="composer-model"
+							title="Model (per partner)"
+							value={props.model ? `${props.model.provider}/${props.model.modelId ?? ""}` : ""}
+							onChange={(e) => {
+								const [provider, modelId] = e.currentTarget.value.split("/");
+								props.onSetModel({ provider, modelId: modelId || undefined });
+							}}
+						>
+							{props.models.map((g) => (
+								<optgroup label={g.provider}>
+									{g.models.map((m) => (
+										<option value={`${g.provider}/${m.id}`}>
+											{m.name} · {m.id}
+										</option>
+									))}
+								</optgroup>
+							))}
+						</select>
 					)}
 					<select
 						class="composer-sandbox"

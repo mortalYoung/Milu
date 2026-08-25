@@ -6,11 +6,11 @@ A minimal agent-harness desktop app. The **[pi agent harness](https://pi.dev)** 
         ┌─────────────────────────────────────────┐
         │                 LETTERS                 │
         │  ───────────────────────────────────────  │
-        │                       what time is it?   │
+        │                       set_workspace ✓    │
         │        ┌───────────────────────┐         │
         │        │ ▍                     │  21:34  │
         │        └───────────────────────┘         │
-        │      ⇢ now · ran ✓                       │
+        │      ⇢ send_message · ran ✓              │
         │  AGENT: IDLE                              │
         │  ( type a prompt … )  STOP  NEW [SEND ↗] │
         └─────────────────────────────────────────┘
@@ -18,7 +18,7 @@ A minimal agent-harness desktop app. The **[pi agent harness](https://pi.dev)** 
 
 IM structure with FT editorial dressing: pink paper background
 (`#FFF1E5` — the salmon-pink paper FT has printed on since 1888),
-white agent cards vs dark-slate user bubbles, Georgia serif message
+white agent cards vs dark-slate user bubbles, Newsreader serif message
 text, teal status accents, flat print buttons, serif wordmark on the
 pink hero strip.
 
@@ -31,10 +31,13 @@ The agent is built on `@earendil-works/pi-agent-core`, whose `runLoop` is a doub
 
 Every message you type starts a `prompt()` run. Messages typed **while the agent is busy** are queued via `followUp()` and picked up by the outer loop — watch the status bar: `RUNNING · TURN n` counts inner-loop turns, `· n queued` shows the outer loop at work.
 
-The standard toolset — `read`, `write`, `edit`, `bash` — runs in a Bun-backed
-execution environment (filesystem + shell, cwd = the app's working directory)
-and demonstrates the inner loop (LLM → tool → result → LLM). Try: "list the
-files in the current directory" or "create a file and edit it".
+The toolset — `read`, `write`, `edit`, `bash`, `send_message`, `set_workspace` —
+runs in a Bun-backed execution environment that is **permission-gated**:
+the agent writes only inside its workspace/storage (reads are unrestricted
+except sensitive files), bash runs under a macOS Seatbelt profile, and
+wider access goes through a human-approved escalation. `send_message` is
+the agent's only channel to the user; `set_workspace` pins the conversation
+to a project directory.
 
 ## Stack
 
@@ -43,37 +46,39 @@ files in the current directory" or "create a file and edit it".
 | Shell | [Electrobun](https://electrobun.dev) (Bun main process + native webview) |
 | Agent runtime | [`@earendil-works/pi-agent-core`](https://www.npmjs.com/package/@earendil-works/pi-agent-core) |
 | LLM layer | [`@earendil-works/pi-ai`](https://www.npmjs.com/package/@earendil-works/pi-ai) (unified multi-provider) |
-| Provider | DeepSeek (`deepseek-v4-flash`, OpenAI-completions API) |
-| View | Solid + Vite + Tailwind v4, FT editorial style — pink paper `#FFF1E5`, warm ink, Playfair Display serif, teal accents (palette measured from ft.com) |
+| Provider | Any pi-ai built-in (deepseek default) — chosen in Settings with the api key |
+| Sandbox | macOS Seatbelt (`sandbox-exec`), fail-closed; escalation behind a human gate |
+| View | Solid + Vite + Tailwind v4, FT editorial style — pink paper `#FFF1E5`, Newsreader + Public Sans, teal accents |
 
 ## Getting started
 
 ```bash
 bun install
-cp .env.example .env             # then put your DEEPSEEK_API_KEY in .env
-bun run dev                      # dev mode with watch (.env is auto-loaded)
+bun run dev                      # dev mode with watch
 ```
 
-`.env` lives in the project root and is git-ignored — the dev scripts load it via
-`bun --env-file=.env`, so the key reaches the main process without shell exports.
-Optional: `PI_MODEL=deepseek-v4-pro` in `.env` to switch models (anything in
-pi-ai's deepseek catalog).
-
-> No key set? The app still runs — the agent replies with an `ERR §` line telling you so.
+Then open **Settings** (gear icon) → **Providers** to add providers (each
+once, api key required at add time) and paste keys — they are stored in
+`~/.config/letters/.credentials.yaml` (mode 0600) and are the only credential
+source; settings.json itself never holds secrets, and saved keys are never
+previewed in the UI. Settings save immediately (no Save button). No key →
+the agent refuses to run with a clear error. The model per partner is picked
+in the composer's model select.
 
 ## How it fits together
 
 ```
  mainview (zine UI)
-   │  RPC: chat / stop / reset (requests)     ← src/shared/rpc.ts is the single
-   │  RPC: agent_delta · agent_turn ·          source of truth for the wire format
-   │       agent_tool · agent_end (messages)
+   │  RPC requests: chat / stop / reset / set_sandbox_mode / sandbox_respond …
+   │  RPC messages: agent_turn · agent_message · trajectory_update ·
+   │       escalation_update · sandbox_mode_update …
    ▼
- src/bun/index.ts — window + RPC handlers
+ src/bun/index.ts — composition root: window + RPC wiring + escalation gate
    ▼
- src/bun/agent.ts — the pi Agent (double loop), one tool: `now`
+ src/bun/core/agent.ts — the pi Agent (double loop), tools bound to the
+   │                     Permission facade
    ▼
- pi-ai streamFn → DeepSeek API
+ pi-ai streamSimple → the provider chosen in Settings
 ```
 
 ## Project structure
@@ -81,22 +86,25 @@ pi-ai's deepseek catalog).
 ```
 src/
 ├── bun/
-│   ├── index.ts        # composition root: window + RPC wiring
+│   ├── index.ts        # composition root: window + RPC wiring + escalation gate
 │   ├── core/           # agent runtime: agent.ts (double loop), agent-config.ts
-│   │                   #   (model/stream/projection), prompt.ts (SOUL persona),
-│   │                   #   session.ts (JSONL persistence), config.ts (constants)
-│   └── tools/          # execution-env.ts (Bun fs/shell) + tool assembly
-│                       #   (read/write/edit/bash + send_message)
-├── mainview/           # built by Vite (vite.config.ts) into dist/ (git-ignored)
+│   │                   #   (providers/model/stream), context.ts, prompt.ts,
+│   │                   #   compaction.ts, surface.ts, trajectory.ts, token-meter.ts
+│   ├── permission/     # every permission decision: Permission facade, path/sensitive
+│   │                   #   guards, sandbox manager + seatbelt backend, escalation rules
+│   ├── persist/        # JSONL session log: store.ts, events.ts (event vocabulary)
+│   ├── tools/          # execution-env.ts (Bun fs/shell, permission-gated) + tool assembly
+│   ├── lib/            # ensure.ts (per-partner restore), settings.ts, partner-files.ts
+│   └── partners.ts     # partner profiles (folder-safe names)
+├── mainview/           # built by Vite into dist/ (git-ignored)
 │   ├── index.html      # Vite entry
 │   ├── index.tsx       # bootstrap: render <App/> into #app
 │   ├── App.tsx         # controller: RPC wiring, app state, shell chrome
-│   ├── components/     # Button (FT variants), Composer (input + dual-mode send)
-│   ├── layouts/        # Transcript (document rendering, storage-driven)
-│   ├── style.css       # Tailwind v4 source: FT theme + component styles
-│   └── assets/fonts/   # Playfair Display + JetBrains Mono (OFL), bundled by Vite
+│   ├── components/ · layouts/ · pages/ · lib/
+│   └── style.css       # Tailwind v4 source: FT theme + component styles
 └── shared/
-    └── rpc.ts          # AppRPCSchema (typed requests/messages, shared both sides)
+    ├── rpc.ts          # AppRPCSchema (typed requests/messages, shared both sides)
+    └── surface.ts · trajectory.ts   # view-facing surface/trajectory types
 ```
 
 ## Commands
@@ -107,13 +115,13 @@ src/
 | `bun run dev:view` | Vite watch (rebuild the view on change) |
 | `bun run build` | Vite build, then production build |
 | `bun run build:view` | build the view with Vite (Solid + Tailwind) |
+| `bun run test` | run the Bun test suite |
 | `bun run format` | format everything with Biome |
 | `bun run format:check` | verify formatting (CI-friendly) |
 | `bun run typecheck` | `tsc --noEmit` |
 
 ## Roadmap
 
-- Permission prompt for the built-in tools (bash currently runs with the app's permissions, no sandbox)
-- Conversation persistence (pi's JSONL session backend)
-- Provider/model picker in the UI
-- Tool-call streaming progress in the transcript
+- Tool-call streaming progress in the transcript (tool calls currently render after the fact)
+- Model picker (today the provider's default model is used; any catalog model can be pinned via settings)
+- Network policy for the sandbox seam (file effects only today)

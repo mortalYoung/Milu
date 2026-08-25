@@ -162,6 +162,9 @@ export function App() {
 					storagePath={status.storagePath()}
 					sandboxMode={status.sandboxMode()}
 					onSetSandboxMode={(mode) => void status.onSetSandboxMode(mode)}
+					model={status.model()}
+					models={status.models()}
+					onSetModel={(model) => void status.onSetModel(model)}
 					onEscalationRespond={(id, approved) => void rpc.request.sandbox_respond({ id, approved })}
 					contextUsage={metrics.contextUsage()}
 					stats={metrics.stats()}
@@ -173,11 +176,16 @@ export function App() {
 
 			{/* Settings: dialog */}
 			<Dialog open={shell.settingsOpen()} onOpenChange={shell.setSettingsOpen}>
-				<DialogContent class="w-[440px] bg-white border-print-line">
+				<DialogContent class="w-[660px] max-w-none h-[540px] grid-rows-[auto_1fr] bg-white border-print-line">
 					<DialogHeader>
 						<DialogTitle>Settings</DialogTitle>
 					</DialogHeader>
-					<SettingsView settings={settings.settings()} runtime={settings.runtime()} onLoad={() => void settings.refresh()} onSave={(s: SettingsData) => settings.save(s)} />
+					<SettingsView
+						settings={settings.settings()}
+						runtime={settings.runtime()}
+						onLoad={() => void settings.refresh()}
+						onSave={(s: SettingsData, credentials) => settings.save(s, credentials)}
+					/>
 				</DialogContent>
 			</Dialog>
 

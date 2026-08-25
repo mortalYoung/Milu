@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -7,6 +7,8 @@ export interface Settings {
 	partner_profile_path: string;
 	/** Instructions file read by set_workspace (relative to the workspace root). */
 	detect_instructions_file: string;
+	/** The added LLM providers (each builtin id at most once; keys live in .credentials.yaml). */
+	providers?: string[];
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -14,7 +16,7 @@ const DEFAULT_SETTINGS: Settings = {
 	detect_instructions_file: "AGENTS.md",
 };
 
-const SETTINGS_PATH = join(homedir(), ".config", ".partner");
+const SETTINGS_PATH = join(homedir(), ".config", "letters", "settings.json");
 
 export async function loadSettings(): Promise<Settings> {
 	try {
@@ -26,8 +28,10 @@ export async function loadSettings(): Promise<Settings> {
 }
 
 export async function saveSettings(settings: Settings): Promise<void> {
-	await mkdir(join(homedir(), ".config"), { recursive: true });
-	await writeFile(SETTINGS_PATH, JSON.stringify(settings, null, 2) + "\n", "utf8");
+	await mkdir(join(homedir(), ".config", "letters"), { recursive: true });
+	// The file holds the user's api key — never world-readable
+	await writeFile(SETTINGS_PATH, JSON.stringify(settings, null, 2) + "\n", { encoding: "utf8", mode: 0o600 });
+	await chmod(SETTINGS_PATH, 0o600);
 }
 
 /** Expand a leading ~ into the user's home directory. */

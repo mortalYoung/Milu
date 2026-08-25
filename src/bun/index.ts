@@ -1,22 +1,27 @@
 import { homedir } from "node:os";
 import { sep } from "node:path";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
+import { getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
 import { ApplicationMenu, BrowserView, BrowserWindow } from "electrobun/bun";
 import type { AppRPCSchema } from "../shared/rpc";
 import { type AgentHandle, createAgent } from "./core/agent";
-import { contextWindow } from "./core/agent-config";
+import { contextWindow, providerModels } from "./core/agent-config";
 import { applyCompaction, type CompactionPlan, planCompaction } from "./core/compaction";
 import { loadRuntimeStats, saveRuntimeStats } from "./core/runtime-stats";
 import { priceSurface } from "./core/token-meter";
 import { aggregateUsage, fold, lastUsage } from "./core/trajectory";
-import { ensureSandboxMode, ensureStoragePath, ensureWorkspace } from "./lib/ensure";
-import { partnerDirFor, persistSandboxMode, persistWorkspace, promptChangedSinceLastPersist, recordPrompt } from "./lib/partner-files";
+import { deleteApiKey, getApiKey, loadCredentials, setApiKey } from "./lib/credentials";
+import { ensureModel, ensureSandboxMode, ensureStoragePath, ensureWorkspace } from "./lib/ensure";
+import { partnerDirFor, persistModel, persistSandboxMode, persistWorkspace, promptChangedSinceLastPersist, recordPrompt } from "./lib/partner-files";
 import { getPartnerDir, loadSettings, saveSettings } from "./lib/settings";
 import { createPartner, deletePartner, listPartners, PartnerError, type PartnerInput } from "./partners";
 import type { EscalationDecision, EscalationRequest, SandboxMode } from "./permission";
 import { isSandboxMode, SandboxManager } from "./permission";
 import { createSessionStore, type SessionScope } from "./persist";
 import { runEscalatedBash } from "./tools";
+
+// Api keys load from .credentials.yaml once at startup (settings only lists which providers are added).
+await loadCredentials();
 
 const session = createSessionStore();
 const sandbox = new SandboxManager();
@@ -96,6 +101,7 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 	// Restore the persisted workspace (per-partner): re-validated so a deleted directory is not restored
 	const workspace = await ensureWorkspace(dir);
 	const mode = await ensureSandboxMode(dir);
+	const model = await ensureModel(dir);
 
 	const scope = session.scope(dir);
 	const agent = createAgent(
@@ -150,6 +156,7 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 	agent.setStoragePath(storagePath);
 	agent.setWorkspace(workspace);
 	agent.setSandboxMode(mode);
+	agent.setModel(model);
 	// Persist the rebuilt prompt so the trajectory view can show it — per root, and only when it
 	// actually changed; the hash record is file-backed so restarts don't pile up identical entries
 	if (await promptChangedSinceLastPersist(dir, agent.systemPrompt)) {
@@ -205,7 +212,7 @@ async function maybeAutoCompact(entry: PartnerAgent): Promise<void> {
 	const entries = await session.rawEntries(entry.dir);
 	const usage = lastUsage(entries);
 	if (!usage) return;
-	const window = contextWindow();
+	const window = contextWindow(entry.agent.model ?? undefined);
 	const used = usage.input + usage.cacheRead + usage.cacheWrite;
 	if (used < window * COMPACT_THRESHOLD) return;
 	try {
@@ -280,12 +287,23 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 						return { name, streaming: entry.agent.isStreaming && pendingEscalationCount(name) === 0 };
 					}),
 				);
+				const addedProviders = (await loadSettings()).providers ?? [];
 				return {
 					workspace_path: selected?.agent.workspacePath ? tildify(selected.agent.workspacePath) : null,
 					storage_path: selected?.agent.storagePath ? tildify(selected.agent.storagePath) : null,
 					sandbox_mode: selected?.agent.sandboxMode ?? "workspace-write",
+					model: selected?.agent.model ?? null,
+					models: addedProviders.map((p) => ({ provider: p, models: providerModels(p) })),
 					partners,
 				};
+			},
+			set_partner_model: async ({ model }) => {
+				if (!viewPartner) return { ok: false, error: "no partner selected" };
+				const entry = await ensureAgent(viewPartner.profile);
+				const normalized = { provider: model.provider, ...(model.modelId ? { modelId: model.modelId } : {}) };
+				entry.agent.setModel(normalized);
+				await persistModel(entry.dir, normalized);
+				return { ok: true };
 			},
 			set_sandbox_mode: async ({ mode }) => {
 				if (!viewPartner) return { ok: false, error: "no partner selected" };
@@ -373,7 +391,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				const surface = target ? await session.surface(target.dir) : { nodes: [], replaceGeneration: 0 };
 				const usage = lastUsage(entries);
 				const used = usage ? usage.input + usage.cacheRead + usage.cacheWrite : 0;
-				const window = contextWindow();
+				const window = contextWindow(entry?.agent.model ?? undefined);
 				const percent = used === 0 ? 0 : Math.min(100, Math.round((used / window) * 100));
 				return {
 					used,
@@ -394,17 +412,35 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				return { usage, runtime: entry?.agent.runtimeStats ?? { runs: 0, avgTtftMs: null, avgTps: null, lastTtftMs: null } };
 			},
 			get_settings: async () => {
+				const settings = await loadSettings();
 				return {
-					settings: await loadSettings(),
+					settings,
 					runtime: {
-						model: process.env["PI_MODEL"] ?? "deepseek-v4-flash",
-						apiKeyConfigured: Boolean(process.env["DEEPSEEK_API_KEY"]),
+						providers: (settings.providers ?? []).map((id) => ({ id, configured: Boolean(getApiKey(id)) })),
+						allProviders: getBuiltinProviders(),
 					},
 				};
 			},
-			update_settings: async ({ settings }) => {
-				await saveSettings(settings);
-				return { ok: true };
+			update_settings: async ({ settings, credentials }) => {
+				try {
+					// Diff against the persisted providers BEFORE saving (the save overwrites them)
+					const prev = (await loadSettings()).providers ?? [];
+					const next = settings.providers ?? [];
+					// Keys ride the RPC but never touch settings.json — they go to .credentials.yaml
+					if (credentials) {
+						for (const [provider, key] of Object.entries(credentials)) {
+							if (key) await setApiKey(provider, key);
+						}
+					}
+					await saveSettings(settings);
+					// Removed providers delete their secret — sensitive data does not linger
+					for (const removed of prev.filter((p) => !next.includes(p))) {
+						await deleteApiKey(removed);
+					}
+					return { ok: true };
+				} catch (error) {
+					return { ok: false, error: error instanceof Error ? error.message : String(error) };
+				}
 			},
 			list_partners: async () => {
 				const settings = await loadSettings();

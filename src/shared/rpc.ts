@@ -226,6 +226,10 @@ export type AppRPCSchema = __schema<{
 					/** The selected chat's storage dir (the agent's own directory; full access, sensitive files allowed). */
 					storage_path: string | null;
 					sandbox_mode: SandboxMode;
+					/** The selected partner's model selection (null → deepseek default). */
+					model: { provider: string; modelId?: string } | null;
+					/** Catalog models of every added provider (the composer's grouped select). */
+					models: { provider: string; models: { id: string; name: string }[] }[];
 					/** Per-partner view-facing streaming (escalation-paused runs read idle) — drives the list dots. */
 					partners: { name: string; streaming: boolean }[];
 				};
@@ -233,6 +237,11 @@ export type AppRPCSchema = __schema<{
 			/** Set the per-partner sandbox mode (persisted to <partnerDir>/sandbox.json). */
 			set_sandbox_mode: {
 				params: { mode: SandboxMode };
+				response: { ok: boolean; error?: string };
+			};
+			/** Set the per-partner model selection (persisted to <partnerDir>/model.json). */
+			set_partner_model: {
+				params: { model: { provider: string; modelId?: string } };
 				response: { ok: boolean; error?: string };
 			};
 			/** Respond to a pending sandbox escalation request (view dialog → bun). */
@@ -269,13 +278,30 @@ export type AppRPCSchema = __schema<{
 			get_settings: {
 				params: {};
 				response: {
-					settings: { partner_profile_path: string; detect_instructions_file: string };
-					runtime: { model: string; apiKeyConfigured: boolean };
+					settings: {
+						partner_profile_path: string;
+						detect_instructions_file: string;
+						providers?: string[];
+					};
+					runtime: {
+						/** Every added provider with its key-configured state (keys never leave bun). */
+						providers: { id: string; configured: boolean }[];
+						/** Every built-in provider id (the add-provider dropdown). */
+						allProviders: string[];
+					};
 				};
 			};
 			update_settings: {
-				params: { settings: { partner_profile_path: string; detect_instructions_file: string } };
-				response: { ok: boolean };
+				params: {
+					settings: {
+						partner_profile_path: string;
+						detect_instructions_file: string;
+						providers?: string[];
+					};
+					/** Provider → api key for any provider the user edited this save (non-empty values only). */
+					credentials?: Record<string, string>;
+				};
+				response: { ok: boolean; error?: string };
 			};
 			/** Partner list (by creation time), each with the last visible message for its list-row preview. */
 			list_partners: {

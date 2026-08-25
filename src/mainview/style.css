@@ -1047,6 +1047,10 @@ body::before {
 	.composer-sandbox {
 		@apply font-mono text-[9px] text-muted bg-transparent border border-hairline rounded px-1 py-[1px] cursor-pointer outline-none;
 	}
+	/* Per-partner model select: same quiet mono style as the sandbox select, wider for provider/model names */
+	.composer-model {
+		@apply font-mono text-[9px] text-muted bg-transparent border border-hairline rounded px-1 py-[1px] cursor-pointer outline-none min-w-0 max-w-[220px] truncate;
+	}
 	.composer-status-dot {
 		@apply size-[5px] rounded-full;
 		background: var(--color-seal);

@@ -23,6 +23,16 @@ export async function persistSandboxMode(dir: string, mode: SandboxMode) {
 	}
 }
 
+// Per-partner model selection (provider + pinned model): survives restart, restored on partner switch.
+export const modelFilePath = (dir: string) => join(dir, "model.json");
+export async function persistModel(dir: string, model: { provider: string; modelId?: string }) {
+	try {
+		await writeFile(modelFilePath(dir), JSON.stringify(model, null, 2), "utf8");
+	} catch (error) {
+		console.error("persistModel failed:", error);
+	}
+}
+
 // Prompt persistence dedup: the prompt is static, and an in-memory guard resets on every restart
 // (one system_prompt appended per launch, piling up identical entries). Record the last persisted
 // prompt hash per root on disk so restarts stay silent until the prompt actually changes.

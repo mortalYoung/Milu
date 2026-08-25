@@ -47,6 +47,12 @@ export function ConversationPage(props: {
 	sandboxMode: SandboxMode;
 	/** Persist a new per-partner sandbox mode (composer select onChange). */
 	onSetSandboxMode: (mode: SandboxMode) => void;
+	/** The per-partner model selection (composer select; human-owned). */
+	model: { provider: string; modelId?: string } | null;
+	/** Catalog models of every added provider, grouped for the select. */
+	models: { provider: string; models: { id: string; name: string }[] }[];
+	/** Persist a new per-partner model selection (composer select onChange). */
+	onSetModel: (model: { provider: string; modelId?: string }) => void;
 	/** Context occupancy for the composer meter (null before the first turn). */
 	contextUsage: ContextUsage | null;
 	/** Session-wide metrics (usage totals + TTFT / tok/s) for the composer stats line. */
@@ -172,6 +178,9 @@ export function ConversationPage(props: {
 							storage={props.storagePath}
 							sandboxMode={props.sandboxMode}
 							onSetSandboxMode={props.onSetSandboxMode}
+							model={props.model}
+							models={props.models}
+							onSetModel={props.onSetModel}
 							contextUsage={props.contextUsage}
 							stats={props.stats}
 							draft={props.draft}

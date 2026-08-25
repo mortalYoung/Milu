@@ -48,6 +48,8 @@ export class AgentContext {
 	workspace_path: string | null = null;
 	/** The confinement mode for tool effects (per partner; delivered via the opening reminder). */
 	sandbox_mode: SandboxMode = "workspace-write";
+	/** The partner's model selection (provider + pinned model); null → deepseek default. */
+	model: { provider: string; modelId?: string } | null = null;
 
 	/** Switch Partner (takes effect on the next composeSystemPrompt). */
 	setPartner(partner: PartnerPrompt | null): void {

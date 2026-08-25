@@ -25,6 +25,7 @@ import type { EscalationDecision, EscalationRequest, SandboxManager, SandboxMode
 import { Permission, policyFor } from "../permission";
 import type { SessionScope } from "../persist";
 import { createTools } from "../tools";
+import type { PartnerModel } from "./agent-config";
 import { convertToLlm, resolveModel, STREAM_FN } from "./agent-config";
 import { AgentContext, appendSystemReminder } from "./context";
 import type { PartnerPrompt } from "./prompt";
@@ -57,6 +58,10 @@ export interface AgentHandle {
 	readonly sandboxMode: SandboxMode;
 	/** Set the confinement mode for tool effects (persisted by the caller per partner). */
 	setSandboxMode: (mode: SandboxMode) => void;
+	/** The partner's model selection (null → deepseek default); the composer select shows it. */
+	readonly model: PartnerModel | null;
+	/** Set the model selection (persisted by the caller per partner). */
+	setModel: (model: PartnerModel | null) => void;
 	/** In-memory run timing (TTFT / tok/s), averaged across every streamed LLM call this process made. */
 	readonly runtimeStats: SessionStats["runtime"];
 	/** Send a user message (resolves after persistence); queued as a follow-up while busy. */
@@ -142,7 +147,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		initialState: {
 			// Tools are not mounted yet, so the initial list is empty; rebuilt via ctx.setTools after mounting
 			systemPrompt: ctx.composeSystemPrompt(),
-			model: resolveModel(),
+			model: resolveModel(ctx.model ?? undefined),
 			thinkingLevel: "high",
 			tools: [],
 			messages: deps.initialMessages ?? [],
@@ -427,6 +432,12 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		},
 		setSandboxMode(mode: SandboxMode) {
 			ctx.sandbox_mode = mode;
+		},
+		get model() {
+			return ctx.model;
+		},
+		setModel(model: PartnerModel | null) {
+			ctx.model = model;
 		},
 		get runtimeStats(): SessionStats["runtime"] {
 			const avg = (xs: number[]) => (xs.length > 0 ? xs.reduce((a, b) => a + b, 0) / xs.length : null);

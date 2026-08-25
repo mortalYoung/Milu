@@ -2,12 +2,14 @@ import { createSignal } from "solid-js";
 import type { SandboxMode } from "../../shared/rpc";
 import type { RPC } from "./rpc";
 
-/** Per-partner agent runtime status: who is streaming (each partner runs its own agent), plus the selected chat's workspace/sandbox. */
+/** Per-partner agent runtime status: who is streaming (each partner runs its own agent), plus the selected chat's workspace/sandbox/model. */
 export function createAgentStatus(rpc: RPC, getSelectedName: () => string | null) {
 	const [streaming, setStreaming] = createSignal<Record<string, boolean>>({});
 	const [workspacePath, setWorkspacePath] = createSignal<string | null>(null);
 	const [storagePath, setStoragePath] = createSignal<string | null>(null);
 	const [sandboxMode, setSandboxMode] = createSignal<SandboxMode>("workspace-write");
+	const [model, setModel] = createSignal<{ provider: string; modelId?: string } | null>(null);
+	const [models, setModels] = createSignal<{ provider: string; models: { id: string; name: string }[] }[]>([]);
 	// Follow-up messages queued behind the selected partner's run (view-side counter; drained per turn)
 	const [queued, setQueued] = createSignal(0);
 
@@ -23,12 +25,19 @@ export function createAgentStatus(rpc: RPC, getSelectedName: () => string | null
 			setWorkspacePath(s.workspace_path);
 			setStoragePath(s.storage_path);
 			setSandboxMode(s.sandbox_mode);
+			setModel(s.model);
+			setModels(s.models);
 		});
 	}
 
 	async function onSetSandboxMode(mode: SandboxMode) {
 		const res = await rpc.request.set_sandbox_mode({ mode });
 		if (res.ok) setSandboxMode(mode);
+	}
+
+	async function onSetModel(next: { provider: string; modelId?: string }) {
+		const res = await rpc.request.set_partner_model({ model: next });
+		if (res.ok) setModel(next);
 	}
 
 	/** A turn started for `partner`: it is streaming now, and one queued follow-up drains when the run owns the selected chat. Returns whether a follow-up drained. */
@@ -51,8 +60,11 @@ export function createAgentStatus(rpc: RPC, getSelectedName: () => string | null
 		workspacePath,
 		storagePath,
 		sandboxMode,
+		model,
+		models,
 		calibrate,
 		onSetSandboxMode,
+		onSetModel,
 		beginTurn,
 		endTurn,
 		queueFollowUp: () => setQueued((q) => q + 1),
