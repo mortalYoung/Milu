@@ -54,11 +54,6 @@ export function resolveModel(): Model<any> {
 	return model;
 }
 
-/** Runtime info for the identify section: framework + current model (same source as resolveModel, follows PI_MODEL). */
-export function describeRuntime(): { framework: string; model: string } {
-	return { framework: "LETTERS", model: resolveModel().id };
-}
-
 /** The current model's context window in tokens, from the model catalog (not hardcoded). */
 export function contextWindow(): number {
 	return resolveModel().contextWindow;

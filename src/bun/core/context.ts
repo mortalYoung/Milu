@@ -12,7 +12,6 @@
  */
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { SandboxMode } from "../../shared/rpc";
-import { describeRuntime } from "./agent-config";
 import { buildSystemPrompt, type PartnerPrompt } from "./prompt";
 
 /**
@@ -55,14 +54,14 @@ export class AgentContext {
 		this.partner = partner;
 	}
 
-	/** System prompt = IDENTIFY + PERSONA + WORKSPACE + STORAGE + RESPONSE-FORMAT + Caveats. */
+	/** System prompt = IDENTIFY + PERSONA + WORKSPACE + STORAGE. */
 	composeSystemPrompt(): string {
-		return buildSystemPrompt(this.partner, describeRuntime());
+		return buildSystemPrompt(this.partner);
 	}
 
 	/** Compose a trial prompt from the given profile (for preview; does not change the current context). */
 	previewSystemPrompt(partner: PartnerPrompt | null): string {
-		return buildSystemPrompt(partner, describeRuntime());
+		return buildSystemPrompt(partner);
 	}
 
 	// ————— Lifecycle hooks (called by event callbacks) —————

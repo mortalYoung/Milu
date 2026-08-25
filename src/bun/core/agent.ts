@@ -389,15 +389,25 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	}
 
 	async function runPrompt(text: string) {
-		// Opening reminder: the workflow plus the current workspace/storage paths (the prompt itself is static).
-		// The default workspace path is included so the model can establish it without running pwd first.
-		const opening =
-			"Your workflow: (1) determine the task's working directory (see the `set_workspace` tool for what to pass); if the workspace is not set yet, call `set_workspace` with its absolute path as the first tool call, before other tools. (2) decide whether this task needs tool calls — if it does, call `send_message` in the same turn (in parallel with the first tool call) to give the user brief feedback; if it does not, skip the opening message. (3) Then execute the task.\n" +
-			`Current workspace: ${ctx.workspace_path ?? "unset — the default working directory for tools is the storage path"}.\n` +
-			`Current storage: ${ctx.storage_path ?? "unset"}.\n` +
-			`Current sandbox mode: ${ctx.sandbox_mode}.`;
-		persistReminder(opening);
-		appendSystemReminder(agent.state.messages, opening);
+		// Opening reminder, sent as two separate <system_reminder> messages:
+		//  - workspace-unset: only while the workspace hasn't been set (remind to set it if needed)
+		//  - current context: only at the begin of a conversation (the restored chain is empty — a
+		//    restart mid-conversation restores history, so this fires once per conversation, not per
+		//    agent instance)
+		// Capture the begin flag before appending anything so the context line still fires on a fresh
+		// conversation that also needs the workspace-unset reminder.
+		const conversationStart = agent.state.messages.length === 0;
+		if (ctx.workspace_path == null) {
+			const reminder = "The workspace is not set yet. Remember to call `set_workspace` with the task's absolute path before other tools if the task needs file or command access.";
+			persistReminder(reminder);
+			appendSystemReminder(agent.state.messages, reminder);
+		}
+		if (conversationStart) {
+			const context =
+				`Current workspace: ${ctx.workspace_path ?? "unset"}.\n` + `Current storage: ${ctx.storage_path ?? "unset"}.\n` + `Current sandbox mode: ${ctx.sandbox_mode}.`;
+			persistReminder(context);
+			appendSystemReminder(agent.state.messages, context);
+		}
 		// A racing prompt throws "Agent is already processing." — the caller that decided
 		// "prompt" owns the demotion to follow-up, not this function.
 		await agent.prompt(text);

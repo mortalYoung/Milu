@@ -75,8 +75,8 @@ describe("AgentContext prompt assembly", () => {
 		ctx.setPartner({ responsibilities: "Ship features" });
 		const p = ctx.composeSystemPrompt();
 		expect(p).toContain("# IDENTIFY");
-		expect(p).toContain("You are an agent running in Partner App.");
-		expect(p).toContain("# RESPONSE-FORMAT");
+		expect(p).toContain("You are a helpful software engineer assistant");
+		expect(p).toContain("# STORAGE");
 	});
 
 	test("previewSystemPrompt uses the passed profile, does not change the current context", () => {
@@ -87,11 +87,12 @@ describe("AgentContext prompt assembly", () => {
 		expect(ctx.composeSystemPrompt()).toContain("A");
 	});
 
-	test("composeSystemPrompt always includes the fixed PERSONA sentence", () => {
+	test("composeSystemPrompt includes PERSONA when responsibilities exist", () => {
 		const ctx = new AgentContext();
+		ctx.setPartner({ responsibilities: "Ship features" });
 		const p = ctx.composeSystemPrompt();
 		expect(p).toContain("# PERSONA");
-		expect(p).toContain("You are an agent running in Partner App.");
+		expect(p).toContain("Ship features");
 		expect(p.indexOf("# IDENTIFY")).toBeLessThan(p.indexOf("# PERSONA"));
 		expect(buildSystemPrompt !== undefined).toBe(true);
 	});
