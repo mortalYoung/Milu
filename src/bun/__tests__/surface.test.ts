@@ -156,17 +156,31 @@ describe("session surface (log → surface → dialogue)", () => {
 		const session = createSessionStore();
 		const scope = session.scope(dir);
 		await scope.appendUser("hi", 1);
-		await scope.appendRequestHeader("# IDENTIFY\nYou are an agent.", ["read", "bash", "send_message"], 2);
-		await scope.appendRequestHeader("# IDENTIFY\nYou are an agent (v2).", ["read", "bash"], 3);
+		await scope.appendRequestHeader("# IDENTIFY\nYou are an agent.", [{ name: "read" }, { name: "bash" }, { name: "send_message" }], 2);
+		await scope.appendRequestHeader("# IDENTIFY\nYou are an agent (v2).", [{ name: "read", description: "read a file", parameters: { type: "object" } }, { name: "bash" }], 3);
 
 		const entries = await session.rawEntries(dir);
 		const header = reconstructRequestHeader(entries);
 		expect(header).not.toBeNull();
 		expect(header!.systemPrompt).toBe("# IDENTIFY\nYou are an agent (v2).");
 		expect(header!.toolNames).toEqual(["read", "bash"]);
+		expect(header!.tools.map((t) => t.name)).toEqual(["read", "bash"]);
+		expect(header!.tools[0].description).toBe("read a file");
 		expect(header!.time).toBe(3);
 		// request/header entries are log-only — never on the surface, never in the human transcript
 		expect((await session.surface(dir)).nodes.map((n) => n.kind)).toEqual(["user"]);
 		expect((await session.visibleHistory(dir)).map((v) => v.kind)).toEqual(["user"]);
+	});
+
+	it("appendRequestHeader strips undefined fields (pi rejects undefined payloads)", async () => {
+		const dir = await tempDir();
+		const session = createSessionStore();
+		const scope = session.scope(dir);
+		await scope.appendRequestHeader("sys", [{ name: "read", parameters: { type: "object", properties: { path: undefined } } }], 1);
+
+		const entries = await session.rawEntries(dir);
+		const header = reconstructRequestHeader(entries);
+		expect(header).not.toBeNull();
+		expect(header!.tools).toEqual([{ name: "read", parameters: { type: "object", properties: {} } }]);
 	});
 });

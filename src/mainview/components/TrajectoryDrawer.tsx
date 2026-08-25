@@ -114,6 +114,8 @@ function chipLabel(record: TrajectoryRecord): string {
 					return "SYS";
 				case "system_reminder":
 					return "RM";
+				case "request/header":
+					return "HDR";
 				case "surface_op":
 					return "OP";
 				case "compaction_summary":
@@ -173,9 +175,10 @@ function rowCaption(record: TrajectoryRecord): string {
 				case "compaction/end":
 					return "compaction end";
 				case "request/header": {
-					const h = record.data as { toolNames?: unknown } | null;
-					const names = Array.isArray(h?.toolNames) ? h.toolNames.map((n) => String(n)) : [];
-					return names.length > 0 ? names.join(", ") : "request header";
+					const h = record.data as { tools?: unknown; toolNames?: unknown } | null;
+					const tools = Array.isArray(h?.tools) ? h.tools.filter((t): t is { name?: unknown } => !!t && typeof t === "object") : [];
+					const names = tools.length > 0 ? tools.map((t) => String(t.name ?? "")) : Array.isArray(h?.toolNames) ? h.toolNames.map((n) => String(n)) : [];
+					return names.length > 0 ? `${names.join(", ")} · ${names.length} tool${names.length === 1 ? "" : "s"}` : "request header";
 				}
 				default:
 					return record.customType;
@@ -657,12 +660,34 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 					case "compaction/end":
 						return <pre class="one-args">{json(r.data)}</pre>;
 					case "request/header": {
-						// The full system prompt lives in the system_prompt row — this body shows the tools only
-						const d = (r.data ?? {}) as { toolNames?: unknown };
-						const names = Array.isArray(d.toolNames) ? d.toolNames : [];
+						// The full system prompt lives in the system_prompt row — this body shows the tool
+						// definitions sent with the request (schema included when persisted).
+						const d = (r.data ?? {}) as { tools?: unknown; toolNames?: unknown };
+						const tools = Array.isArray(d.tools)
+							? d.tools.filter((t): t is { name?: unknown; label?: unknown; description?: unknown; parameters?: unknown } => !!t && typeof t === "object")
+							: [];
+						if (tools.length === 0) {
+							const names = Array.isArray(d.toolNames) ? d.toolNames : [];
+							return (
+								<div class="one-tools">
+									<For each={names}>{(name) => <span class="one-tool-name">{String(name)}</span>}</For>
+								</div>
+							);
+						}
 						return (
 							<div class="one-tools">
-								<For each={names}>{(name) => <span class="one-tool-name">{String(name)}</span>}</For>
+								<For each={tools}>
+									{(raw) => (
+										<details class="one-tool">
+											<summary>
+												<span class="one-tool-name">{String(raw.name ?? "")}</span>
+												{raw.label ? <span class="one-call-id">{String(raw.label)}</span> : null}
+											</summary>
+											{raw.description ? <p class="one-cap">{String(raw.description)}</p> : null}
+											{raw.parameters != null ? <pre class="one-args">{json(raw.parameters)}</pre> : null}
+										</details>
+									)}
+								</For>
 							</div>
 						);
 					}

@@ -20,7 +20,7 @@
  */
 import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage, ToolResultMessage } from "@earendil-works/pi-ai";
-import type { RuntimeStatsSnapshot, SessionStats } from "../../shared/rpc";
+import type { RequestTool, RuntimeStatsSnapshot, SessionStats } from "../../shared/rpc";
 import type { EscalationDecision, EscalationRequest, SandboxManager, SandboxMode } from "../permission";
 import { Permission, policyFor } from "../permission";
 import type { SessionScope } from "../persist";
@@ -64,6 +64,8 @@ export interface AgentHandle {
 	setModel: (model: PartnerModel | null) => void;
 	/** In-memory run timing (TTFT / tok/s), averaged across every streamed LLM call this process made. */
 	readonly runtimeStats: SessionStats["runtime"];
+	/** The tool definitions sent to the provider (name/label/description/parameters), for context pricing. */
+	readonly tools: RequestTool[];
 	/** Send a user message (resolves after persistence); queued as a follow-up while busy. */
 	chat: (text: string) => Promise<void>;
 	/** Resume a run from a restored context ending in a tool result (restart-resume after an approved escalation). */
@@ -283,7 +285,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 					deps.session.appendStepStart(runTurn, step, Date.now()),
 					deps.session.appendRequestHeader(
 						agent.state.systemPrompt,
-						agent.state.tools.map((t) => t.name),
+						agent.state.tools.map((t) => ({ name: t.name, label: t.label, description: t.description, parameters: t.parameters })),
 						Date.now(),
 					),
 				])
@@ -442,6 +444,9 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		get runtimeStats(): SessionStats["runtime"] {
 			const avg = (xs: number[]) => (xs.length > 0 ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
 			return { runs: runtime.runs, avgTtftMs: avg(runtime.ttfts), avgTps: avg(runtime.speeds), lastTtftMs: runtime.lastTtft };
+		},
+		get tools(): RequestTool[] {
+			return agent.state.tools.map((t) => ({ name: t.name, label: t.label, description: t.description, parameters: t.parameters }));
 		},
 		get permission() {
 			return permission;

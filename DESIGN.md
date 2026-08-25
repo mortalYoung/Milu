@@ -104,9 +104,18 @@ Partner 是一个"数字员工"桌面应用:你选中一位同事(bob、eve、le
   **inline-code chip**(paper-hover + hairline,半径 3px,mono 13px);底部右对齐
   **署名行** "— bob · 10:42 AM"(seal 红 12px, tracking 0.03em)。
 - **working-chip**:ink 实底胶囊,内三个 5px 纸色圆点(1.2s 错峰呼吸)。
-- **composer**:底部 72px 条(上发丝线),居中 **60% 药丸**(44px 高,半径 22px,
-  letter 纸面 + hairline,聚焦 seal);输入 Public Sans 14px "Type a message…";
-  发送 = 34px seal 红圆,停止 = 纸面描边圆。
+- **composer**:底部 60px 条(上发丝线),静态态只有一颗居中 **60% 药丸**(44px 高,
+  半径 22px,letter 纸面 + hairline,聚焦 seal),左侧一颗 28px 安静 toggle 圆钮
+  (muted,展开时 seal);点击展开 **run-settings 面板**(letter 纸面 + hairline +
+  8px 圆角,无阴影,锚定药丸上方,上移 6px + 淡入 180ms):第一行 路径纯文本
+  (`ws` / `st` 标签 + 中截断路径,mono 10px body-muted,全路径在 tooltip——
+  纯展示,无 select);第二行 model / sandbox 两个选择器(mono 10px ink-soft,
+  hairline 边框 8px 圆角,原生箭头去掉换纸感 chevron;model 无任何 "default"
+  选项——未 pin 时 select 空白,语义诚实);第三行
+  状态与 session 统计脚注(mono 10px body-muted);外部点击 / Esc / 发送后收起,
+  textarea 聚焦不展开任何 meta。输入 Public Sans 14px "Type a message…";
+  发送 = 34px seal 红圆,停止 = 纸面描边圆。context 环 14px 常驻,数字仅在
+  >60% 时显示,精确值在 meter 点击面板里。
 - **conv-row**:圆角 6px、行距 2px、hover `paper-hover`;**选中 = 整块 `paper-deep`
   底色**(禁止左侧竖线,规则 P-38)。
 - **conv-avatar**:34px 圆 + **首字母**(serif 15px semibold);选中行 = ink 实底纸色字,
@@ -171,6 +180,8 @@ header 抬头不换行;输入区保持衬线 16px。深色模式不在本次范�
 - 列表交错入场 stagger 40ms;退出比进入快(120ms vs 200ms)。
 - 工作胶囊:圆点 1s 呼吸(opacity/scale),胶囊本体不动。
 - 按钮按压 `:active { transform: scale(0.97) }`,160ms。
+- **run-settings 面板**入场 = 上移 6px + 淡入 180ms 强化 ease-out;
+  `prefers-reduced-motion` 只留淡入(位移禁用)。
 - 只动 transform/opacity;UI 动效 ≤300ms;键盘触发无动画。
 - `prefers-reduced-motion: reduce` 时移除位移类动画,保留 opacity 过渡。
 - hover 效果包在 `@media (hover: hover) and (pointer: fine)`。

@@ -66,11 +66,15 @@ export function ConversationPage(props: {
 	// Replies outline: hidden by default; the header outline icon toggles it
 	const [outlineOpen, setOutlineOpen] = createSignal(false);
 
-	// With no chat selected the outline toggle is disabled, so close any open outline
-	// (e.g. after the selected partner is deleted) — otherwise it would float over the
-	// empty state with no way to dismiss it.
+	// "Has a conversation" = a partner is selected and there are transcript entries.
+	// Both the outline and trajectory need something to show; with no messages they are
+	// disabled (and any open panel is closed so it can't float over the empty state).
+	const hasConversation = () => props.selected != null && props.entries().length > 0;
 	createEffect(() => {
-		if (!props.selected) setOutlineOpen(false);
+		if (!hasConversation()) {
+			setOutlineOpen(false);
+			props.onCloseTrajectory?.();
+		}
 	});
 
 	// ESC closes the replies outline (the trajectory drawer already handles its own ESC).
@@ -133,7 +137,7 @@ export function ConversationPage(props: {
 							class="size-8 rounded-full border-0 electrobun-webkit-app-region-no-drag flex items-center justify-center text-ink hover:bg-paper-hover disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
 							title={outlineOpen() ? "Hide outline" : "Show outline"}
 							aria-label="Toggle replies outline"
-							disabled={!props.selected}
+							disabled={!hasConversation()}
 							onClick={() => {
 								// The outline and the trajectory drawer are mutually exclusive: opening one closes the other
 								if (!outlineOpen()) props.onCloseTrajectory?.();
@@ -148,7 +152,7 @@ export function ConversationPage(props: {
 							class="size-8 rounded-full border-0 electrobun-webkit-app-region-no-drag flex items-center justify-center text-ink hover:bg-paper-hover disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
 							title="Open trajectory"
 							aria-label="Open trajectory"
-							disabled={!props.selected}
+							disabled={!hasConversation()}
 							onClick={() => {
 								// The outline and the trajectory drawer are mutually exclusive: opening one closes the other
 								setOutlineOpen(false);

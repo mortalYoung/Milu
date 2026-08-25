@@ -16,8 +16,9 @@ export function createTrajectory(rpc: RPC, getSelectedName: () => string | null)
 
 	async function view() {
 		const name = getSelectedName();
+		if (!name) return;
 		if (cache === null || cache.name !== name) {
-			const res = await rpc.request.trajectory({});
+			const res = await rpc.request.trajectory({ name });
 			// The selection may have changed while fetching — never show another chat's log
 			if (getSelectedName() !== name) return;
 			cache = { name, records: res.records };
@@ -34,7 +35,9 @@ export function createTrajectory(rpc: RPC, getSelectedName: () => string | null)
 		const name = getSelectedName();
 		if (name === lastSeenName) return;
 		lastSeenName = name;
-		invalidate();
+		// Clear cache directly here (not invalidate): invalidate() would also refetch when open,
+		// and this effect already fetches explicitly below.
+		cache = null;
 		setRecords([]);
 		if (!name) {
 			setOpen(false);
@@ -49,9 +52,10 @@ export function createTrajectory(rpc: RPC, getSelectedName: () => string | null)
 		flashTimer = setTimeout(() => setFlashId(null), 1200);
 	}
 
-	/** A turn has been persisted (agent_message / trajectory_update); the next open fetches the latest. */
+	/** A turn has been persisted (agent_message / trajectory_update): refresh now if the drawer is open, otherwise on next open. */
 	function invalidate() {
 		cache = null;
+		if (open()) void view();
 	}
 
 	return { open, records, flashId, view, flash, invalidate, setOpen };

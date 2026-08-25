@@ -3,12 +3,13 @@
  * a bordered field with a seal focus ring; Enter sends (IME-safe: composition Enter confirms
  * the IME candidate, it must not send), Shift+Enter inserts a newline; the send button appears
  * only when there is something to send (text or a run to stop); it becomes a stop button while
- * running. Context occupancy ring sits inside the field. Meta — workspace/storage path select
- * above, session metrics below — unfolds while the field is focused; a status row above
- * the field shows writing / queued while something is happening.
+ * running. Context occupancy ring sits inside the field. Run settings — workspace/storage path,
+ * model, sandbox mode, session metrics — live behind a quiet toggle left of the field: the
+ * static composer shows only the pill, and the panel opens on demand (click / outside / Esc
+ * to dismiss; sending closes it too).
  */
-import { ArrowUp, Square } from "lucide-solid";
-import { createEffect, createSignal, type JSX } from "solid-js";
+import { ArrowUp, SlidersHorizontal, Square } from "lucide-solid";
+import { createEffect, createSignal, type JSX, onCleanup, Show } from "solid-js";
 import type { ContextUsage, SandboxMode, SessionStats } from "../../shared/rpc";
 import { formatWorkspacePath, shouldSendOnEnter } from "../lib/composer-input";
 import { Button } from "./Button";
@@ -66,6 +67,28 @@ export function Composer(props: {
 		}, 10);
 	};
 
+	// Run-settings panel: closed by default; the toggle icon left of the field opens it on demand.
+	const [panelOpen, setPanelOpen] = createSignal(false);
+	let rootRef: HTMLFormElement | undefined;
+	// Outside click / Escape close the panel; clicks inside the composer (typing, changing a
+	// select) keep it open — only dismissal and the send action close it.
+	createEffect(() => {
+		if (!panelOpen()) return;
+		const onPointerDown = (e: PointerEvent) => {
+			if (e.target instanceof Node && rootRef?.contains(e.target)) return;
+			setPanelOpen(false);
+		};
+		const onKeyDown = (e: KeyboardEvent) => {
+			if (e.key === "Escape") setPanelOpen(false);
+		};
+		document.addEventListener("pointerdown", onPointerDown);
+		document.addEventListener("keydown", onKeyDown);
+		onCleanup(() => {
+			document.removeEventListener("pointerdown", onPointerDown);
+			document.removeEventListener("keydown", onKeyDown);
+		});
+	});
+
 	const resize = () => {
 		const el = textareaRef;
 		if (!el) return;
@@ -78,6 +101,7 @@ export function Composer(props: {
 		if (!value) return;
 		setText("");
 		if (textareaRef) textareaRef.style.height = "";
+		setPanelOpen(false); // sending returns to the letter — the settings panel folds back
 		props.onSend(value);
 	};
 
@@ -96,16 +120,26 @@ export function Composer(props: {
 	// Send appears only when there is something to send (or a run to stop)
 	const showSend = () => text().trim() !== "" || props.busy();
 
-	// Path select: one dropdown holding the workspace and storage paths; the chosen one is shown.
-	const [pathChoice, setPathChoice] = createSignal<"workspace" | "storage">(props.workspace ? "workspace" : "storage");
-	// Fall back to whichever path is actually set (e.g. workspace stays unset until set_workspace).
-	const choice = () => {
-		const c = pathChoice();
-		if (c === "workspace" && !props.workspace) return "storage";
-		if (c === "storage" && !props.storage) return "workspace";
-		return c;
+	// Path line: both paths as plain text — workspace/storage are read-only display, so there is
+	// no select; the full untruncated paths live in the tooltip.
+	const pathLine = () => {
+		const parts: JSX.Element[] = [];
+		if (props.workspace)
+			parts.push(
+				<>
+					<span class="composer-path-label">ws</span> {formatWorkspacePath(props.workspace, 36)}
+				</>,
+			);
+		if (props.workspace && props.storage) parts.push(<span class="composer-path-sep">·</span>);
+		if (props.storage)
+			parts.push(
+				<>
+					<span class="composer-path-label">st</span> {formatWorkspacePath(props.storage, 36)}
+				</>,
+			);
+		return parts;
 	};
-	const currentPath = () => (choice() === "workspace" ? props.workspace : props.storage);
+	const pathTitle = () => [props.workspace && `workspace: ${props.workspace}`, props.storage && `storage: ${props.storage}`].filter(Boolean).join("\n");
 
 	// Session metrics line: whole-chat token totals + averaged timing (the trajectory panel still shows per-turn usage)
 	const statsLine = () => {
@@ -124,94 +158,112 @@ export function Composer(props: {
 	const status = () => (props.busy() ? "writing…" : null);
 
 	return (
-		<form class="composer" id="composer" onSubmit={submit}>
-			{/* Meta row: workspace/storage path select (left) + live status and sandbox-mode select (right), flexed on one line */}
-			<div class="composer-meta">
-				{(props.workspace || props.storage) && (
-					<select
-						class="composer-workspace-select"
-						value={choice()}
-						title={currentPath() ?? undefined}
-						aria-label="Path (workspace / storage)"
-						onChange={(e) => setPathChoice(e.currentTarget.value as "workspace" | "storage")}
-					>
-						{props.workspace && <option value="workspace">workspace · {formatWorkspacePath(props.workspace)}</option>}
-						{props.storage && <option value="storage">storage · {formatWorkspacePath(props.storage)}</option>}
-					</select>
-				)}
-				<span class="composer-meta-right">
-					{status() && (
-						<span class="composer-status">
-							<span class="composer-status-dot" />
-							<span>{status()}</span>
-						</span>
-					)}
-					{props.models.length > 0 && (
-						<select
-							class="composer-model"
-							title="Model (per partner)"
-							value={props.model ? `${props.model.provider}/${props.model.modelId ?? ""}` : ""}
-							onChange={(e) => {
-								const [provider, modelId] = e.currentTarget.value.split("/");
-								props.onSetModel({ provider, modelId: modelId || undefined });
-							}}
-						>
-							{props.models.map((g) => (
-								<optgroup label={g.provider}>
-									{g.models.map((m) => (
-										<option value={`${g.provider}/${m.id}`}>
-											{m.name} · {m.id}
-										</option>
-									))}
-								</optgroup>
-							))}
-						</select>
-					)}
-					<select
-						class="composer-sandbox"
-						title="Sandbox mode (file writes)"
-						value={props.sandboxMode}
-						onChange={(e) => props.onSetSandboxMode(e.currentTarget.value as SandboxMode)}
-					>
-						<option value="read-only">read-only</option>
-						<option value="workspace-write">workspace-write</option>
-						<option value="danger-full-access">full access</option>
-					</select>
-				</span>
-			</div>
-			<div class="composer-field">
-				<textarea
-					id="prompt-input"
-					ref={textareaRef}
-					value={text()}
-					onInput={(e) => {
-						setText(e.currentTarget.value);
-						props.onDraftChange(e.currentTarget.value);
-						resize();
-					}}
-					onKeyDown={onKeyDown}
-					onCompositionStart={onCompositionStart}
-					onCompositionEnd={onCompositionEnd}
-					class="composer-input"
-					rows={1}
-					placeholder="Type a message…"
-					autocomplete="off"
-					spellcheck={false}
-					aria-label="Message"
+		<form class="composer" id="composer" ref={rootRef} onSubmit={submit}>
+			{/* The pill, with the run-settings toggle on its left (the send button stays alone on the right) */}
+			<div class="composer-row">
+				<Button
+					variant="ghost"
+					size="icon"
+					class="composer-toggle"
+					title={panelOpen() ? "Hide run settings" : "Run settings"}
+					aria-label="Run settings"
+					aria-expanded={panelOpen()}
+					aria-controls="composer-panel"
+					icon={<SlidersHorizontal size={15} />}
+					onClick={() => setPanelOpen((v) => !v)}
 				/>
-				{props.contextUsage ? <ContextMeter usage={props.contextUsage} /> : null}
-				{showSend() && (
-					<Button
-						variant={props.busy() ? "outline" : "seal"}
-						class="size-[34px] p-0 rounded-full shrink-0"
-						title={props.busy() ? "Stop" : "Send"}
-						icon={props.busy() ? <Square size={14} /> : <ArrowUp size={14} />}
-						onClick={() => (props.busy() ? props.onStop() : send())}
+				<div class="composer-field">
+					<textarea
+						id="prompt-input"
+						ref={textareaRef}
+						value={text()}
+						onInput={(e) => {
+							setText(e.currentTarget.value);
+							props.onDraftChange(e.currentTarget.value);
+							resize();
+						}}
+						onKeyDown={onKeyDown}
+						onCompositionStart={onCompositionStart}
+						onCompositionEnd={onCompositionEnd}
+						class="composer-input"
+						rows={1}
+						placeholder="Type a message…"
+						autocomplete="off"
+						spellcheck={false}
+						aria-label="Message"
 					/>
-				)}
+					{props.contextUsage ? <ContextMeter usage={props.contextUsage} /> : null}
+					{showSend() && (
+						<Button
+							variant={props.busy() ? "outline" : "seal"}
+							class="size-[34px] p-0 rounded-full shrink-0"
+							title={props.busy() ? "Stop" : "Send"}
+							icon={props.busy() ? <Square size={14} /> : <ArrowUp size={14} />}
+							onClick={() => (props.busy() ? props.onStop() : send())}
+						/>
+					)}
+				</div>
 			</div>
-			{/* Session metrics footnote, unfolds with focus */}
-			{statsLine() && <div class="composer-meta composer-stats">{statsLine()}</div>}
+			{/* Run-settings panel: path line (read-only), model / sandbox controls, then status +
+			   session metrics as a quiet footnote; on-demand only — closed by outside click, Esc or sending */}
+			<Show when={panelOpen()}>
+				<div id="composer-panel" class="composer-panel" role="group" aria-label="Run settings">
+					{(props.workspace || props.storage) && (
+						<div class="composer-panel-path">
+							<span class="composer-path" title={pathTitle()}>
+								{pathLine()}
+							</span>
+						</div>
+					)}
+					<div class="composer-panel-row">
+						{props.models.length > 0 && (
+							<select
+								class="composer-model"
+								title="Model (per partner)"
+								value={props.model?.modelId ? `${props.model.provider}/${props.model.modelId}` : ""}
+								onChange={(e) => {
+									const value = e.currentTarget.value;
+									const [provider, modelId] = value.split("/");
+									props.onSetModel({ provider, modelId: modelId || undefined });
+								}}
+							>
+								{/* No "default" option: an unpinned model leaves the select blank — honest,
+								   the provider default is in effect and pinning happens via the options below */}
+								{props.models.map((g) => (
+									<optgroup label={g.provider}>
+										{g.models.map((m) => (
+											<option value={`${g.provider}/${m.id}`} title={`${g.provider}/${m.id}`}>
+												{m.name}
+											</option>
+										))}
+									</optgroup>
+								))}
+							</select>
+						)}
+						<select
+							class="composer-sandbox"
+							title="Sandbox mode (file writes)"
+							value={props.sandboxMode}
+							onChange={(e) => props.onSetSandboxMode(e.currentTarget.value as SandboxMode)}
+						>
+							<option value="read-only">read-only</option>
+							<option value="workspace-write">workspace-write</option>
+							<option value="danger-full-access">full access</option>
+						</select>
+					</div>
+					{(status() || statsLine()) && (
+						<div class="composer-panel-foot">
+							{status() && (
+								<span class="composer-status">
+									<span class="composer-status-dot" />
+									<span>{status()}</span>
+								</span>
+							)}
+							{statsLine() && <span class="composer-stats">{statsLine()}</span>}
+						</div>
+					)}
+				</div>
+			</Show>
 		</form>
 	);
 }

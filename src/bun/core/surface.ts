@@ -10,6 +10,7 @@
  */
 import type { AgentMessage, Entry } from "@earendil-works/pi-agent-core";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
+import type { RequestTool } from "../../shared/rpc";
 import type { Surface, SurfaceNode, SurfaceOpRecord } from "../../shared/surface";
 import { EVENTS } from "../persist/events";
 
@@ -262,15 +263,18 @@ export function dropDanglingTurn(messages: AgentMessage[]): AgentMessage[] {
 	return messages;
 }
 
-/** Reconstruct the last request header (system prompt + tool names) from the log — invariant 1. */
-export function reconstructRequestHeader(entries: Entry[]): { systemPrompt: string; toolNames: string[]; time: number } | null {
+/** Reconstruct the last request header (system prompt + tool definitions) from the log — invariant 1. */
+export function reconstructRequestHeader(entries: Entry[]): { systemPrompt: string; tools: RequestTool[]; toolNames: string[]; time: number } | null {
 	for (let i = entries.length - 1; i >= 0; i--) {
 		const entry = entries[i];
 		if (entry.type !== "custom" || entry.customType !== EVENTS.requestHeader) continue;
-		const data = (entry.data ?? {}) as { systemPrompt?: unknown; toolNames?: unknown; timestamp?: unknown };
+		const data = (entry.data ?? {}) as { systemPrompt?: unknown; tools?: unknown; toolNames?: unknown; timestamp?: unknown };
+		const tools = Array.isArray(data.tools) ? data.tools.filter((t): t is RequestTool => !!t && typeof t === "object" && typeof (t as { name?: unknown }).name === "string") : [];
+		const toolNames = tools.length > 0 ? tools.map((t) => t.name) : Array.isArray(data.toolNames) ? data.toolNames.filter((n): n is string => typeof n === "string") : [];
 		return {
 			systemPrompt: typeof data.systemPrompt === "string" ? data.systemPrompt : "",
-			toolNames: Array.isArray(data.toolNames) ? data.toolNames.filter((n): n is string => typeof n === "string") : [],
+			tools,
+			toolNames,
 			time: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
 		};
 	}

@@ -295,7 +295,7 @@ describe("timelineNodes whole-log view model", () => {
 				assistantEntry([{ type: "text", text: "done" }]),
 			]),
 		);
-		expect(nodes.map((n) => n.turn)).toEqual([1, 1, 1, 1, 1, 1, 1, 1, 2]);
+		expect(nodes.map((n) => n.turn)).toEqual([1, 1, 1, 1, 1, 1, 1, 2]);
 		// strictly non-decreasing
 		for (let i = 1; i < nodes.length; i++) expect(nodes[i].turn).toBeGreaterThanOrEqual(nodes[i - 1].turn);
 	});
@@ -336,6 +336,23 @@ describe("timelineNodes whole-log view model", () => {
 		expect(nodes[0]).toBe(prompts[0]);
 	});
 
+	test("request/header dedupes to one node placed right after system_prompt", () => {
+		const { nodes } = timelineNodes(
+			fold([
+				entry({ type: "custom", customType: "system_prompt", data: { text: "# IDENTIFY", timestamp: 0 } }),
+				userEntry("q1"),
+				entry({ type: "custom", customType: "request/header", data: { toolNames: ["bash"], systemPrompt: "# IDENTIFY" } }),
+				assistantEntry([{ type: "text", text: "a" }]),
+				entry({ type: "custom", customType: "request/header", data: { toolNames: ["read"], systemPrompt: "# IDENTIFY" } }),
+				assistantEntry([{ type: "text", text: "b" }]),
+			]),
+		);
+		const headers = nodes.filter((n) => n.record.kind === "custom" && n.record.customType === "request/header");
+		expect(headers).toHaveLength(1);
+		const sysIdx = nodes.findIndex((n) => n.record.kind === "custom" && n.record.customType === "system_prompt");
+		expect(nodes[sysIdx + 1]).toBe(headers[0]);
+	});
+
 	test("request segments span one user question to the next; the dot renders on the question row", () => {
 		const { nodes } = timelineNodes(
 			fold([
@@ -349,8 +366,9 @@ describe("timelineNodes whole-log view model", () => {
 			]),
 		);
 		const headers = nodes.filter((n) => n.record.kind === "custom" && n.record.customType === "request/header");
-		expect(headers).toHaveLength(2);
-		for (const h of headers) expect(h.positionOnly).toBe(true);
+		expect(headers).toHaveLength(1);
+		// request headers are list rows now (their expanded body shows the tool definitions)
+		for (const h of headers) expect(h.positionOnly).toBeFalsy();
 		// one request per question segment — the dot sits on the question row that starts it
 		const users = nodes.filter((n) => n.record.kind === "user");
 		expect(users).toHaveLength(2);

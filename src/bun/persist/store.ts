@@ -17,7 +17,7 @@ import { cp } from "node:fs/promises";
 import type { AgentMessage, CustomEntry, Entry } from "@earendil-works/pi-agent-core";
 import { buildSessionContext, JsonlSessionRepo, Session } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage, ToolResultMessage, Usage } from "@earendil-works/pi-ai";
-import type { EscalationStatus, SandboxMode } from "../../shared/rpc";
+import type { EscalationStatus, RequestTool, SandboxMode } from "../../shared/rpc";
 import type { Surface, SurfaceOpRecord } from "../../shared/surface";
 import { buildResumeTurn, deriveMessages as deriveSurfaceMessages, dropDanglingTurn, foldSurface, pairToolResults } from "../core/surface";
 import { createExecutionEnv } from "../tools/execution-env";
@@ -88,8 +88,8 @@ export interface SessionScope {
 	appendReminder(text: string, timestamp: number): Promise<void>;
 	/** Mark the preceding user message as a follow-up (queued mid-run; log-only). */
 	appendFollowUp(timestamp: number): Promise<void>;
-	/** Persist a request header (system prompt + resolved tool names) so every model request is reconstructable (invariant 1). */
-	appendRequestHeader(systemPrompt: string, toolNames: string[], timestamp: number): Promise<void>;
+	/** Persist a request header (system prompt + resolved tool definitions) so every model request is reconstructable (invariant 1). */
+	appendRequestHeader(systemPrompt: string, tools: RequestTool[], timestamp: number): Promise<void>;
 	/** A run began (agent_start): the log gets a turn/start marker. */
 	appendTurnStart(turn: number, timestamp: number): Promise<void>;
 	/** A run settled (agent_end): the log gets a turn/end marker with the reason (and the error on failure). */
@@ -287,8 +287,10 @@ export function createSessionStore(): SessionStore {
 			async appendFollowUp(timestamp) {
 				await appendCustom(dir, EVENTS.followUp, { timestamp });
 			},
-			async appendRequestHeader(systemPrompt, toolNames, timestamp) {
-				await appendCustom(dir, EVENTS.requestHeader, { systemPrompt, toolNames, timestamp });
+			async appendRequestHeader(systemPrompt, tools, timestamp) {
+				// Tool descriptors may carry undefined label/description/parameters — pi's
+				// assertJsonSerializable rejects undefined values, so strip them like appendAssistant does.
+				await appendCustom(dir, EVENTS.requestHeader, stripUndefined({ systemPrompt, toolNames: tools.map((t) => t.name), tools, timestamp }) as Record<string, unknown>);
 			},
 			async appendTurnStart(turn, timestamp) {
 				await appendCustom(dir, EVENTS.turnStart, { turn, timestamp });

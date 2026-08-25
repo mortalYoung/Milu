@@ -99,10 +99,13 @@ export function timelineNodes(records: TrajectoryRecord[]): { nodes: TimelineNod
 	// The log's append order is the display order (user → run markers → request head →
 	// assistant → tools → step/end → … → send_message → turn/end), and turn assignment above
 	// is non-decreasing along it — no sort, no intra-block reordering.
-	// Dedupe for readability: one system_prompt total (the first). Request headers are not
-	// rows at all — every one is a band-only position mark (their content is the request
-	// that produced the following work).
+	// Dedupe for readability: one system_prompt total (the first), and one request/header
+	// (the first, placed right under the system prompt — the tool definitions are static per
+	// partner, so repeating a header per STEP would only add noise).
+	const promptNode = nodes.find((n) => n.record.kind === "custom" && n.record.customType === "system_prompt");
+	const headerNode = nodes.find((n) => n.record.kind === "custom" && n.record.customType === "request/header");
 	let sawPrompt = false;
+	let sawHeader = false;
 	const out: TimelineNode[] = [];
 	for (const n of nodes) {
 		const r = n.record;
@@ -111,10 +114,19 @@ export function timelineNodes(records: TrajectoryRecord[]): { nodes: TimelineNod
 				if (sawPrompt) continue;
 				sawPrompt = true;
 			} else if (r.customType === "request/header") {
-				n.positionOnly = true;
+				if (sawHeader) continue;
+				sawHeader = true;
 			}
 		}
 		out.push(n);
+	}
+	if (promptNode && headerNode) {
+		const promptIdx = out.indexOf(promptNode);
+		const headerIdx = out.indexOf(headerNode);
+		if (promptIdx >= 0 && headerIdx >= 0 && headerIdx !== promptIdx + 1) {
+			out.splice(headerIdx, 1);
+			out.splice(promptIdx + 1, 0, headerNode);
+		}
 	}
 	// Request segments: from a user question to the next user question (or the end) counts as
 	// one request — its dot renders on the question row that starts the segment.

@@ -692,7 +692,7 @@ body::before {
 		@apply flex items-end gap-[2px] h-[42px] pt-2 pb-1.5 min-w-max;
 	}
 	.traj-cell {
-		@apply flex-1 min-w-[14px] rounded-t-[2px] cursor-pointer border-0 p-0;
+		@apply flex-none w-4 rounded-t-[2px] cursor-pointer border-0 p-0;
 		transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
 	}
 	.traj-cell:hover {
@@ -714,7 +714,7 @@ body::before {
 	}
 	/* Non-assistant columns: a centered marker of the same width as turn cells */
 	.traj-marker {
-		@apply flex-1 min-w-[14px] self-stretch flex items-center justify-center;
+		@apply flex-none w-4 self-stretch flex items-center justify-center;
 	}
 	.traj-marker.hot {
 		outline: 1.5px solid var(--color-seal);
@@ -943,6 +943,16 @@ body::before {
 	.traj-body .one-tools {
 		@apply mt-2 flex flex-col gap-1.5;
 	}
+	.traj-body .one-tool {
+		@apply border border-hairline rounded-[4px] px-2 py-1;
+	}
+	.traj-body .one-tool summary {
+		@apply flex items-baseline gap-1.5 cursor-pointer;
+		list-style: none;
+	}
+	.traj-body .one-tool summary::-webkit-details-marker {
+		display: none;
+	}
 	.traj-body .one-tool-name {
 		@apply font-mono text-[9px] text-ink-soft;
 	}
@@ -1007,49 +1017,95 @@ body::before {
 		height: 1px;
 		background: var(--color-hairline);
 	}
-	/* Input area (direction D · workbench): bordered field, seal focus ring, meta folds in on focus */
+	/* Input area (direction D · workbench): the static composer is a single pill — a quiet settings
+	   toggle on its left, the send button on the right; run settings live in a paper panel above
+	   the pill that opens only on demand (see the toggle in Composer.tsx). */
 	.composer {
-		@apply shrink-0 min-h-[72px] border-t border-hairline flex flex-col items-center justify-center gap-1 px-6 py-2 bg-paper;
+		@apply relative shrink-0 min-h-[60px] border-t border-hairline flex items-center justify-center px-6 py-2 bg-paper;
 	}
+	.composer-row {
+		@apply flex items-center gap-2 w-[60%] min-w-0;
+	}
+	/* Settings toggle: quiet ghost circle, seal when the panel is open (seal = active semantics) */
+	.composer-toggle {
+		@apply size-7 p-0 rounded-full shrink-0 text-muted;
+	}
+	.composer-toggle:hover {
+		color: var(--color-ink);
+	}
+	.composer-toggle[aria-expanded="true"] {
+		color: var(--color-seal);
+	}
+	/* The pill: 44px tall, radius 22px (DESIGN.md — the field grows with the textarea, so the
+	   radius caps at 22px instead of staying a full capsule) */
 	.composer-field {
-		@apply flex items-center gap-2 w-[60%] min-h-11 bg-letter border border-hairline rounded-[10px] px-[14px] py-0 transition-colors focus-within:border-seal;
+		@apply flex items-center gap-2 flex-1 min-h-11 bg-letter border border-hairline rounded-[22px] px-[14px] py-0 transition-colors focus-within:border-seal;
 	}
-	/* Meta rows (path select, sandbox mode, session stats): not immediate info — collapsed until
-	   the composer is focused or hovered. visibility keeps the row's space so nothing jumps. */
-	.composer-meta {
-		@apply flex items-center justify-between gap-2 w-[60%] font-mono text-[9px] text-muted;
-		opacity: 0;
-		visibility: hidden;
-		transition: opacity 150ms ease;
+	/* Run-settings panel: letter paper + hairline + 8px radius (dialog language, no shadow), anchored
+	   above the pill; two rows — controls (path/model/sandbox) and a quiet footnote (status + metrics).
+	   Entrance = rise 6px + fade, 180ms ease-out; reduced-motion keeps only the fade. */
+	.composer-panel {
+		position: absolute;
+		bottom: calc(100% + 8px);
+		left: 50%;
+		transform: translateX(-50%);
+		width: 60%;
+		@apply bg-letter border border-hairline rounded-[8px] px-3 py-2 flex flex-col gap-2 z-50;
+		animation: composer-panel-in 180ms cubic-bezier(0.23, 1, 0.32, 1);
 	}
-	.composer:hover .composer-meta,
-	.composer:focus-within .composer-meta {
-		opacity: 1;
-		visibility: visible;
+	@keyframes composer-panel-in {
+		from {
+			opacity: 0;
+			transform: translate(-50%, 6px);
+		}
+		to {
+			opacity: 1;
+			transform: translate(-50%, 0);
+		}
 	}
-	/* Path select: workspace/storage dropdown (quiet mono, hairline border, inherits the meta row's size) */
-	.composer-workspace-select {
-		@apply font-mono text-[9px] text-muted bg-transparent border border-hairline rounded px-1 py-[1px] cursor-pointer outline-none min-w-0 max-w-[240px] truncate;
+	@media (prefers-reduced-motion: reduce) {
+		.composer-panel {
+			animation: none;
+		}
 	}
-	/* Session metrics: whole-chat totals + averaged timing, a quiet footnote under the field */
-	.composer-stats {
-		@apply whitespace-nowrap text-muted/80;
+	.composer-panel-path {
+		@apply flex items-center min-w-0;
 	}
-	/* Live status: rides the meta row (right side via the row's justify-between); inherits font */
-	.composer-status {
-		@apply flex items-center gap-1.5;
+	/* Path line: read-only display of workspace + storage (both full paths in the tooltip) */
+	.composer-path {
+		@apply font-mono text-[10px] text-body-muted truncate min-w-0;
 	}
-	/* Right-side meta group: status + sandbox-mode select */
-	.composer-meta-right {
+	.composer-path-label {
+		@apply text-muted;
+	}
+	.composer-path-sep {
+		@apply mx-1 text-hairline;
+	}
+	.composer-panel-row {
 		@apply flex items-center gap-2 min-w-0;
 	}
-	/* Minimal sandbox-mode select: quiet mono, hairline border, inherits the meta row's size */
-	.composer-sandbox {
-		@apply font-mono text-[9px] text-muted bg-transparent border border-hairline rounded px-1 py-[1px] cursor-pointer outline-none;
+	.composer-panel-foot {
+		@apply flex items-center gap-3 min-w-0 whitespace-nowrap font-mono text-[10px] text-body-muted;
 	}
-	/* Per-partner model select: same quiet mono style as the sandbox select, wider for provider/model names */
+	/* Panel selects: quiet mono paper controls — native chevron off, a paper chevron in its place */
+	.composer-model,
+	.composer-sandbox {
+		@apply font-mono text-[10px] text-ink-soft bg-transparent border border-hairline rounded-[8px] px-2.5 py-[4px] cursor-pointer outline-none truncate focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-letter;
+		appearance: none;
+		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath d='M1 2.5 4 5.5 7 2.5' fill='none' stroke='%238d8474' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+		background-repeat: no-repeat;
+		background-position: right 7px center;
+		padding-right: 20px;
+	}
 	.composer-model {
-		@apply font-mono text-[9px] text-muted bg-transparent border border-hairline rounded px-1 py-[1px] cursor-pointer outline-none min-w-0 max-w-[220px] truncate;
+		@apply min-w-0 max-w-[200px];
+	}
+	.composer-sandbox {
+		@apply shrink-0;
+	}
+	/* Live status: the panel's footnote (the header and the working chip in the stream already carry it) */
+	.composer-status {
+		@apply flex items-center gap-1.5;
 	}
 	.composer-status-dot {
 		@apply size-[5px] rounded-full;

@@ -397,13 +397,18 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					used,
 					window,
 					percent,
-					breakdown: entry ? priceSurface(entry.agent.systemPrompt, entries, surface) : null,
+					breakdown: entry ? priceSurface(entry.agent.systemPrompt, entry.agent.tools, entries, surface) : null,
 					lastTurn: usage ?? undefined,
 				};
 			},
-			trajectory: async () => {
-				const target = viewPartner;
-				return { records: target ? fold(await session.rawEntries(target.dir)) : [] };
+			trajectory: async ({ name }) => {
+				// Explicit partner name (not viewPartner): the drawer may open/fetch while a partner
+				// switch is still settling, and viewPartner can lag behind the selection — resolving
+				// by name keeps trajectory tied to the same chat the message list shows.
+				const settings = await loadSettings();
+				const profile = (await listPartners(settings)).find((p) => p.name === name);
+				if (!profile) return { records: [] };
+				return { records: fold(await session.rawEntries(getPartnerDir(settings, name))) };
 			},
 			stats: async () => {
 				const target = viewPartner;
@@ -460,6 +465,16 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				try {
 					const settings = await loadSettings();
 					const profile = await createPartner(settings, input);
+					// A fresh partner has no model pin: default it to the first provider's first
+					// catalog model, so the composer's model select shows a real selection, not a blank.
+					const providers = settings.providers ?? [];
+					const first = providers[0] ? providerModels(providers[0])[0] : undefined;
+					if (first) {
+						const entry = await ensureAgent(profile);
+						const pin = { provider: providers[0], modelId: first.id };
+						entry.agent.setModel(pin);
+						await persistModel(entry.dir, pin);
+					}
 					return { ok: true, profile };
 				} catch (error) {
 					if (error instanceof PartnerError) return { ok: false, error: error.message };

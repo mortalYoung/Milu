@@ -50,6 +50,8 @@ export function ContextMeter(props: { usage: ContextUsage }) {
 	const reading = () => `context ${percent()}% · ${formatTokens(props.usage.used)} / ${formatTokens(props.usage.window)}`;
 	// Color levels: ≤60% brand seal, 60–90% amber, >90% red (visual warning near the ceiling).
 	const level = () => (percent() > 90 ? "meter-danger" : percent() > 60 ? "meter-warn" : "meter-ok");
+	// The ring always carries the reading; the numeric percent appears only past 60% (warn/danger
+	// levels) — below that the arc alone is enough and the exact number lives in the click panel.
 
 	// The bar's overall length stays the provider-exact percent; the heuristic
 	// breakdown only proportions its colored parts. Zero-width parts are dropped
@@ -72,7 +74,9 @@ export function ContextMeter(props: { usage: ContextUsage }) {
 					<circle class="meter-track" cx="7" cy="7" r={RADIUS} />
 					<circle class={`meter-fill ${level()}`} cx="7" cy="7" r={RADIUS} stroke-dasharray={`${(CIRCUMFERENCE * percent()) / 100} ${CIRCUMFERENCE}`} transform="rotate(-90 7 7)" />
 				</svg>
-				<span class="context-meter-percent">{percent()}%</span>
+				<Show when={percent() > 60}>
+					<span class="context-meter-percent">{percent()}%</span>
+				</Show>
 			</button>
 			<Show when={open()}>
 				<div class="context-meter-panel" role="dialog" aria-label="Context usage">

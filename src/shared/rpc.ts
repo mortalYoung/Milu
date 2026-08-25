@@ -8,6 +8,14 @@ export type { SandboxMode };
  * decided by the human, or orphaned (no live run awaits it — not actionable, no buttons). */
 export type EscalationStatus = "pending" | "approved" | "rejected" | "dropped";
 
+/** A tool definition as sent to the provider (persisted with request/header for observability). */
+export interface RequestTool {
+	name: string;
+	label?: string;
+	description?: string;
+	parameters?: unknown;
+}
+
 /**
  * Trajectory records: the complete origin-log timeline, one record per pi log entry.
  * Folded on the bun side from persisted pi entries; the trajectory drawer renders
@@ -261,7 +269,7 @@ export type AppRPCSchema = __schema<{
 			};
 			/** Trajectory: the full process record (thinking/tools/usage), cached by the view; on message click the matching segment is fetched. */
 			trajectory: {
-				params: {};
+				params: { name: string };
 				response: { records: TrajectoryRecord[] };
 			};
 			/** The model-visible surface (nodes + replace generation) — observability for the surface layer. */

@@ -8,6 +8,7 @@
  * Still heuristic (CJK/code undercounted), still labeled `~` in the UI.
  */
 import type { Entry } from "@earendil-works/pi-agent-core";
+import type { RequestTool } from "../../shared/rpc";
 import type { Surface } from "../../shared/surface";
 import type { ContextBreakdown } from "./context-estimate";
 
@@ -58,8 +59,12 @@ function textBlocks(content: unknown): string {
 		.join("\n");
 }
 
-/** Price the model-visible surface: system + surface-node messages (tools are not in the prompt anymore). */
-export function priceSurface(systemPrompt: string, entries: Entry[], surface: Surface): ContextBreakdown {
+/**
+ * Price the model-visible surface: system + tool definitions + surface-node messages.
+ * Tools are not rendered into the prompt text anymore, but they ARE sent to the provider
+ * via the tools parameter — so their serialized schema is priced as its own segment.
+ */
+export function priceSurface(systemPrompt: string, tools: RequestTool[], entries: Entry[], surface: Surface): ContextBreakdown {
 	const byId = new Map<string, Entry>();
 	for (const e of entries) byId.set(e.id, e);
 	let messageChars = 0;
@@ -67,9 +72,15 @@ export function priceSurface(systemPrompt: string, entries: Entry[], surface: Su
 		const entry = byId.get(node.id);
 		if (entry) messageChars += nodeText(entry).length;
 	}
+	let toolsChars = 0;
+	try {
+		toolsChars = JSON.stringify(tools).length;
+	} catch {
+		// non-serializable schema → fall back to 0 rather than breaking the meter
+	}
 	return {
 		systemTokens: tokens(systemPrompt.length),
-		toolsTokens: 0,
+		toolsTokens: tokens(toolsChars),
 		messageTokens: tokens(messageChars),
 	};
 }
