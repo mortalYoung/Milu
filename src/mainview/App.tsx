@@ -4,7 +4,7 @@
  * settings views. Partners are created via a modal and saved as folders (see src/bun/partners.ts).
  */
 
-import { onMount } from "solid-js";
+import { createEffect, onMount } from "solid-js";
 import { AppRail } from "./components/AppRail";
 import { PartnerDetailsDialog } from "./components/PartnerDetailsDialog";
 import { PartnerModal } from "./components/PartnerModal";
@@ -122,6 +122,24 @@ export function App() {
 		return res.error ?? "Failed to create partner";
 	}
 
+	// ————— theme —————
+	// Apply the settings theme to <html> as color-scheme (the light-dark() tokens resolve against
+	// it). The first apply on boot is silent; later switches cross-fade via the .theme-flip class
+	// (200ms, see style.css) so the swap reads as one quiet change instead of a hard cut.
+	let flipTimer: ReturnType<typeof setTimeout> | undefined;
+	createEffect(() => {
+		const theme = settings.settings()?.theme ?? "system";
+		const root = document.documentElement;
+		if (root.dataset["theme"] === theme) return;
+		const flipping = root.dataset["theme"] !== undefined;
+		root.dataset["theme"] = theme;
+		clearTimeout(flipTimer);
+		if (flipping) {
+			root.classList.add("theme-flip");
+			flipTimer = setTimeout(() => root.classList.remove("theme-flip"), 300);
+		}
+	});
+
 	// ————— mount —————
 	void session.refreshHistory();
 	void session.refreshPartners();
@@ -176,7 +194,7 @@ export function App() {
 
 			{/* Settings: dialog */}
 			<Dialog open={shell.settingsOpen()} onOpenChange={shell.setSettingsOpen}>
-				<DialogContent class="w-[660px] max-w-none h-[540px] grid-rows-[auto_1fr] bg-white border-print-line">
+				<DialogContent class="w-[660px] max-w-none h-[540px] grid-rows-[auto_1fr] bg-letter border-print-line">
 					<DialogHeader>
 						<DialogTitle>Settings</DialogTitle>
 					</DialogHeader>

@@ -1,7 +1,7 @@
 ---
 version: beta
 name: Partner-correspondence
-description: Partner 数字员工桌面应用(书信对话方向,由 qiaomu-design Phase 2 四方向预览选定 B)。每轮对话像一封信:旧纸底色、衬线信笺气泡、邮戳时间戳、署名行;慢速、郑重、有人味。亮色纸感 + 经典气泡 IM,信息密度 2/10,动效强度 7/10。
+description: Partner 数字员工桌面应用(书信对话方向,由 qiaomu-design Phase 2 四方向预览选定 B)。每轮对话像一封信:旧纸底色、衬线信笺气泡、邮戳时间戳、署名行;慢速、郑重、有人味。亮色纸感 + 经典气泡 IM,信息密度 2/10,动效强度 7/10。三态主题(system/light/dark,默认 system),暗色为「暖夜纸」镜像。
 
 colors:
   paper: "#f7f3ea"
@@ -17,6 +17,21 @@ colors:
   seal: "#b03a2e"
   seal-soft: "#e8d5d1"
   on-ink: "#fffdf8"
+
+colors-dark:
+  paper: "#141210"
+  paper-deep: "#201b15"
+  paper-hover: "#1a1612"
+  letter: "#1f1b16"
+  ink: "#f3edde"
+  ink-soft: "#d8d0be"
+  body-muted: "#b5ab96"
+  muted: "#8f8574"
+  hairline: "#343026"
+  hairline-soft: "#262119"
+  seal: "#d97a68"
+  seal-soft: "#362420"
+  on-ink: "#141210"
 
 typography:
   serif-family: Newsreader
@@ -60,6 +75,7 @@ Partner 是一个"数字员工"桌面应用:你选中一位同事(bob、eve、le
   入场动作,信尾带署名行。
 - 无阴影、无渐变、无彩色噪声;层级靠纸面交替、发丝线、字距与衬线/无衬线的分工。
 - 唯一的重音是封印红 `#b03a2e`(邮戳、时间、发送、focus),像信上的一枚火漆。
+- 暗色下是同一叠纸在夜灯下:「夜纸」底色、奶油纸色文字,封印红提亮一档保持邮戳语义。
 
 ## 2. 色板与角色
 
@@ -79,6 +95,13 @@ Partner 是一个"数字员工"桌面应用:你选中一位同事(bob、eve、le
 
 原则:中性色一律带暖黄调(继承 Notion 暖中性策略);不用纯黑 `#000000`;
 红只用于"邮戳"语义,不铺开。
+
+**暗色(暖夜纸)**:暗色是亮色的严格镜像,每个 token 在 CSS 里是
+`light-dark(亮, 暗)` 对,由 `color-scheme` 解析——系统模式零 JS、无闪烁,
+设置页可强制 light/dark。镜像规则:纸面 → 夜纸(暗一档的暖炭)、墨 → 奶油纸色
+(`ink` 同时是"实底印章"角色,暗色下变成最亮的纸面,user 气泡/选中 rail/工作胶囊
+随之一并反转为浅底深字)、封印红提亮一档(`#d97a68`,保证 8.5-10.5px 邮戳小字在
+夜纸上的对比度 ≥ 4.5:1)。全 token 映射见 frontmatter `colors-dark`。
 
 ## 3. 排版规则
 
@@ -169,7 +192,12 @@ Inter/Roboto/Arial 作为 UI 字体、等宽字体堆砌、600+ 字重铺排、�
 ## 8. 响应式
 
 桌面优先(960×700 窗口)。宽度收窄时:列表栏可收起;气泡 max-width 72% → 85%;
-header 抬头不换行;输入区保持衬线 16px。深色模式不在本次范围。
+header 抬头不换行;输入区保持衬线 16px。
+
+主题三态:默认跟随系统(`color-scheme: light dark`,暗色 token 立即生效,无启动闪烁);
+设置页 General → Theme 可强制 light/dark(写 settings.json 的 `theme` 字段,App 根组件
+应用到 `<html data-theme>`,切换带 200ms 颜色过渡)。暗色为暖夜纸镜像(§2),
+无需任何组件级暗色规则。
 
 ## 9. Motion 哲学(动效强度 7/10)
 
@@ -183,5 +211,7 @@ header 抬头不换行;输入区保持衬线 16px。深色模式不在本次范�
 - **run-settings 面板**入场 = 上移 6px + 淡入 180ms 强化 ease-out;
   `prefers-reduced-motion` 只留淡入(位移禁用)。
 - 只动 transform/opacity;UI 动效 ≤300ms;键盘触发无动画。
+- 主题切换 = 200ms 纯颜色过渡(background/border/color/fill/stroke,强化 ease-out),
+  仅主题变化期间由 `.theme-flip` 临时挂载,不干扰日常交互;reduced-motion 下无过渡。
 - `prefers-reduced-motion: reduce` 时移除位移类动画,保留 opacity 过渡。
 - hover 效果包在 `@media (hover: hover) and (pointer: fine)`。

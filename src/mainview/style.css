@@ -33,29 +33,32 @@
 }
 
 @theme {
-	/* Letter-conversation palette (DESIGN.md) */
-	--color-paper: #f7f3ea;
-	--color-paper-deep: #ece5d6;
-	--color-paper-hover: #f0ead9;
-	--color-letter: #fffdf8;
-	--color-ink: #2a2620;
-	--color-ink-soft: #4a4438;
-	--color-body-muted: #6f675a;
-	--color-muted: #8d8474;
-	--color-hairline: #e2dccb;
-	--color-hairline-soft: #eceae0;
-	--color-seal: #b03a2e;
-	--color-seal-soft: #e8d5d1;
-	--color-on-ink: #f7f3ea;
+	/* Letter-conversation palette (DESIGN.md) — each token is a light / warm-night dark pair.
+	   The dark set mirrors the light set (paper → near-black night paper, ink → cream ink),
+	   resolved by color-scheme, so the whole system flips without a single component-level
+	   dark rule. Base values lean black; the warm undertone keeps the paper identity. */
+	--color-paper: light-dark(#f7f3ea, #141210);
+	--color-paper-deep: light-dark(#ece5d6, #201b15);
+	--color-paper-hover: light-dark(#f0ead9, #1a1612);
+	--color-letter: light-dark(#fffdf8, #1f1b16);
+	--color-ink: light-dark(#2a2620, #f3edde);
+	--color-ink-soft: light-dark(#4a4438, #d8d0be);
+	--color-body-muted: light-dark(#6f675a, #b5ab96);
+	--color-muted: light-dark(#8d8474, #8f8574);
+	--color-hairline: light-dark(#e2dccb, #343026);
+	--color-hairline-soft: light-dark(#eceae0, #262119);
+	--color-seal: light-dark(#b03a2e, #d97a68);
+	--color-seal-soft: light-dark(#e8d5d1, #362420);
+	--color-on-ink: light-dark(#fffdf8, #141210);
 
 	/* Backward-compatible aliases */
-	--color-qw-bg: #f7f3ea;
-	--color-qw-panel: #f7f3ea;
-	--color-qw-text: #2a2620;
-	--color-qw-text-2: #6f675a;
-	--color-qw-border: #e2dccb;
-	--color-qw-hover: #f0ead9;
-	--color-qw-active: #2a2620;
+	--color-qw-bg: light-dark(#f7f3ea, #141210);
+	--color-qw-panel: light-dark(#f7f3ea, #141210);
+	--color-qw-text: light-dark(#2a2620, #f3edde);
+	--color-qw-text-2: light-dark(#6f675a, #b5ab96);
+	--color-qw-border: light-dark(#e2dccb, #343026);
+	--color-qw-hover: light-dark(#f0ead9, #1a1612);
+	--color-qw-active: light-dark(#2a2620, #f3edde);
 
 	/* Fonts: serif for reading only, sans for UI only, mono for inline code only */
 	--font-sans: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
@@ -63,32 +66,32 @@
 	--font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
 	/* shadcn/SolidUI theme variables (mapped to the letter palette) */
-	--color-background: #f7f3ea;
-	--color-foreground: #2a2620;
-	--color-card: #fffdf8;
-	--color-card-foreground: #2a2620;
-	--color-primary: #2a2620;
-	--color-primary-foreground: #f7f3ea;
-	--color-secondary: #ece5d6;
-	--color-secondary-foreground: #2a2620;
-	--color-muted: #8d8474;
-	--color-muted-foreground: #8d8474;
-	--color-accent: #f0ead9;
-	--color-accent-foreground: #2a2620;
-	--color-destructive: #b03a2e;
-	--color-destructive-foreground: #fffdf8;
-	--color-border: #e2dccb;
-	--color-input: #e2dccb;
-	--color-ring: #b03a2e;
-	--color-popover: #fffdf8;
-	--color-popover-foreground: #2a2620;
-	--color-error: #b03a2e;
-	--color-error-foreground: #b03a2e;
+	--color-background: light-dark(#f7f3ea, #141210);
+	--color-foreground: light-dark(#2a2620, #f3edde);
+	--color-card: light-dark(#fffdf8, #1f1b16);
+	--color-card-foreground: light-dark(#2a2620, #f3edde);
+	--color-primary: light-dark(#2a2620, #f3edde);
+	--color-primary-foreground: light-dark(#f7f3ea, #141210);
+	--color-secondary: light-dark(#ece5d6, #201b15);
+	--color-secondary-foreground: light-dark(#2a2620, #f3edde);
+	--color-muted: light-dark(#8d8474, #8f8574);
+	--color-muted-foreground: light-dark(#8d8474, #8f8574);
+	--color-accent: light-dark(#f0ead9, #1a1612);
+	--color-accent-foreground: light-dark(#2a2620, #f3edde);
+	--color-destructive: light-dark(#b03a2e, #d97a68);
+	--color-destructive-foreground: light-dark(#fffdf8, #1f1b16);
+	--color-border: light-dark(#e2dccb, #343026);
+	--color-input: light-dark(#e2dccb, #343026);
+	--color-ring: light-dark(#b03a2e, #d97a68);
+	--color-popover: light-dark(#fffdf8, #1f1b16);
+	--color-popover-foreground: light-dark(#2a2620, #f3edde);
+	--color-error: light-dark(#b03a2e, #d97a68);
+	--color-error-foreground: light-dark(#b03a2e, #d97a68);
 
 	/* Dialog direction C palette (print orange, used by the details/settings dialogs) */
-	--color-print: #e2552d;
-	--color-print-line: #d8d8d4;
-	--color-print-tint: #f4f4f2;
+	--color-print: light-dark(#e2552d, #e0684a);
+	--color-print-line: light-dark(#d8d8d4, #40382e);
+	--color-print-tint: light-dark(#f4f4f2, #211d17);
 }
 
 /* Atmosphere layer: old-paper micro-noise (opacity <4%, pointer-events pass-through) */
@@ -106,6 +109,17 @@ body::before {
 	html,
 	body {
 		height: 100%;
+	}
+	/* The theme lives on color-scheme: the light-dark() tokens above resolve against it.
+	   Default = follow the system; the settings theme (SettingsView → data-theme) overrides. */
+	:root {
+		color-scheme: light dark;
+	}
+	:root[data-theme="light"] {
+		color-scheme: light;
+	}
+	:root[data-theme="dark"] {
+		color-scheme: dark;
 	}
 	body {
 		@apply bg-paper text-ink font-sans antialiased;
@@ -133,11 +147,21 @@ body::before {
 	color: var(--color-muted);
 }
 
-/* Ruled paper: printed lines under the text, like a real letter sheet — writing sits on the lines */
+/* Ruled paper: printed lines under the text, like a real letter sheet — writing sits on the lines.
+   The line color is baked into the SVG (data URIs can't read CSS variables), so the night paper
+   gets its own dark-warm line set. */
 @utility letter-lines {
 	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='32'%3E%3Cline x1='0' y1='31' x2='120' y2='31' stroke='%23ddd6c6' stroke-opacity='0.65'/%3E%3C/svg%3E");
 	background-size: 100% 32px;
 	line-height: 32px;
+}
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme="light"]) .letter-lines {
+		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='32'%3E%3Cline x1='0' y1='31' x2='120' y2='31' stroke='%23343026' stroke-opacity='0.65'/%3E%3C/svg%3E");
+	}
+}
+:root[data-theme="dark"] .letter-lines {
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='32'%3E%3Cline x1='0' y1='31' x2='120' y2='31' stroke='%23343026' stroke-opacity='0.65'/%3E%3C/svg%3E");
 }
 
 @layer components {
@@ -243,7 +267,7 @@ body::before {
 
 	/* ————— Markdown rendering (create preview / details right column) ————— */
 	.md {
-		@apply font-serif text-[15px] leading-[1.6] text-[#111110] break-words;
+		@apply font-serif text-[15px] leading-[1.6] text-ink break-words;
 	}
 	.md h1 {
 		@apply text-[18px] font-semibold mt-1 mb-2;
@@ -270,7 +294,7 @@ body::before {
 	}
 	.md blockquote {
 		border-left: 2px solid var(--color-print);
-		@apply my-2 pl-2.5 text-[#555] text-[14px];
+		@apply my-2 pl-2.5 text-body-muted text-[14px];
 	}
 	.md code {
 		@apply font-mono text-[12px] bg-print-tint border border-print-line rounded-[3px] px-[5px] py-[1px];
@@ -292,6 +316,20 @@ body::before {
 	}
 	.md pre code {
 		@apply bg-transparent border-0 p-0;
+	}
+	.md pre.shiki {
+		/* Token colors come from shiki's light-dark() pairs; the surface stays ours — the
+		   themes' own backgrounds (white / github-dark blue) would break the paper system. */
+		background-color: var(--color-print-tint) !important;
+	}
+	/* Plain and shiki code blocks share the same box model so the async highlight swap doesn't
+	   change height — no scroll jump when a message upgrades as it enters the viewport. */
+	.md pre,
+	.md pre.shiki {
+		font-size: 13px;
+		line-height: 1.6;
+		padding: 10px 12px;
+		margin: 8px 0;
 	}
 	.md a {
 		color: var(--color-print);
@@ -317,7 +355,7 @@ body::before {
 		caret-color: var(--color-seal);
 	}
 	.letter-alias::placeholder {
-		color: #cfc8b8;
+		color: var(--color-muted);
 	}
 	.letter-alias-static {
 		@apply text-ink;
@@ -329,7 +367,7 @@ body::before {
 	   stamped beside the salutation, clear of the dialog's close button (below its 40px zone) */
 	.letter-postmark {
 		@apply absolute right-5 top-[52px] size-[58px] rounded-full border border-dashed border-seal flex flex-col items-center justify-center font-sans text-[8.5px] uppercase tracking-[0.12em] text-seal leading-[1.6] text-center;
-		background: rgba(247, 243, 234, 0.55);
+		background: light-dark(rgba(247, 243, 234, 0.55), rgba(31, 27, 22, 0.55));
 		transform: rotate(-12deg);
 	}
 	/* Signature: right-aligned seal-red sign-off, mirroring the conversation letters */
@@ -537,7 +575,7 @@ body::before {
 	/* Dashed postmark: top-right of the letter, rotated -12° */
 	.msg-postmark {
 		@apply absolute -top-4 -right-4 size-[58px] rounded-full border border-dashed border-seal flex flex-col items-center justify-center font-sans text-[8.5px] tracking-[0.12em] text-seal leading-[1.6] text-center;
-		background: rgba(247, 243, 234, 0.55);
+		background: light-dark(rgba(247, 243, 234, 0.55), rgba(31, 27, 22, 0.55));
 		transform: rotate(-12deg);
 	}
 	/* Signature line: seal red, right-aligned */
@@ -1008,7 +1046,7 @@ body::before {
 	}
 	/* Date separator: small text + short lines on both sides (44px) */
 	.time-sep {
-		@apply flex items-center justify-center gap-3 font-sans text-[10px] tracking-[0.18em] text-body-muted mt-0 mb-6;
+		@apply flex items-center justify-center gap-3 font-sans text-[10px] tracking-[0.18em] text-body-muted mt-6 mb-6;
 	}
 	.time-sep::before,
 	.time-sep::after {
@@ -1035,6 +1073,11 @@ body::before {
 	}
 	.composer-toggle[aria-expanded="true"] {
 		color: var(--color-seal);
+	}
+	/* Stop button (shown while running): keeps the paper-outline circle but tints it seal red —
+	   the red square reads as "stop" at a glance without breaking the letter-postmark language. */
+	.composer-stop {
+		@apply border-seal text-seal hover:bg-seal/10;
 	}
 	/* The pill: 44px tall, radius 22px (DESIGN.md — the field grows with the textarea, so the
 	   radius caps at 22px instead of staying a full capsule) */
@@ -1087,9 +1130,9 @@ body::before {
 	.composer-panel-foot {
 		@apply flex items-center gap-3 min-w-0 whitespace-nowrap font-mono text-[10px] text-body-muted;
 	}
-	/* Panel selects: quiet mono paper controls — native chevron off, a paper chevron in its place */
-	.composer-model,
-	.composer-sandbox {
+	/* Panel selects: quiet mono paper controls — native chevron off, a paper chevron in its place.
+	   Only the model select remains native; the sandbox select is the custom ui/Select. */
+	.composer-model {
 		@apply font-mono text-[10px] text-ink-soft bg-transparent border border-hairline rounded-[8px] px-2.5 py-[4px] cursor-pointer outline-none truncate focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-letter;
 		appearance: none;
 		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath d='M1 2.5 4 5.5 7 2.5' fill='none' stroke='%238d8474' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
@@ -1099,9 +1142,6 @@ body::before {
 	}
 	.composer-model {
 		@apply min-w-0 max-w-[200px];
-	}
-	.composer-sandbox {
-		@apply shrink-0;
 	}
 	/* Live status: the panel's footnote (the header and the working chip in the stream already carry it) */
 	.composer-status {
@@ -1140,10 +1180,10 @@ body::before {
 		stroke: var(--color-seal);
 	}
 	.meter-fill.meter-warn {
-		stroke: #b8860b;
+		stroke: light-dark(#b8860b, #d4a437);
 	}
 	.meter-fill.meter-danger {
-		stroke: #d64541;
+		stroke: light-dark(#d64541, #e2635e);
 	}
 	.context-meter-percent {
 		@apply font-mono text-[9px] text-muted;
@@ -1170,10 +1210,10 @@ body::before {
 		background: var(--color-seal);
 	}
 	.meter-segment.meter-tools {
-		background: #b8860b;
+		background: light-dark(#b8860b, #d4a437);
 	}
 	.meter-segment.meter-messages {
-		background: #2a9d8f;
+		background: light-dark(#2a9d8f, #41b7a8);
 	}
 	.meter-rows {
 		@apply flex flex-col gap-1;
@@ -1188,10 +1228,10 @@ body::before {
 		background: var(--color-seal);
 	}
 	.meter-swatch.meter-tools {
-		background: #b8860b;
+		background: light-dark(#b8860b, #d4a437);
 	}
 	.meter-swatch.meter-messages {
-		background: #2a9d8f;
+		background: light-dark(#2a9d8f, #41b7a8);
 	}
 }
 
@@ -1220,5 +1260,28 @@ body::before {
 	.work-dot {
 		animation: none;
 		opacity: 1;
+	}
+}
+
+/* Theme switch: one quiet cross-fade of surface + ink colors (200ms), no layout motion.
+   App.tsx adds .theme-flip to <html> for the duration of a theme change only, so the
+   transition never competes with (or slows) normal interaction. */
+html.theme-flip,
+html.theme-flip *,
+html.theme-flip *::before,
+html.theme-flip *::after {
+	transition:
+		background-color 200ms cubic-bezier(0.23, 1, 0.32, 1),
+		border-color 200ms cubic-bezier(0.23, 1, 0.32, 1),
+		color 200ms cubic-bezier(0.23, 1, 0.32, 1),
+		fill 200ms cubic-bezier(0.23, 1, 0.32, 1),
+		stroke 200ms cubic-bezier(0.23, 1, 0.32, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+	html.theme-flip,
+	html.theme-flip *,
+	html.theme-flip *::before,
+	html.theme-flip *::after {
+		transition: none;
 	}
 }

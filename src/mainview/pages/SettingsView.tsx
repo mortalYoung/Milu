@@ -8,11 +8,16 @@
  * a transient toast. Saved api keys are never previewed — only their configured state.
  */
 import { createEffect, createSignal, For, Show } from "solid-js";
+import type { SandboxMode, ThemeMode } from "../../shared/rpc";
 
 export interface SettingsData {
 	partner_profile_path: string;
 	detect_instructions_file: string;
+	/** The Permission setting: default sandbox mode for newly created partners. */
+	defaultSandboxMode?: SandboxMode;
 	providers?: string[];
+	/** UI theme (system/light/dark). */
+	theme?: ThemeMode;
 }
 
 export interface RuntimeInfo {
@@ -90,9 +95,11 @@ export function SettingsView(props: {
 	onSave: (settings: SettingsData, credentials: Record<string, string>) => Promise<SaveResult>;
 	onLoad: () => void;
 }) {
-	const [tab, setTab] = createSignal<"general" | "providers">("general");
+	const [tab, setTab] = createSignal<"general" | "permission" | "providers">("general");
 	const [path, setPath] = createSignal("");
 	const [instructionsFile, setInstructionsFile] = createSignal("");
+	const [defaultSandboxMode, setDefaultSandboxMode] = createSignal<SandboxMode>("workspace-write");
+	const [theme, setTheme] = createSignal<ThemeMode>("system");
 	const [added, setAdded] = createSignal<string[]>([]);
 	const [toAdd, setToAdd] = createSignal("");
 	/** Keys typed this session (per provider) — non-empty entries go to .credentials.yaml on commit. */
@@ -106,6 +113,12 @@ export function SettingsView(props: {
 	if (props.settings && instructionsFile() === "" && props.settings.detect_instructions_file !== instructionsFile()) {
 		setInstructionsFile(props.settings.detect_instructions_file);
 	}
+	if (props.settings && props.settings.defaultSandboxMode && defaultSandboxMode() !== props.settings.defaultSandboxMode) {
+		setDefaultSandboxMode(props.settings.defaultSandboxMode);
+	}
+	if (props.settings && props.settings.theme !== undefined && theme() !== props.settings.theme) {
+		setTheme(props.settings.theme);
+	}
 	if (props.settings && added().length === 0 && props.settings.providers?.length) {
 		setAdded(props.settings.providers);
 	}
@@ -114,7 +127,9 @@ export function SettingsView(props: {
 	const currentSettings = (): SettingsData => ({
 		partner_profile_path: path().trim() || "~/.partner/",
 		detect_instructions_file: instructionsFile().trim() || "AGENTS.md",
+		defaultSandboxMode: defaultSandboxMode(),
 		providers: added(),
+		theme: theme(),
 	});
 	const flashError = (message: string) => {
 		setError(message);
@@ -186,6 +201,15 @@ export function SettingsView(props: {
 				<button
 					type="button"
 					class={`flex items-center gap-2 h-[34px] px-4 w-full text-left font-serif text-[13px] font-medium border-l-2 transition-colors ${
+						tab() === "permission" ? "text-ink border-seal bg-paper-hover" : "text-ink-soft border-transparent hover:bg-paper-hover"
+					}`}
+					onClick={() => setTab("permission")}
+				>
+					Permission
+				</button>
+				<button
+					type="button"
+					class={`flex items-center gap-2 h-[34px] px-4 w-full text-left font-serif text-[13px] font-medium border-l-2 transition-colors ${
 						tab() === "providers" ? "text-ink border-seal bg-paper-hover" : "text-ink-soft border-transparent hover:bg-paper-hover"
 					}`}
 					onClick={() => setTab("providers")}
@@ -220,6 +244,42 @@ export function SettingsView(props: {
 								await persist({ ...currentSettings(), detect_instructions_file: value });
 							}}
 						/>
+					</div>
+					<div class="flex items-center gap-4 h-[38px]">
+						<span class="flex-none w-[148px] font-serif text-[13px] font-medium text-ink-soft">Theme</span>
+						<select
+							class="flex-none w-[200px] h-[30px] px-2 bg-transparent border border-hairline rounded-[2px] font-mono text-[12px] text-ink focus:border-seal focus:outline-none"
+							value={theme()}
+							onChange={(e) => {
+								const t = e.currentTarget.value as ThemeMode;
+								setTheme(t);
+								void persist({ ...currentSettings(), theme: t });
+							}}
+						>
+							<option value="system">system</option>
+							<option value="light">light</option>
+							<option value="dark">dark</option>
+						</select>
+					</div>
+				</Show>
+
+				<Show when={tab() === "permission"}>
+					<div class="font-serif text-[15px] font-semibold text-ink mb-4">Permission</div>
+					<div class="flex items-center gap-4 h-[38px]">
+						<span class="flex-none w-[148px] font-serif text-[13px] font-medium text-ink-soft">Default sandbox mode</span>
+						<select
+							class="flex-none w-[200px] h-[30px] px-2 bg-transparent border border-hairline rounded-[2px] font-mono text-[12px] text-ink focus:border-seal focus:outline-none"
+							value={defaultSandboxMode()}
+							onChange={(e) => {
+								const mode = e.currentTarget.value as SandboxMode;
+								setDefaultSandboxMode(mode);
+								void persist({ ...currentSettings(), defaultSandboxMode: mode });
+							}}
+						>
+							<option value="read-only">read-only</option>
+							<option value="workspace-write">workspace-write</option>
+							<option value="danger-full-access">danger-full-access</option>
+						</select>
 					</div>
 				</Show>
 

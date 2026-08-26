@@ -14,6 +14,7 @@ import type { ContextUsage, SandboxMode, SessionStats } from "../../shared/rpc";
 import { formatWorkspacePath, shouldSendOnEnter } from "../lib/composer-input";
 import { Button } from "./Button";
 import { ContextMeter } from "./ContextMeter";
+import { Select } from "./ui/select";
 
 /** Auto-grow ceiling (~5 lines); beyond that the textarea scrolls internally. */
 const MAX_HEIGHT = 120;
@@ -196,7 +197,7 @@ export function Composer(props: {
 					{showSend() && (
 						<Button
 							variant={props.busy() ? "outline" : "seal"}
-							class="size-[34px] p-0 rounded-full shrink-0"
+							class={`size-[34px] p-0 rounded-full shrink-0 ${props.busy() ? "composer-stop" : ""}`}
 							title={props.busy() ? "Stop" : "Send"}
 							icon={props.busy() ? <Square size={14} /> : <ArrowUp size={14} />}
 							onClick={() => (props.busy() ? props.onStop() : send())}
@@ -240,16 +241,19 @@ export function Composer(props: {
 								))}
 							</select>
 						)}
-						<select
-							class="composer-sandbox"
+						<Select
+							class="shrink-0"
 							title="Sandbox mode (file writes)"
+							ariaLabel="Sandbox mode"
 							value={props.sandboxMode}
-							onChange={(e) => props.onSetSandboxMode(e.currentTarget.value as SandboxMode)}
-						>
-							<option value="read-only">read-only</option>
-							<option value="workspace-write">workspace-write</option>
-							<option value="danger-full-access">full access</option>
-						</select>
+							portalMount={rootRef}
+							onChange={(value) => props.onSetSandboxMode(value as SandboxMode)}
+							options={[
+								{ value: "read-only", label: "read-only" },
+								{ value: "workspace-write", label: "workspace-write" },
+								{ value: "danger-full-access", label: "full access" },
+							]}
+						/>
 					</div>
 					{(status() || statsLine()) && (
 						<div class="composer-panel-foot">

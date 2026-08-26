@@ -8,7 +8,7 @@
 import { type Accessor, createEffect, createMemo, createSignal, For, onCleanup } from "solid-js";
 import { AnimatePresence, Motion, MotionConfigProvider } from "solid-motion";
 import type { EscalationStatus, SandboxMode } from "../../shared/rpc";
-import { renderMarkdown } from "../lib/markdown";
+import { renderMarkdown, renderMarkdownPlain } from "../lib/markdown";
 
 /** Sandbox escalation approval (kind "escalation"): the request payload + decision status. */
 export interface EscalationInfo {
@@ -86,8 +86,48 @@ function hashString(s: string): number {
 	return h >>> 0;
 }
 
+/**
+ * Markdown body with deferred shiki: the first paint renders full markdown formatting without
+ * shiki code highlighting (fast), then the highlighted version replaces it asynchronously when
+ * the browser is idle. Keeps history load responsive even with many messages.
+ */
+function Markdown(props: { text: string; class?: string }) {
+	let ref: HTMLDivElement | undefined;
+	createEffect(() => {
+		const el = ref;
+		if (!el) return;
+		// First paint: fast plain markdown (no shiki), so history load stays responsive.
+		el.innerHTML = renderMarkdownPlain(props.text);
+
+		// Lazy shiki upgrade: only when the message scrolls into (or near) the viewport.
+		let observer: IntersectionObserver | undefined;
+		const upgrade = () => {
+			if (el.querySelector(".shiki")) return; // already upgraded
+			el.innerHTML = renderMarkdown(props.text);
+			observer?.disconnect();
+		};
+
+		if (typeof IntersectionObserver === "function") {
+			observer = new IntersectionObserver(
+				(entries) => {
+					for (const entry of entries) {
+						if (entry.isIntersecting) upgrade();
+					}
+				},
+				{ root: null, rootMargin: "200px" }, // warm up just before it scrolls into view
+			);
+			observer.observe(el);
+		} else {
+			upgrade();
+		}
+
+		onCleanup(() => observer?.disconnect());
+	});
+	return <div ref={ref} class={props.class} />;
+}
+
 /** A letter's body: postmark + markdown + signature line (shared by single replies and stack cards). */
-function letterBody(card: Entry, worker?: string, showPostmark = true) {
+function letterBody(card: Entry, worker?: string, showPostmark = true, rich = true) {
 	const stamp = showPostmark ? parseStamp(card.time) : null;
 	return (
 		<>
@@ -97,7 +137,7 @@ function letterBody(card: Entry, worker?: string, showPostmark = true) {
 					<span>{stamp.time}</span>
 				</div>
 			)}
-			<div class="md msg-letter-text" innerHTML={renderMarkdown(card.text)} />
+			{rich ? <Markdown text={card.text} class="md msg-letter-text" /> : <div class="msg-letter-text">{card.text}</div>}
 			{worker && (
 				<div class="msg-sign">
 					— {worker} · {timeHM(card.time)}
@@ -204,7 +244,9 @@ function MessageStack(props: { cards: Entry[]; worker?: string; locateFlashId?: 
 								...(depth() === 0 ? { "min-height": `${STACK_CARD_MIN_HEIGHT}px` } : { height: `${STACK_CARD_MIN_HEIGHT}px`, overflow: "hidden" }),
 							}}
 						>
-							{card.kind === "escalation" && card.escalation ? escalationBody(card.escalation, props.onEscalationRespond) : letterBody(card, props.worker, depth() === 0)}
+							{card.kind === "escalation" && card.escalation
+								? escalationBody(card.escalation, props.onEscalationRespond)
+								: letterBody(card, props.worker, depth() === 0, depth() <= 2)}
 						</div>
 					);
 				}}
@@ -249,6 +291,12 @@ export function Transcript(props: {
 	let atBottom = true;
 	// Fresh-load detection: entries were cleared (select) then repopulated — restart the window at the tail.
 	let prevBlocksLen = 0;
+	// Whether the render window has been initialized for the current conversation. Until it is,
+	// visibleBlocks shows only the tail — never render the whole history on the first frame.
+	let windowInitialized = false;
+	// Track the newest user entry: the user's own send always jumps to the bottom — the composer
+	// is at the bottom, so their message should be visible even if they were reading older history.
+	let lastUserEntryId: number | null = null;
 
 	// Consecutive agent replies and sandbox escalations group into one deck per burst; user/sys/sep stay standalone.
 	// Declared FIRST: Solid effects run synchronously at creation (inside the component body), so anything that
@@ -273,6 +321,10 @@ export function Transcript(props: {
 
 	const visibleBlocks = createMemo(() => {
 		const all = blocks();
+		if (all.length === 0) return all;
+		// First pass after a load: never render the whole history — show the tail immediately.
+		// The fresh-load effect below takes over windowStart for subsequent scroll anchoring.
+		if (!windowInitialized) return all.slice(Math.max(0, all.length - HISTORY_WINDOW));
 		const start = Math.min(windowStart(), all.length);
 		return start > 0 ? all.slice(start) : all;
 	});
@@ -280,8 +332,14 @@ export function Transcript(props: {
 	// A fresh conversation load (entries 0 → N) starts the window at the tail and sticks to the bottom.
 	createEffect(() => {
 		const len = blocks().length;
+		if (len === 0) {
+			windowInitialized = false;
+			prevBlocksLen = 0;
+			return;
+		}
 		if (prevBlocksLen === 0 && len > 0) {
 			setWindowStart(Math.max(0, len - HISTORY_WINDOW));
+			windowInitialized = true;
 			atBottom = true;
 		}
 		prevBlocksLen = len;
@@ -326,8 +384,20 @@ export function Transcript(props: {
 
 	createEffect(() => {
 		props.tick(); // push, history, turn, end — all bump it
-		// Auto-scroll to the bottom only when the user is already there (scroll anchoring).
-		if (atBottom && container) container.scrollTop = container.scrollHeight;
+		const all = blocks();
+		if (all.length === 0) {
+			lastUserEntryId = null;
+			return;
+		}
+		// A new user entry means the human just sent a message — force the bottom. Other new
+		// content (agent replies, sys lines) keeps the scroll-anchoring rule.
+		let lastUser: Entry | null = null;
+		for (const b of all) {
+			if (!Array.isArray(b) && b.kind === "user") lastUser = b;
+		}
+		const userSent = lastUser != null && lastUser.id !== lastUserEntryId;
+		lastUserEntryId = lastUser?.id ?? null;
+		if (container && (userSent || atBottom)) container.scrollTop = container.scrollHeight;
 	});
 
 	return (

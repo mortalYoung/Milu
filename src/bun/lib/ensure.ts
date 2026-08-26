@@ -6,7 +6,7 @@ import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { SandboxMode } from "../permission";
 import { isSandboxMode, sandboxFilePath, validateWorkspace, workspaceFilePath } from "../permission";
-import { modelFilePath } from "./partner-files";
+import { modelFilePath, persistSandboxMode } from "./partner-files";
 
 /** Create the partner's storage subdirectory (the agent's freely-writable area) and return its path — it must exist before the prompt mentions it. */
 export async function ensureStoragePath(dir: string): Promise<string> {
@@ -31,7 +31,7 @@ export async function ensureWorkspace(dir: string): Promise<string | null> {
 }
 
 /** Restore the persisted sandbox mode (fallback default when unset or corrupt). */
-export async function ensureSandboxMode(dir: string): Promise<SandboxMode> {
+export async function ensureSandboxMode(dir: string, fallback: SandboxMode = "workspace-write"): Promise<SandboxMode> {
 	try {
 		const raw = await readFile(sandboxFilePath(dir), "utf8");
 		const saved = JSON.parse(raw) as { mode?: unknown };
@@ -39,7 +39,10 @@ export async function ensureSandboxMode(dir: string): Promise<SandboxMode> {
 	} catch {
 		// no persisted mode for this partner
 	}
-	return "workspace-write";
+	// Capture the default at first init so a later settings change doesn't retroactively
+	// change partners that never had an explicit mode.
+	await persistSandboxMode(dir, fallback);
+	return fallback;
 }
 
 /** Restore the persisted model selection (provider + optional pinned model); null when this partner has none. */

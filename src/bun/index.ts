@@ -100,7 +100,10 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 	const storagePath = await ensureStoragePath(dir);
 	// Restore the persisted workspace (per-partner): re-validated so a deleted directory is not restored
 	const workspace = await ensureWorkspace(dir);
-	const mode = await ensureSandboxMode(dir);
+	// Permission setting: the default sandbox mode captured for a fresh partner.
+	const settings = await loadSettings();
+	const defaultMode = isSandboxMode(settings.defaultSandboxMode) ? settings.defaultSandboxMode : "workspace-write";
+	const mode = await ensureSandboxMode(dir, defaultMode);
 	const model = await ensureModel(dir);
 
 	const scope = session.scope(dir);

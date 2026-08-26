@@ -1,19 +1,29 @@
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import type { SandboxMode } from "../permission";
+
+/** UI theme: follow the system appearance, or force light/dark. */
+export type ThemeMode = "system" | "light" | "dark";
 
 export interface Settings {
 	/** Root directory for Partner profile storage (where partners get created). */
 	partner_profile_path: string;
 	/** Instructions file read by set_workspace (relative to the workspace root). */
 	detect_instructions_file: string;
+	/** Default sandbox mode for newly created partners (the Permission setting). */
+	defaultSandboxMode?: SandboxMode;
 	/** The added LLM providers (each builtin id at most once; keys live in .credentials.yaml). */
 	providers?: string[];
+	/** UI theme; the view applies it to color-scheme (light-dark() tokens do the rest). */
+	theme?: ThemeMode;
 }
 
 const DEFAULT_SETTINGS: Settings = {
 	partner_profile_path: "~/.partner/",
 	detect_instructions_file: "AGENTS.md",
+	defaultSandboxMode: "workspace-write",
+	theme: "system",
 };
 
 const SETTINGS_PATH = join(homedir(), ".config", "letters", "settings.json");

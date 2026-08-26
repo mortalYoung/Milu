@@ -1,8 +1,9 @@
 import type { ElectrobunRPCSchema } from "electrobun";
+import type { ThemeMode } from "../bun/lib/settings";
 import type { SandboxMode } from "../bun/permission/types";
 import type { SurfaceNode } from "./surface";
 
-export type { SandboxMode };
+export type { SandboxMode, ThemeMode };
 
 /** Lifecycle of a sandbox escalation request as the transcript shows it: awaiting the human,
  * decided by the human, or orphaned (no live run awaits it — not actionable, no buttons). */
@@ -282,14 +283,18 @@ export type AppRPCSchema = __schema<{
 				params: {};
 				response: { ok: boolean; error?: string; compacted?: number };
 			};
-			/** Settings (partner profile path, detected instructions file) + runtime info (model / API key status). */
+			/** Settings (partner profile path, detected instructions file, default sandbox mode) + runtime info (model / API key status). */
 			get_settings: {
 				params: {};
 				response: {
 					settings: {
 						partner_profile_path: string;
 						detect_instructions_file: string;
+						/** The Permission setting: default sandbox mode for newly created partners. */
+						defaultSandboxMode?: SandboxMode;
 						providers?: string[];
+						/** UI theme (system/light/dark) — the view applies it to color-scheme. */
+						theme?: ThemeMode;
 					};
 					runtime: {
 						/** Every added provider with its key-configured state (keys never leave bun). */
@@ -304,7 +309,11 @@ export type AppRPCSchema = __schema<{
 					settings: {
 						partner_profile_path: string;
 						detect_instructions_file: string;
+						/** The Permission setting: default sandbox mode for newly created partners. */
+						defaultSandboxMode?: SandboxMode;
 						providers?: string[];
+						/** UI theme (system/light/dark) — the view applies it to color-scheme. */
+						theme?: ThemeMode;
 					};
 					/** Provider → api key for any provider the user edited this save (non-empty values only). */
 					credentials?: Record<string, string>;

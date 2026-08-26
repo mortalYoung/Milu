@@ -19,8 +19,9 @@ import type { MarkdownItShikiSetupOptions } from "@shikijs/markdown-it/core";
 import type { HighlighterCore } from "@shikijs/types";
 import MarkdownIt, { type MarkdownIt as MarkdownItType, type Renderer, type RendererRule } from "markdown-it";
 
-/** The single light theme (shiki inline-styles token colors; matches the light letter paper). */
-const HIGHLIGHT_THEME = "github-light";
+// Dual shiki themes: with `defaultColor: "light-dark()"` every token color is emitted as an
+// inline `light-dark(#light, #dark)` pair, resolved by the app's color-scheme — so code blocks
+// follow the theme (data-theme / system) instantly, no re-render needed on a theme switch.
 // shiki treats "text" as the built-in plain-text language at runtime, but it is not a member of the
 // BundledLanguage union — cast it through unknown once.
 const TEXT_LANG = "text" as unknown as MarkdownItShikiSetupOptions["defaultLanguage"];
@@ -48,7 +49,7 @@ function patchLinkTarget(md: MarkdownItType) {
  * code-splits them into a lazy chunk — the main bundle only pays for markdown-it + app code.
  */
 async function buildShikiMd(): Promise<MarkdownItType> {
-	const [{ createHighlighterCore }, { createJavaScriptRegexEngine }, { fromHighlighter }, ts, tsx, js, python, html, css, githubLight] = await Promise.all([
+	const [{ createHighlighterCore }, { createJavaScriptRegexEngine }, { fromHighlighter }, ts, tsx, js, python, html, css, githubLight, githubDark] = await Promise.all([
 		import("shiki/core"),
 		import("shiki/engine/javascript"),
 		import("@shikijs/markdown-it/core"),
@@ -59,15 +60,19 @@ async function buildShikiMd(): Promise<MarkdownItType> {
 		import("shiki/langs/html.mjs"),
 		import("shiki/langs/css.mjs"),
 		import("shiki/themes/github-light.mjs"),
+		import("shiki/themes/github-dark.mjs"),
 	]);
 
 	const highlighter: HighlighterCore = await createHighlighterCore({
-		themes: [githubLight.default],
+		themes: [githubLight.default, githubDark.default],
 		langs: [ts.default, tsx.default, js.default, python.default, html.default, css.default],
 		engine: createJavaScriptRegexEngine(),
 	});
 	const plugin = fromHighlighter(highlighter, {
-		theme: HIGHLIGHT_THEME,
+		themes: { light: "github-light", dark: "github-dark" },
+		// Token colors ride light-dark() pairs (see above); the surface comes from the app's
+		// print-tint token (style.css) instead of the themes' own backgrounds.
+		defaultColor: "light-dark()",
 		defaultLanguage: TEXT_LANG,
 		// Unknown fence languages (```ruby etc.) degrade to plain text instead of throwing.
 		fallbackLanguage: TEXT_LANG,
@@ -100,6 +105,12 @@ export function warmUpMarkdown(): void {
  */
 export function renderMarkdown(src: string): string {
 	return (mdShiki ?? mdPlain).render(src);
+}
+
+/** Plain markdown (no shiki code highlighting) — fast synchronous first paint. Callers upgrade
+ * to `renderMarkdown` asynchronously when the browser is idle for the highlighted version. */
+export function renderMarkdownPlain(src: string): string {
+	return mdPlain.render(src);
 }
 
 /**
