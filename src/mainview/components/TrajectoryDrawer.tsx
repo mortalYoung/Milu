@@ -759,17 +759,15 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 							<For each={sections().sections}>
 								{(sec) => (
 									<div class="traj-run">
-										<button
-											class={"traj-run-head" + (sec.reason && sec.reason !== "completed" ? " err" : "")}
-											onClick={() => toggleRun(sec.turn)}
-											aria-expanded={!foldedRuns().has(sec.turn)}
-										>
+										<button class={"traj-run-head" + (sec.reason === "error" ? " err" : "")} onClick={() => toggleRun(sec.turn)} aria-expanded={!foldedRuns().has(sec.turn)}>
 											<span class="run-label">{foldedRuns().has(sec.turn) ? "▸" : "▾"} RUN</span>
-											{sec.error && (
+											{sec.reason === "aborted" ? (
+												<span class="run-aborted">aborted</span>
+											) : sec.error ? (
 												<span class="run-error" title={sec.error}>
 													{short(sec.error)}
 												</span>
-											)}
+											) : null}
 										</button>
 										<Show when={!foldedRuns().has(sec.turn)}>
 											<div class="traj-run-body traj-run-enter">

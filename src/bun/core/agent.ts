@@ -357,9 +357,19 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			case "agent_end":
 				ctx.setRunning(false);
 				enforceDelivery(event);
+				// A user-initiated stop arrives as stopReason "aborted" — persist it as its own reason
+				// instead of collapsing into "error", so the UI doesn't show a red ERR for a stop.
+				let lastAssistant: AssistantMessage | undefined;
+				for (let i = event.messages.length - 1; i >= 0; i--) {
+					if (event.messages[i].role === "assistant") {
+						lastAssistant = event.messages[i] as AssistantMessage;
+						break;
+					}
+				}
+				const aborted = lastAssistant?.stopReason === "aborted";
 				// turn/end lands before onEnd so the settled state is already in the log when the view refetches
 				return deps.session
-					.appendTurnEnd(runTurn, agent.state.errorMessage ? "error" : "completed", Date.now(), agent.state.errorMessage ?? undefined)
+					.appendTurnEnd(runTurn, aborted ? "aborted" : agent.state.errorMessage ? "error" : "completed", Date.now(), agent.state.errorMessage ?? undefined)
 					.catch(logError)
 					.then(() => {
 						bridge.onTrajectoryUpdate();

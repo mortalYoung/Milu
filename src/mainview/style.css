@@ -902,6 +902,10 @@ body::before {
 		@apply flex-none font-mono text-[9px] text-seal truncate;
 		max-width: 55%;
 	}
+	.traj-run-head .run-aborted {
+		@apply flex-none font-mono text-[9px] text-muted truncate;
+		max-width: 55%;
+	}
 	.traj-run-head:focus-visible {
 		outline: 1.5px solid var(--color-seal);
 		outline-offset: 1px;
@@ -1036,7 +1040,7 @@ body::before {
 	}
 	/* Error notice: seal-tagged mono card (failed runs — ERR § in the transcript) */
 	.sys-error {
-		@apply flex items-start gap-2 px-2 py-1 rounded-md border border-seal/30;
+		@apply flex items-start gap-2 px-2 py-1 rounded-md border border-seal/30 mt-6;
 	}
 	.sys-error-tag {
 		@apply flex-none font-sans text-[9px] font-semibold tracking-[0.08em] text-seal border border-seal rounded-sm px-1 py-[1px] mt-[1px];

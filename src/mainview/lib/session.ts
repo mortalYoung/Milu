@@ -55,7 +55,17 @@ export function createSession(rpc: RPC, opts: { onSessionLoaded: () => void }) {
 			const replacements = new Map<string, Entry>();
 			for (const item of items) {
 				if (item.kind === "error") {
+					// Dedupe by entry id like normal messages — otherwise every history refresh
+					// re-appends the same error bubble.
+					if (renderedIds.has(item.id)) continue;
+					renderedIds.add(item.id);
 					pending.push(makeSysEntry(`ERR § ${item.text}`, true));
+					continue;
+				}
+				if (item.kind === "aborted") {
+					if (renderedIds.has(item.id)) continue;
+					renderedIds.add(item.id);
+					pending.push(makeSysEntry("stopped"));
 					continue;
 				}
 				if (item.kind === "escalation" && item.escalation) {

@@ -57,7 +57,7 @@ export interface AssistantMeta {
 export interface VisibleItem {
 	/** pi entry id; the view dedupes incremental renders by it. */
 	id: string;
-	kind: "user" | "send_message" | "escalation" | "error";
+	kind: "user" | "send_message" | "escalation" | "error" | "aborted";
 	text: string;
 	time: number;
 	/** Escalation payload (kind "escalation" only): the approval request + current status. */
@@ -354,6 +354,10 @@ export function createSessionStore(): SessionStore {
 				if (entry.type === "custom" && entry.customType === EVENTS.turnEnd) {
 					// A failed run renders its persisted error (reason "error" carries the message)
 					const data = entry.data as { reason?: unknown; error?: unknown; timestamp?: unknown } | undefined;
+					if (data?.reason === "aborted") {
+						// A user-initiated stop is neutral — not a red error bubble.
+						return [{ id: entry.id, kind: "aborted", text: "stopped", time: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0) }];
+					}
 					if (data?.reason !== "error" || typeof data.error !== "string") return [];
 					return [{ id: entry.id, kind: "error", text: data.error, time: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0) }];
 				}
