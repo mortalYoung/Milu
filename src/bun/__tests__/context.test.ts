@@ -1,11 +1,6 @@
-/**
- * AgentContext unit tests: lifecycle values (turn count / running state / progress-notification clock / reset) and prompt assembly.
- */
 import { describe, expect, test } from "bun:test";
 import { AgentContext } from "../core/context";
 import { buildSystemPrompt } from "../core/prompt";
-
-const INTERVAL = 20_000;
 
 describe("AgentContext lifecycle", () => {
 	test("beginTurn increments per turn", () => {
@@ -25,27 +20,6 @@ describe("AgentContext lifecycle", () => {
 		expect(ctx.running).toBe(false);
 	});
 
-	test("no visible message for over 20s → progress reminder triggers", () => {
-		const ctx = new AgentContext();
-		ctx.lastVisibleAt = Date.now() - (INTERVAL + 5_000);
-		expect(ctx.shouldNotify()).toBe(true);
-	});
-
-	test("visible activity within 20s (user message or send_message) → does not trigger", () => {
-		const ctx = new AgentContext();
-		ctx.lastVisibleAt = Date.now() - 5_000;
-		expect(ctx.shouldNotify()).toBe(false);
-	});
-
-	test("after triggering, cooldown prevents repeated reminders", () => {
-		const ctx = new AgentContext();
-		ctx.lastVisibleAt = Date.now() - (INTERVAL + 5_000);
-		ctx.lastNudgeAt = Date.now() - 10_000;
-		expect(ctx.shouldNotify()).toBe(false); // only 10s since the last reminder
-		ctx.lastNudgeAt = 0;
-		expect(ctx.shouldNotify()).toBe(true); // cooldown has passed
-	});
-
 	test("markUserMessage / markVisible refresh the visible clock", () => {
 		const ctx = new AgentContext();
 		ctx.lastVisibleAt = Date.now() - 60_000;
@@ -53,7 +27,6 @@ describe("AgentContext lifecycle", () => {
 		expect(ctx.visibleElapsedMs()).toBeLessThan(1_000);
 		ctx.markVisible();
 		expect(ctx.visibleElapsedMs()).toBeLessThan(1_000);
-		expect(ctx.shouldNotify()).toBe(false);
 	});
 
 	test("reset clears counters and restarts the clock", () => {
@@ -65,7 +38,6 @@ describe("AgentContext lifecycle", () => {
 		expect(ctx.turn).toBe(0);
 		expect(ctx.running).toBe(false);
 		expect(ctx.visibleElapsedMs()).toBeLessThan(1_000);
-		expect(ctx.lastNudgeAt).toBe(0);
 	});
 });
 

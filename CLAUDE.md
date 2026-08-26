@@ -20,4 +20,4 @@ Less is more — an application of Restraint to prompts. Write the shortest prom
 
 ## Comment philosophy
 
-Restraint — comment only where the code can't speak for itself: complex logic, or logic that differs from first instinct. Say **why**, not **what** — the reason the code does it this way, never a restatement of the code, and never a "don't do X" prohibition. _Applied today: the reply-deck depth/jitter math, the batched history commit, the in-flight counter._
+No comments unless the user explicitly asks for one. Code should speak for itself — prefer clear names and structure over explanatory comments. If a comment seems necessary, the code likely isn't clear enough; improve the code instead.
