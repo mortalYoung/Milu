@@ -17,15 +17,16 @@ const DropdownMenu: Component<DropdownMenuPrimitive.DropdownMenuRootProps> = (pr
 
 type DropdownMenuContentProps<T extends ValidComponent = "div"> = DropdownMenuPrimitive.DropdownMenuContentProps<T> & {
 	class?: string | undefined;
+	portalMount?: Node;
 };
 
 const DropdownMenuContent = <T extends ValidComponent = "div">(props: PolymorphicProps<T, DropdownMenuContentProps<T>>) => {
-	const [, rest] = splitProps(props as DropdownMenuContentProps, ["class"]);
+	const [, rest] = splitProps(props as DropdownMenuContentProps, ["class", "portalMount"]);
 	return (
-		<DropdownMenuPrimitive.Portal>
+		<DropdownMenuPrimitive.Portal mount={props.portalMount}>
 			<DropdownMenuPrimitive.Content
 				class={cn(
-					"z-50 min-w-32 origin-[var(--kb-menu-content-transform-origin)] animate-content-hide overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-none data-[expanded]:animate-content-show",
+					"z-50 min-w-32 origin-[var(--kb-menu-content-transform-origin)] animate-content-hide rounded-md border bg-popover p-1 text-popover-foreground shadow-none data-[expanded]:animate-content-show",
 					props.class,
 				)}
 				{...rest}
@@ -101,18 +102,21 @@ const DropdownMenuSubTrigger = <T extends ValidComponent = "div">(props: Polymor
 
 type DropdownMenuSubContentProps<T extends ValidComponent = "div"> = DropdownMenuPrimitive.DropdownMenuSubContentProps<T> & {
 	class?: string | undefined;
+	portalMount?: Node;
 };
 
 const DropdownMenuSubContent = <T extends ValidComponent = "div">(props: PolymorphicProps<T, DropdownMenuSubContentProps<T>>) => {
-	const [, rest] = splitProps(props as DropdownMenuSubContentProps, ["class"]);
+	const [, rest] = splitProps(props as DropdownMenuSubContentProps, ["class", "portalMount"]);
 	return (
-		<DropdownMenuPrimitive.SubContent
-			class={cn(
-				"z-50 min-w-32 origin-[var(--kb-menu-content-transform-origin)] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-none animate-in",
-				props.class,
-			)}
-			{...rest}
-		/>
+		<DropdownMenuPrimitive.Portal mount={props.portalMount}>
+			<DropdownMenuPrimitive.SubContent
+				class={cn(
+					"z-50 min-w-32 origin-[var(--kb-menu-content-transform-origin)] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-none animate-in",
+					props.class,
+				)}
+				{...rest}
+			/>
+		</DropdownMenuPrimitive.Portal>
 	);
 };
 

@@ -1,6 +1,6 @@
 import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import type { AssistantMessage, ToolResultMessage } from "@earendil-works/pi-ai";
-import type { RequestTool, RuntimeStatsSnapshot, SessionStats } from "../../shared/rpc";
+import type { RequestTool, RuntimeStatsSnapshot, SessionStats, ThinkingLevel } from "../../shared/rpc";
 import type { EscalationDecision, EscalationRequest, SandboxManager, SandboxMode } from "../permission";
 import { Permission, policyFor } from "../permission";
 import type { SessionScope } from "../persist";
@@ -28,6 +28,8 @@ export interface AgentHandle {
 	setSandboxMode: (mode: SandboxMode) => void;
 	readonly model: PartnerModel | null;
 	setModel: (model: PartnerModel | null) => void;
+	readonly thinkingLevel: ThinkingLevel;
+	setThinkingLevel: (level: ThinkingLevel) => void;
 	readonly runtimeStats: SessionStats["runtime"];
 	readonly tools: RequestTool[];
 	chat: (text: string) => Promise<void>;
@@ -86,7 +88,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		initialState: {
 			systemPrompt: ctx.composeSystemPrompt(),
 			model: resolveModel(ctx.model ?? undefined),
-			thinkingLevel: "high",
+			thinkingLevel: ctx.thinkingLevel,
 			tools: [],
 			messages: deps.initialMessages ?? [],
 		},
@@ -334,6 +336,13 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		},
 		setModel(model: PartnerModel | null) {
 			ctx.model = model;
+		},
+		get thinkingLevel() {
+			return ctx.thinkingLevel;
+		},
+		setThinkingLevel(level: ThinkingLevel) {
+			ctx.thinkingLevel = level;
+			agent.state.thinkingLevel = level as never;
 		},
 		get runtimeStats(): SessionStats["runtime"] {
 			const avg = (xs: number[]) => (xs.length > 0 ? xs.reduce((a, b) => a + b, 0) / xs.length : null);

@@ -9,11 +9,22 @@
  * to dismiss; sending closes it too).
  */
 import { ArrowUp, SlidersHorizontal, Square } from "lucide-solid";
-import { createEffect, createSignal, type JSX, onCleanup, Show } from "solid-js";
-import type { ContextUsage, SandboxMode, SessionStats } from "../../shared/rpc";
+import { createEffect, createSignal, For, type JSX, onCleanup, Show } from "solid-js";
+import type { ContextUsage, SandboxMode, SessionStats, ThinkingLevel } from "../../shared/rpc";
 import { formatWorkspacePath, shouldSendOnEnter } from "../lib/composer-input";
 import { Button } from "./Button";
 import { ContextMeter } from "./ContextMeter";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuGroup,
+	DropdownMenuGroupLabel,
+	DropdownMenuItem,
+	DropdownMenuSub,
+	DropdownMenuSubContent,
+	DropdownMenuSubTrigger,
+	DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 import { Select } from "./ui/select";
 
 /** Auto-grow ceiling (~5 lines); beyond that the textarea scrolls internally. */
@@ -44,6 +55,9 @@ export function Composer(props: {
 	models: { provider: string; models: { id: string; name: string }[] }[];
 	/** Persist a new per-partner model selection. */
 	onSetModel: (model: { provider: string; modelId?: string }) => void;
+	thinkingLevel: ThinkingLevel;
+	thinkingLevels: ThinkingLevel[];
+	onSetThinkingLevel: (level: ThinkingLevel) => void;
 	contextUsage?: ContextUsage | null;
 	/** Session-wide metrics: whole-chat usage totals + averaged TTFT / tok/s. */
 	stats?: SessionStats | null;
@@ -155,8 +169,13 @@ export function Composer(props: {
 		return parts.join(" · ");
 	};
 
-	// Status row: only while something is happening
 	const status = () => (props.busy() ? "writing…" : null);
+
+	const modelLabel = () => {
+		const m = props.model;
+		if (!m?.modelId) return "default model";
+		return `${m.provider}/${m.modelId}`;
+	};
 
 	return (
 		<form class="composer" id="composer" ref={rootRef} onSubmit={submit}>
@@ -218,28 +237,62 @@ export function Composer(props: {
 					)}
 					<div class="composer-panel-row">
 						{props.models.length > 0 && (
-							<select
-								class="composer-model"
-								title="Model (per partner)"
-								value={props.model?.modelId ? `${props.model.provider}/${props.model.modelId}` : ""}
-								onChange={(e) => {
-									const value = e.currentTarget.value;
-									const [provider, modelId] = value.split("/");
-									props.onSetModel({ provider, modelId: modelId || undefined });
-								}}
-							>
-								{/* No "default" option: an unpinned model leaves the select blank — honest,
-								   the provider default is in effect and pinning happens via the options below */}
-								{props.models.map((g) => (
-									<optgroup label={g.provider}>
-										{g.models.map((m) => (
-											<option value={`${g.provider}/${m.id}`} title={`${g.provider}/${m.id}`}>
-												{m.name}
-											</option>
-										))}
-									</optgroup>
-								))}
-							</select>
+							<DropdownMenu>
+								<DropdownMenuTrigger
+									class="shrink-0 min-w-0 max-w-[200px] inline-flex h-[30px] items-center justify-between gap-2 rounded-[8px] border border-hairline bg-transparent px-2.5 font-mono text-[10px] text-ink-soft outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-letter data-[expanded]:border-seal"
+									title="Model / Effort (per partner)"
+								>
+									<span class="truncate">
+										{modelLabel()} · {props.thinkingLevel}
+									</span>
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										viewBox="0 0 8 8"
+										fill="none"
+										stroke="currentColor"
+										stroke-width="1.2"
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										class="size-2 shrink-0 text-muted"
+									>
+										<path d="M1 2.5 4 5.5 7 2.5" />
+									</svg>
+								</DropdownMenuTrigger>
+								<DropdownMenuContent portalMount={rootRef} class="min-w-40">
+									<DropdownMenuSub>
+										<DropdownMenuSubTrigger class="font-mono text-[10px]">Models</DropdownMenuSubTrigger>
+										<DropdownMenuSubContent portalMount={rootRef}>
+											<For each={props.models}>
+												{(g) => (
+													<DropdownMenuGroup>
+														<DropdownMenuGroupLabel class="font-mono text-[10px]">{g.provider}</DropdownMenuGroupLabel>
+														<For each={g.models}>
+															{(m) => (
+																<DropdownMenuItem class="font-mono text-[10px] text-ink-soft" onSelect={() => props.onSetModel({ provider: g.provider, modelId: m.id })}>
+																	{m.name}
+																</DropdownMenuItem>
+															)}
+														</For>
+													</DropdownMenuGroup>
+												)}
+											</For>
+										</DropdownMenuSubContent>
+									</DropdownMenuSub>
+									<DropdownMenuSub>
+										<DropdownMenuSubTrigger class="font-mono text-[10px]">Effort</DropdownMenuSubTrigger>
+										<DropdownMenuSubContent portalMount={rootRef}>
+											<For each={props.thinkingLevels}>
+												{(level) => (
+													<DropdownMenuItem class="font-mono text-[10px] text-ink-soft" onSelect={() => props.onSetThinkingLevel(level)}>
+														<span>{level}</span>
+														{level === props.thinkingLevel && <span class="ml-auto text-seal">✓</span>}
+													</DropdownMenuItem>
+												)}
+											</For>
+										</DropdownMenuSubContent>
+									</DropdownMenuSub>
+								</DropdownMenuContent>
+							</DropdownMenu>
 						)}
 						<Select
 							class="shrink-0"

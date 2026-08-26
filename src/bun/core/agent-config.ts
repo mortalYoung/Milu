@@ -10,7 +10,9 @@
  */
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { CredentialStore, Message, Model } from "@earendil-works/pi-ai";
+import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
+import type { ThinkingLevel } from "../../shared/rpc";
 import { getApiKey } from "../lib/credentials";
 
 /** A partner's model selection: provider + pinned model id (null modelId → the provider default). */
@@ -42,6 +44,14 @@ const DEFAULT_MODELS: Record<string, string> = { deepseek: "deepseek-v4-flash" }
 /** The catalog models of one provider (for the composer's grouped select). */
 export function providerModels(provider: string): { id: string; name: string }[] {
 	return MODELS.getModels(provider).map((m) => ({ id: m.id, name: m.name }));
+}
+
+export function supportedThinkingLevels(model?: PartnerModel): ThinkingLevel[] {
+	try {
+		return getSupportedThinkingLevels(resolveModel(model));
+	} catch {
+		return [];
+	}
 }
 
 /**

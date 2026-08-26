@@ -5,7 +5,7 @@
 import { Activity, ListTree, PanelLeftClose, PanelLeftOpen } from "lucide-solid";
 import { type Accessor, createEffect, createSignal, onCleanup } from "solid-js";
 import { AnimatePresence, Motion } from "solid-motion";
-import type { ContextUsage, SandboxMode, SessionStats } from "../../shared/rpc";
+import type { ContextUsage, SandboxMode, SessionStats, ThinkingLevel } from "../../shared/rpc";
 import { Button } from "../components/Button";
 import { Composer } from "../components/Composer";
 import { ConversationList, type PartnerItem } from "../components/ConversationList";
@@ -53,6 +53,9 @@ export function ConversationPage(props: {
 	models: { provider: string; models: { id: string; name: string }[] }[];
 	/** Persist a new per-partner model selection (composer select onChange). */
 	onSetModel: (model: { provider: string; modelId?: string }) => void;
+	thinkingLevel: ThinkingLevel;
+	thinkingLevels: ThinkingLevel[];
+	onSetThinkingLevel: (level: ThinkingLevel) => void;
 	/** Context occupancy for the composer meter (null before the first turn). */
 	contextUsage: ContextUsage | null;
 	/** Session-wide metrics (usage totals + TTFT / tok/s) for the composer stats line. */
@@ -185,6 +188,9 @@ export function ConversationPage(props: {
 							model={props.model}
 							models={props.models}
 							onSetModel={props.onSetModel}
+							thinkingLevel={props.thinkingLevel}
+							thinkingLevels={props.thinkingLevels}
+							onSetThinkingLevel={props.onSetThinkingLevel}
 							contextUsage={props.contextUsage}
 							stats={props.stats}
 							draft={props.draft}

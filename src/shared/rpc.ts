@@ -5,6 +5,8 @@ import type { SurfaceNode } from "./surface";
 
 export type { SandboxMode, ThemeMode };
 
+export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+
 /** Lifecycle of a sandbox escalation request as the transcript shows it: awaiting the human,
  * decided by the human, or orphaned (no live run awaits it — not actionable, no buttons). */
 export type EscalationStatus = "pending" | "approved" | "rejected" | "dropped";
@@ -237,6 +239,8 @@ export type AppRPCSchema = __schema<{
 					sandbox_mode: SandboxMode;
 					/** The selected partner's model selection (null → deepseek default). */
 					model: { provider: string; modelId?: string } | null;
+					thinking_level: ThinkingLevel;
+					thinking_levels: ThinkingLevel[];
 					/** Catalog models of every added provider (the composer's grouped select). */
 					models: { provider: string; models: { id: string; name: string }[] }[];
 					/** Per-partner view-facing streaming (escalation-paused runs read idle) — drives the list dots. */
@@ -251,6 +255,10 @@ export type AppRPCSchema = __schema<{
 			/** Set the per-partner model selection (persisted to <partnerDir>/model.json). */
 			set_partner_model: {
 				params: { model: { provider: string; modelId?: string } };
+				response: { ok: boolean; error?: string };
+			};
+			set_thinking_level: {
+				params: { level: ThinkingLevel };
 				response: { ok: boolean; error?: string };
 			};
 			/** Respond to a pending sandbox escalation request (view dialog → bun). */
@@ -401,6 +409,7 @@ export type AppRPCSchema = __schema<{
 			agent_end: { error?: string; partner: string };
 			/** The sandbox mode changed (composer select / partner switch); the view refetches status. */
 			sandbox_mode_update: {};
+			thinking_level_update: {};
 			/** An escalation record was persisted (request or decision); the view refetches history. */
 			escalation_update: {};
 		};

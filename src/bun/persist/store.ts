@@ -16,8 +16,8 @@
 import { cp } from "node:fs/promises";
 import type { AgentMessage, CustomEntry, Entry } from "@earendil-works/pi-agent-core";
 import { buildSessionContext, JsonlSessionRepo, Session } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage, ToolResultMessage, Usage } from "@earendil-works/pi-ai";
-import type { EscalationStatus, RequestTool, SandboxMode } from "../../shared/rpc";
+import { type AssistantMessage, type ToolResultMessage, type Usage, uuidv7 } from "@earendil-works/pi-ai";
+import type { EscalationStatus, RequestTool, SandboxMode, ThinkingLevel } from "../../shared/rpc";
 import type { Surface, SurfaceOpRecord } from "../../shared/surface";
 import { buildResumeTurn, deriveMessages as deriveSurfaceMessages, dropDanglingTurn, foldSurface, pairToolResults } from "../core/surface";
 import { createExecutionEnv } from "../tools/execution-env";
@@ -110,6 +110,8 @@ export interface SessionScope {
 	appendCompactionSummary(text: string, timestamp: number): Promise<string>;
 	/** Persist a compaction transaction marker (compaction/start | compaction/end; log-only). */
 	appendCompactionRecord(type: "compaction/start" | "compaction/end", details: Record<string, unknown>, timestamp: number): Promise<void>;
+	appendModelChange(model: { provider: string; modelId?: string }, timestamp: number): Promise<void>;
+	appendThinkingLevelChange(level: ThinkingLevel, timestamp: number): Promise<void>;
 }
 
 export interface SessionStore {
@@ -325,6 +327,16 @@ export function createSessionStore(): SessionStore {
 			},
 			async appendCompactionRecord(type, details, timestamp) {
 				await appendCustom(dir, type, { ...details, timestamp });
+			},
+			async appendModelChange(model, _timestamp) {
+				const state = await stateFor(dir);
+				await state.session.appendEntry({ type: "model_change", id: uuidv7(), provider: model.provider, modelId: model.modelId ?? "" }, "main");
+				await refreshEntries(state);
+			},
+			async appendThinkingLevelChange(level, _timestamp) {
+				const state = await stateFor(dir);
+				await state.session.appendEntry({ type: "thinking_level_change", id: uuidv7(), thinkingLevel: level }, "main");
+				await refreshEntries(state);
 			},
 		};
 	}

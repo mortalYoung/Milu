@@ -81,6 +81,10 @@ export function App() {
 		status.calibrate();
 	});
 
+	rpc.addMessageListener("thinking_level_update", () => {
+		status.calibrate();
+	});
+
 	rpc.addMessageListener("escalation_update", () => {
 		void session.refreshHistory();
 		// Recalibrate busy: a request pauses the run (idle until the human clicks), a decision
@@ -183,6 +187,9 @@ export function App() {
 					model={status.model()}
 					models={status.models()}
 					onSetModel={(model) => void status.onSetModel(model)}
+					thinkingLevel={status.thinkingLevel()}
+					thinkingLevels={status.thinkingLevels()}
+					onSetThinkingLevel={(level) => void status.onSetThinkingLevel(level)}
 					onEscalationRespond={(id, approved) => void rpc.request.sandbox_respond({ id, approved })}
 					contextUsage={metrics.contextUsage()}
 					stats={metrics.stats()}

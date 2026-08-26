@@ -1134,19 +1134,6 @@ body::before {
 	.composer-panel-foot {
 		@apply flex items-center gap-3 min-w-0 whitespace-nowrap font-mono text-[10px] text-body-muted;
 	}
-	/* Panel selects: quiet mono paper controls — native chevron off, a paper chevron in its place.
-	   Only the model select remains native; the sandbox select is the custom ui/Select. */
-	.composer-model {
-		@apply font-mono text-[10px] text-ink-soft bg-transparent border border-hairline rounded-[8px] px-2.5 py-[4px] cursor-pointer outline-none truncate focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-letter;
-		appearance: none;
-		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 8 8'%3E%3Cpath d='M1 2.5 4 5.5 7 2.5' fill='none' stroke='%238d8474' stroke-width='1.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-		background-repeat: no-repeat;
-		background-position: right 7px center;
-		padding-right: 20px;
-	}
-	.composer-model {
-		@apply min-w-0 max-w-[200px];
-	}
 	/* Live status: the panel's footnote (the header and the working chip in the stream already carry it) */
 	.composer-status {
 		@apply flex items-center gap-1.5;

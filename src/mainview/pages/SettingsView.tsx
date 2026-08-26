@@ -1,22 +1,12 @@
-/**
- * SettingsView — split-pane settings: left nav (categories — a new setting is one nav item
- * + one pane), right content. Two editing models:
- * - string: click the value → inline edit → Enter/blur saves, Esc cancels
- * - array (providers): per-row ops — replace key in place, × removes (secret deleted),
- *   add row requires the api key
- * Everything saves immediately (no Save button): success is silent, failures surface in
- * a transient toast. Saved api keys are never previewed — only their configured state.
- */
 import { createEffect, createSignal, For, Show } from "solid-js";
 import type { SandboxMode, ThemeMode } from "../../shared/rpc";
+import { Select } from "../components/ui/select";
 
 export interface SettingsData {
 	partner_profile_path: string;
 	detect_instructions_file: string;
-	/** The Permission setting: default sandbox mode for newly created partners. */
 	defaultSandboxMode?: SandboxMode;
 	providers?: string[];
-	/** UI theme (system/light/dark). */
 	theme?: ThemeMode;
 }
 
@@ -30,12 +20,10 @@ export interface SaveResult {
 	error?: string;
 }
 
-/** String editing: click to edit, Enter/blur commits, Esc cancels. */
 function EditableValue(props: { value: () => string; onCommit: (value: string) => Promise<void> }) {
 	const [editing, setEditing] = createSignal(false);
 	const [draft, setDraft] = createSignal("");
 	let inputRef: HTMLInputElement | undefined;
-	// Guards the commit-on-blur that fires right after commit-on-Enter (blur is async-late)
 	let done = false;
 
 	const start = () => {
@@ -102,7 +90,7 @@ export function SettingsView(props: {
 	const [theme, setTheme] = createSignal<ThemeMode>("system");
 	const [added, setAdded] = createSignal<string[]>([]);
 	const [toAdd, setToAdd] = createSignal("");
-	/** Keys typed this session (per provider) — non-empty entries go to .credentials.yaml on commit. */
+
 	const [keys, setKeys] = createSignal<Record<string, string>>({});
 	const [error, setError] = createSignal<string | null>(null);
 	let errorTimer: ReturnType<typeof setTimeout> | undefined;
@@ -136,10 +124,9 @@ export function SettingsView(props: {
 		clearTimeout(errorTimer);
 		errorTimer = setTimeout(() => setError(null), 3000);
 	};
-	// Saves are serialized: the backend diffs providers against the persisted file (read-modify-write),
-	// so concurrent saves could both diff the same old value and miss a removal.
 	let saveChain: Promise<unknown> = Promise.resolve();
-	/** Immediate save: success is silent + refreshes the configured states, failure toasts. */
+	let rootRef: HTMLDivElement | undefined;
+
 	const persist = async (settings: SettingsData, credentials?: Record<string, string>) => {
 		const run = saveChain.then(() => props.onSave(settings, credentials ?? {}));
 		saveChain = run.catch(() => {});
@@ -148,7 +135,6 @@ export function SettingsView(props: {
 			flashError(res.error ?? "保存失败");
 			return;
 		}
-		// The runtime (per-provider configured states, nav dot) comes from get_settings — refresh it
 		props.onLoad();
 	};
 
@@ -157,7 +143,7 @@ export function SettingsView(props: {
 	const add = () => {
 		const id = toAdd();
 		const key = keys()[id];
-		if (!id || !key) return; // adding a provider requires its api key
+		if (!id || !key) return;
 		setAdded([...added(), id]);
 		setToAdd("");
 		setKeys((prev) => {
@@ -169,7 +155,6 @@ export function SettingsView(props: {
 	};
 	const remove = (id: string) => {
 		setAdded(added().filter((p) => p !== id));
-		// the backend diffs and deletes the provider's secret
 		void persist(currentSettings());
 	};
 	const commitKey = (id: string) => {
@@ -186,8 +171,7 @@ export function SettingsView(props: {
 	const providersConfigured = () => (props.runtime?.providers ?? []).filter((p) => p.configured).length;
 
 	return (
-		<div class="flex h-full">
-			{/* Left nav: the settings catalog — a new setting is one item here + one pane */}
+		<div class="flex h-full" ref={rootRef}>
 			<nav class="w-[168px] shrink-0 border-r border-hairline py-3">
 				<button
 					type="button"
@@ -221,7 +205,6 @@ export function SettingsView(props: {
 				</button>
 			</nav>
 
-			{/* Content pane — fixed-height dialog: the right side scrolls, the nav stays put */}
 			<div class="flex-1 min-w-0 min-h-0 overflow-y-auto p-5">
 				<Show when={tab() === "general"}>
 					<div class="font-serif text-[15px] font-semibold text-ink mb-4">General</div>
@@ -247,19 +230,23 @@ export function SettingsView(props: {
 					</div>
 					<div class="flex items-center gap-4 h-[38px]">
 						<span class="flex-none w-[148px] font-serif text-[13px] font-medium text-ink-soft">Theme</span>
-						<select
-							class="flex-none w-[200px] h-[30px] px-2 bg-transparent border border-hairline rounded-[2px] font-mono text-[12px] text-ink focus:border-seal focus:outline-none"
+						<Select
+							class="flex-none w-[200px]"
+							title="Theme"
+							ariaLabel="Theme"
+							portalMount={rootRef}
 							value={theme()}
-							onChange={(e) => {
-								const t = e.currentTarget.value as ThemeMode;
+							onChange={(value) => {
+								const t = value as ThemeMode;
 								setTheme(t);
 								void persist({ ...currentSettings(), theme: t });
 							}}
-						>
-							<option value="system">system</option>
-							<option value="light">light</option>
-							<option value="dark">dark</option>
-						</select>
+							options={[
+								{ value: "system", label: "system" },
+								{ value: "light", label: "light" },
+								{ value: "dark", label: "dark" },
+							]}
+						/>
 					</div>
 				</Show>
 
@@ -267,19 +254,23 @@ export function SettingsView(props: {
 					<div class="font-serif text-[15px] font-semibold text-ink mb-4">Permission</div>
 					<div class="flex items-center gap-4 h-[38px]">
 						<span class="flex-none w-[148px] font-serif text-[13px] font-medium text-ink-soft">Default sandbox mode</span>
-						<select
-							class="flex-none w-[200px] h-[30px] px-2 bg-transparent border border-hairline rounded-[2px] font-mono text-[12px] text-ink focus:border-seal focus:outline-none"
+						<Select
+							class="flex-none w-[200px]"
+							title="Default sandbox mode"
+							ariaLabel="Default sandbox mode"
+							portalMount={rootRef}
 							value={defaultSandboxMode()}
-							onChange={(e) => {
-								const mode = e.currentTarget.value as SandboxMode;
+							onChange={(value) => {
+								const mode = value as SandboxMode;
 								setDefaultSandboxMode(mode);
 								void persist({ ...currentSettings(), defaultSandboxMode: mode });
 							}}
-						>
-							<option value="read-only">read-only</option>
-							<option value="workspace-write">workspace-write</option>
-							<option value="danger-full-access">danger-full-access</option>
-						</select>
+							options={[
+								{ value: "read-only", label: "read-only" },
+								{ value: "workspace-write", label: "workspace-write" },
+								{ value: "danger-full-access", label: "danger-full-access" },
+							]}
+						/>
 					</div>
 				</Show>
 
@@ -314,16 +305,16 @@ export function SettingsView(props: {
 						</For>
 					</Show>
 					<div class="flex items-center gap-2 mt-3 pt-3 border-t border-hairline">
-						<select
-							class="flex-none w-[128px] h-[30px] px-2 bg-transparent border border-hairline rounded-[2px] font-mono text-[12px] text-ink focus:border-seal focus:outline-none"
+						<Select
+							class="flex-none w-[128px]"
+							title="Add provider"
+							ariaLabel="Add provider"
+							placeholder="— add provider —"
+							portalMount={rootRef}
 							value={toAdd()}
-							onChange={(e) => setToAdd(e.currentTarget.value)}
-						>
-							<option value="">— add provider —</option>
-							{addable().map((p) => (
-								<option value={p}>{p}</option>
-							))}
-						</select>
+							onChange={(value) => setToAdd(value)}
+							options={addable().map((p) => ({ value: p, label: p }))}
+						/>
 						<input
 							type="password"
 							class="flex-1 min-w-0 h-[30px] px-2 bg-transparent border border-hairline rounded-[2px] font-mono text-[12px] text-ink focus:border-seal focus:outline-none"
@@ -345,7 +336,6 @@ export function SettingsView(props: {
 				</Show>
 			</div>
 
-			{/* Failure toast — success is silent */}
 			<Show when={error()}>
 				<div class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-ink text-letter text-[12px] px-4 py-2 rounded-full">{error()}</div>
 			</Show>

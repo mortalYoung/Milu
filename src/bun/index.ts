@@ -5,13 +5,13 @@ import { getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
 import { ApplicationMenu, BrowserView, BrowserWindow } from "electrobun/bun";
 import type { AppRPCSchema } from "../shared/rpc";
 import { type AgentHandle, createAgent } from "./core/agent";
-import { contextWindow, providerModels } from "./core/agent-config";
+import { contextWindow, providerModels, supportedThinkingLevels } from "./core/agent-config";
 import { applyCompaction, type CompactionPlan, planCompaction } from "./core/compaction";
 import { loadRuntimeStats, saveRuntimeStats } from "./core/runtime-stats";
 import { priceSurface } from "./core/token-meter";
 import { aggregateUsage, fold, lastUsage } from "./core/trajectory";
 import { deleteApiKey, getApiKey, loadCredentials, setApiKey } from "./lib/credentials";
-import { ensureModel, ensureSandboxMode, ensureStoragePath, ensureWorkspace } from "./lib/ensure";
+import { ensureModel, ensureSandboxMode, ensureStoragePath, ensureWorkspace, isThinkingLevel } from "./lib/ensure";
 import { partnerDirFor, persistModel, persistSandboxMode, persistWorkspace, promptChangedSinceLastPersist, recordPrompt } from "./lib/partner-files";
 import { getPartnerDir, loadSettings, saveSettings } from "./lib/settings";
 import { createPartner, deletePartner, listPartners, PartnerError, type PartnerInput } from "./partners";
@@ -105,6 +105,7 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 	const defaultMode = isSandboxMode(settings.defaultSandboxMode) ? settings.defaultSandboxMode : "workspace-write";
 	const mode = await ensureSandboxMode(dir, defaultMode);
 	const model = await ensureModel(dir);
+	const thinkingLevel = model?.thinkingLevel ?? "high";
 
 	const scope = session.scope(dir);
 	const agent = createAgent(
@@ -160,6 +161,7 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 	agent.setWorkspace(workspace);
 	agent.setSandboxMode(mode);
 	agent.setModel(model);
+	agent.setThinkingLevel(thinkingLevel);
 	// Persist the rebuilt prompt so the trajectory view can show it — per root, and only when it
 	// actually changed; the hash record is file-backed so restarts don't pile up identical entries
 	if (await promptChangedSinceLastPersist(dir, agent.systemPrompt)) {
@@ -296,6 +298,8 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					storage_path: selected?.agent.storagePath ? tildify(selected.agent.storagePath) : null,
 					sandbox_mode: selected?.agent.sandboxMode ?? "workspace-write",
 					model: selected?.agent.model ?? null,
+					thinking_level: selected?.agent.thinkingLevel ?? "high",
+					thinking_levels: selected ? supportedThinkingLevels(selected.agent.model ?? undefined) : [],
 					models: addedProviders.map((p) => ({ provider: p, models: providerModels(p) })),
 					partners,
 				};
@@ -305,7 +309,24 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				const entry = await ensureAgent(viewPartner.profile);
 				const normalized = { provider: model.provider, ...(model.modelId ? { modelId: model.modelId } : {}) };
 				entry.agent.setModel(normalized);
-				await persistModel(entry.dir, normalized);
+				await persistModel(entry.dir, { ...normalized, thinkingLevel: entry.agent.thinkingLevel });
+				await entry.scope.appendModelChange(normalized, Date.now()).catch((error) => console.error("model_change append failed:", error));
+				rpc.send.trajectory_update({});
+				return { ok: true };
+			},
+			set_thinking_level: async ({ level }) => {
+				if (!viewPartner) return { ok: false, error: "no partner selected" };
+				if (!isThinkingLevel(level)) return { ok: false, error: "invalid level" };
+				const entry = await ensureAgent(viewPartner.profile);
+				entry.agent.setThinkingLevel(level);
+				await persistModel(entry.dir, {
+					provider: entry.agent.model?.provider ?? "deepseek",
+					...(entry.agent.model?.modelId ? { modelId: entry.agent.model.modelId } : {}),
+					thinkingLevel: level,
+				});
+				await entry.scope.appendThinkingLevelChange(level, Date.now()).catch((error) => console.error("thinking_level_change append failed:", error));
+				rpc.send.thinking_level_update({});
+				rpc.send.trajectory_update({});
 				return { ok: true };
 			},
 			set_sandbox_mode: async ({ mode }) => {

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { ThinkingLevel } from "../../shared/rpc";
 import type { SandboxMode } from "../permission";
 import { sandboxFilePath, workspaceFilePath } from "../permission";
 import { getPartnerDir, loadSettings } from "./settings";
@@ -23,9 +24,15 @@ export async function persistSandboxMode(dir: string, mode: SandboxMode) {
 	}
 }
 
-// Per-partner model selection (provider + pinned model): survives restart, restored on partner switch.
+export interface PartnerModelConfig {
+	provider: string;
+	modelId?: string;
+	thinkingLevel?: ThinkingLevel;
+}
+
+// Per-partner model selection (provider + pinned model + thinking level): survives restart, restored on partner switch.
 export const modelFilePath = (dir: string) => join(dir, "model.json");
-export async function persistModel(dir: string, model: { provider: string; modelId?: string }) {
+export async function persistModel(dir: string, model: PartnerModelConfig) {
 	try {
 		await writeFile(modelFilePath(dir), JSON.stringify(model, null, 2), "utf8");
 	} catch (error) {

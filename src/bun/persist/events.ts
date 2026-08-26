@@ -42,6 +42,8 @@ export const EVENTS = {
 	compactionSummary: "compaction_summary",
 	compactionStart: "compaction/start",
 	compactionEnd: "compaction/end",
+	modelChange: "model_change",
+	thinkingLevelChange: "thinking_level_change",
 } as const;
 
 /** Why a run ended (turn/end payload). */

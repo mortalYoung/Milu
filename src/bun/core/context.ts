@@ -1,5 +1,5 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { SandboxMode } from "../../shared/rpc";
+import type { SandboxMode, ThinkingLevel } from "../../shared/rpc";
 import { buildSystemPrompt, type PartnerPrompt } from "./prompt";
 
 export function appendSystemReminder(messages: AgentMessage[], content: string, timestamp = Date.now()): void {
@@ -16,6 +16,7 @@ export class AgentContext {
 	workspace_path: string | null = null;
 	sandbox_mode: SandboxMode = "workspace-write";
 	model: { provider: string; modelId?: string } | null = null;
+	thinkingLevel: ThinkingLevel = "high";
 	setPartner(partner: PartnerPrompt | null): void {
 		this.partner = partner;
 	}

@@ -4,9 +4,16 @@
  */
 import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { ThinkingLevel } from "../../shared/rpc";
 import type { SandboxMode } from "../permission";
 import { isSandboxMode, sandboxFilePath, validateWorkspace, workspaceFilePath } from "../permission";
-import { modelFilePath, persistSandboxMode } from "./partner-files";
+import { modelFilePath, type PartnerModelConfig, persistSandboxMode } from "./partner-files";
+
+const THINKING_LEVELS: ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+
+export function isThinkingLevel(value: unknown): value is ThinkingLevel {
+	return typeof value === "string" && (THINKING_LEVELS as string[]).includes(value);
+}
 
 /** Create the partner's storage subdirectory (the agent's freely-writable area) and return its path — it must exist before the prompt mentions it. */
 export async function ensureStoragePath(dir: string): Promise<string> {
@@ -45,13 +52,17 @@ export async function ensureSandboxMode(dir: string, fallback: SandboxMode = "wo
 	return fallback;
 }
 
-/** Restore the persisted model selection (provider + optional pinned model); null when this partner has none. */
-export async function ensureModel(dir: string): Promise<{ provider: string; modelId?: string } | null> {
+/** Restore the persisted model selection (provider + optional pinned model + thinking level); null when this partner has none. */
+export async function ensureModel(dir: string): Promise<PartnerModelConfig | null> {
 	try {
 		const raw = await readFile(modelFilePath(dir), "utf8");
-		const saved = JSON.parse(raw) as { provider?: unknown; modelId?: unknown };
+		const saved = JSON.parse(raw) as { provider?: unknown; modelId?: unknown; thinkingLevel?: unknown };
 		if (typeof saved.provider === "string" && saved.provider) {
-			return { provider: saved.provider, ...(typeof saved.modelId === "string" ? { modelId: saved.modelId } : {}) };
+			return {
+				provider: saved.provider,
+				...(typeof saved.modelId === "string" ? { modelId: saved.modelId } : {}),
+				...(isThinkingLevel(saved.thinkingLevel) ? { thinkingLevel: saved.thinkingLevel } : {}),
+			};
 		}
 	} catch {
 		// no persisted model for this partner
