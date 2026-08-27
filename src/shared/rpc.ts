@@ -177,6 +177,13 @@ export interface ContextUsage {
 	lastTurn?: { input: number; output: number; cacheRead: number; cacheWrite: number; totalTokens: number };
 }
 
+export interface PartnerActivityDay {
+	ts: number;
+	tokens: number;
+	turns: number;
+	tools: number;
+}
+
 /**
  * Single source of truth for the app's RPC surface.
  *
@@ -280,6 +287,10 @@ export type AppRPCSchema = __schema<{
 			trajectory: {
 				params: { name: string };
 				response: { records: TrajectoryRecord[] };
+			};
+			partner_activity: {
+				params: { name: string; weeks: number };
+				response: { days: PartnerActivityDay[] };
 			};
 			/** The model-visible surface (nodes + replace generation) — observability for the surface layer. */
 			surface: {

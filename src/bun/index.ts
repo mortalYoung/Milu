@@ -4,6 +4,7 @@ import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import { getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
 import { ApplicationMenu, BrowserView, BrowserWindow } from "electrobun/bun";
 import type { AppRPCSchema } from "../shared/rpc";
+import { dailyActivity } from "./core/activity";
 import { type AgentHandle, createAgent } from "./core/agent";
 import {
 	contextWindow,
@@ -446,6 +447,12 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				const profile = (await listPartners(settings)).find((p) => p.name === name);
 				if (!profile) return { records: [] };
 				return { records: fold(await session.rawEntries(getPartnerDir(settings, name))) };
+			},
+			partner_activity: async ({ name, weeks }) => {
+				const settings = await loadSettings();
+				const profile = (await listPartners(settings)).find((p) => p.name === name);
+				if (!profile) return { days: [] };
+				return { days: dailyActivity(await session.rawEntries(getPartnerDir(settings, name)), weeks) };
 			},
 			stats: async () => {
 				const target = viewPartner;
