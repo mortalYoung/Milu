@@ -6,6 +6,21 @@ import type { SandboxMode } from "../permission";
 /** UI theme: follow the system appearance, or force light/dark. */
 export type ThemeMode = "system" | "light" | "dark";
 
+export interface CustomModel {
+	id: string;
+	contextWindow?: number;
+	maxTokens?: number;
+}
+
+export interface CustomProvider {
+	id: string;
+	name?: string;
+	baseUrl: string;
+	models: CustomModel[];
+	defaultContextWindow?: number;
+	defaultMaxTokens?: number;
+}
+
 export interface Settings {
 	/** Root directory for Partner profile storage (where partners get created). */
 	partner_profile_path: string;
@@ -13,8 +28,8 @@ export interface Settings {
 	detect_instructions_file: string;
 	/** Default sandbox mode for newly created partners (the Permission setting). */
 	defaultSandboxMode?: SandboxMode;
-	/** The added LLM providers (each builtin id at most once; keys live in .credentials.yaml). */
 	providers?: string[];
+	customProviders?: CustomProvider[];
 	/** UI theme; the view applies it to color-scheme (light-dark() tokens do the rest). */
 	theme?: ThemeMode;
 }

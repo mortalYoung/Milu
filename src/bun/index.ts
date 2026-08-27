@@ -5,7 +5,15 @@ import { getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
 import { ApplicationMenu, BrowserView, BrowserWindow } from "electrobun/bun";
 import type { AppRPCSchema } from "../shared/rpc";
 import { type AgentHandle, createAgent } from "./core/agent";
-import { contextWindow, providerModels, supportedThinkingLevels } from "./core/agent-config";
+import {
+	contextWindow,
+	providerBaseUrl,
+	providerModels,
+	registerCustomProvider,
+	supportedThinkingLevels,
+	unregisterCustomProvider,
+	validateCustomProviders,
+} from "./core/agent-config";
 import { applyCompaction, type CompactionPlan, planCompaction } from "./core/compaction";
 import { loadRuntimeStats, saveRuntimeStats } from "./core/runtime-stats";
 import { priceSurface } from "./core/token-meter";
@@ -22,6 +30,7 @@ import { runEscalatedBash } from "./tools";
 
 // Api keys load from .credentials.yaml once at startup (settings only lists which providers are added).
 await loadCredentials();
+for (const def of (await loadSettings()).customProviders ?? []) registerCustomProvider(def);
 
 const session = createSessionStore();
 const sandbox = new SandboxManager();
@@ -308,7 +317,11 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				if (!viewPartner) return { ok: false, error: "no partner selected" };
 				const entry = await ensureAgent(viewPartner.profile);
 				const normalized = { provider: model.provider, ...(model.modelId ? { modelId: model.modelId } : {}) };
-				entry.agent.setModel(normalized);
+				try {
+					entry.agent.setModel(normalized);
+				} catch (error) {
+					return { ok: false, error: error instanceof Error ? error.message : String(error) };
+				}
 				await persistModel(entry.dir, { ...normalized, thinkingLevel: entry.agent.thinkingLevel });
 				await entry.scope.appendModelChange(normalized, Date.now()).catch((error) => console.error("model_change append failed:", error));
 				rpc.send.trajectory_update({});
@@ -445,29 +458,45 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				return {
 					settings,
 					runtime: {
-						providers: (settings.providers ?? []).map((id) => ({ id, configured: Boolean(getApiKey(id)) })),
+						providers: (settings.providers ?? []).map((id) => {
+							const def = (settings.customProviders ?? []).find((d) => d.id === id);
+							return {
+								id,
+								configured: Boolean(getApiKey(id)),
+								baseUrl: def?.baseUrl ?? providerBaseUrl(id),
+								modelCount: def ? def.models.length : providerModels(id).length,
+							};
+						}),
 						allProviders: getBuiltinProviders(),
 					},
 				};
 			},
 			update_settings: async ({ settings, credentials }) => {
 				try {
-					// Diff against the persisted providers BEFORE saving (the save overwrites them)
-					const prev = (await loadSettings()).providers ?? [];
-					const next = settings.providers ?? [];
-					// Keys ride the RPC but never touch settings.json — they go to .credentials.yaml
+					const invalid = validateCustomProviders(settings.customProviders ?? []);
+					if (invalid) return { ok: false, error: invalid };
+					const prev = await loadSettings();
+					const prevProviders = prev.providers ?? [];
+					const nextProviders = settings.providers ?? [];
+					const prevDefs = prev.customProviders ?? [];
+					const nextDefs = settings.customProviders ?? [];
 					if (credentials) {
 						for (const [provider, key] of Object.entries(credentials)) {
 							if (key) await setApiKey(provider, key);
+							else await deleteApiKey(provider);
 						}
 					}
 					await saveSettings(settings);
-					// Removed providers delete their secret — sensitive data does not linger
-					for (const removed of prev.filter((p) => !next.includes(p))) {
+					for (const removed of prevProviders.filter((p) => !nextProviders.includes(p))) {
 						await deleteApiKey(removed);
+					}
+					for (const def of nextDefs) registerCustomProvider(def);
+					for (const gone of prevDefs.filter((d) => !nextDefs.some((n) => n.id === d.id))) {
+						unregisterCustomProvider(gone.id);
 					}
 					return { ok: true };
 				} catch (error) {
+					console.error("update_settings failed:", error);
 					return { ok: false, error: error instanceof Error ? error.message : String(error) };
 				}
 			},

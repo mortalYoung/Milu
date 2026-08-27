@@ -279,3 +279,10 @@
 - 规则：页面自定义标记禁止使用 `data-direction` / `data-name` / `data-option` / `data-choice` / `data-design-option` 等桥接 `optionSelector` 会匹配的属性名（用 `data-dir` 等不冲突的名字）；否则桥接会把按钮自身当选项卡，向内部嵌套注入第二颗 `.qmdp-pick-button`（嵌套 button，无效 HTML，双按钮复发）
 - 原话摘录：（自发现 2026-08-13）桥接 `ensureOptionButtons` 的 `cards` 数组同时匹配了 `.card[data-name]` 与 `button[data-direction]`，注入按钮被嵌套进原生按钮内部
 - 收录：2026-08-13｜状态：生效
+
+### P-43 · 控件触发器与弹出层选项必须是同一字体风格
+- 级别：硬禁令
+- 何时适用：任何自定义 Select/Dropdown/Menu 的触发器与弹出项样式覆写；给触发器传 font-sans/font-mono 等覆写类时
+- 原话摘录：（自发现 2026-08-27，settings 方向 B 实现）Select 触发器覆写成 sans 12px 后，弹出层选项仍是组件默认的 mono 10px，同一控件内两种字体
+- 收录：2026-08-27｜状态：生效
+- 教训：覆写触发器样式时必须同步覆写弹出层 item 样式；组件应提供 itemClass/contentClass 透传口（已落入 ui/select.tsx）

@@ -164,6 +164,30 @@ Partner 是一个"数字员工"桌面应用:你选中一位同事(bob、eve、le
     (回合头/时间/token、内容、工具 chips)。
   - 联动:点格点 → 聊天滚动定位 + 火漆闪烁;聊天滚动 → 当前可见回复所属回合格点高亮;
     消息气泡"Trajectory"入口 → 打开抽屉并聚焦该回合。入场 = 右侧滑入(220ms ease-out)。
+- **settings(设置页,方向 B 档案柜)**:660×540 弹窗内,VSCode 设置式交互——
+  搜索 + 衬线分类索引 + 标题/描述/控件行 + 修改标记 + 即时保存。左侧 168px 分类栏
+  (General / Permission / Providers,Newsreader 13px,选中 = 整块
+  `paper-hover` 底色,无左侧竖线;底部 serif "letters" 字标);右侧搜索框
+  (paper 底 + hairline + 10px 圆角,seal focus,mono 计数 "N matches",Esc 清空);
+  分类内容不套卡片:节标题 (serif 15px) + 行列表,行间 hairline 分隔线
+  (divide-y);行 = 衬线标题 13px + Public Sans 描述 11px body-muted +
+  控件右缘对齐一条基准线;**修改标记 = seal 圆点 + "modified" 10px 小字**(点,
+  非竖条;默认值:theme=system、sandbox=workspace-write、path=~/.partner/、
+  instr=AGENTS.md);搜索时命中词 seal 色高亮(行不加底色),结果按分类
+  平铺,命中分类栏出现 seal 圆点;无命中显示 "No matching settings" 空态。
+  Providers 是表格(Provider / Base URL / Models / 操作列,行间 hairline 分隔):
+  key 只增删(换 key 删了重加);自定义 provider 行多一个 edit,点击在该行下方展开
+  编辑区(id 只读,定义可改);底部 `+ Add provider` 点击展开新增区——**两步走**:
+  先 APPLY 定义(custom… 表单:id / base URL / Models 表格 / Advanced 折叠
+  [name / 默认 contextWindow / 默认 maxTokens],APPLY 后自动切回内置模式并选中
+  刚添加的 provider),再填 key 点 ADD 完成添加;内置 = select + key + ADD。
+  Esc / Back / Cancel / 再次点击收起。
+  **例外声明**:设置行标题与分类用衬线,属「档案索引」阅读语境,突破 §3
+  「数据 UI 不用衬线」——范围仅限 settings 模块。
+- **TextField(控件)**:Kobalte headless 封装,`variant="compact"` 用于设置行
+  (h-32px、paper 底、mono 12px、hairline 边框、10px 圆角、focus seal ring +
+  paper-deep 底),`default` 用于模态表单(sans、letter 底)。输入值一律 mono
+  (路径/API key),选项值(Select)sans。
 - **自定义滚动条**:6px 细窄,hairline thumb。
 
 ## 5. 布局原则

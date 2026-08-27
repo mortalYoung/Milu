@@ -335,7 +335,9 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			return ctx.model;
 		},
 		setModel(model: PartnerModel | null) {
+			const resolved = resolveModel(model ?? undefined);
 			ctx.model = model;
+			agent.state.model = resolved;
 		},
 		get thinkingLevel() {
 			return ctx.thinkingLevel;

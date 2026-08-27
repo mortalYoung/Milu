@@ -20,6 +20,8 @@ export function Select(props: {
 	title?: string;
 	ariaLabel?: string;
 	class?: string;
+	itemClass?: string;
+	contentClass?: string;
 	/** Portal mount target (Solid Portal `mount`). Defaults to body; pass the owning container so
 	 * outside-click handlers on that container treat the popover as inside. */
 	portalMount?: Node;
@@ -39,7 +41,10 @@ export function Select(props: {
 			itemComponent={(itemProps) => (
 				<SelectPrimitive.Item
 					item={itemProps.item}
-					class="relative flex cursor-default select-none items-center rounded-[6px] py-1.5 pl-2.5 pr-8 font-mono text-[10px] text-ink-soft outline-none transition-colors focus:bg-paper-hover data-[highlighted]:bg-paper-hover data-[selected]:text-ink"
+					class={cn(
+						"relative flex cursor-default select-none items-center rounded-[6px] py-1.5 pl-2.5 pr-8 font-mono text-[10px] text-ink-soft outline-none transition-colors focus:bg-paper-hover data-[highlighted]:bg-paper-hover data-[selected]:text-ink",
+						props.itemClass,
+					)}
 				>
 					<SelectPrimitive.ItemLabel>{itemProps.item.rawValue.label}</SelectPrimitive.ItemLabel>
 					<SelectPrimitive.ItemIndicator class="absolute right-2.5 inline-flex items-center text-seal">
@@ -84,7 +89,12 @@ export function Select(props: {
 				</SelectPrimitive.Icon>
 			</SelectPrimitive.Trigger>
 			<SelectPrimitive.Portal mount={props.portalMount}>
-				<SelectPrimitive.Content class="z-50 min-w-32 origin-[var(--kb-select-content-transform-origin)] overflow-hidden rounded-[8px] border border-hairline bg-letter p-1 shadow-none animate-in">
+				<SelectPrimitive.Content
+					class={cn(
+						"z-50 min-w-32 origin-[var(--kb-select-content-transform-origin)] overflow-hidden rounded-[8px] border border-hairline bg-letter p-1 shadow-none animate-in",
+						props.contentClass,
+					)}
+				>
 					<SelectPrimitive.Listbox class="max-h-[200px] overflow-y-auto outline-none" />
 				</SelectPrimitive.Content>
 			</SelectPrimitive.Portal>

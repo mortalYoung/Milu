@@ -201,9 +201,9 @@ export function App() {
 
 			{/* Settings: dialog */}
 			<Dialog open={shell.settingsOpen()} onOpenChange={shell.setSettingsOpen}>
-				<DialogContent class="w-[660px] max-w-none h-[540px] grid-rows-[auto_1fr] bg-letter border-print-line">
-					<DialogHeader>
-						<DialogTitle>Settings</DialogTitle>
+				<DialogContent class="w-[660px] max-w-none h-[540px] grid-rows-[auto_1fr] bg-letter border-print-line p-0">
+					<DialogHeader class="px-4 pt-4">
+						<DialogTitle class="font-serif text-[15px]">Settings</DialogTitle>
 					</DialogHeader>
 					<SettingsView
 						settings={settings.settings()}

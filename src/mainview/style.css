@@ -130,6 +130,9 @@ body::before {
 	::before {
 		border-color: var(--color-border);
 	}
+	button:not(:disabled) {
+		cursor: pointer;
+	}
 	/* Selected text = seal red paper (brand color) */
 	::selection {
 		background: var(--color-seal);

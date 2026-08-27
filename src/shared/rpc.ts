@@ -1,9 +1,9 @@
 import type { ElectrobunRPCSchema } from "electrobun";
-import type { ThemeMode } from "../bun/lib/settings";
+import type { CustomModel, CustomProvider, ThemeMode } from "../bun/lib/settings";
 import type { SandboxMode } from "../bun/permission/types";
 import type { SurfaceNode } from "./surface";
 
-export type { SandboxMode, ThemeMode };
+export type { CustomModel, CustomProvider, SandboxMode, ThemeMode };
 
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
@@ -301,12 +301,12 @@ export type AppRPCSchema = __schema<{
 						/** The Permission setting: default sandbox mode for newly created partners. */
 						defaultSandboxMode?: SandboxMode;
 						providers?: string[];
+						customProviders?: CustomProvider[];
 						/** UI theme (system/light/dark) — the view applies it to color-scheme. */
 						theme?: ThemeMode;
 					};
 					runtime: {
-						/** Every added provider with its key-configured state (keys never leave bun). */
-						providers: { id: string; configured: boolean }[];
+						providers: { id: string; configured: boolean; baseUrl?: string; modelCount: number }[];
 						/** Every built-in provider id (the add-provider dropdown). */
 						allProviders: string[];
 					};
@@ -320,6 +320,7 @@ export type AppRPCSchema = __schema<{
 						/** The Permission setting: default sandbox mode for newly created partners. */
 						defaultSandboxMode?: SandboxMode;
 						providers?: string[];
+						customProviders?: CustomProvider[];
 						/** UI theme (system/light/dark) — the view applies it to color-scheme. */
 						theme?: ThemeMode;
 					};

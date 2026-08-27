@@ -17,6 +17,7 @@ const TextField = <T extends ValidComponent = "div">(props: PolymorphicProps<T, 
 
 type TextFieldInputProps<T extends ValidComponent = "input"> = TextFieldPrimitive.TextFieldInputProps<T> & {
 	class?: string | undefined;
+	variant?: "default" | "compact";
 	type?:
 		| "button"
 		| "checkbox"
@@ -43,13 +44,15 @@ type TextFieldInputProps<T extends ValidComponent = "input"> = TextFieldPrimitiv
 };
 
 const TextFieldInput = <T extends ValidComponent = "input">(rawProps: PolymorphicProps<T, TextFieldInputProps<T>>) => {
-	const props = mergeProps<TextFieldInputProps<T>[]>({ type: "text" }, rawProps);
-	const [local, others] = splitProps(props as TextFieldInputProps, ["type", "class"]);
+	const props = mergeProps<TextFieldInputProps<T>[]>({ type: "text", variant: "default" }, rawProps);
+	const [local, others] = splitProps(props as TextFieldInputProps, ["type", "class", "variant"]);
 	return (
 		<TextFieldPrimitive.Input
 			type={local.type}
 			class={cn(
-				"flex h-10 w-full rounded-[10px] border border-input bg-letter px-3 py-2 font-sans text-sm text-ink placeholder:text-muted focus-visible:outline-none focus-visible:border-seal focus-visible:ring-2 focus-visible:ring-seal/20 disabled:cursor-not-allowed disabled:opacity-50 data-[invalid]:border-seal",
+				local.variant === "compact"
+					? "flex h-[32px] w-full rounded-[10px] border border-hairline bg-paper px-3 font-mono text-[12px] text-ink placeholder:text-muted focus-visible:outline-none focus-visible:border-seal focus-visible:ring-2 focus-visible:ring-seal/40"
+					: "flex h-10 w-full rounded-[10px] border border-input bg-letter px-3 py-2 font-sans text-sm text-ink placeholder:text-muted focus-visible:outline-none focus-visible:border-seal focus-visible:ring-2 focus-visible:ring-seal/20 disabled:cursor-not-allowed disabled:opacity-50 data-[invalid]:border-seal",
 				local.class,
 			)}
 			{...others}
