@@ -725,15 +725,32 @@ body::before {
 	.traj-close {
 		@apply font-sans text-[15px] leading-none text-body-muted hover:text-ink cursor-pointer bg-transparent border-0 p-0 ml-2;
 	}
-	/* Layers 1+2: the timeline band — one horizontally scrollable block, a column per log entry */
 	.traj-scroll {
 		@apply overflow-x-auto px-4;
+		scrollbar-width: none;
+	}
+	.traj-scroll::-webkit-scrollbar {
+		display: none;
+	}
+	.traj-band-wrap {
+		@apply relative;
+	}
+	.traj-fade {
+		@apply absolute top-0 bottom-0 w-6 pointer-events-none z-10;
+	}
+	.traj-fade.left {
+		left: 0;
+		background: linear-gradient(to right, var(--color-letter), transparent);
+	}
+	.traj-fade.right {
+		right: 0;
+		background: linear-gradient(to left, var(--color-letter), transparent);
 	}
 	.traj-band {
 		@apply flex items-end gap-[2px] h-[42px] pt-2 pb-1.5 min-w-max;
 	}
 	.traj-cell {
-		@apply flex-none w-4 rounded-t-[2px] cursor-pointer border-0 p-0;
+		@apply flex-none w-4 h-full rounded-t-[2px] cursor-pointer border-0 p-0;
 		transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
 	}
 	.traj-cell:hover {
@@ -748,92 +765,77 @@ body::before {
 	.traj-cell.l3 {
 		background: var(--color-ink);
 	}
+	.traj-cell.tool {
+		height: 70%;
+		border-bottom: 3px solid var(--color-seal);
+	}
+	.traj-cell.think {
+		height: 55%;
+		outline: 1.5px dashed var(--color-seal);
+		outline-offset: -1.5px;
+	}
 	.traj-cell.hot {
 		background: var(--color-seal);
 		outline: 1.5px solid var(--color-seal);
 		outline-offset: 1px;
 	}
-	/* Non-assistant columns: a centered marker of the same width as turn cells */
 	.traj-marker {
-		@apply flex-none w-4 self-stretch flex items-center justify-center;
+		@apply flex-none w-4;
+		height: 40%;
+		align-self: flex-end;
 	}
 	.traj-marker.hot {
 		outline: 1.5px solid var(--color-seal);
 		outline-offset: 1px;
 		border-radius: 3px;
 	}
-	.traj-marker .mq {
-		@apply w-[4px] h-[60%] rounded-[2px] bg-seal cursor-pointer border-0 p-0;
+	.traj-marker button {
+		@apply block w-full h-full border-0 p-0 cursor-pointer;
 		transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
 	}
-	.traj-marker .mq:hover {
+	.traj-marker button:hover {
 		transform: translateY(-2px);
+	}
+	.traj-marker .mstep {
+		@apply block w-full h-full;
+		background: var(--color-hairline);
+	}
+	.traj-marker .mq {
+		background: var(--color-seal);
+		border-radius: 2px 2px 0 0;
 	}
 	.traj-marker .msys {
-		@apply w-[10px] h-[45%] rounded-[2px] bg-ink cursor-pointer border-0 p-0;
-		transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
-	}
-	.traj-marker .msys:hover {
-		transform: translateY(-2px);
+		background: var(--color-ink);
+		border-radius: 2px 2px 0 0;
 	}
 	.traj-marker .mrm {
-		@apply w-[12px] h-[60%] rounded-[2px] cursor-pointer border-0 p-0;
 		border: 1.5px dashed var(--color-seal);
-		transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
-	}
-	.traj-marker .mrm:hover {
-		transform: translateY(-2px);
+		border-radius: 2px 2px 0 0;
 	}
 	.traj-marker .mmsg {
-		@apply w-[10px] h-[45%] rounded-[2px] bg-seal-soft cursor-pointer border-0 p-0;
+		background: var(--color-seal-soft);
 		border: 1px solid var(--color-seal);
-		transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
+		border-radius: 2px 2px 0 0;
 	}
-	.traj-marker .mmsg:hover {
-		transform: translateY(-2px);
-	}
-	/* Request positions: a small seal dot (the head of each request; content deduped) */
 	.traj-marker .mreq {
-		@apply w-[8px] h-[30%] rounded-full bg-seal cursor-pointer border-0 p-0;
-		transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
+		border: 1.5px solid var(--color-seal);
+		border-radius: 2px 2px 0 0;
 	}
-	.traj-marker .mreq:hover {
-		transform: translateY(-2px);
-	}
-	/* Tool results: half-height, hollow ink bar */
 	.traj-marker .mres {
-		@apply w-[10px] h-[30%] rounded-[2px] cursor-pointer border-0 p-0;
 		border: 1px solid var(--color-ink-soft);
-		transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
+		border-radius: 2px 2px 0 0;
 	}
-	.traj-marker .mres:hover {
-		transform: translateY(-2px);
-	}
-	/* Structural entries (model / thinking level / active tools): thin ink bars */
 	.traj-marker .mchange {
-		@apply w-[16px] h-[22%] rounded-[2px] bg-ink-soft cursor-pointer border-0 p-0;
-		transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
+		background: var(--color-ink-soft);
+		border-radius: 2px 2px 0 0;
 	}
-	.traj-marker .mchange:hover {
-		transform: translateY(-2px);
-	}
-	/* Compaction family (compaction / branch summary / surface ops): dashed seal bars */
 	.traj-marker .mcompact {
-		@apply w-[16px] h-[30%] rounded-[2px] cursor-pointer border-0 p-0;
 		border: 1.5px dashed var(--color-seal);
-		transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
+		border-radius: 2px 2px 0 0;
 	}
-	.traj-marker .mcompact:hover {
-		transform: translateY(-2px);
-	}
-	/* Other custom entries (request headers, unknown types): dotted bars */
 	.traj-marker .mcustom {
-		@apply w-[16px] h-[30%] rounded-[2px] cursor-pointer border-0 p-0;
 		border: 1.5px dotted var(--color-ink-soft);
-		transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
-	}
-	.traj-marker .mcustom:hover {
-		transform: translateY(-2px);
+		border-radius: 2px 2px 0 0;
 	}
 	/* Turn boundary: a vertical hairline spanning the band */
 	.traj-boundary {
@@ -1231,21 +1233,25 @@ body::before {
 
 /* Thin scrollbar (paper hairline) */
 .transcript,
-.home-page {
+.home-page,
+.traj-all {
 	scrollbar-width: thin;
 	scrollbar-color: var(--color-hairline) transparent;
 }
 .transcript::-webkit-scrollbar,
-.home-page::-webkit-scrollbar {
+.home-page::-webkit-scrollbar,
+.traj-all::-webkit-scrollbar {
 	width: 6px;
 }
 .transcript::-webkit-scrollbar-thumb,
-.home-page::-webkit-scrollbar-thumb {
+.home-page::-webkit-scrollbar-thumb,
+.traj-all::-webkit-scrollbar-thumb {
 	background: var(--color-hairline);
 	border-radius: 3px;
 }
 .transcript::-webkit-scrollbar-track,
-.home-page::-webkit-scrollbar-track {
+.home-page::-webkit-scrollbar-track,
+.traj-all::-webkit-scrollbar-track {
 	background: transparent;
 }
 

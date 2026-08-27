@@ -1,9 +1,3 @@
-/**
- * TrajectoryDrawer — the whole origin-log timeline (direction B, deepseek-harness reference).
- * Every log entry is one node: a column in the top band, a row in the bottom list.
- * Assistant records split into separate rows — thinking and each tool call get their own
- * row, and a toolResult merges into the tool row it answers (band positions unchanged).
- */
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import type { TrajectoryBlock, TrajectoryRecord, TrajectoryUsage } from "../../shared/rpc";
 import { stringifyArgs, type TimelineNode, timelineNodes } from "../../shared/trajectory";
@@ -24,9 +18,6 @@ const fmtDateTime = (ts: number) => {
 const fmtTok = (n: number | undefined) => (n && n > 0 ? n.toLocaleString() : "—");
 const short = (s: string) => (s.length > 60 ? s.slice(0, 60) + "…" : s);
 const firstLine = (s: string) => s.split("\n").find((l) => l.trim()) ?? "";
-
-/** Cell height by tool count: 0-1 / 2 / 3+ → 38 / 55 / 72%. */
-const toolHeight = (tools: { name: string; args: string }[]) => (tools.length >= 3 ? 72 : tools.length >= 2 ? 55 : 38);
 
 /** Pretty-print an unknown value (raw custom data / tool details). */
 const json = (v: unknown): string => {
@@ -381,7 +372,7 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 	});
 
 	const allRows = createMemo(() => sections().sections.flatMap((s) => s.rows));
-	const expandedNode = () => allRows().find((r) => r.key === expandedKey())?.node;
+	const expandedRow = () => allRows().find((r) => r.key === expandedKey());
 
 	const toggleRun = (turn: number) => {
 		const next = new Set(foldedRuns());
@@ -395,37 +386,52 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 		setFoldedRuns(next);
 	};
 
-	// Expand the first display row of a node (band click): merged toolResults expand their tool row;
-	// a node inside a folded run unfolds the run first
-	const expandNode = (n: TimelineNode) => {
-		const row = allRows().find((r) => r.node.seq === n.seq);
-		if (!row) return; // position-only marks have no list row
-		const run = sections().seqTurn.get(n.seq);
+	const toggleRow = (row: DisplayRow) => {
+		const run = sections().seqTurn.get(row.node.seq);
 		if (run != null && foldedRuns().has(run)) toggleRun(run);
 		setExpandedKey(expandedKey() === row.key ? null : row.key);
 	};
 
-	// The timeline band scrolls so the expanded node's column is centered
 	let bandRef: HTMLDivElement | undefined;
 	createEffect(() => {
-		const node = expandedNode();
-		if (!node || !bandRef) return;
-		const el = bandRef.querySelector<HTMLElement>(`[data-seq="${node.seq}"]`);
-		if (!el) return;
-		const containerRect = bandRef.getBoundingClientRect();
-		const elRect = el.getBoundingClientRect();
-		const target = bandRef.scrollLeft + (elRect.left - containerRect.left) - (containerRect.width - elRect.width) / 2;
-		bandRef.scrollTo({ left: target, behavior: "smooth" });
+		const row = expandedRow();
+		if (!row || !bandRef || !listRef) return;
+		const el = bandRef.querySelector<HTMLElement>(`[data-row="${row.key}"]`);
+		if (el) {
+			const containerRect = bandRef.getBoundingClientRect();
+			const elRect = el.getBoundingClientRect();
+			const target = bandRef.scrollLeft + (elRect.left - containerRect.left) - (containerRect.width - elRect.width) / 2;
+			bandRef.scrollTo({ left: target, behavior: "smooth" });
+		}
+		const rowEl = listRef.querySelector<HTMLElement>(`[data-row="${row.key}"]`);
+		if (rowEl) {
+			const rowRect = rowEl.getBoundingClientRect();
+			const listRect = listRef.getBoundingClientRect();
+			const target = listRef.scrollTop + (rowRect.top - listRect.top) - 8;
+			listRef.scrollTo({ top: target, behavior: "smooth" });
+		}
 	});
 
 	// Newest content in view: the list scrolls to the bottom and the band to the right
 	// whenever the drawer opens or the records change (the drawer fetches fresh data per open).
 	let listRef: HTMLDivElement | undefined;
+	const [fade, setFade] = createSignal({ left: false, right: false });
+	const checkFade = () => {
+		if (!bandRef) return;
+		setFade({ left: bandRef.scrollLeft > 1, right: bandRef.scrollLeft < bandRef.scrollWidth - bandRef.clientWidth - 1 });
+	};
 	createEffect(() => {
 		props.open;
 		nodes();
 		if (listRef) listRef.scrollTop = listRef.scrollHeight;
 		if (bandRef) bandRef.scrollLeft = bandRef.scrollWidth;
+		checkFade();
+	});
+	createEffect(() => {
+		if (!props.open || !bandRef) return;
+		const ro = new ResizeObserver(checkFade);
+		ro.observe(bandRef);
+		return () => ro.disconnect();
 	});
 
 	// ESC: collapse the expanded row when one is open, otherwise close the drawer
@@ -441,33 +447,28 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 	});
 
 	// ————— band —————
-	// For item callbacks run in an untracked context — every signal read must sit in a JSX
-	// expression (compiled to tracked template computations), never hoisted to a local
-	const nodeColumn = (n: TimelineNode, i: number) => {
-		// turn/step markers are block concepts now — the run/step lines in the list carry them;
-		// tool/call is the call-time record the TOOL row already shows (no band column either)
-		if (
-			n.record.kind === "custom" &&
-			(n.record.customType === "turn/start" ||
-				n.record.customType === "turn/end" ||
-				n.record.customType === "step/start" ||
-				n.record.customType === "step/end" ||
-				n.record.customType === "tool/call")
-		)
-			return null;
-		const boundary = i > 0 && nodes()[i - 1].turn !== n.turn ? <span class="traj-boundary" /> : null;
-		if (n.record.kind === "assistant") {
-			const t = turnOf(n);
+	const rowColumn = (row: DisplayRow, i: number) => {
+		const n = row.node;
+		const boundary = i > 0 && allRows()[i - 1].node.turn !== n.turn ? <span class="traj-boundary" /> : null;
+		const hot = expandedKey() === row.key;
+		const title = `T${n.turn} · ${short(captionFor(row))}`;
+		if (row.kind === "stepLabel") {
 			return (
 				<>
 					{boundary}
-					<button
-						class={"traj-cell " + (t?.density ?? "l1") + (expandedNode()?.seq === n.seq ? " hot" : "")}
-						style={{ height: toolHeight(t?.tools ?? []) + "%" }}
-						data-seq={n.seq}
-						title={`T${n.record.turn} · ${short(rowCaption(n.record))}`}
-						onClick={() => expandNode(n)}
-					/>
+					<span class="traj-marker" data-row={row.key}>
+						<span class="mstep" />
+					</span>
+				</>
+			);
+		}
+		if (row.kind === "assistant" || row.kind === "tool" || row.kind === "thinking") {
+			const t = turnOf(n);
+			const part = row.kind === "tool" ? " tool" : row.kind === "thinking" ? " think" : "";
+			return (
+				<>
+					{boundary}
+					<button class={"traj-cell " + (t?.density ?? "l1") + part + (hot ? " hot" : "")} data-row={row.key} title={title} onClick={() => toggleRow(row)} />
 				</>
 			);
 		}
@@ -475,8 +476,8 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 		return (
 			<>
 				{boundary}
-				<span class={"traj-marker" + (expandedNode()?.seq === n.seq ? " hot" : "")} data-seq={n.seq}>
-					<button class={marker ?? "mcustom"} title={short(rowCaption(n.record))} onClick={() => expandNode(n)} />
+				<span class={"traj-marker" + (hot ? " hot" : "")} data-row={row.key}>
+					<button class={marker ?? "mcustom"} title={title} onClick={() => toggleRow(row)} />
 				</span>
 			</>
 		);
@@ -745,11 +746,18 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 					<div class="traj-empty">no log entries yet — run a conversation first</div>
 				) : (
 					<>
-						{/* Top band: every entry is a column; vertical boundaries mark turn changes */}
-						<div class="traj-scroll" ref={bandRef}>
-							<div class="traj-band">
-								<For each={nodes()}>{(n, i) => nodeColumn(n, i())}</For>
+						<div class="traj-band-wrap">
+							<div class="traj-scroll" ref={bandRef} onScroll={checkFade}>
+								<div class="traj-band">
+									<For each={allRows()}>{(row, i) => rowColumn(row, i())}</For>
+								</div>
 							</div>
+							<Show when={fade().left}>
+								<span class="traj-fade left" />
+							</Show>
+							<Show when={fade().right}>
+								<span class="traj-fade right" />
+							</Show>
 						</div>
 
 						{/* Bottom: foldable run sections — a RUN divider line folds its run; every other
@@ -776,7 +784,7 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 														row.kind === "stepLabel" ? (
 															<div class="traj-step-label">STEP</div>
 														) : (
-															<div class={"traj-row " + rowClassFor(row) + (expandedKey() === row.key ? " open" : "")}>
+															<div class={"traj-row " + rowClassFor(row) + (expandedKey() === row.key ? " open" : "")} data-row={row.key}>
 																{row.marks ? <span class="req-dot" /> : null}
 																<button class="traj-row-head" onClick={() => setExpandedKey(expandedKey() === row.key ? null : row.key)} aria-expanded={expandedKey() === row.key}>
 																	<b>{chipFor(row)}</b>
