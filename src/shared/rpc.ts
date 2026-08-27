@@ -1,4 +1,4 @@
-import type { ElectrobunRPCSchema } from "electrobun";
+import type { ElectrobunRPCSchema } from "electrobun/main";
 import type { CustomModel, CustomProvider, ThemeMode } from "../bun/lib/settings";
 import type { SandboxMode } from "../bun/permission/types";
 import type { SurfaceNode } from "./surface";

@@ -7,6 +7,11 @@ export default {
 		version: "0.1.0",
 	},
 	build: {
+		// v2: the main process runtime is explicit — bun, not the cottontail default.
+		mainProcess: "bun",
+		bun: {
+			entrypoint: "src/bun/index.ts",
+		},
 		// The view is built by Vite (vite.config.ts) into dist/ — copy from there.
 		// fonts are bundled into dist/assets by Vite (see src/mainview/style.css @font-face).
 		copy: {

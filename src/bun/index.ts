@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 import { sep } from "node:path";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import { getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
-import { ApplicationMenu, BrowserView, BrowserWindow } from "electrobun/bun";
+import { ApplicationMenu, BrowserView, BrowserWindow } from "electrobun/main";
 import type { AppRPCSchema } from "../shared/rpc";
 import { dailyActivity } from "./core/activity";
 import { type AgentHandle, createAgent } from "./core/agent";

@@ -9,3 +9,7 @@ dist/
 docs/
 .database/
 design-previews
+
+# Electrobun 2.x Hutch devkit (projected on first sync)
+.hutch/
+.cottontail-tmp/
