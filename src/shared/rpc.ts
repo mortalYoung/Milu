@@ -315,6 +315,7 @@ export type AppRPCSchema = __schema<{
 						customProviders?: CustomProvider[];
 						/** UI theme (system/light/dark) — the view applies it to color-scheme. */
 						theme?: ThemeMode;
+						sendMessageIntervalSec?: number | null;
 					};
 					runtime: {
 						providers: { id: string; configured: boolean; baseUrl?: string; modelCount: number }[];
@@ -334,6 +335,7 @@ export type AppRPCSchema = __schema<{
 						customProviders?: CustomProvider[];
 						/** UI theme (system/light/dark) — the view applies it to color-scheme. */
 						theme?: ThemeMode;
+						sendMessageIntervalSec?: number | null;
 					};
 					/** Provider → api key for any provider the user edited this save (non-empty values only). */
 					credentials?: Record<string, string>;

@@ -22,7 +22,7 @@ import { aggregateUsage, fold, lastUsage } from "./core/trajectory";
 import { deleteApiKey, getApiKey, loadCredentials, setApiKey } from "./lib/credentials";
 import { ensureModel, ensureSandboxMode, ensureStoragePath, ensureWorkspace, isThinkingLevel } from "./lib/ensure";
 import { partnerDirFor, persistModel, persistSandboxMode, persistWorkspace, promptChangedSinceLastPersist, recordPrompt } from "./lib/partner-files";
-import { getPartnerDir, loadSettings, saveSettings } from "./lib/settings";
+import { getPartnerDir, loadSettings, type Settings, saveSettings, sendMessageIntervalMs } from "./lib/settings";
 import { createPartner, deletePartner, listPartners, PartnerError, type PartnerInput } from "./partners";
 import type { EscalationDecision, EscalationRequest, SandboxMode } from "./permission";
 import { isSandboxMode, SandboxManager } from "./permission";
@@ -104,6 +104,14 @@ function ensureAgent(profile: PartnerInput): Promise<PartnerAgent> {
 	return created;
 }
 
+let settingsCache: Settings | null = null;
+
+async function ensureSettings(): Promise<Settings> {
+	const settings = await loadSettings();
+	settingsCache = settings;
+	return settings;
+}
+
 async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> {
 	const dir = await partnerDirFor(profile.name);
 	// Storage: partner-scoped directory the agent may freely write to; must exist before the prompt mentions it
@@ -111,7 +119,7 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 	// Restore the persisted workspace (per-partner): re-validated so a deleted directory is not restored
 	const workspace = await ensureWorkspace(dir);
 	// Permission setting: the default sandbox mode captured for a fresh partner.
-	const settings = await loadSettings();
+	const settings = await ensureSettings();
 	const defaultMode = isSandboxMode(settings.defaultSandboxMode) ? settings.defaultSandboxMode : "workspace-write";
 	const mode = await ensureSandboxMode(dir, defaultMode);
 	const model = await ensureModel(dir);
@@ -138,6 +146,7 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 			runtimeStats: await loadRuntimeStats(dir),
 			persistRuntimeStats: (snapshot) => void saveRuntimeStats(dir, snapshot).catch((error) => console.error("saveRuntimeStats failed:", error)),
 			sandbox,
+			deliverIntervalMs: () => sendMessageIntervalMs(settingsCache ?? settings),
 			confirmEscalation: (request: EscalationRequest) =>
 				new Promise<EscalationDecision>((resolve) => {
 					const id = `sbx-${escalationNonce}-${++sandboxConfirmSeq}`;
@@ -461,7 +470,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				return { usage, runtime: entry?.agent.runtimeStats ?? { runs: 0, avgTtftMs: null, avgTps: null, lastTtftMs: null } };
 			},
 			get_settings: async () => {
-				const settings = await loadSettings();
+				const settings = await ensureSettings();
 				return {
 					settings,
 					runtime: {
@@ -494,6 +503,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 						}
 					}
 					await saveSettings(settings);
+					settingsCache = settings;
 					for (const removed of prevProviders.filter((p) => !nextProviders.includes(p))) {
 						await deleteApiKey(removed);
 					}

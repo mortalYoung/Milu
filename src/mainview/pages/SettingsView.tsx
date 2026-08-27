@@ -11,6 +11,7 @@ export interface SettingsData {
 	providers?: string[];
 	customProviders?: CustomProvider[];
 	theme?: ThemeMode;
+	sendMessageIntervalSec?: number | null;
 }
 
 export interface RuntimeInfo {
@@ -147,6 +148,8 @@ export function SettingsView(props: {
 	const [instructionsFile, setInstructionsFile] = createSignal("");
 	const [defaultSandboxMode, setDefaultSandboxMode] = createSignal<SandboxMode>("workspace-write");
 	const [theme, setTheme] = createSignal<ThemeMode>("system");
+	const [deliveryMode, setDeliveryMode] = createSignal<"unlimited" | "custom">("unlimited");
+	const [deliverySec, setDeliverySec] = createSignal("20");
 	const [added, setAdded] = createSignal<string[]>([]);
 	const [customProviders, setCustomProviders] = createSignal<CustomProvider[] | null>(null);
 	const [toAdd, setToAdd] = createSignal("");
@@ -177,6 +180,10 @@ export function SettingsView(props: {
 	if (props.settings && props.settings.theme !== undefined && theme() !== props.settings.theme) {
 		setTheme(props.settings.theme);
 	}
+	if (props.settings && typeof props.settings.sendMessageIntervalSec === "number" && deliveryMode() === "unlimited") {
+		setDeliveryMode("custom");
+		setDeliverySec(String(props.settings.sendMessageIntervalSec));
+	}
 	if (props.settings && added().length === 0 && props.settings.providers?.length) {
 		setAdded(props.settings.providers);
 	}
@@ -185,6 +192,11 @@ export function SettingsView(props: {
 	}
 	if (!props.settings) props.onLoad();
 
+	const parsedDeliverySec = () => {
+		const n = parseInt(deliverySec(), 10);
+		return Number.isFinite(n) ? Math.max(20, n) : 20;
+	};
+
 	const currentSettings = (): SettingsData => ({
 		partner_profile_path: path().trim() || "~/.partner/",
 		detect_instructions_file: instructionsFile().trim() || "AGENTS.md",
@@ -192,6 +204,7 @@ export function SettingsView(props: {
 		providers: added(),
 		customProviders: customProviders() ?? undefined,
 		theme: theme(),
+		sendMessageIntervalSec: deliveryMode() === "unlimited" ? null : parsedDeliverySec(),
 	});
 	const flashError = (message: string) => {
 		setError(message);
@@ -459,6 +472,54 @@ export function SettingsView(props: {
 						spellcheck={false}
 					/>
 				</TextField>
+			),
+		},
+		{
+			id: "interval",
+			title: "Send message interval",
+			desc: "How often visible updates are sent during a run; ∞ sends only the first and final message.",
+			cats: ["general"],
+			modified: () => deliveryMode() === "custom",
+			control: () => (
+				<div class="flex h-[32px] items-center gap-2">
+					<Select
+						class="h-[32px] w-[150px] shrink-0 rounded-[10px] font-sans text-[12px]"
+						itemClass="font-sans text-[12px]"
+						contentClass="w-[150px] rounded-[10px]"
+						title="Send message interval"
+						ariaLabel="Send message interval"
+						portalMount={rootRef}
+						value={deliveryMode()}
+						onChange={(value) => {
+							const mode = value as "unlimited" | "custom";
+							setDeliveryMode(mode);
+							void persist({ ...currentSettings(), sendMessageIntervalSec: mode === "unlimited" ? null : parsedDeliverySec() });
+						}}
+						options={[
+							{ value: "unlimited", label: "∞ first + last" },
+							{ value: "custom", label: "custom" },
+						]}
+					/>
+					<Show when={deliveryMode() === "custom"}>
+						<TextField class="h-[32px] w-[90px] shrink-0 gap-0" value={deliverySec()} onChange={setDeliverySec}>
+							<TextFieldInput
+								type="number"
+								min={20}
+								variant="compact"
+								title="Send message interval seconds"
+								aria-label="Send message interval seconds"
+								onBlur={() => {
+									const sec = parsedDeliverySec();
+									setDeliverySec(String(sec));
+									void persist({ ...currentSettings(), sendMessageIntervalSec: sec });
+								}}
+								onKeyDown={(e) => {
+									if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
+								}}
+							/>
+						</TextField>
+					</Show>
+				</div>
 			),
 		},
 	];

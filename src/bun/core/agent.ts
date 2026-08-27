@@ -51,6 +51,7 @@ export interface AgentDeps {
 	persistRuntimeStats?: (snapshot: RuntimeStatsSnapshot) => void;
 	sandbox?: SandboxManager;
 	confirmEscalation?: (request: EscalationRequest) => Promise<EscalationDecision>;
+	deliverIntervalMs?: () => number;
 }
 
 export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
@@ -139,12 +140,11 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	function autoDeliver(assistant: AssistantMessage) {
 		const text = assistantText(assistant);
 		if (!text) return;
-		if (runHasDelivered && ctx.visibleElapsedMs() < DELIVER_INTERVAL_MS) return;
+		if (runHasDelivered && ctx.visibleElapsedMs() < (deps.deliverIntervalMs?.() ?? Number.POSITIVE_INFINITY)) return;
 		runHasDelivered = true;
 		delivered.add(assistant);
 		deliverText(text);
 	}
-
 	function deliverText(text: string) {
 		const timestamp = Date.now();
 		void deps.session
@@ -175,7 +175,6 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 
 	let runTurn = 0;
 	let step = 0;
-	const DELIVER_INTERVAL_MS = 20_000;
 	const delivered = new Set<AssistantMessage>();
 	let runHasDelivered = false;
 

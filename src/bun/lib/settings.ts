@@ -32,6 +32,8 @@ export interface Settings {
 	customProviders?: CustomProvider[];
 	/** UI theme; the view applies it to color-scheme (light-dark() tokens do the rest). */
 	theme?: ThemeMode;
+	/** Seconds between visible send_message heartbeats during a run; null/undefined = only first and last. */
+	sendMessageIntervalSec?: number | null;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -57,6 +59,13 @@ export async function saveSettings(settings: Settings): Promise<void> {
 	// The file holds the user's api key — never world-readable
 	await writeFile(SETTINGS_PATH, JSON.stringify(settings, null, 2) + "\n", { encoding: "utf8", mode: 0o600 });
 	await chmod(SETTINGS_PATH, 0o600);
+}
+
+/** Effective visible-message interval in ms: ∞ (first + last only) when unset or null, else clamped to ≥20s. */
+export function sendMessageIntervalMs(settings: Settings): number {
+	const sec = settings.sendMessageIntervalSec;
+	if (sec == null) return Number.POSITIVE_INFINITY;
+	return Math.max(20, sec) * 1000;
 }
 
 /** Expand a leading ~ into the user's home directory. */
