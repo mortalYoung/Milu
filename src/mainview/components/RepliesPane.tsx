@@ -79,7 +79,7 @@ export function RepliesPane(props: {
 	// Clicking a row jumps to the deck's front card (the card the stack displays); flash it
 	const locate = (row: ReplyRow) => {
 		setActiveReply(row.entry.id);
-		document.getElementById("entry-" + row.entry.id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+		document.getElementById("entry-" + row.entry.id)?.scrollIntoView({ behavior: "smooth", block: "center" });
 		props.onFlash(row.entry.id);
 	};
 

@@ -321,11 +321,13 @@ export function Transcript(props: {
 
 	const visibleBlocks = createMemo(() => {
 		const all = blocks();
+		// Read windowStart unconditionally so the memo subscribes to it from the first run — an
+		// early return before this read would leave windowStart untracked and window expansion dead.
+		const start = Math.min(windowStart(), all.length);
 		if (all.length === 0) return all;
 		// First pass after a load: never render the whole history — show the tail immediately.
 		// The fresh-load effect below takes over windowStart for subsequent scroll anchoring.
 		if (!windowInitialized) return all.slice(Math.max(0, all.length - HISTORY_WINDOW));
-		const start = Math.min(windowStart(), all.length);
 		return start > 0 ? all.slice(start) : all;
 	});
 
@@ -377,7 +379,7 @@ export function Transcript(props: {
 		if (idx >= 0 && idx < windowStart()) {
 			setWindowStart(idx);
 			queueMicrotask(() => {
-				document.getElementById("entry-" + id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+				document.getElementById("entry-" + id)?.scrollIntoView({ behavior: "smooth", block: "center" });
 			});
 		}
 	});
