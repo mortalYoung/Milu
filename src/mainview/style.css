@@ -311,6 +311,10 @@ body::before {
 	.md td {
 		@apply border-b border-hairline px-2 py-1.5 align-top;
 	}
+	.md th,
+	.md td {
+		overflow-wrap: anywhere;
+	}
 	.md tr:last-child td {
 		border-bottom: none;
 	}

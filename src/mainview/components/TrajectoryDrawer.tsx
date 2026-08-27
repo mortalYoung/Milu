@@ -372,7 +372,6 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 	});
 
 	const allRows = createMemo(() => sections().sections.flatMap((s) => s.rows));
-	const expandedRow = () => allRows().find((r) => r.key === expandedKey());
 
 	const toggleRun = (turn: number) => {
 		const next = new Set(foldedRuns());
@@ -393,24 +392,6 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 	};
 
 	let bandRef: HTMLDivElement | undefined;
-	createEffect(() => {
-		const row = expandedRow();
-		if (!row || !bandRef || !listRef) return;
-		const el = bandRef.querySelector<HTMLElement>(`[data-row="${row.key}"]`);
-		if (el) {
-			const containerRect = bandRef.getBoundingClientRect();
-			const elRect = el.getBoundingClientRect();
-			const target = bandRef.scrollLeft + (elRect.left - containerRect.left) - (containerRect.width - elRect.width) / 2;
-			bandRef.scrollTo({ left: target, behavior: "smooth" });
-		}
-		const rowEl = listRef.querySelector<HTMLElement>(`[data-row="${row.key}"]`);
-		if (rowEl) {
-			const rowRect = rowEl.getBoundingClientRect();
-			const listRect = listRef.getBoundingClientRect();
-			const target = listRef.scrollTop + (rowRect.top - listRect.top) - 8;
-			listRef.scrollTo({ top: target, behavior: "smooth" });
-		}
-	});
 
 	// Newest content in view: the list scrolls to the bottom and the band to the right
 	// whenever the drawer opens or the records change (the drawer fetches fresh data per open).

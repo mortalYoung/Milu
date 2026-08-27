@@ -46,7 +46,7 @@ const COLS = "grid grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_56px_76px] items-cen
 
 function SettingRow(props: { title: string; desc: string; modified?: boolean; q?: string; children: JSX.Element }) {
 	return (
-		<div class="flex min-h-[56px] items-center gap-5">
+		<div class="flex items-center gap-5 py-2.5">
 			<div class="min-w-0 flex-1">
 				<div class="flex items-center gap-2">
 					<span class="font-serif text-[13px] leading-tight text-ink">{props.q ? highlight(props.title, props.q) : props.title}</span>
@@ -664,7 +664,7 @@ export function SettingsView(props: {
 													<Show when={cat.id === "providers"}>
 														<For each={providerMatches()}>
 															{(id) => (
-																<div class="flex min-h-[44px] items-center gap-2">
+																<div class="flex items-center gap-2 py-3.5">
 																	<span class="font-serif text-[13px] text-ink">{highlight(id, q())}</span>
 																	<Show when={configured(id)}>
 																		<span class="size-[5px] shrink-0 rounded-full bg-[#7FB069]" title="configured" />
@@ -730,7 +730,7 @@ export function SettingsView(props: {
 												const def = customDef(id);
 												return (
 													<>
-														<div class={cn(COLS, "min-h-[40px] py-1.5")}>
+														<div class={cn(COLS, "py-2")}>
 															<span class="flex min-w-0 items-center gap-2">
 																<span class="truncate font-serif text-[12px] text-ink">{id}</span>
 																<Show when={configured(id)}>

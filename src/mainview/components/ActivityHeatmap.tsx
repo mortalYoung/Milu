@@ -2,9 +2,9 @@ import { For } from "solid-js";
 import type { PartnerActivityDay } from "../../shared/rpc";
 import { Tooltip, TooltipContent, TooltipPortal, TooltipTrigger } from "./ui/tooltip";
 
-const CELL = 8;
+const CELL = 10;
 const GAP = 2;
-const COL = 10;
+const COL = 12;
 const GUTTER = 26;
 const INNER = 476;
 export const HEATMAP_WEEKS = Math.floor((INNER - GUTTER) / COL);
