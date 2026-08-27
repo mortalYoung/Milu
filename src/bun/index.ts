@@ -21,7 +21,16 @@ import { priceSurface } from "./core/token-meter";
 import { aggregateUsage, fold, lastUsage } from "./core/trajectory";
 import { deleteApiKey, getApiKey, loadCredentials, setApiKey } from "./lib/credentials";
 import { ensureModel, ensureSandboxMode, ensureStoragePath, ensureWorkspace, isThinkingLevel } from "./lib/ensure";
-import { partnerDirFor, persistModel, persistSandboxMode, persistWorkspace, promptChangedSinceLastPersist, recordPrompt } from "./lib/partner-files";
+import {
+	partnerDirFor,
+	persistModel,
+	persistPartnerReadAt,
+	persistSandboxMode,
+	persistWorkspace,
+	promptChangedSinceLastPersist,
+	readPartnerReadAt,
+	recordPrompt,
+} from "./lib/partner-files";
 import { getPartnerDir, loadSettings, type Settings, saveSettings, sendMessageIntervalMs } from "./lib/settings";
 import { createPartner, deletePartner, listPartners, PartnerError, type PartnerInput } from "./partners";
 import type { EscalationDecision, EscalationRequest, SandboxMode } from "./permission";
@@ -526,7 +535,8 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					profiles.map(async (profile) => {
 						const last = await session.lastMessage(getPartnerDir(settings, profile.name));
 						const lastMessageKind: "user" | "send_message" = last?.kind === "user" ? "user" : "send_message";
-						return last ? { ...profile, lastMessage: last.text, lastMessageAt: last.time, lastMessageKind } : profile;
+						const readAt = await readPartnerReadAt(getPartnerDir(settings, profile.name));
+						return last ? { ...profile, lastMessage: last.text, lastMessageAt: last.time, lastMessageKind, readAt } : { ...profile, readAt };
 					}),
 				);
 				return { partners };
@@ -582,6 +592,13 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					console.error("delete_partner failed:", error);
 					return { ok: false, error: "Failed to delete partner" };
 				}
+			},
+			set_read_at: async ({ name, readAt }) => {
+				const settings = await loadSettings();
+				const profile = (await listPartners(settings)).find((p) => p.name === name);
+				if (!profile) return { ok: false };
+				await persistPartnerReadAt(getPartnerDir(settings, name), readAt);
+				return { ok: true };
 			},
 		},
 		messages: {

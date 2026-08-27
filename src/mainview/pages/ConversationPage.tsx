@@ -62,6 +62,8 @@ export function ConversationPage(props: {
 	stats: SessionStats | null;
 	/** Per-partner writing state (true for the row whose partner owns the running run). */
 	workingFor: (name: string) => boolean;
+	/** Per-partner unread state (messages newer than the persisted read watermark). */
+	unread: (name: string) => boolean;
 	/** The selected chat's saved draft (per-chat, restored on switch-back). */
 	draft: string;
 	onDraftChange: (text: string) => void;
@@ -98,6 +100,7 @@ export function ConversationPage(props: {
 							partners={props.partners}
 							selected={props.selected}
 							working={props.workingFor}
+							unread={props.unread}
 							onSelect={props.onSelect}
 							onAddPartner={props.onAddPartner}
 							onDelete={props.onDelete}

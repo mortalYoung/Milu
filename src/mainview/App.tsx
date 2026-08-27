@@ -8,6 +8,7 @@ import { createEffect, onMount } from "solid-js";
 import { AppRail } from "./components/AppRail";
 import { PartnerDetailsDialog } from "./components/PartnerDetailsDialog";
 import { PartnerModal } from "./components/PartnerModal";
+import { ToastHost } from "./components/ToastHost";
 import { TrajectoryDrawer } from "./components/TrajectoryDrawer";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./components/ui/dialog";
 import { makeSysEntry } from "./layouts/Transcript";
@@ -20,7 +21,9 @@ import { rpc } from "./lib/rpc";
 import { createSession } from "./lib/session";
 import { createSettings } from "./lib/settings";
 import { createShell } from "./lib/shell";
+import { createToast } from "./lib/toast";
 import { createTrajectory } from "./lib/trajectory";
+import { createUnread } from "./lib/unread";
 import { ConversationPage } from "./pages/ConversationPage";
 import { type SettingsData, SettingsView } from "./pages/SettingsView";
 
@@ -37,6 +40,12 @@ export function App() {
 	const composer = createComposer(() => session.selected());
 	const shell = createShell();
 	const settings = createSettings(rpc);
+	const toast = createToast();
+	const unread = createUnread(
+		rpc,
+		() => session.selected(),
+		() => session.partners(),
+	);
 
 	// ————— RPC events —————
 	rpc.addMessageListener("agent_turn", ({ turn: t, partner }) => {
@@ -51,6 +60,9 @@ export function App() {
 		// Errors render from the persisted turn/end entry (visibleHistory), so they survive
 		// restarts — the entry is already on disk before this event lands.
 		if (errForSelected) void session.refreshHistory();
+		if (partner !== session.selected()) {
+			toast.push(err ? `${partner} ended with an error` : `${partner} conversation finished`, err ? "error" : "default");
+		}
 		session.bump();
 		status.calibrate();
 		void metrics.refresh();
@@ -164,6 +176,7 @@ export function App() {
 					partners={session.partners()}
 					selected={session.selected()}
 					onSelect={(name) => session.select(session.partners().find((p) => p.name === name) ?? null)}
+					unread={unread.unread}
 					onAddPartner={() => shell.setShowModal(true)}
 					onDelete={onDeletePartner}
 					onViewDetails={(name) => shell.setDetailsPartner(session.partners().find((p) => p.name === name) ?? null)}
@@ -219,6 +232,7 @@ export function App() {
 			<PartnerDetailsDialog partner={shell.detailsPartner()} onOpenChange={(open) => !open && shell.setDetailsPartner(null)} />
 
 			<TrajectoryDrawer open={trajectory.open()} onOpenChange={trajectory.setOpen} records={trajectory.records()} />
+			<ToastHost toasts={toast.toasts} placement={settings.settings()?.toastPlacement ?? "bottomcenter"} onDismiss={toast.dismiss} />
 		</div>
 	);
 }

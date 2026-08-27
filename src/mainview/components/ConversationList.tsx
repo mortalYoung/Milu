@@ -4,7 +4,7 @@
  * hover ellipsis opens a DropdownMenu; right-click ContextMenu (delete); delete-confirmation Dialog.
  */
 import { Info, MoreVertical, Plus, Trash2 } from "lucide-solid";
-import { createSignal } from "solid-js";
+import { createSignal, Show } from "solid-js";
 import { Button } from "./Button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
@@ -21,6 +21,8 @@ export interface PartnerItem {
 	lastMessageAt?: number;
 	/** Who sent the last message — "user" (you) or "send_message" (the partner's reply). */
 	lastMessageKind?: "user" | "send_message";
+	/** Per-partner read watermark (persisted): messages after this timestamp are unread. */
+	readAt?: number;
 }
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
@@ -74,6 +76,8 @@ export function ConversationList(props: {
 	selected: string | null;
 	/** Whether the given partner's run is in progress (its row's preview slot shows the working indicator). */
 	working: (name: string) => boolean;
+	/** Whether the given partner has messages newer than its read watermark. */
+	unread: (name: string) => boolean;
 	onSelect: (name: string) => void;
 	onAddPartner: () => void;
 	onDelete: (name: string) => void;
@@ -128,15 +132,20 @@ export function ConversationList(props: {
 								<span class="conv-time">{convTime(partner.lastMessageAt ?? partner.createdAt)}</span>
 							</span>
 							<span class="conv-preview">
-								{props.working(partner.name) ? (
-									<span class="conv-preview-dots" title="Working…">
-										<span class="work-dot" />
-										<span class="work-dot" />
-										<span class="work-dot" />
-									</span>
-								) : (
-									previewFor(partner) || "—"
-								)}
+								<span class="conv-preview-main">
+									{props.working(partner.name) ? (
+										<span class="conv-preview-dots" title="Working…">
+											<span class="work-dot" />
+											<span class="work-dot" />
+											<span class="work-dot" />
+										</span>
+									) : (
+										previewFor(partner) || "—"
+									)}
+								</span>
+								<Show when={props.unread(partner.name)}>
+									<span class="conv-unread-dot" title="new messages" />
+								</Show>
 							</span>
 						</span>
 						{/* Ellipsis appears on hover; click or right-click both open the same menu; stays visible while the menu is open */}

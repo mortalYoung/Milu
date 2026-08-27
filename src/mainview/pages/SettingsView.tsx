@@ -1,5 +1,5 @@
 import { createMemo, createSignal, For, indexArray, type JSX, Match, Show, Switch } from "solid-js";
-import type { CustomModel, CustomProvider, SandboxMode, ThemeMode } from "../../shared/rpc";
+import type { CustomModel, CustomProvider, SandboxMode, ThemeMode, ToastPlacement } from "../../shared/rpc";
 import { Select } from "../components/ui/select";
 import { TextField, TextFieldInput } from "../components/ui/text-field";
 import { cn } from "../lib/utils";
@@ -11,6 +11,7 @@ export interface SettingsData {
 	providers?: string[];
 	customProviders?: CustomProvider[];
 	theme?: ThemeMode;
+	toastPlacement?: ToastPlacement;
 	sendMessageIntervalSec?: number | null;
 }
 
@@ -36,6 +37,7 @@ const DEFAULTS = {
 	instructions: "AGENTS.md",
 	theme: "system" as ThemeMode,
 	sandbox: "workspace-write" as SandboxMode,
+	toastPlacement: "bottomcenter" as ToastPlacement,
 };
 
 const EMPTY_CP = { id: "", name: "", baseUrl: "", models: [{ id: "", window: "" }], window: "", maxTokens: "" };
@@ -148,6 +150,7 @@ export function SettingsView(props: {
 	const [instructionsFile, setInstructionsFile] = createSignal("");
 	const [defaultSandboxMode, setDefaultSandboxMode] = createSignal<SandboxMode>("workspace-write");
 	const [theme, setTheme] = createSignal<ThemeMode>("system");
+	const [toastPlacement, setToastPlacement] = createSignal<ToastPlacement>("bottomcenter");
 	const [deliveryMode, setDeliveryMode] = createSignal<"unlimited" | "custom">("unlimited");
 	const [deliverySec, setDeliverySec] = createSignal("20");
 	const [added, setAdded] = createSignal<string[]>([]);
@@ -180,6 +183,9 @@ export function SettingsView(props: {
 	if (props.settings && props.settings.theme !== undefined && theme() !== props.settings.theme) {
 		setTheme(props.settings.theme);
 	}
+	if (props.settings && props.settings.toastPlacement !== undefined && toastPlacement() !== props.settings.toastPlacement) {
+		setToastPlacement(props.settings.toastPlacement);
+	}
 	if (props.settings && typeof props.settings.sendMessageIntervalSec === "number" && deliveryMode() === "unlimited") {
 		setDeliveryMode("custom");
 		setDeliverySec(String(props.settings.sendMessageIntervalSec));
@@ -204,6 +210,7 @@ export function SettingsView(props: {
 		providers: added(),
 		customProviders: customProviders() ?? undefined,
 		theme: theme(),
+		toastPlacement: toastPlacement(),
 		sendMessageIntervalSec: deliveryMode() === "unlimited" ? null : parsedDeliverySec(),
 	});
 	const flashError = (message: string) => {
@@ -520,6 +527,35 @@ export function SettingsView(props: {
 						</TextField>
 					</Show>
 				</div>
+			),
+		},
+		{
+			id: "toastPlacement",
+			title: "Toast placement",
+			desc: "Where transient notifications appear.",
+			cats: ["general"],
+			modified: () => toastPlacement() !== DEFAULTS.toastPlacement,
+			control: () => (
+				<Select
+					class="h-[32px] w-[150px] shrink-0 rounded-[10px] font-sans text-[12px]"
+					itemClass="font-sans text-[12px]"
+					contentClass="w-[150px] rounded-[10px]"
+					title="Toast placement"
+					ariaLabel="Toast placement"
+					portalMount={rootRef}
+					value={toastPlacement()}
+					onChange={(value) => {
+						const p = value as ToastPlacement;
+						setToastPlacement(p);
+						void persist({ ...currentSettings(), toastPlacement: p });
+					}}
+					options={[
+						{ value: "topcenter", label: "top center" },
+						{ value: "topright", label: "top right" },
+						{ value: "bottomcenter", label: "bottom center" },
+						{ value: "bottomright", label: "bottom right" },
+					]}
+				/>
 			),
 		},
 	];

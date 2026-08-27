@@ -258,7 +258,10 @@ body::before {
 		@apply font-sans text-[10.5px] text-seal tracking-[0.03em] whitespace-nowrap;
 	}
 	.conv-preview {
-		@apply font-sans text-[12px] text-body-muted truncate mt-[2px];
+		@apply flex items-center gap-2 mt-[2px] min-w-0 font-sans text-[12px] text-body-muted;
+	}
+	.conv-preview-main {
+		@apply flex-1 min-w-0 truncate;
 	}
 	/* Ellipsis that appears floating on hover (absolutely positioned over the row, no layout footprint) */
 	.conv-ellipsis {
@@ -723,6 +726,71 @@ body::before {
 	}
 	.conv-preview-dots .work-dot {
 		background: var(--color-ink-soft);
+	}
+	/* Unread indicator: seal dot beside the partner name (messages newer than the read watermark) */
+	.conv-unread-dot {
+		@apply inline-block size-[6px] shrink-0 rounded-full bg-seal;
+	}
+	/* Toast host: fixed stack of transient ink pills; placement + entry animation follow the setting */
+	.toast-host {
+		@apply fixed z-[60] flex flex-col gap-2 pointer-events-none;
+	}
+	.toast-host-topcenter {
+		@apply top-6 left-1/2 -translate-x-1/2 items-center;
+	}
+	.toast-host-topright {
+		@apply top-6 right-6 items-end;
+	}
+	.toast-host-bottomcenter {
+		@apply bottom-6 left-1/2 -translate-x-1/2 items-center;
+	}
+	.toast-host-bottomright {
+		@apply bottom-6 right-6 items-end;
+	}
+	.toast {
+		@apply pointer-events-auto cursor-pointer rounded-full bg-ink px-4 py-2 text-[12px] text-letter shadow-md;
+	}
+	.toast-error {
+		@apply bg-seal text-paper;
+	}
+	.toast-in-top {
+		animation: toast-in-top 0.2s ease-out;
+	}
+	.toast-in-bottom {
+		animation: toast-in-bottom 0.2s ease-out;
+	}
+	.toast-in-right {
+		animation: toast-in-right 0.2s ease-out;
+	}
+	@keyframes toast-in-top {
+		from {
+			opacity: 0;
+			transform: translateY(-8px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+	@keyframes toast-in-bottom {
+		from {
+			opacity: 0;
+			transform: translateY(8px);
+		}
+		to {
+			opacity: 1;
+			transform: translateY(0);
+		}
+	}
+	@keyframes toast-in-right {
+		from {
+			opacity: 0;
+			transform: translateX(12px);
+		}
+		to {
+			opacity: 1;
+			transform: translateX(0);
+		}
 	}
 	/* Envelope-header working status: separator + three ink dots + Writing… */
 	.chat-worker-status {

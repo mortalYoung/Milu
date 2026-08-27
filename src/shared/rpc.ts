@@ -1,9 +1,9 @@
 import type { ElectrobunRPCSchema } from "electrobun/main";
-import type { CustomModel, CustomProvider, ThemeMode } from "../bun/lib/settings";
+import type { CustomModel, CustomProvider, ThemeMode, ToastPlacement } from "../bun/lib/settings";
 import type { SandboxMode } from "../bun/permission/types";
 import type { SurfaceNode } from "./surface";
 
-export type { CustomModel, CustomProvider, SandboxMode, ThemeMode };
+export type { CustomModel, CustomProvider, SandboxMode, ThemeMode, ToastPlacement };
 
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
@@ -315,6 +315,7 @@ export type AppRPCSchema = __schema<{
 						customProviders?: CustomProvider[];
 						/** UI theme (system/light/dark) — the view applies it to color-scheme. */
 						theme?: ThemeMode;
+						toastPlacement?: ToastPlacement;
 						sendMessageIntervalSec?: number | null;
 					};
 					runtime: {
@@ -335,6 +336,7 @@ export type AppRPCSchema = __schema<{
 						customProviders?: CustomProvider[];
 						/** UI theme (system/light/dark) — the view applies it to color-scheme. */
 						theme?: ThemeMode;
+						toastPlacement?: ToastPlacement;
 						sendMessageIntervalSec?: number | null;
 					};
 					/** Provider → api key for any provider the user edited this save (non-empty values only). */
@@ -357,6 +359,8 @@ export type AppRPCSchema = __schema<{
 						lastMessageAt?: number;
 						/** Who sent the last message — "user" (you) or "send_message" (the partner's reply). */
 						lastMessageKind?: "user" | "send_message";
+						/** Per-partner read watermark (persisted): messages after this timestamp are unread. */
+						readAt?: number;
 					}[];
 				};
 			};
@@ -390,6 +394,11 @@ export type AppRPCSchema = __schema<{
 			delete_partner: {
 				params: { name: string };
 				response: { ok: boolean; error?: string };
+			};
+			/** Persist the read watermark for a partner (messages after this timestamp are unread). */
+			set_read_at: {
+				params: { name: string; readAt: number };
+				response: { ok: boolean };
 			};
 		};
 		messages: {

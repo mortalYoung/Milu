@@ -30,6 +30,24 @@ export interface PartnerModelConfig {
 	thinkingLevel?: ThinkingLevel;
 }
 
+// Read watermark persistence: per-partner file (survives restart); unread = lastMessageAt > readAt.
+export const readFilePath = (dir: string) => join(dir, "read.json");
+export async function readPartnerReadAt(dir: string): Promise<number> {
+	try {
+		const saved = JSON.parse(await readFile(readFilePath(dir), "utf8")) as { readAt?: unknown };
+		return typeof saved.readAt === "number" && Number.isFinite(saved.readAt) ? saved.readAt : 0;
+	} catch {
+		return 0;
+	}
+}
+export async function persistPartnerReadAt(dir: string, readAt: number): Promise<void> {
+	try {
+		await writeFile(readFilePath(dir), JSON.stringify({ readAt }, null, 2), "utf8");
+	} catch (error) {
+		console.error("persistPartnerReadAt failed:", error);
+	}
+}
+
 // Per-partner model selection (provider + pinned model + thinking level): survives restart, restored on partner switch.
 export const modelFilePath = (dir: string) => join(dir, "model.json");
 export async function persistModel(dir: string, model: PartnerModelConfig) {

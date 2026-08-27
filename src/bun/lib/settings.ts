@@ -6,6 +6,9 @@ import type { SandboxMode } from "../permission";
 /** UI theme: follow the system appearance, or force light/dark. */
 export type ThemeMode = "system" | "light" | "dark";
 
+/** Where transient toast notifications appear. */
+export type ToastPlacement = "topcenter" | "topright" | "bottomcenter" | "bottomright";
+
 export interface CustomModel {
 	id: string;
 	contextWindow?: number;
@@ -32,6 +35,8 @@ export interface Settings {
 	customProviders?: CustomProvider[];
 	/** UI theme; the view applies it to color-scheme (light-dark() tokens do the rest). */
 	theme?: ThemeMode;
+	/** Where toast notifications appear. */
+	toastPlacement?: ToastPlacement;
 	/** Seconds between visible send_message heartbeats during a run; null/undefined = only first and last. */
 	sendMessageIntervalSec?: number | null;
 }
@@ -41,6 +46,7 @@ const DEFAULT_SETTINGS: Settings = {
 	detect_instructions_file: "AGENTS.md",
 	defaultSandboxMode: "workspace-write",
 	theme: "system",
+	toastPlacement: "bottomcenter",
 };
 
 const SETTINGS_PATH = join(homedir(), ".config", "letters", "settings.json");
