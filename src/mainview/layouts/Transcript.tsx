@@ -281,6 +281,7 @@ export function Transcript(props: {
 	onEscalationRespond?: (id: string, approved: boolean) => void;
 }) {
 	let container: HTMLElement | undefined;
+	let inner: HTMLDivElement | undefined;
 
 	// Render window: which block index to start rendering from (tail first, expands upward on
 	// scroll). Keeping older blocks unrendered avoids the O(n) markdown+shiki cost of rendering
@@ -353,7 +354,8 @@ export function Transcript(props: {
 		if (!el) return;
 		const onScroll = () => {
 			atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
-			if (el.scrollTop < WINDOW_EXPAND_EDGE && windowStart() > 0) {
+			const expanding = el.scrollTop < WINDOW_EXPAND_EDGE && windowStart() > 0;
+			if (expanding) {
 				const before = el.scrollHeight;
 				setWindowStart(Math.max(0, windowStart() - HISTORY_WINDOW));
 				// The prepended older blocks grow the document above the viewport — shift scrollTop by
@@ -384,6 +386,19 @@ export function Transcript(props: {
 		}
 	});
 
+	// The pin runs in a rAF: the commit's DOM is inserted but not laid out yet (letter bodies fill
+	// via effects, decks/images grow after), so a synchronous scrollHeight read would pin to a too-
+	// short document and the viewport lands mid-conversation. A frame later the layout is settled.
+	let pinRaf: number | null = null;
+	const pinToBottom = () => {
+		if (pinRaf != null) cancelAnimationFrame(pinRaf);
+		pinRaf = requestAnimationFrame(() => {
+			pinRaf = null;
+			if (!container) return;
+			container.scrollTop = container.scrollHeight;
+		});
+	};
+
 	createEffect(() => {
 		props.tick(); // push, history, turn, end — all bump it
 		const all = blocks();
@@ -399,13 +414,26 @@ export function Transcript(props: {
 		}
 		const userSent = lastUser != null && lastUser.id !== lastUserEntryId;
 		lastUserEntryId = lastUser?.id ?? null;
-		if (container && (userSent || atBottom)) container.scrollTop = container.scrollHeight;
+		if (container && (userSent || atBottom)) pinToBottom();
+	});
+
+	// The document keeps growing after the pin (letters fill, images load, decks grow, the window
+	// expands) — follow the bottom whenever it grows while the user is already there. Covers every
+	// async height source the rAF pin can't see (it only settles the frame it ran in).
+	createEffect(() => {
+		const el = inner;
+		if (!el) return;
+		const ro = new ResizeObserver(() => {
+			if (atBottom) pinToBottom();
+		});
+		ro.observe(el);
+		onCleanup(() => ro.disconnect());
 	});
 
 	return (
 		<MotionConfigProvider reducedMotion="user">
 			<section class="transcript flex-1 overflow-y-auto overscroll-contain px-4 py-3" id="transcript" aria-live="polite" ref={container}>
-				<div class="transcript-inner">
+				<div class="transcript-inner" ref={inner}>
 					{props.entries().length === 0 && !props.working() && (
 						<div class="text-center pt-16">
 							{props.historyLoading() ? (
