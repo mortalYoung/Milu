@@ -3,6 +3,7 @@
  * active = warm-ink solid + paper-colored icon.
  */
 import { MessageSquare, Settings } from "lucide-solid";
+import lettersLogo from "../assets/letters.png";
 
 export type RailTabId = "chat" | "settings";
 
@@ -11,9 +12,9 @@ export function AppRail(props: { active: RailTabId; onSelect: (id: RailTabId) =>
 		<nav class="rail electrobun-webkit-app-region-drag">
 			{/* Top empty drag region: makes room for the floating traffic lights */}
 			<div class="rail-spacer" />
-			{/* Brand area: P letter circle */}
+			{/* Brand area: app logo */}
 			<div class="rail-brand" title="Letters">
-				P
+				<img src={lettersLogo} alt="Letters" class="rail-brand-img" />
 			</div>
 			<button
 				type="button"
