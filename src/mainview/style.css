@@ -607,6 +607,42 @@ body::before {
 	.msg-escalation-status.drp {
 		@apply text-muted/60;
 	}
+	/* Slash command: a quiet ledger card in the message list (like escalation, lighter) —
+	   head shows /name + status; running uses the breathing dots. */
+	.msg-command {
+		@apply self-start mt-4 w-[560px] max-w-full border border-hairline rounded-[10px] bg-letter px-[18px] py-[10px] font-mono text-[11px] text-ink;
+	}
+	.msg-command-head {
+		@apply flex items-center justify-between gap-2 mb-1;
+	}
+	.msg-command-name {
+		@apply text-[9px] uppercase tracking-[0.12em] text-muted;
+	}
+	.msg-command-status {
+		@apply text-[9px] uppercase tracking-[0.12em];
+	}
+	.msg-command-status.running,
+	.msg-command-status.success {
+		@apply text-seal;
+	}
+	.msg-command-status.error {
+		@apply text-ink-soft;
+	}
+	.msg-command-status.interrupted {
+		@apply text-muted/60;
+	}
+	.msg-command-args {
+		@apply whitespace-pre-wrap break-all text-[11px] leading-[1.5] mb-1;
+	}
+	.msg-command-text {
+		@apply whitespace-pre-wrap break-all text-[11px] leading-[1.5] text-body-muted;
+	}
+	.msg-command-running {
+		@apply flex items-center gap-1.5 mt-1;
+	}
+	.msg-command-running .work-dot {
+		background: var(--color-ink-soft);
+	}
 	.msg-letter {
 		@apply self-start mt-6 relative bg-letter border border-hairline rounded-[10px] px-[18px] pt-[17px] pb-3 min-w-0 w-[560px] max-w-full;
 	}
@@ -1218,8 +1254,37 @@ body::before {
 			transform: translate(-50%, 0);
 		}
 	}
+	/* Command palette: paper panel above the pill (same language as run-settings) */
+	.command-menu {
+		position: absolute;
+		bottom: calc(100% + 8px);
+		left: 50%;
+		transform: translateX(-50%);
+		width: 60%;
+		@apply bg-letter border border-hairline rounded-[8px] py-1 z-50 max-h-[240px] overflow-y-auto;
+		animation: composer-panel-in 180ms cubic-bezier(0.23, 1, 0.32, 1);
+	}
+	.command-menu-item {
+		@apply flex items-center gap-2 w-full px-3 py-1.5 text-left font-mono text-[11px] text-ink cursor-pointer hover:bg-paper-hover;
+	}
+	.command-menu-item.selected {
+		@apply bg-paper-hover;
+	}
+	.command-menu-name {
+		@apply text-seal shrink-0;
+	}
+	.command-menu-desc {
+		@apply text-body-muted truncate flex-1 min-w-0;
+	}
+	.command-menu-hint {
+		@apply text-muted shrink-0;
+	}
+	.command-menu-empty {
+		@apply px-3 py-1.5 font-mono text-[10px] text-muted;
+	}
 	@media (prefers-reduced-motion: reduce) {
-		.composer-panel {
+		.composer-panel,
+		.command-menu {
 			animation: none;
 		}
 	}

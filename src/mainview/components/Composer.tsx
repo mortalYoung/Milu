@@ -7,12 +7,19 @@
  * model, sandbox mode, session metrics — live behind a quiet toggle left of the field: the
  * static composer shows only the pill, and the panel opens on demand (click / outside / Esc
  * to dismiss; sending closes it too).
+ *
+ * Slash commands share the same pill: a leading "/" opens the command menu above it; Enter or
+ * Tab selects the highlighted command (unknown "/…" lines are blocked, never sent to the
+ * model), and leadingInput commands (/workspace) claim the line until the argument is typed.
  */
 import { ArrowUp, SlidersHorizontal, Square } from "lucide-solid";
-import { createEffect, createSignal, For, type JSX, onCleanup, Show } from "solid-js";
-import type { ContextUsage, SandboxMode, SessionStats, ThinkingLevel } from "../../shared/rpc";
+import { createEffect, createMemo, createSignal, For, type JSX, onCleanup, Show } from "solid-js";
+import type { CommandDescriptor, CommandExecution, ContextUsage, SandboxMode, SessionStats, ThinkingLevel } from "../../shared/rpc";
+import { filterCommands } from "../lib/commands";
 import { formatWorkspacePath, shouldSendOnEnter } from "../lib/composer-input";
+import { detectTrigger, parseCommand } from "../lib/trigger";
 import { Button } from "./Button";
+import { CommandMenu } from "./CommandMenu";
 import { ContextMeter } from "./ContextMeter";
 import {
 	DropdownMenu,
@@ -41,6 +48,10 @@ export function Composer(props: {
 	busy: () => boolean;
 	onSend: (text: string) => void;
 	onStop: () => void;
+	/** Slash command directory (handler-free descriptors for the menu). */
+	commands: CommandDescriptor[];
+	/** Execute a slash command line; resolves after command/run + command/done are persisted. */
+	onCommand: (line: string) => Promise<CommandExecution>;
 	/** The workspace set via set_workspace; hidden until then (unset = not needed / not yet set). */
 	workspace?: string | null;
 	/** The storage path (the agent's own directory; shown alongside the workspace, read-only). */
@@ -67,7 +78,11 @@ export function Composer(props: {
 }) {
 	const [text, setText] = createSignal(props.draft);
 	// The draft is per-chat: switching chats swaps the prop, loading the other chat's saved text
-	createEffect(() => setText(props.draft));
+	createEffect(() => {
+		setText(props.draft);
+		setMenuOpen(false);
+		setClaimed(null);
+	});
 	let textareaRef: HTMLTextAreaElement | undefined;
 	// IME guard: composition Enter picks a candidate, it must not send. The flag outlives
 	// renders; clearing is deferred one tick because Safari delivers the closing keydown
@@ -81,6 +96,17 @@ export function Composer(props: {
 			composing = false;
 		}, 10);
 	};
+
+	// ————— slash command state (plain / claimed / submitting) —————
+	let lastTriggerKey: string | null = null;
+	let suppressNextSync = false;
+	const [caret, setCaret] = createSignal(0);
+	const [menuOpen, setMenuOpen] = createSignal(false);
+	const [menuQuery, setMenuQuery] = createSignal("");
+	const [selectedIndex, setSelectedIndex] = createSignal(0);
+	const [claimed, setClaimed] = createSignal<CommandDescriptor | null>(null);
+	const [submitting, setSubmitting] = createSignal(false);
+	const menuItems = createMemo(() => filterCommands(props.commands, menuQuery()));
 
 	// Run-settings panel: closed by default; the toggle icon left of the field opens it on demand.
 	const [panelOpen, setPanelOpen] = createSignal(false);
@@ -111,24 +137,163 @@ export function Composer(props: {
 		el.style.height = `${Math.min(el.scrollHeight, MAX_HEIGHT)}px`;
 	};
 
-	const send = () => {
-		const value = text().trim();
-		if (!value) return;
-		setText("");
-		if (textareaRef) textareaRef.style.height = "";
-		setPanelOpen(false); // sending returns to the letter — the settings panel folds back
-		props.onSend(value);
+	const focusEnd = () => {
+		const el = textareaRef;
+		if (!el) return;
+		el.focus();
+		const len = el.value.length;
+		el.setSelectionRange(len, len);
 	};
 
-	const submit: JSX.EventHandler<HTMLFormElement, SubmitEvent> = (e) => {
+	const clearText = () => {
+		setText("");
+		props.onDraftChange("");
+		if (textareaRef) textareaRef.style.height = "";
+	};
+
+	/** Keep the menu / claimed state in sync with the draft + caret (pure detection, no async). */
+	function syncCommandState(value: string, pos: number) {
+		if (claimed()) {
+			// A claimed leadingInput command survives only while its prefix is intact.
+			if (!value.startsWith(`/${claimed()!.name} `)) setClaimed(null);
+			setMenuOpen(false);
+			return;
+		}
+		const trigger = detectTrigger(value, pos);
+		if (trigger?.trigger === "/" && trigger.position === "leading") {
+			const key = `${trigger.position}:${trigger.query}`;
+			if (!menuOpen() || lastTriggerKey !== key) setSelectedIndex(0);
+			lastTriggerKey = key;
+			setMenuQuery(trigger.query);
+			setMenuOpen(true);
+		} else {
+			setMenuOpen(false);
+			lastTriggerKey = null;
+		}
+	}
+
+	async function executeCommand(line: string) {
+		if (submitting()) return;
+		setSubmitting(true);
+		setMenuOpen(false);
+		setClaimed(null);
+		try {
+			const res = await props.onCommand(line);
+			if (res.ok) clearText();
+		} finally {
+			setSubmitting(false);
+		}
+	}
+
+	function claimLeading(cmd: CommandDescriptor) {
+		setText(`/${cmd.name} `);
+		props.onDraftChange(`/${cmd.name} `);
+		setClaimed(cmd);
+		setMenuOpen(false);
+		queueMicrotask(focusEnd);
+	}
+
+	function pickCommand(index: number) {
+		const item = menuItems()[index];
+		if (!item) return;
+		if (item.kind === "leadingInput") {
+			claimLeading(item);
+			return;
+		}
+		if (item.kind === "popupSelect") {
+			setMenuOpen(false);
+			return;
+		}
+		void executeCommand(`/${item.name}`);
+	}
+
+	async function submit() {
+		if (submitting()) return;
+		const value = text();
+		const trimmed = value.trim();
+		if (!trimmed) return;
+		const parsed = parseCommand(trimmed);
+		const cmd = parsed ? props.commands.find((c) => c.name === parsed.name) : undefined;
+
+		// Unknown "/…" is never a model message: keep the "no command found" state visible.
+		if (parsed && !cmd) {
+			setMenuOpen(true);
+			setMenuQuery(parsed.name);
+			return;
+		}
+		// A bare "/" (no parseable command name) is still a command attempt, not a message.
+		if (trimmed.startsWith("/") && !cmd) {
+			setMenuOpen(true);
+			setMenuQuery(trimmed.slice(1).split(/\s/)[0] ?? "");
+			return;
+		}
+
+		if (cmd) {
+			if (cmd.kind === "popupSelect") {
+				setMenuOpen(false);
+				return;
+			}
+			if (cmd.kind === "leadingInput" && !parsed!.rawInput.trim()) {
+				claimLeading(cmd);
+				return;
+			}
+			await executeCommand(trimmed);
+			return;
+		}
+
+		// Normal message: sending returns to the letter — the settings panel folds back.
+		setPanelOpen(false);
+		clearText();
+		props.onSend(trimmed);
+	}
+
+	const submitForm: JSX.EventHandler<HTMLFormElement, SubmitEvent> = (e) => {
 		e.preventDefault();
-		send();
+		void submit();
 	};
 
 	const onKeyDown: JSX.EventHandler<HTMLTextAreaElement, KeyboardEvent> = (e) => {
+		if (menuOpen() && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+			e.preventDefault();
+			const items = menuItems();
+			if (items.length > 0) {
+				const delta = e.key === "ArrowDown" ? 1 : -1;
+				setSelectedIndex((i) => (i + delta + items.length) % items.length);
+			}
+			return;
+		}
+		if (e.key === "Escape" && (menuOpen() || claimed())) {
+			suppressNextSync = true;
+			setMenuOpen(false);
+			setClaimed(null);
+			return;
+		}
+		if (e.key === "Tab" && !e.shiftKey && menuOpen() && menuItems().length > 0) {
+			e.preventDefault();
+			pickCommand(selectedIndex());
+			return;
+		}
+		if (e.key === " " && !e.shiftKey) {
+			const parsed = parseCommand(text());
+			if (parsed && !parsed.rawInput.trim()) {
+				const cmd = props.commands.find((c) => c.name === parsed.name && c.kind === "leadingInput");
+				if (cmd) {
+					e.preventDefault();
+					claimLeading(cmd);
+					return;
+				}
+			}
+		}
 		if (shouldSendOnEnter({ keyCode: e.keyCode, shiftKey: e.shiftKey, repeat: e.repeat, composing, isComposing: e.isComposing })) {
 			e.preventDefault();
-			send();
+			const parsed = parseCommand(text());
+			const exact = parsed ? props.commands.find((c) => c.name === parsed.name) : undefined;
+			const canExecuteLine = exact && (exact.kind === "execute" || (exact.kind === "leadingInput" && parsed!.rawInput.trim()));
+			if (canExecuteLine || !menuOpen() || menuItems().length === 0) {
+				void submit();
+			} else {
+				pickCommand(selectedIndex());
+			}
 		}
 	};
 
@@ -179,7 +344,11 @@ export function Composer(props: {
 	};
 
 	return (
-		<form class="composer" id="composer" ref={rootRef} onSubmit={submit}>
+		<form class="composer" id="composer" ref={rootRef} onSubmit={submitForm}>
+			{/* Command palette: opens above the pill for a leading "/" (paper language, no shadow) */}
+			<Show when={menuOpen()}>
+				<CommandMenu items={menuItems()} selectedIndex={selectedIndex()} onPick={pickCommand} onHover={setSelectedIndex} />
+			</Show>
 			{/* The pill, with the run-settings toggle on its left (the send button stays alone on the right) */}
 			<div class="composer-row">
 				<Button
@@ -199,11 +368,28 @@ export function Composer(props: {
 						ref={textareaRef}
 						value={text()}
 						onInput={(e) => {
-							setText(e.currentTarget.value);
-							props.onDraftChange(e.currentTarget.value);
+							const el = e.currentTarget;
+							const value = el.value;
+							setText(value);
+							props.onDraftChange(value);
+							setCaret(el.selectionStart ?? value.length);
+							suppressNextSync = false;
+							syncCommandState(value, caret());
 							resize();
 						}}
 						onKeyDown={onKeyDown}
+						onKeyUp={(e) => {
+							if (suppressNextSync) return;
+							const el = e.currentTarget;
+							setCaret(el.selectionStart ?? el.value.length);
+							syncCommandState(el.value, caret());
+						}}
+						onSelect={(e) => {
+							if (suppressNextSync) return;
+							const el = e.currentTarget;
+							setCaret(el.selectionStart ?? el.value.length);
+							syncCommandState(el.value, caret());
+						}}
 						onCompositionStart={onCompositionStart}
 						onCompositionEnd={onCompositionEnd}
 						class="composer-input"
@@ -220,7 +406,7 @@ export function Composer(props: {
 							class={`size-[34px] p-0 rounded-full shrink-0 ${props.busy() ? "composer-stop" : ""}`}
 							title={props.busy() ? "Stop" : "Send"}
 							icon={props.busy() ? <Square size={14} /> : <ArrowUp size={14} />}
-							onClick={() => (props.busy() ? props.onStop() : send())}
+							onClick={() => (props.busy() ? props.onStop() : void submit())}
 						/>
 					)}
 				</div>

@@ -17,11 +17,11 @@ import { cp } from "node:fs/promises";
 import type { AgentMessage, CustomEntry, Entry } from "@earendil-works/pi-agent-core";
 import { buildSessionContext, JsonlSessionRepo, Session } from "@earendil-works/pi-agent-core";
 import { type AssistantMessage, type ToolResultMessage, type Usage, uuidv7 } from "@earendil-works/pi-ai";
-import type { EscalationStatus, RequestTool, SandboxMode, ThinkingLevel } from "../../shared/rpc";
+import type { CommandHistoryItem, EscalationStatus, RequestTool, SandboxMode, ThinkingLevel } from "../../shared/rpc";
 import type { Surface, SurfaceOpRecord } from "../../shared/surface";
 import { buildResumeTurn, deriveMessages as deriveSurfaceMessages, dropDanglingTurn, foldSurface, pairToolResults } from "../core/surface";
 import { createExecutionEnv } from "../tools/execution-env";
-import { EVENTS, type ToolResultEventData, type TurnEndReason } from "./events";
+import { type CommandDoneEventData, type CommandRunEventData, EVENTS, type ToolResultEventData, type TurnEndReason } from "./events";
 
 const EMPTY_USAGE: Usage = {
 	input: 0,
@@ -70,7 +70,7 @@ export interface AssistantMeta {
 export interface VisibleItem {
 	/** pi entry id; the view dedupes incremental renders by it. */
 	id: string;
-	kind: "user" | "send_message" | "escalation" | "error" | "aborted";
+	kind: "user" | "send_message" | "escalation" | "error" | "aborted" | "command";
 	text: string;
 	time: number;
 	/** Escalation payload (kind "escalation" only): the approval request + current status. */
@@ -82,6 +82,8 @@ export interface VisibleItem {
 		justification: string;
 		status: EscalationStatus;
 	};
+	/** Command payload (kind "command" only): the paired command/run + command/done row. */
+	command?: CommandHistoryItem;
 }
 
 /**
@@ -117,6 +119,9 @@ export interface SessionScope {
 	appendToolResult(result: ToolResultMessage, timestamp: number): Promise<void>;
 	/** Persist a sandbox-escalation lifecycle record (escalation/request | escalation/decision; log-only). */
 	appendEscalationRecord(type: "escalation/request" | "escalation/decision", details: Record<string, unknown>, timestamp: number): Promise<void>;
+	/** Persist a command lifecycle record (command/run | command/done; log-only, never model-visible). */
+	appendCommandRun(details: CommandRunEventData, timestamp: number): Promise<void>;
+	appendCommandDone(details: CommandDoneEventData, timestamp: number): Promise<void>;
 	/** Record a surface replace (compaction checkpoint) as an append-only `surface_op` log entry. */
 	appendSurfaceOp(op: SurfaceOpRecord, timestamp: number): Promise<void>;
 	/** Persist a compaction summary (custom entry; becomes the replacement checkpoint node). Returns its pi entry id. */
@@ -331,6 +336,12 @@ export function createSessionStore(): SessionStore {
 			async appendEscalationRecord(type, details, timestamp) {
 				await appendCustom(dir, type, { ...details, timestamp });
 			},
+			async appendCommandRun(details, timestamp) {
+				await appendCustom(dir, EVENTS.commandRun, { ...details, timestamp });
+			},
+			async appendCommandDone(details, timestamp) {
+				await appendCustom(dir, EVENTS.commandDone, { ...details, timestamp });
+			},
 			async appendSurfaceOp(op, timestamp) {
 				await appendCustom(dir, EVENTS.surfaceOp, { ...op, timestamp });
 			},
@@ -369,6 +380,14 @@ export function createSessionStore(): SessionStore {
 				if (data?.escalationId == null) continue;
 				decisions.set(String(data.escalationId), { approved: data.approved === true });
 			}
+			// Command done records by command id (a done may follow its run later in the log)
+			const commandDones = new Map<string, { kind: "success" | "error"; text?: string }>();
+			for (const entry of state.entries) {
+				if (entry.type !== "custom" || entry.customType !== EVENTS.commandDone) continue;
+				const data = entry.data as Partial<CommandDoneEventData> | undefined;
+				if (data?.commandId == null) continue;
+				commandDones.set(String(data.commandId), { kind: data.kind === "error" ? "error" : "success", ...(typeof data.text === "string" ? { text: data.text } : {}) });
+			}
 			return state.entries.flatMap((entry): VisibleItem[] => {
 				if (entry.type === "message" && entry.message.role === "user") {
 					const content = entry.message.content;
@@ -406,6 +425,27 @@ export function createSessionStore(): SessionStore {
 								to: data.to as SandboxMode,
 								justification: String(data.justification ?? ""),
 								status: decision ? (decision.approved ? "approved" : "rejected") : "pending",
+							},
+						},
+					];
+				}
+				if (entry.type === "custom" && entry.customType === EVENTS.commandRun) {
+					const data = entry.data as (Partial<CommandRunEventData> & { timestamp?: unknown }) | undefined;
+					if (data?.commandId == null) return [];
+					const done = commandDones.get(String(data.commandId));
+					const name = String(data.name ?? "");
+					return [
+						{
+							id: entry.id,
+							kind: "command",
+							text: `/${name}${typeof data.args === "string" && data.args ? ` ${data.args}` : ""}`,
+							time: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
+							command: {
+								commandId: String(data.commandId),
+								name,
+								...(typeof data.args === "string" ? { args: data.args } : {}),
+								status: done ? done.kind : "running",
+								...(done?.text ? { text: done.text } : {}),
 							},
 						},
 					];

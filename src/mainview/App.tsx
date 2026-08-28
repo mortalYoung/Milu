@@ -13,6 +13,7 @@ import { TrajectoryDrawer } from "./components/TrajectoryDrawer";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./components/ui/dialog";
 import { makeSysEntry } from "./layouts/Transcript";
 import { createAgentStatus } from "./lib/agent-status";
+import { createCommandDirectory } from "./lib/commands";
 import { createComposer } from "./lib/composer";
 import { warmUpMarkdown } from "./lib/markdown";
 import { createMetrics } from "./lib/metrics";
@@ -38,6 +39,7 @@ export function App() {
 	const status = createAgentStatus(rpc, () => session.selected());
 	const trajectory = createTrajectory(rpc, () => session.selected());
 	const composer = createComposer(() => session.selected());
+	const commands = createCommandDirectory(rpc);
 	const shell = createShell();
 	const settings = createSettings(rpc);
 	const toast = createToast();
@@ -104,6 +106,11 @@ export function App() {
 		status.calibrate();
 	});
 
+	rpc.addMessageListener("command_update", () => {
+		// command/run + command/done are persisted; the command row flips running → success/error.
+		void session.refreshHistory();
+	});
+
 	// ————— user input —————
 	function onSend(text: string) {
 		if (status.isBusyForSelected()) {
@@ -160,6 +167,7 @@ export function App() {
 	void session.refreshHistory();
 	void session.refreshPartners();
 	void settings.refresh();
+	void commands.refresh();
 	status.calibrate();
 	void metrics.refresh();
 	// Highlighter warm-up: deferred past first paint so cold start doesn't compete with the lazy
@@ -189,6 +197,8 @@ export function App() {
 					busy={status.isBusyForSelected}
 					onSend={onSend}
 					onStop={() => void rpc.request.stop({})}
+					commands={commands.commands()}
+					onCommand={(line) => commands.execute(line)}
 					onViewTrajectory={trajectory.view}
 					onCloseTrajectory={() => trajectory.setOpen(false)}
 					flashId={trajectory.flashId}

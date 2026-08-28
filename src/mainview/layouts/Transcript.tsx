@@ -20,13 +20,23 @@ export interface EscalationInfo {
 	status: EscalationStatus;
 }
 
+/** Slash command row (kind "command"): the paired command/run + command/done lifecycle. */
+export interface CommandInfo {
+	commandId: string;
+	name: string;
+	args?: string;
+	status: "running" | "success" | "error" | "interrupted";
+	text?: string;
+}
+
 export interface Entry {
 	id: number;
-	kind: "user" | "agent" | "sys" | "sep" | "escalation";
+	kind: "user" | "agent" | "sys" | "sep" | "escalation" | "command";
 	text: string;
 	time?: string;
 	error?: boolean;
 	escalation?: EscalationInfo;
+	command?: CommandInfo;
 }
 
 let nextId = 1;
@@ -45,6 +55,10 @@ export function makeAgentEntry(text: string, time = Date.now()): Entry {
 /** Build an escalation entry from the persisted history item (status flips as a decision lands). */
 export function makeEscalationEntry(item: { text: string; time: number; escalation: EscalationInfo }): Entry {
 	return { id: nextId++, kind: "escalation", text: item.text, time: fmtDateTime(new Date(item.time)), escalation: { ...item.escalation } };
+}
+
+export function makeCommandEntry(item: { text: string; time: number; command: CommandInfo }): Entry {
+	return { id: nextId++, kind: "command", text: item.text, time: fmtDateTime(new Date(item.time)), command: { ...item.command } };
 }
 
 export function makeSysEntry(text: string, error = false): Entry {
@@ -505,6 +519,25 @@ export function Transcript(props: {
 									);
 								}
 								return <div class="sys">{e.text}</div>;
+							}
+							if (e.kind === "command" && e.command) {
+								return (
+									<div class="msg-command" id={"entry-" + e.id}>
+										<div class="msg-command-head">
+											<span class="msg-command-name">/{e.command.name}</span>
+											<span class={"msg-command-status " + e.command.status}>{e.command.status}</span>
+										</div>
+										{e.command.args ? <div class="msg-command-args">{e.command.args}</div> : null}
+										{e.command.text ? <div class="msg-command-text">{e.command.text}</div> : null}
+										{e.command.status === "running" ? (
+											<div class="msg-command-running">
+												<span class="work-dot" />
+												<span class="work-dot" />
+												<span class="work-dot" />
+											</div>
+										) : null}
+									</div>
+								);
 							}
 							return <div class="time-sep">{e.text}</div>;
 						}}

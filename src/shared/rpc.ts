@@ -7,6 +7,40 @@ export type { CustomModel, CustomProvider, SandboxMode, ThemeMode, ToastPlacemen
 
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
+/** Slash command shape (human command plane; never sent to the model). */
+export type CommandKind = "execute" | "leadingInput" | "popupSelect";
+
+export interface CommandDescriptor {
+	/** Command name without the leading '/' */
+	name: string;
+	description: string;
+	kind: CommandKind;
+	/** leadingInput commands: hint shown after the command name, e.g. "[<path>]" */
+	hint?: string;
+}
+
+export interface CommandResult {
+	kind: "success" | "error";
+	text?: string;
+}
+
+export interface CommandExecution {
+	ok: boolean;
+	error?: string;
+	commandId?: string;
+	result?: CommandResult;
+}
+
+/** Command lifecycle in the visible history: paired command/run + command/done rows. */
+export interface CommandHistoryItem {
+	commandId: string;
+	name: string;
+	args?: string;
+	/** "running" while the process is alive and the command is in flight; orphaned runs become "interrupted" on restart. */
+	status: "running" | "success" | "error" | "interrupted";
+	text?: string;
+}
+
 /** Lifecycle of a sandbox escalation request as the transcript shows it: awaiting the human,
  * decided by the human, or orphaned (no live run awaits it — not actionable, no buttons). */
 export type EscalationStatus = "pending" | "approved" | "rejected" | "dropped";
@@ -200,6 +234,16 @@ export type AppRPCSchema = __schema<{
 				// accepted=false when no partner is selected; a busy agent queues the message as its own follow-up
 				response: { accepted: boolean };
 			};
+			/** Slash command directory (handler-free descriptors for the composer menu). */
+			commands_list: {
+				params: {};
+				response: { commands: CommandDescriptor[] };
+			};
+			/** Execute a slash command line (e.g. "/workspace ~/src"). Busy agents reject; unknown commands return ok:false. */
+			commands_execute: {
+				params: { line: string };
+				response: CommandExecution;
+			};
 			/** Abort the current agent run. */
 			stop: {
 				params: {};
@@ -210,13 +254,13 @@ export type AppRPCSchema = __schema<{
 				params: {};
 				response: { accepted: boolean };
 			};
-			/** Startup/refresh history: visible messages only (user, send_message, sandbox escalations). */
+			/** Startup/refresh history: visible messages only (user, send_message, sandbox escalations, command rows). */
 			history: {
 				params: {};
 				response: {
 					items: {
 						id: string;
-						kind: "user" | "send_message" | "escalation" | "error" | "aborted";
+						kind: "user" | "send_message" | "escalation" | "error" | "aborted" | "command";
 						text: string;
 						time: number;
 						escalation?: {
@@ -227,6 +271,7 @@ export type AppRPCSchema = __schema<{
 							justification: string;
 							status: EscalationStatus;
 						};
+						command?: CommandHistoryItem;
 					}[];
 				};
 			};
@@ -430,6 +475,8 @@ export type AppRPCSchema = __schema<{
 			thinking_level_update: {};
 			/** An escalation record was persisted (request or decision); the view refetches history. */
 			escalation_update: {};
+			/** A command lifecycle record was persisted (command/run or command/done); the view refetches history. */
+			command_update: {};
 		};
 	};
 }>;

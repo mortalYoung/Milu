@@ -5,7 +5,7 @@
 import { Activity, ListTree, PanelLeftClose, PanelLeftOpen } from "lucide-solid";
 import { type Accessor, createEffect, createSignal, onCleanup } from "solid-js";
 import { AnimatePresence, Motion } from "solid-motion";
-import type { ContextUsage, SandboxMode, SessionStats, ThinkingLevel } from "../../shared/rpc";
+import type { CommandDescriptor, CommandExecution, ContextUsage, SandboxMode, SessionStats, ThinkingLevel } from "../../shared/rpc";
 import { Button } from "../components/Button";
 import { Composer } from "../components/Composer";
 import { ConversationList, type PartnerItem } from "../components/ConversationList";
@@ -29,6 +29,9 @@ export function ConversationPage(props: {
 	busy: Accessor<boolean>;
 	onSend: (text: string) => void;
 	onStop: () => void;
+	/** Slash command directory + executor (passed to the composer). */
+	commands: CommandDescriptor[];
+	onCommand: (line: string) => Promise<CommandExecution>;
 	/** Open the trajectory drawer (the whole origin-log timeline; no chat linkage). */
 	onViewTrajectory?: () => void;
 	/** Close the trajectory drawer (the outline and the drawer are mutually exclusive). */
@@ -184,6 +187,8 @@ export function ConversationPage(props: {
 							busy={props.busy}
 							onSend={props.onSend}
 							onStop={props.onStop}
+							commands={props.commands}
+							onCommand={props.onCommand}
 							workspace={props.workspacePath}
 							storage={props.storagePath}
 							sandboxMode={props.sandboxMode}

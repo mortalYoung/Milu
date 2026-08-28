@@ -44,6 +44,8 @@ export const EVENTS = {
 	compactionEnd: "compaction/end",
 	modelChange: "model_change",
 	thinkingLevelChange: "thinking_level_change",
+	commandRun: "command/run",
+	commandDone: "command/done",
 } as const;
 
 /** Why a run ended (turn/end payload). */
@@ -86,4 +88,19 @@ export interface ToolResultEventData {
 	details?: unknown;
 	usage?: unknown;
 	isError: boolean;
+}
+
+/** command/run payload (log-only; never projected into the model context). */
+export interface CommandRunEventData {
+	commandId: string;
+	name: string;
+	/** Command args after the name, trimmed; absent when the command opts out of recording input. */
+	args?: string;
+}
+
+/** command/done payload (log-only; pairs with command/run by commandId). */
+export interface CommandDoneEventData {
+	commandId: string;
+	kind: "success" | "error";
+	text?: string;
 }

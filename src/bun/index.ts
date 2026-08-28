@@ -4,6 +4,9 @@ import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import { getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
 import { ApplicationMenu, BrowserView, BrowserWindow } from "electrobun/main";
 import type { AppRPCSchema } from "../shared/rpc";
+import { defaultCommands } from "./commands/defaults";
+import { createCommandRegistry } from "./commands/registry";
+import type { CommandContext } from "./commands/types";
 import { dailyActivity } from "./core/activity";
 import { type AgentHandle, createAgent } from "./core/agent";
 import {
@@ -45,6 +48,11 @@ for (const def of (await loadSettings()).customProviders ?? []) registerCustomPr
 
 const session = createSessionStore();
 const sandbox = new SandboxManager();
+// Slash commands: static registry + default commands. Command lifecycle is log-only; the
+// pending set distinguishes live runs (running) from orphaned runs after a crash (interrupted).
+const commandRegistry = createCommandRegistry();
+for (const def of defaultCommands()) commandRegistry.register(def);
+const pendingCommandIds = new Set<string>();
 const pendingSandboxConfirms = new Map<string, { resolve: (decision: EscalationDecision) => void; to: SandboxMode; dir: string; partner: string }>();
 // Escalation ids already decided this session — a repeated sandbox_respond (double-click) or a late
 // click on an already-decided bubble must not persist a second decision record.
@@ -241,6 +249,20 @@ async function runCompaction(entry: PartnerAgent, plan: CompactionPlan): Promise
 	rpc.send.trajectory_update({});
 }
 
+async function runManualCompact(entry: PartnerAgent): Promise<{ ok: boolean; error?: string; compacted?: number }> {
+	if (entry.agent.isStreaming) return { ok: false, error: "agent is running" };
+	try {
+		const entries = await session.rawEntries(entry.dir);
+		const surface = await session.surface(entry.dir);
+		const plan = planCompaction(entries, surface);
+		if (!plan) return { ok: true, compacted: 0 };
+		await runCompaction(entry, plan);
+		return { ok: true, compacted: plan.range.end - plan.range.start + 1 };
+	} catch (error) {
+		return { ok: false, error: error instanceof Error ? error.message : String(error) };
+	}
+}
+
 async function maybeAutoCompact(entry: PartnerAgent): Promise<void> {
 	if (entry.agent.isStreaming) return;
 	const entries = await session.rawEntries(entry.dir);
@@ -258,6 +280,30 @@ async function maybeAutoCompact(entry: PartnerAgent): Promise<void> {
 	} catch (error) {
 		console.error("auto-compact failed:", error);
 	}
+}
+
+function commandContextFor(entry: PartnerAgent): CommandContext {
+	return {
+		partner: entry.profile.name,
+		dir: entry.dir,
+		scope: entry.scope,
+		agent: {
+			isStreaming: entry.agent.isStreaming,
+			reset: () => entry.agent.reset(),
+			setWorkspace: (path) => entry.agent.setWorkspace(path),
+			permission: entry.agent.permission,
+		},
+		persistWorkspace: (path) => persistWorkspace(entry.dir, path),
+		runManualCompact: () => runManualCompact(entry),
+		onCommandRun: (commandId) => {
+			pendingCommandIds.add(commandId);
+			rpc.send.command_update({});
+		},
+		onCommandDone: (commandId) => {
+			pendingCommandIds.delete(commandId);
+			rpc.send.command_update({});
+		},
+	};
 }
 
 const rpc = BrowserView.defineRPC<AppRPCSchema>({
@@ -292,6 +338,12 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				if (!target) return { items: [] };
 				const tRead = performance.now();
 				const items = await session.visibleHistory(target.dir);
+				// Command rows without a live in-memory run are orphaned (no watchdog): a persisted
+				// command/run with no command/done reads as interrupted, never a forever-running row.
+				for (const item of items) {
+					if (item.kind !== "command" || !item.command || item.command.status !== "running") continue;
+					if (!pendingCommandIds.has(item.command.commandId)) item.command.status = "interrupted";
+				}
 				const tResolve = performance.now();
 				// A pending request with no live promise is only actionable when its blocked tool call
 				// still exists in the log (restart-resume); otherwise it is orphaned — render as
@@ -430,13 +482,22 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				const target = viewPartner;
 				const entry = target ? await agents.get(target.name) : undefined;
 				if (!target || !entry) return { ok: false, error: "no partner selected" };
+				return runManualCompact(entry);
+			},
+			commands_list: async () => ({ commands: commandRegistry.list() }),
+			commands_execute: async ({ line }) => {
+				const target = viewPartner;
+				const entry = target ? await agents.get(target.name) : undefined;
+				if (!target || !entry) return { ok: false, error: "no partner selected" };
 				if (entry.agent.isStreaming) return { ok: false, error: "agent is running" };
-				const entries = await session.rawEntries(target.dir);
-				const surface = await session.surface(target.dir);
-				const plan = planCompaction(entries, surface);
-				if (!plan) return { ok: true, compacted: 0 };
-				await runCompaction(entry, plan);
-				return { ok: true, compacted: plan.range.end - plan.range.start + 1 };
+				const ctx = commandContextFor(entry);
+				try {
+					const execution = await commandRegistry.execute(line, ctx);
+					if (!execution) return { ok: false, error: "unknown command" };
+					return { ok: true, commandId: execution.commandId, result: execution.result };
+				} catch (error) {
+					return { ok: false, error: error instanceof Error ? error.message : String(error) };
+				}
 			},
 			// Context occupancy for the composer meter: used = last turn's provider-reported prompt size
 			// (input + cacheRead + cacheWrite, no output), window = the routed model's contextWindow.
