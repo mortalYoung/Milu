@@ -1,25 +1,11 @@
-/**
- * Trajectory folding: map persisted pi entries (Entry[]) onto TrajectoryRecord[].
- * Pure functions, no IO — clean inputs and outputs, easy to test.
- *
- * The fold is total: every entry becomes exactly one record (message-shaped kinds
- * normalized, everything else passed through verbatim), so the trajectory drawer
- * shows the whole origin log. Only mechanical shaping happens here:
- * - assistant content blocks travel raw (the view interprets thinking/text/toolCall);
- * - tool results are their own records (a lost result is visible by absence);
- * - turn counting: each assistant message is one turn; toolResult inherits the turn
- *   of the assistant that called the tool.
- */
 import type { Entry } from "@earendil-works/pi-agent-core";
 import type { TrajectoryBlock, TrajectoryRecord, TrajectoryUsage, UsageTotals } from "../../shared/rpc";
 
-/** Loose shape of an assistant message content block (thinking/text/toolCall). */
 interface ContentBlock {
 	type?: unknown;
 	text?: unknown;
 }
 
-/** Provider-reported token usage of one assistant turn (fields default to 0 when absent). */
 export interface Usage {
 	input: number;
 	output: number;
@@ -28,7 +14,6 @@ export interface Usage {
 	totalTokens: number;
 }
 
-/** Loose shape of a provider usage record (all fields optional; pi's Usage is assignable). */
 interface RawUsage {
 	input?: number;
 	output?: number;
@@ -39,7 +24,6 @@ interface RawUsage {
 	cost?: TrajectoryUsage["cost"];
 }
 
-/** Normalize a raw usage record to the stable four-field shape. */
 function toUsage(raw: RawUsage): Usage {
 	return {
 		input: raw.input ?? 0,
@@ -50,7 +34,6 @@ function toUsage(raw: RawUsage): Usage {
 	};
 }
 
-/** Normalize a raw usage record, retaining the provider extras (reasoning / cost). */
 function toTrajectoryUsage(raw: RawUsage | undefined): TrajectoryUsage | undefined {
 	if (!raw) return undefined;
 	return {
@@ -64,12 +47,6 @@ function toTrajectoryUsage(raw: RawUsage | undefined): TrajectoryUsage | undefin
 	};
 }
 
-/**
- * The last assistant turn's token usage, or null when no assistant message carries usage.
- * Each LLM call sends the whole context, so the most recent request's prompt size is the
- * current context occupancy (the context_usage handler derives its numerator from this).
- */
-/** Sum the usage of every persisted assistant turn (the composer's whole-session line). */
 export function aggregateUsage(entries: Entry[]): UsageTotals | null {
 	let totals: UsageTotals | null = null;
 	for (const entry of entries) {
@@ -98,7 +75,18 @@ export function lastUsage(entries: Entry[]): Usage | null {
 	return last;
 }
 
-/** Fold the whole log: one record per entry, nothing dropped. */
+export function lastTrajectoryUsage(entries: Entry[]): TrajectoryUsage | null {
+	let last: TrajectoryUsage | null = null;
+	for (const entry of entries) {
+		if (entry.type !== "message") continue;
+		const msg = entry.message;
+		if (msg.role !== "assistant" || !msg.usage) continue;
+		const u = toTrajectoryUsage(msg.usage);
+		if (u) last = u;
+	}
+	return last;
+}
+
 export function fold(entries: Entry[]): TrajectoryRecord[] {
 	const records: TrajectoryRecord[] = [];
 	let turn = 0;
@@ -107,8 +95,7 @@ export function fold(entries: Entry[]): TrajectoryRecord[] {
 	};
 	for (const entry of entries) {
 		const base = { seq: 0, entryId: entry.id, time: entry.timestamp };
-		// A persisted tool/result event answers its turn's tool call (the live loop writes it after the
-		// assistant's message, so the log is already in display order — no deferral needed anymore)
+
 		if (entry.type === "custom" && entry.customType === "tool/result") {
 			const data = (entry.data ?? {}) as {
 				toolCallId?: unknown;
@@ -190,7 +177,6 @@ export function fold(entries: Entry[]): TrajectoryRecord[] {
 	return records;
 }
 
-/** Content block array → text (image blocks are placeholders); strings pass through unchanged. */
 function contentText(content: unknown): string {
 	if (typeof content === "string") return content;
 	if (!Array.isArray(content)) return "";

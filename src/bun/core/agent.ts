@@ -7,7 +7,8 @@ import type { SessionScope } from "../persist";
 import { createTools } from "../tools";
 import type { PartnerModel } from "./agent-config";
 import { convertToLlm, resolveModel, STREAM_FN } from "./agent-config";
-import { AgentContext, appendSystemReminder } from "./context";
+import { appendSystemReminder, Context } from "./context";
+import { projectLoopContext } from "./context-project";
 import type { PartnerPrompt } from "./prompt";
 
 export interface AgentBridge {
@@ -22,6 +23,7 @@ export interface AgentBridge {
 export interface AgentHandle {
 	readonly isStreaming: boolean;
 	readonly systemPrompt: string;
+	readonly context: Context;
 	readonly workspacePath: string | null;
 	readonly storagePath: string | null;
 	readonly sandboxMode: SandboxMode;
@@ -55,7 +57,7 @@ export interface AgentDeps {
 }
 
 export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
-	const ctx = new AgentContext();
+	const ctx = new Context();
 
 	const permission = new Permission({
 		sandbox: deps.sandbox,
@@ -90,13 +92,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	let stepFirstDeltaWall = 0;
 
 	const agent = new Agent({
-		initialState: {
-			systemPrompt: ctx.composeSystemPrompt(),
-			model: resolveModel(ctx.model ?? undefined),
-			thinkingLevel: ctx.thinkingLevel,
-			tools: [],
-			messages: deps.initialMessages ?? [],
-		},
+		initialState: projectLoopContext(ctx, [], deps.initialMessages ?? []),
 		streamFn: STREAM_FN,
 		convertToLlm,
 		followUpMode: "one-at-a-time",
@@ -347,6 +343,9 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	return {
 		get isStreaming() {
 			return agent.state.isStreaming;
+		},
+		get context() {
+			return ctx;
 		},
 		get systemPrompt() {
 			return agent.state.systemPrompt;

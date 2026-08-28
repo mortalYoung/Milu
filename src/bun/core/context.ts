@@ -6,7 +6,7 @@ export function appendSystemReminder(messages: AgentMessage[], content: string, 
 	messages.push({ role: "user", content: `<system_reminder>${content}</system_reminder>`, timestamp });
 }
 
-export class AgentContext {
+export class Context {
 	turn = 0;
 	running = false;
 	lastVisibleAt = Date.now();

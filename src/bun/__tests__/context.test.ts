@@ -1,17 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import { AgentContext } from "../core/context";
+import { Context } from "../core/context";
 import { buildSystemPrompt } from "../core/prompt";
 
-describe("AgentContext lifecycle", () => {
+describe("Context lifecycle", () => {
 	test("beginTurn increments per turn", () => {
-		const ctx = new AgentContext();
+		const ctx = new Context();
 		expect(ctx.beginTurn()).toBe(1);
 		expect(ctx.beginTurn()).toBe(2);
 		expect(ctx.turn).toBe(2);
 	});
 
 	test("endTurn records the timestamp; setRunning toggles the running state", () => {
-		const ctx = new AgentContext();
+		const ctx = new Context();
 		ctx.endTurn();
 		expect(ctx.lastTurnEndAt).toBeGreaterThan(0);
 		ctx.setRunning(true);
@@ -21,7 +21,7 @@ describe("AgentContext lifecycle", () => {
 	});
 
 	test("markUserMessage / markVisible refresh the visible clock", () => {
-		const ctx = new AgentContext();
+		const ctx = new Context();
 		ctx.lastVisibleAt = Date.now() - 60_000;
 		ctx.markUserMessage();
 		expect(ctx.visibleElapsedMs()).toBeLessThan(1_000);
@@ -30,7 +30,7 @@ describe("AgentContext lifecycle", () => {
 	});
 
 	test("reset clears counters and restarts the clock", () => {
-		const ctx = new AgentContext();
+		const ctx = new Context();
 		ctx.beginTurn();
 		ctx.setRunning(true);
 		ctx.lastVisibleAt = 0;
@@ -41,9 +41,9 @@ describe("AgentContext lifecycle", () => {
 	});
 });
 
-describe("AgentContext prompt assembly", () => {
+describe("Context prompt assembly", () => {
 	test("composeSystemPrompt has all sections after setPartner", () => {
-		const ctx = new AgentContext();
+		const ctx = new Context();
 		ctx.setPartner({ responsibilities: "Ship features" });
 		const p = ctx.composeSystemPrompt();
 		expect(p).toContain("# IDENTIFY");
@@ -52,7 +52,7 @@ describe("AgentContext prompt assembly", () => {
 	});
 
 	test("composeSystemPrompt includes PERSONA when responsibilities exist", () => {
-		const ctx = new AgentContext();
+		const ctx = new Context();
 		ctx.setPartner({ responsibilities: "Ship features" });
 		const p = ctx.composeSystemPrompt();
 		expect(p).toContain("# PERSONA");
@@ -62,7 +62,7 @@ describe("AgentContext prompt assembly", () => {
 	});
 
 	test("WORKSPACE and STORAGE are always included and static (paths arrive via reminder, not the prompt)", () => {
-		const ctx = new AgentContext();
+		const ctx = new Context();
 		ctx.storage_path = "/tmp/storage";
 		ctx.workspace_path = "/tmp/ws";
 		const p = ctx.composeSystemPrompt();
