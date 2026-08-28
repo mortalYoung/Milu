@@ -13,7 +13,7 @@ import type { RuntimeStatsSnapshot } from "../../shared/rpc";
 const FILE_NAME = "runtime-stats.json";
 
 export function emptyRuntimeStats(): RuntimeStatsSnapshot {
-	return { runs: 0, ttfts: [], speeds: [], lastTtft: null, savedAt: 0, sampling: "per-step" };
+	return { runs: 0, ttfts: [], speedOutputs: [], speedDurationsMs: [], lastTtft: null, savedAt: 0, sampling: "paired" };
 }
 
 /** Load the persisted snapshot; missing/corrupt files fall back to empty (never crash startup). */
@@ -24,22 +24,31 @@ export async function loadRuntimeStats(root: string): Promise<RuntimeStatsSnapsh
 		if (!Array.isArray(raw.ttfts) || !raw.ttfts.every((n: unknown) => typeof n === "number" && Number.isFinite(n))) {
 			return emptyRuntimeStats();
 		}
-		if (!Array.isArray(raw.speeds) || !raw.speeds.every((n: unknown) => typeof n === "number" && Number.isFinite(n))) {
-			return emptyRuntimeStats();
+		const speedOutputs = Array.isArray(raw.speedOutputs) ? raw.speedOutputs : null;
+		const speedDurationsMs = Array.isArray(raw.speedDurationsMs) ? raw.speedDurationsMs : null;
+		if (
+			speedOutputs === null ||
+			speedDurationsMs === null ||
+			speedOutputs.length !== speedDurationsMs.length ||
+			!speedOutputs.every((n: unknown) => typeof n === "number" && Number.isFinite(n)) ||
+			!speedDurationsMs.every((n: unknown) => typeof n === "number" && Number.isFinite(n))
+		) {
+			return { ...emptyRuntimeStats(), runs: Math.floor(raw.runs) };
 		}
 		if (raw.lastTtft !== null && (typeof raw.lastTtft !== "number" || !Number.isFinite(raw.lastTtft))) {
 			return emptyRuntimeStats();
 		}
-		if (raw.sampling !== "per-step") {
+		if (raw.sampling !== "paired") {
 			return { ...emptyRuntimeStats(), runs: Math.floor(raw.runs) };
 		}
 		return {
 			runs: Math.floor(raw.runs),
 			ttfts: raw.ttfts,
-			speeds: raw.speeds,
+			speedOutputs,
+			speedDurationsMs,
 			lastTtft: raw.lastTtft ?? null,
 			savedAt: typeof raw.savedAt === "number" ? raw.savedAt : 0,
-			sampling: "per-step",
+			sampling: "paired",
 		};
 	} catch {
 		return emptyRuntimeStats();

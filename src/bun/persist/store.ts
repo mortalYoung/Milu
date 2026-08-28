@@ -59,6 +59,12 @@ export interface AssistantMeta {
 	toolResults?: ToolResultMessage[];
 	usage?: Usage;
 	timing?: AssistantTiming;
+	api?: string;
+	provider?: string;
+	model?: string;
+	responseModel?: string;
+	responseId?: string;
+	stopReason?: AssistantMessage["stopReason"];
 }
 
 export interface VisibleItem {
@@ -271,11 +277,13 @@ export function createSessionStore(): SessionStore {
 					role: "assistant",
 					content: stripUndefined(meta.blocks) as AssistantMessage["content"],
 					timestamp,
-					api: "",
-					provider: "",
-					model: "",
+					api: meta.api ?? "",
+					provider: meta.provider ?? "",
+					model: meta.model ?? "",
 					usage: meta.usage ?? EMPTY_USAGE,
-					stopReason: "stop",
+					stopReason: meta.stopReason ?? "stop",
+					...(meta.responseModel ? { responseModel: meta.responseModel } : {}),
+					...(meta.responseId ? { responseId: meta.responseId } : {}),
 					...(meta.timing ? { timing: meta.timing } : {}),
 				};
 				await appendMessage(dir, assistant);

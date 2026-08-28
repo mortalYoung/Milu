@@ -66,10 +66,11 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	const runtime: RuntimeStatsSnapshot = {
 		runs: deps.runtimeStats?.runs ?? 0,
 		ttfts: [...(deps.runtimeStats?.ttfts ?? [])],
-		speeds: [...(deps.runtimeStats?.speeds ?? [])],
+		speedOutputs: [...(deps.runtimeStats?.speedOutputs ?? [])],
+		speedDurationsMs: [...(deps.runtimeStats?.speedDurationsMs ?? [])],
 		lastTtft: deps.runtimeStats?.lastTtft ?? null,
 		savedAt: deps.runtimeStats?.savedAt ?? 0,
-		sampling: "per-step",
+		sampling: "paired",
 	};
 
 	function persistRuntime() {
@@ -77,7 +78,8 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		deps.persistRuntimeStats({
 			...runtime,
 			ttfts: [...runtime.ttfts],
-			speeds: [...runtime.speeds],
+			speedOutputs: [...runtime.speedOutputs],
+			speedDurationsMs: [...runtime.speedDurationsMs],
 			savedAt: Date.now(),
 		});
 	}
@@ -86,7 +88,6 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	let stepStartWall = 0;
 	let stepFirstDeltaAt = 0;
 	let stepFirstDeltaWall = 0;
-	let stepLastDeltaAt = 0;
 
 	const agent = new Agent({
 		initialState: {
@@ -197,7 +198,6 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 					stepStartWall = stepStart;
 					stepFirstDeltaAt = 0;
 					stepFirstDeltaWall = 0;
-					stepLastDeltaAt = 0;
 					return Promise.all([
 						deps.session.appendStepStart(runTurn, step, stepStart),
 						deps.session.appendRequestHeader(
@@ -209,15 +209,16 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 						.then(() => undefined)
 						.catch(logError);
 				}
-			case "message_update":
-				if (event.assistantMessageEvent.type === "text_delta") {
+			case "message_update": {
+				const update = event.assistantMessageEvent;
+				if ((update.type === "text_delta" || update.type === "thinking_delta" || update.type === "toolcall_delta") && update.delta.length > 0) {
 					if (stepFirstDeltaAt === 0) {
 						stepFirstDeltaAt = performance.now();
 						stepFirstDeltaWall = Date.now();
 					}
-					stepLastDeltaAt = performance.now();
 				}
 				break;
+			}
 			case "message_end":
 				if (event.message.role !== "assistant") break;
 				{
@@ -229,16 +230,29 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 						completedTime: completedWall,
 					};
 					return deps.session
-						.appendAssistant({ blocks: assistant.content, usage: assistant.usage, timing }, assistant.timestamp ?? completedWall)
+						.appendAssistant(
+							{
+								blocks: assistant.content,
+								usage: assistant.usage,
+								timing,
+								api: assistant.api,
+								provider: assistant.provider,
+								model: assistant.model,
+								responseModel: assistant.responseModel,
+								responseId: assistant.responseId,
+								stopReason: assistant.stopReason,
+							},
+							assistant.timestamp ?? completedWall,
+						)
 						.then(() => {
-							if (stepFirstDeltaAt > 0 && stepLastDeltaAt >= stepFirstDeltaAt) {
+							if (stepFirstDeltaAt > 0) {
 								const ttft = stepFirstDeltaAt - stepStartAt;
-								const seconds = (stepLastDeltaAt - stepFirstDeltaAt) / 1000;
-								if (seconds > 0) {
-									const output = assistant.usage?.output ?? 0;
-									runtime.ttfts.push(ttft);
-									runtime.lastTtft = ttft;
-									runtime.speeds.push(output / seconds);
+								runtime.ttfts.push(ttft);
+								runtime.lastTtft = ttft;
+								const durationMs = completedWall - stepFirstDeltaWall;
+								if (durationMs > 0) {
+									runtime.speedOutputs.push(assistant.usage?.output ?? 0);
+									runtime.speedDurationsMs.push(durationMs);
 								}
 							}
 							return autoDeliver(assistant);
@@ -366,7 +380,14 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		},
 		get runtimeStats(): SessionStats["runtime"] {
 			const avg = (xs: number[]) => (xs.length > 0 ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
-			return { runs: runtime.runs, avgTtftMs: avg(runtime.ttfts), avgTps: avg(runtime.speeds), lastTtftMs: runtime.lastTtft };
+			const totalOutput = runtime.speedOutputs.reduce((a, b) => a + b, 0);
+			const totalDurationMs = runtime.speedDurationsMs.reduce((a, b) => a + b, 0);
+			return {
+				runs: runtime.runs,
+				avgTtftMs: avg(runtime.ttfts),
+				avgTps: totalDurationMs > 0 ? totalOutput / (totalDurationMs / 1000) : null,
+				lastTtftMs: runtime.lastTtft,
+			};
 		},
 		get tools(): RequestTool[] {
 			return agent.state.tools.map((t) => ({ name: t.name, label: t.label, description: t.description, parameters: t.parameters }));
