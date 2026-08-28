@@ -16,6 +16,7 @@
 import type { Entry } from "@earendil-works/pi-agent-core";
 import type { Surface, SurfaceNode } from "../../shared/surface";
 import type { SessionStore } from "../persist";
+import { EVENTS } from "../persist/events";
 
 export interface CompactRange {
 	start: number;
@@ -31,15 +32,38 @@ export interface CompactionPlan {
 
 /**
  * Head-anchored selection: compact everything before the last `tailBudget` nodes.
- * Tool-pairing balance: if the boundary cuts right after an assistant that still has a
- * tool_result, extend the range to include the result (a dangling tool call must not
- * reach the model without its result).
+ * Tool-pairing balance: a tool_result must never survive without the assistant that called it —
+ * the API 400s on a tool message with no preceding tool_calls. Pairing is not adjacency: a
+ * send_message persisted mid-tool (see surface.pairToolResults) can sit between the call and its
+ * result, so scan the tail for results owned by shadowed assistants and extend the range to cover
+ * them. Iterate to a fixpoint: extending shadows intervening assistants that may own results of
+ * their own.
  */
-export function selectCompactableRange(nodes: SurfaceNode[], tailBudget: number): CompactRange | null {
+export function selectCompactableRange(entries: Entry[], nodes: SurfaceNode[], tailBudget: number): CompactRange | null {
 	if (nodes.length <= tailBudget + 1) return null;
+	const byId = new Map(entries.map((e) => [e.id, e]));
 	let end = nodes.length - tailBudget - 1;
-	while (end + 1 < nodes.length && nodes[end].kind === "assistant" && nodes[end + 1].kind === "tool_result") {
-		end += 1;
+	for (;;) {
+		const calls = new Set<string>();
+		for (let i = 0; i <= end; i++) {
+			const entry = byId.get(nodes[i].id);
+			if (!entry || entry.type !== "message" || entry.message.role !== "assistant") continue;
+			const blocks = Array.isArray(entry.message.content) ? entry.message.content : [];
+			for (const b of blocks) {
+				if (b.type === "toolCall") calls.add((b as { id: string }).id);
+			}
+		}
+		let grew = false;
+		for (let j = end + 1; j < nodes.length; j++) {
+			const entry = byId.get(nodes[j].id);
+			if (!entry || entry.type !== "custom" || entry.customType !== EVENTS.toolResult) continue;
+			const data = entry.data as { toolCallId?: unknown } | undefined;
+			if (typeof data?.toolCallId === "string" && calls.has(data.toolCallId)) {
+				end = j;
+				grew = true;
+			}
+		}
+		if (!grew) break;
 	}
 	return { start: 0, end };
 }
@@ -63,7 +87,7 @@ export function summarizeShadowed(entries: Entry[], shadowed: SurfaceNode[], cap
 
 /** Build the compaction plan, or null when there is nothing worth compacting. */
 export function planCompaction(entries: Entry[], surface: Surface, tailBudget = 8, cap = 2000): CompactionPlan | null {
-	const range = selectCompactableRange(surface.nodes, tailBudget);
+	const range = selectCompactableRange(entries, surface.nodes, tailBudget);
 	if (!range) return null;
 	const shadowed = surface.nodes.slice(range.start, range.end + 1);
 	const raw = summarizeShadowed(entries, shadowed, Number.POSITIVE_INFINITY);

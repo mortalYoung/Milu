@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { AgentMessage, Entry } from "@earendil-works/pi-agent-core";
 import type { SurfaceNode } from "../../shared/surface";
 import { applyCompaction, planCompaction, selectCompactableRange } from "../core/compaction";
 import { foldSurface } from "../core/surface";
@@ -29,24 +29,90 @@ const contentOf = (m: AgentMessage) => String((m as { content?: unknown }).conte
 const LONG_Q = "Can you please explain in detail how the session surface refactor works, step by step, so I can understand the three-layer model?";
 const LONG_A = "Yes — the log is the single source of truth, the surface is a derived projection, and the dialogue is derived from the surface. Here are the details.";
 
+const toolEntry = (n: SurfaceNode, callId: string): Entry =>
+	({
+		type: "message",
+		id: n.id,
+		seq: n.seq,
+		parentId: null,
+		timestamp: 0,
+		message: { role: "assistant", content: [{ type: "toolCall", id: callId, name: "bash" }] },
+	}) as unknown as Entry;
+
+const resultEntry = (n: SurfaceNode, callId: string): Entry =>
+	({ type: "custom", id: n.id, seq: n.seq, parentId: null, timestamp: 0, customType: "tool/result", data: { toolCallId: callId } }) as unknown as Entry;
+
 describe("selectCompactableRange", () => {
 	it("compacts the head, keeping the tail budget", () => {
 		const nodes: SurfaceNode[] = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => node("user", i));
-		expect(selectCompactableRange(nodes, 3)).toEqual({ start: 0, end: 6 });
+		expect(selectCompactableRange([], nodes, 3)).toEqual({ start: 0, end: 6 });
 	});
 
 	it("returns null when there is nothing to compact", () => {
 		const nodes: SurfaceNode[] = [0, 1, 2, 3].map((i) => node("user", i));
-		expect(selectCompactableRange(nodes, 4)).toBeNull();
-		expect(selectCompactableRange(nodes, 8)).toBeNull();
-		expect(selectCompactableRange([], 3)).toBeNull();
+		expect(selectCompactableRange([], nodes, 4)).toBeNull();
+		expect(selectCompactableRange([], nodes, 8)).toBeNull();
+		expect(selectCompactableRange([], [], 3)).toBeNull();
 	});
 
 	it("extends the range to keep a tool_result with its assistant (tool-pairing balance)", () => {
-		// tail budget 2 → base end = 3 (user at 3); but node 3 is an assistant whose tool_result is node 4
+		// tail budget 2 → base end = 4, which already includes the adjacent tool_result
 		const nodes: SurfaceNode[] = [node("user", 0), node("user", 1), node("assistant", 2), node("assistant", 3), node("tool_result", 4), node("user", 5), node("user", 6)];
-		const range = selectCompactableRange(nodes, 2);
+		const entries = [toolEntry(nodes[3], "call-1"), resultEntry(nodes[4], "call-1")];
+		const range = selectCompactableRange(entries, nodes, 2);
 		expect(range).toEqual({ start: 0, end: 4 });
+	});
+
+	it("extends the range across a send_message so a non-adjacent tool_result stays with its shadowed assistant", () => {
+		// A user follow-up (send_message) lands between the assistant's toolCall and its result in
+		// arrival order; the base boundary at 3 would leave the result orphaned in the tail → 400.
+		const nodes: SurfaceNode[] = [
+			node("user", 0),
+			node("user", 1),
+			node("assistant", 2),
+			node("send_message", 3),
+			node("tool_result", 4),
+			node("user", 5),
+			node("user", 6),
+			node("user", 7),
+		];
+		const entries = [toolEntry(nodes[2], "call-1"), resultEntry(nodes[4], "call-1")];
+		const range = selectCompactableRange(entries, nodes, 4);
+		expect(range).toEqual({ start: 0, end: 4 });
+	});
+
+	it("chains extensions: shadowing an intervening assistant pulls in its own result", () => {
+		// Extending over the send_message shadows the assistant at 4, whose result at 6 must
+		// follow — the fixpoint stops only when no surviving result references a shadowed call.
+		const nodes: SurfaceNode[] = [
+			node("user", 0),
+			node("user", 1),
+			node("assistant", 2),
+			node("send_message", 3),
+			node("assistant", 4),
+			node("tool_result", 5),
+			node("tool_result", 6),
+			node("user", 7),
+		];
+		const entries = [toolEntry(nodes[2], "call-1"), resultEntry(nodes[5], "call-1"), toolEntry(nodes[4], "call-2"), resultEntry(nodes[6], "call-2")];
+		const range = selectCompactableRange(entries, nodes, 2);
+		expect(range).toEqual({ start: 0, end: 6 });
+	});
+
+	it("leaves a tail result alone when its assistant also survives", () => {
+		const nodes: SurfaceNode[] = [
+			node("user", 0),
+			node("user", 1),
+			node("assistant", 2),
+			node("tool_result", 3),
+			node("user", 4),
+			node("user", 5),
+			node("user", 6),
+			node("user", 7),
+		];
+		const entries = [toolEntry(nodes[2], "call-1"), resultEntry(nodes[3], "call-1")];
+		const range = selectCompactableRange(entries, nodes, 4);
+		expect(range).toEqual({ start: 0, end: 3 });
 	});
 });
 
