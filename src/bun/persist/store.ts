@@ -48,10 +48,17 @@ declare module "@earendil-works/pi-agent-core" {
 	}
 }
 
+export interface AssistantTiming {
+	stepStartTime: number;
+	firstTokenTime: number | null;
+	completedTime: number;
+}
+
 export interface AssistantMeta {
 	blocks: AssistantMessage["content"];
 	toolResults?: ToolResultMessage[];
 	usage?: Usage;
+	timing?: AssistantTiming;
 }
 
 export interface VisibleItem {
@@ -260,7 +267,7 @@ export function createSessionStore(): SessionStore {
 			async appendAssistant(meta, timestamp) {
 				// Messages built by the pi loop may carry undefined fields (e.g. toolResult.details/usage),
 				// which assertJsonSerializable would reject → recursively strip them before appending
-				const assistant: AssistantMessage = {
+				const assistant: AssistantMessage & { timing?: AssistantTiming } = {
 					role: "assistant",
 					content: stripUndefined(meta.blocks) as AssistantMessage["content"],
 					timestamp,
@@ -269,6 +276,7 @@ export function createSessionStore(): SessionStore {
 					model: "",
 					usage: meta.usage ?? EMPTY_USAGE,
 					stopReason: "stop",
+					...(meta.timing ? { timing: meta.timing } : {}),
 				};
 				await appendMessage(dir, assistant);
 				// Batching callers (tests) hand results with the turn; the live loop writes them at

@@ -161,7 +161,8 @@ export function Composer(props: {
 		const s = props.stats;
 		if (!s || !s.usage) return null;
 		const u = s.usage;
-		const hit = u.input + u.cacheRead > 0 ? Math.round((u.cacheRead / (u.input + u.cacheRead)) * 100) : null;
+		const billed = u.input + u.cacheRead + u.cacheWrite;
+		const hit = billed > 0 ? Math.round((u.cacheRead / billed) * 100) : null;
 		const parts = [`in ${formatTokens(u.input)}`, `out ${formatTokens(u.output)}`];
 		if (hit != null) parts.push(`cache ${hit}%`);
 		if (s.runtime.avgTtftMs != null) parts.push(`ttft ${(s.runtime.avgTtftMs / 1000).toFixed(1)}s`);

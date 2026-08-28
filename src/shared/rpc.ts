@@ -80,6 +80,7 @@ export type TrajectoryRecord =
 			model: string;
 			responseModel?: string;
 			responseId?: string;
+			timing?: { stepStartTime: number; firstTokenTime: number | null; completedTime: number };
 			usage?: TrajectoryUsage;
 			stopReason: string;
 			errorMessage?: string;
@@ -156,6 +157,7 @@ export interface RuntimeStatsSnapshot {
 	lastTtft: number | null;
 	/** When the snapshot was last written to disk. */
 	savedAt: number;
+	sampling: "per-step";
 }
 
 /**
@@ -167,6 +169,7 @@ export interface RuntimeStatsSnapshot {
 export interface ContextUsage {
 	/** Provider-reported prompt size of the last turn; 0 before the first turn. */
 	used: number;
+	projectedTokens?: number;
 	/** Model context window in tokens (e.g. 1_000_000 for deepseek-v4-flash). */
 	window: number;
 	/** min(100, round(used / window * 100)). */

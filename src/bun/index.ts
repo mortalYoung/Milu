@@ -17,6 +17,7 @@ import {
 } from "./core/agent-config";
 import { applyCompaction, type CompactionPlan, planCompaction } from "./core/compaction";
 import { loadRuntimeStats, saveRuntimeStats } from "./core/runtime-stats";
+import { foldSurface } from "./core/surface";
 import { priceSurface } from "./core/token-meter";
 import { aggregateUsage, fold, lastUsage } from "./core/trajectory";
 import { deleteApiKey, getApiKey, loadCredentials, setApiKey } from "./lib/credentials";
@@ -448,12 +449,33 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				const usage = lastUsage(entries);
 				const used = usage ? usage.input + usage.cacheRead + usage.cacheWrite : 0;
 				const window = contextWindow(entry?.agent.model ?? undefined);
-				const percent = used === 0 ? 0 : Math.min(100, Math.round((used / window) * 100));
+				const breakdown = entry ? priceSurface(entry.agent.systemPrompt, entry.agent.tools, entries, surface) : null;
+				let projectedTokens: number | undefined;
+				if (entry && usage && breakdown) {
+					let lastUsageIdx = -1;
+					for (let i = entries.length - 1; i >= 0; i--) {
+						const e = entries[i];
+						if (e.type === "message" && e.message.role === "assistant" && e.message.usage) {
+							lastUsageIdx = i;
+							break;
+						}
+					}
+					if (lastUsageIdx >= 0) {
+						const entriesAtSample = entries.slice(0, lastUsageIdx + 1);
+						const surfaceAtSample = foldSurface(entriesAtSample);
+						const atSample = priceSurface(entry.agent.systemPrompt, entry.agent.tools, entriesAtSample, surfaceAtSample);
+						const sampleTotal = atSample.systemTokens + atSample.toolsTokens + atSample.messageTokens;
+						const currentTotal = breakdown.systemTokens + breakdown.toolsTokens + breakdown.messageTokens;
+						projectedTokens = Math.max(0, used + (currentTotal - sampleTotal));
+					}
+				}
+				const percent = (projectedTokens ?? used) === 0 ? 0 : Math.min(100, Math.round(((projectedTokens ?? used) / window) * 100));
 				return {
 					used,
+					projectedTokens,
 					window,
 					percent,
-					breakdown: entry ? priceSurface(entry.agent.systemPrompt, entry.agent.tools, entries, surface) : null,
+					breakdown,
 					lastTurn: usage ?? undefined,
 				};
 			},

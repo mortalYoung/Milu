@@ -150,6 +150,7 @@ export function fold(entries: Entry[]): TrajectoryRecord[] {
 						model: m.model,
 						responseModel: m.responseModel,
 						responseId: m.responseId,
+						timing: (m as { timing?: { stepStartTime: number; firstTokenTime: number | null; completedTime: number } }).timing,
 						usage: toTrajectoryUsage(m.usage),
 						stopReason: m.stopReason,
 						errorMessage: m.errorMessage,

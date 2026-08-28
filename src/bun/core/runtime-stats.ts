@@ -13,7 +13,7 @@ import type { RuntimeStatsSnapshot } from "../../shared/rpc";
 const FILE_NAME = "runtime-stats.json";
 
 export function emptyRuntimeStats(): RuntimeStatsSnapshot {
-	return { runs: 0, ttfts: [], speeds: [], lastTtft: null, savedAt: 0 };
+	return { runs: 0, ttfts: [], speeds: [], lastTtft: null, savedAt: 0, sampling: "per-step" };
 }
 
 /** Load the persisted snapshot; missing/corrupt files fall back to empty (never crash startup). */
@@ -30,12 +30,16 @@ export async function loadRuntimeStats(root: string): Promise<RuntimeStatsSnapsh
 		if (raw.lastTtft !== null && (typeof raw.lastTtft !== "number" || !Number.isFinite(raw.lastTtft))) {
 			return emptyRuntimeStats();
 		}
+		if (raw.sampling !== "per-step") {
+			return { ...emptyRuntimeStats(), runs: Math.floor(raw.runs) };
+		}
 		return {
 			runs: Math.floor(raw.runs),
 			ttfts: raw.ttfts,
 			speeds: raw.speeds,
 			lastTtft: raw.lastTtft ?? null,
 			savedAt: typeof raw.savedAt === "number" ? raw.savedAt : 0,
+			sampling: "per-step",
 		};
 	} catch {
 		return emptyRuntimeStats();

@@ -47,7 +47,8 @@ export function ContextMeter(props: { usage: ContextUsage }) {
 	});
 
 	const percent = () => props.usage.percent;
-	const reading = () => `context ${percent()}% · ${formatTokens(props.usage.used)} / ${formatTokens(props.usage.window)}`;
+	const usedTokens = () => props.usage.projectedTokens ?? props.usage.used;
+	const reading = () => `context ${percent()}% · ${formatTokens(usedTokens())} / ${formatTokens(props.usage.window)}`;
 	// Color levels: ≤60% brand seal, 60–90% amber, >90% red (visual warning near the ceiling).
 	const level = () => (percent() > 90 ? "meter-danger" : percent() > 60 ? "meter-warn" : "meter-ok");
 	// The ring always carries the reading; the numeric percent appears only past 60% (warn/danger
@@ -82,7 +83,7 @@ export function ContextMeter(props: { usage: ContextUsage }) {
 				<div class="context-meter-panel" role="dialog" aria-label="Context usage">
 					<div class="meter-headline">
 						<span class="meter-title">
-							~{formatTokens(props.usage.used)} / {formatTokens(props.usage.window)}
+							~{formatTokens(usedTokens())} / {formatTokens(props.usage.window)}
 						</span>
 						<span class="meter-percent">{percent()}%</span>
 					</div>

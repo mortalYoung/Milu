@@ -69,6 +69,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		speeds: [...(deps.runtimeStats?.speeds ?? [])],
 		lastTtft: deps.runtimeStats?.lastTtft ?? null,
 		savedAt: deps.runtimeStats?.savedAt ?? 0,
+		sampling: "per-step",
 	};
 
 	function persistRuntime() {
@@ -81,9 +82,11 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		});
 	}
 
-	let turnStartAt = 0;
-	let firstDeltaAt = 0;
-	let lastDeltaAt = 0;
+	let stepStartAt = 0;
+	let stepStartWall = 0;
+	let stepFirstDeltaAt = 0;
+	let stepFirstDeltaWall = 0;
+	let stepLastDeltaAt = 0;
 
 	const agent = new Agent({
 		initialState: {
@@ -188,32 +191,58 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			case "turn_start":
 				step += 1;
 				bridge.onTurnStart(ctx.beginTurn());
-				turnStartAt = performance.now();
-				firstDeltaAt = 0;
-				lastDeltaAt = 0;
-				return Promise.all([
-					deps.session.appendStepStart(runTurn, step, Date.now()),
-					deps.session.appendRequestHeader(
-						agent.state.systemPrompt,
-						agent.state.tools.map((t) => ({ name: t.name, label: t.label, description: t.description, parameters: t.parameters })),
-						Date.now(),
-					),
-				])
-					.then(() => undefined)
-					.catch(logError);
+				{
+					const stepStart = Date.now();
+					stepStartAt = performance.now();
+					stepStartWall = stepStart;
+					stepFirstDeltaAt = 0;
+					stepFirstDeltaWall = 0;
+					stepLastDeltaAt = 0;
+					return Promise.all([
+						deps.session.appendStepStart(runTurn, step, stepStart),
+						deps.session.appendRequestHeader(
+							agent.state.systemPrompt,
+							agent.state.tools.map((t) => ({ name: t.name, label: t.label, description: t.description, parameters: t.parameters })),
+							stepStart,
+						),
+					])
+						.then(() => undefined)
+						.catch(logError);
+				}
 			case "message_update":
 				if (event.assistantMessageEvent.type === "text_delta") {
-					if (firstDeltaAt === 0) firstDeltaAt = performance.now();
-					lastDeltaAt = performance.now();
+					if (stepFirstDeltaAt === 0) {
+						stepFirstDeltaAt = performance.now();
+						stepFirstDeltaWall = Date.now();
+					}
+					stepLastDeltaAt = performance.now();
 				}
 				break;
 			case "message_end":
 				if (event.message.role !== "assistant") break;
 				{
 					const assistant = event.message as AssistantMessage;
+					const completedWall = Date.now();
+					const timing = {
+						stepStartTime: stepStartWall,
+						firstTokenTime: stepFirstDeltaWall > 0 ? stepFirstDeltaWall : null,
+						completedTime: completedWall,
+					};
 					return deps.session
-						.appendAssistant({ blocks: assistant.content, usage: assistant.usage }, assistant.timestamp ?? Date.now())
-						.then(() => autoDeliver(assistant))
+						.appendAssistant({ blocks: assistant.content, usage: assistant.usage, timing }, assistant.timestamp ?? completedWall)
+						.then(() => {
+							if (stepFirstDeltaAt > 0 && stepLastDeltaAt >= stepFirstDeltaAt) {
+								const ttft = stepFirstDeltaAt - stepStartAt;
+								const seconds = (stepLastDeltaAt - stepFirstDeltaAt) / 1000;
+								if (seconds > 0) {
+									const output = assistant.usage?.output ?? 0;
+									runtime.ttfts.push(ttft);
+									runtime.lastTtft = ttft;
+									runtime.speeds.push(output / seconds);
+								}
+							}
+							return autoDeliver(assistant);
+						})
 						.catch(logError);
 				}
 			case "tool_execution_start":
@@ -235,16 +264,6 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			case "turn_end":
 				ctx.endTurn();
 				runtime.runs += 1;
-				if (firstDeltaAt > 0 && lastDeltaAt >= firstDeltaAt) {
-					const ttft = firstDeltaAt - turnStartAt;
-					const seconds = (lastDeltaAt - firstDeltaAt) / 1000;
-					if (seconds > 0) {
-						const output = (event.message as AssistantMessage).usage?.output ?? 0;
-						runtime.ttfts.push(ttft);
-						runtime.lastTtft = ttft;
-						runtime.speeds.push(output / seconds);
-					}
-				}
 
 				persistRuntime();
 				{
