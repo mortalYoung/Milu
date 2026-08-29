@@ -66,6 +66,36 @@ describe("renderMarkdown pipe tables", () => {
 	});
 });
 
+describe("renderMarkdown CJK-friendly emphasis", () => {
+	test("bold containing CJK punctuation glued to a Han char renders bold", () => {
+		const html = renderMarkdown("1. 在 **`createAgent` 层（turn 边界）**包 `runPrompt`/`continue`，不包装 stream（遵循参考原则）");
+		expect(html).toContain("<strong><code>createAgent</code> 层（turn 边界）</strong>");
+		expect(html).not.toContain("**<code>createAgent</code>");
+	});
+
+	test("bold starting right after a Han char before CJK punctuation opens", () => {
+		const html = renderMarkdown("包**（加粗）**后");
+		expect(html).toContain("包<strong>（加粗）</strong>后");
+	});
+
+	test("strikethrough gets the same CJK-friendly flanking", () => {
+		const html = renderMarkdown("~~（删除）~~包");
+		expect(html).toContain("<s>（删除）</s>");
+	});
+
+	test("underscore emphasis keeps strict CommonMark intraword behavior", () => {
+		const html = renderMarkdown("_中文_包");
+		expect(html).not.toContain("<em>");
+		expect(html).toContain("_中文_包");
+	});
+
+	test("non-Han text keeps CommonMark flanking (no change for ASCII)", () => {
+		const html = renderMarkdown("**a(x)**b");
+		expect(html).not.toContain("<strong>");
+		expect(html).toContain("**a(x)**b");
+	});
+});
+
 describe("renderMarkdown code blocks (shiki highlighting)", () => {
 	test("fenced code block with language is highlighted", async () => {
 		const html = await renderMarkdownReady("```ts\nconst x: number = 1\n```");

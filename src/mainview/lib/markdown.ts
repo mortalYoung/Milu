@@ -26,6 +26,65 @@ import MarkdownIt, { type MarkdownIt as MarkdownItType, type Renderer, type Rend
 // BundledLanguage union — cast it through unknown once.
 const TEXT_LANG = "text" as unknown as MarkdownItShikiSetupOptions["defaultLanguage"];
 
+/**
+ * CJK-friendly emphasis flanking for `*` / `~` delimiters.
+ *
+ * CommonMark's flanking rule makes a delimiter run between a punctuation character and a
+ * non-punctuation, non-whitespace character non-flanking in one direction. Chinese text often
+ * glues `**加粗（x）**中文` with no spaces, so the closing `**` (after `）`) cannot close and the
+ * asterisks render literally. This patch lets `*` / `~` delimiters open/close when the neighboring
+ * character is a Han ideograph:
+ *
+ *   `**...（x）**包` — `**` after CJK punctuation, before Han → can close
+ *   `包**（x）**...` — `**` after Han, before CJK punctuation → can open
+ *
+ * `_` keeps strict CommonMark behavior (no intraword `_` emphasis).
+ */
+function patchCjkFriendlyFlanking(): void {
+	const State = MarkdownIt.StateInline;
+	const original = State.prototype.scanDelims;
+	State.prototype.scanDelims = function (this: InstanceType<typeof State>, start: number, canSplitWord: boolean) {
+		const scanned = original.call(this, start, canSplitWord);
+		// Only `*` (and `~`) delimiters may split words; `_` keeps the strict intraword rule.
+		if (!canSplitWord) return scanned;
+		const src = this.src;
+		if (isHanCodePoint(src.codePointAt(start + scanned.length))) {
+			scanned.can_close = true;
+		}
+		if (isHanCodePoint(codePointBefore(src, start))) {
+			scanned.can_open = true;
+		}
+		return scanned;
+	};
+}
+patchCjkFriendlyFlanking();
+
+/** Code point of the character immediately before `index`, or undefined at the start. */
+function codePointBefore(src: string, index: number): number | undefined {
+	if (index <= 0) return undefined;
+	const prev = index - 1;
+	const code = src.charCodeAt(prev);
+	// If `prev` is a low surrogate, the code point starts one position earlier.
+	if (code >= 0xdc00 && code <= 0xdfff && prev > 0) {
+		const high = src.charCodeAt(prev - 1);
+		if (high >= 0xd800 && high <= 0xdbff) return src.codePointAt(prev - 1) ?? undefined;
+	}
+	return src.codePointAt(prev) ?? undefined;
+}
+
+/** True when the code point is a CJK Unified/Compatibility Ideograph (Han character). */
+function isHanCodePoint(code: number | undefined): boolean {
+	if (code === undefined) return false;
+	return (
+		(code >= 0x4e00 && code <= 0x9fff) || // CJK Unified Ideographs
+		(code >= 0x3400 && code <= 0x4dbf) || // Extension A
+		(code >= 0xf900 && code <= 0xfaff) || // Compatibility Ideographs
+		(code >= 0x20000 && code <= 0x2a6df) || // Extension B
+		(code >= 0x2a700 && code <= 0x2ebef) || // Extensions C–F
+		(code >= 0x30000 && code <= 0x323af) // Extension G
+	);
+}
+
 /** Plain markdown-it (no highlighting) — the fallback while the highlighter warms up. */
 const mdPlain = new MarkdownIt({ html: false, linkify: true });
 patchLinkTarget(mdPlain);
