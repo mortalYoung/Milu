@@ -21,7 +21,15 @@ import type { CommandHistoryItem, EscalationStatus, RequestTool, SandboxMode, Th
 import type { Surface, SurfaceOpRecord } from "../../shared/surface";
 import { buildResumeTurn, deriveMessages as deriveSurfaceMessages, dropDanglingTurn, foldSurface, pairToolResults } from "../core/surface";
 import { createExecutionEnv } from "../tools/execution-env";
-import { type CommandDoneEventData, type CommandRunEventData, EVENTS, type ToolResultEventData, type TurnEndReason } from "./events";
+import {
+	type CommandDoneEventData,
+	type CommandRunEventData,
+	EVENTS,
+	type RetryScheduledEventData,
+	type RetryStartedEventData,
+	type ToolResultEventData,
+	type TurnEndReason,
+} from "./events";
 
 const EMPTY_USAGE: Usage = {
 	input: 0,
@@ -122,6 +130,9 @@ export interface SessionScope {
 	/** Persist a command lifecycle record (command/run | command/done; log-only, never model-visible). */
 	appendCommandRun(details: CommandRunEventData, timestamp: number): Promise<void>;
 	appendCommandDone(details: CommandDoneEventData, timestamp: number): Promise<void>;
+	/** Persist a retry lifecycle record (retry/scheduled | retry/started; log-only, never model-visible). */
+	appendRetryScheduled(details: RetryScheduledEventData, timestamp: number): Promise<void>;
+	appendRetryStarted(details: RetryStartedEventData, timestamp: number): Promise<void>;
 	/** Record a surface replace (compaction checkpoint) as an append-only `surface_op` log entry. */
 	appendSurfaceOp(op: SurfaceOpRecord, timestamp: number): Promise<void>;
 	/** Persist a compaction summary (custom entry; becomes the replacement checkpoint node). Returns its pi entry id. */
@@ -341,6 +352,12 @@ export function createSessionStore(): SessionStore {
 			},
 			async appendCommandDone(details, timestamp) {
 				await appendCustom(dir, EVENTS.commandDone, { ...details, timestamp });
+			},
+			async appendRetryScheduled(details, timestamp) {
+				await appendCustom(dir, EVENTS.retryScheduled, { ...details, timestamp });
+			},
+			async appendRetryStarted(details, timestamp) {
+				await appendCustom(dir, EVENTS.retryStarted, { ...details, timestamp });
 			},
 			async appendSurfaceOp(op, timestamp) {
 				await appendCustom(dir, EVENTS.surfaceOp, { ...op, timestamp });

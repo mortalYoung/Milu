@@ -40,6 +40,7 @@ export interface Settings {
 	/** Seconds between visible send_message heartbeats during a run; null/undefined = only first and last. */
 	sendMessageIntervalSec?: number | null;
 	commands_path?: string;
+	retry?: { maxRetries?: number; baseDelayMs?: number };
 }
 
 const DEFAULT_SETTINGS: Settings = {

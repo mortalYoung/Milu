@@ -320,6 +320,8 @@ export type AppRPCSchema = __schema<{
 						theme?: ThemeMode;
 						toastPlacement?: ToastPlacement;
 						sendMessageIntervalSec?: number | null;
+						commands_path?: string;
+						retry?: { maxRetries?: number; baseDelayMs?: number };
 					};
 					runtime: {
 						providers: { id: string; configured: boolean; baseUrl?: string; modelCount: number }[];
@@ -341,6 +343,8 @@ export type AppRPCSchema = __schema<{
 						theme?: ThemeMode;
 						toastPlacement?: ToastPlacement;
 						sendMessageIntervalSec?: number | null;
+						commands_path?: string;
+						retry?: { maxRetries?: number; baseDelayMs?: number };
 					};
 
 					credentials?: Record<string, string>;

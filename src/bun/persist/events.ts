@@ -46,6 +46,8 @@ export const EVENTS = {
 	thinkingLevelChange: "thinking_level_change",
 	commandRun: "command/run",
 	commandDone: "command/done",
+	retryScheduled: "retry/scheduled",
+	retryStarted: "retry/started",
 } as const;
 
 /** Why a run ended (turn/end payload). */
@@ -103,4 +105,25 @@ export interface CommandDoneEventData {
 	commandId: string;
 	kind: "success" | "error";
 	text?: string;
+}
+
+/** retry/scheduled payload (log-only; a retry was scheduled before the backoff wait). */
+export interface RetryScheduledEventData {
+	retryId: string;
+	turn: number;
+	step: number;
+	provider: string;
+	model: string;
+	retry: number;
+	maxRetries: number;
+	delayMs: number;
+	errorMessage: string;
+}
+
+/** retry/started payload (log-only; the backoff wait ended and the retried attempt begins). */
+export interface RetryStartedEventData {
+	retryId: string;
+	turn: number;
+	step: number;
+	retry: number;
 }

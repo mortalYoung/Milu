@@ -14,6 +14,7 @@ export interface SettingsData {
 	toastPlacement?: ToastPlacement;
 	sendMessageIntervalSec?: number | null;
 	commands_path?: string;
+	retry?: { maxRetries?: number; baseDelayMs?: number };
 }
 
 export interface RuntimeInfo {
@@ -30,6 +31,7 @@ const CATS = [
 	{ id: "general", label: "General" },
 	{ id: "permission", label: "Permission" },
 	{ id: "providers", label: "Providers" },
+	{ id: "retry", label: "Retry" },
 ] as const;
 type CatId = (typeof CATS)[number]["id"];
 
@@ -37,6 +39,8 @@ const DEFAULTS = {
 	path: "~/.partner/",
 	instructions: "AGENTS.md",
 	commandsPath: "~/.config/letters/commands",
+	retryMaxRetries: 2,
+	retryBaseDelayMs: 500,
 	theme: "system" as ThemeMode,
 	sandbox: "workspace-write" as SandboxMode,
 	toastPlacement: "bottomcenter" as ToastPlacement,
@@ -150,6 +154,8 @@ export function SettingsView(props: {
 	const [query, setQuery] = createSignal("");
 	const [path, setPath] = createSignal("");
 	const [commandsPath, setCommandsPath] = createSignal("");
+	const [retryMaxRetries, setRetryMaxRetries] = createSignal("2");
+	const [retryBaseDelayMs, setRetryBaseDelayMs] = createSignal("500");
 	const [instructionsFile, setInstructionsFile] = createSignal("");
 	const [defaultSandboxMode, setDefaultSandboxMode] = createSignal<SandboxMode>("workspace-write");
 	const [theme, setTheme] = createSignal<ThemeMode>("system");
@@ -183,6 +189,12 @@ export function SettingsView(props: {
 	if (props.settings && commandsPath() === "") {
 		setCommandsPath(props.settings.commands_path?.trim() ? props.settings.commands_path : DEFAULTS.commandsPath);
 	}
+	if (props.settings && props.settings.retry?.maxRetries !== undefined && retryMaxRetries() === "2") {
+		setRetryMaxRetries(String(props.settings.retry.maxRetries));
+	}
+	if (props.settings && props.settings.retry?.baseDelayMs !== undefined && retryBaseDelayMs() === "500") {
+		setRetryBaseDelayMs(String(props.settings.retry.baseDelayMs));
+	}
 	if (props.settings && props.settings.defaultSandboxMode && defaultSandboxMode() !== props.settings.defaultSandboxMode) {
 		setDefaultSandboxMode(props.settings.defaultSandboxMode);
 	}
@@ -208,6 +220,10 @@ export function SettingsView(props: {
 		const n = parseInt(deliverySec(), 10);
 		return Number.isFinite(n) ? Math.max(20, n) : 20;
 	};
+	const parsePositiveInt = (value: string, fallback: number) => {
+		const n = parseInt(value, 10);
+		return Number.isFinite(n) && n >= 0 ? n : fallback;
+	};
 
 	const currentSettings = (): SettingsData => ({
 		partner_profile_path: path().trim() || "~/.partner/",
@@ -219,6 +235,10 @@ export function SettingsView(props: {
 		toastPlacement: toastPlacement(),
 		sendMessageIntervalSec: deliveryMode() === "unlimited" ? null : parsedDeliverySec(),
 		commands_path: commandsPath().trim() || undefined,
+		retry: {
+			maxRetries: parsePositiveInt(retryMaxRetries(), DEFAULTS.retryMaxRetries),
+			baseDelayMs: parsePositiveInt(retryBaseDelayMs(), DEFAULTS.retryBaseDelayMs),
+		},
 	});
 	const flashError = (message: string) => {
 		setError(message);
@@ -498,6 +518,60 @@ export function SettingsView(props: {
 			),
 		},
 		{
+			id: "retryMaxRetries",
+			title: "Retry max attempts",
+			desc: "Automatic retries on transient LLM errors; 0 disables retry.",
+			cats: ["retry"],
+			modified: () => parsePositiveInt(retryMaxRetries(), DEFAULTS.retryMaxRetries) !== DEFAULTS.retryMaxRetries,
+			control: () => (
+				<TextField class="w-[200px] shrink-0" value={retryMaxRetries()} onChange={setRetryMaxRetries}>
+					<TextFieldInput
+						type="number"
+						min={0}
+						variant="compact"
+						title="Retry max attempts"
+						aria-label="Retry max attempts"
+						onBlur={() => {
+							const next = parsePositiveInt(retryMaxRetries(), DEFAULTS.retryMaxRetries);
+							const saved = props.settings?.retry?.maxRetries ?? DEFAULTS.retryMaxRetries;
+							if (next === saved) return;
+							void persist({ ...currentSettings(), retry: { maxRetries: next, baseDelayMs: parsePositiveInt(retryBaseDelayMs(), DEFAULTS.retryBaseDelayMs) } });
+						}}
+						onKeyDown={(e) => {
+							if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
+						}}
+					/>
+				</TextField>
+			),
+		},
+		{
+			id: "retryBaseDelayMs",
+			title: "Retry base delay (ms)",
+			desc: "First retry waits this long; each retry doubles it.",
+			cats: ["retry"],
+			modified: () => parsePositiveInt(retryBaseDelayMs(), DEFAULTS.retryBaseDelayMs) !== DEFAULTS.retryBaseDelayMs,
+			control: () => (
+				<TextField class="w-[200px] shrink-0" value={retryBaseDelayMs()} onChange={setRetryBaseDelayMs}>
+					<TextFieldInput
+						type="number"
+						min={0}
+						variant="compact"
+						title="Retry base delay (ms)"
+						aria-label="Retry base delay (ms)"
+						onBlur={() => {
+							const next = parsePositiveInt(retryBaseDelayMs(), DEFAULTS.retryBaseDelayMs);
+							const saved = props.settings?.retry?.baseDelayMs ?? DEFAULTS.retryBaseDelayMs;
+							if (next === saved) return;
+							void persist({ ...currentSettings(), retry: { maxRetries: parsePositiveInt(retryMaxRetries(), DEFAULTS.retryMaxRetries), baseDelayMs: next } });
+						}}
+						onKeyDown={(e) => {
+							if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
+						}}
+					/>
+				</TextField>
+			),
+		},
+		{
 			id: "instr",
 			title: "Instructions file",
 			desc: "Instruction file detected per workspace.",
@@ -662,7 +736,7 @@ export function SettingsView(props: {
 
 	return (
 		<div
-			class="flex h-full"
+			class="flex h-full min-h-0"
 			ref={rootRef}
 			onKeyDown={(e) => {
 				if (e.key === "Escape") {
@@ -1017,6 +1091,20 @@ export function SettingsView(props: {
 											</Show>
 										</div>
 									</Show>
+								</div>
+							</div>
+						</Match>
+						<Match when={tab() === "retry"}>
+							<div>
+								<div class="mb-2 font-serif text-[15px] font-medium text-ink">Retry</div>
+								<div class="divide-y divide-hairline">
+									<For each={rows().filter((r) => r.cats.includes("retry"))}>
+										{(row) => (
+											<SettingRow title={row.title} desc={row.desc} modified={row.modified()}>
+												{row.control()}
+											</SettingRow>
+										)}
+									</For>
 								</div>
 							</div>
 						</Match>

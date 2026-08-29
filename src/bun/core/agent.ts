@@ -1,6 +1,8 @@
 import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage, ToolResultMessage } from "@earendil-works/pi-ai";
+import { type AssistantMessage, retryAssistantCall, type ToolResultMessage } from "@earendil-works/pi-ai";
 import type { RequestTool, RuntimeStatsSnapshot, SessionStats, ThinkingLevel } from "../../shared/rpc";
+import { newRetryId, resolveRetryPolicy } from "../lib/retry";
+import { loadSettings } from "../lib/settings";
 import type { EscalationDecision, EscalationRequest, SandboxManager, SandboxMode } from "../permission";
 import { Permission, policyFor } from "../permission";
 import type { SessionScope } from "../persist";
@@ -219,6 +221,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			}
 			case "message_end":
 				if (event.message.role !== "assistant") break;
+				if (event.message.stopReason === "error") break;
 				{
 					const assistant = event.message as AssistantMessage;
 					const completedWall = Date.now();
@@ -283,8 +286,6 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 					return persisted.then(() => bridge.onTrajectoryUpdate());
 				}
 			case "agent_end":
-				ctx.setRunning(false);
-				enforceDelivery(event);
 				let lastAssistant: AssistantMessage | undefined;
 				for (let i = event.messages.length - 1; i >= 0; i--) {
 					if (event.messages[i].role === "assistant") {
@@ -293,6 +294,12 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 					}
 				}
 				const aborted = lastAssistant?.stopReason === "aborted";
+				if (deferAgentEnd) {
+					deferredAgentEnd = { message: lastAssistant ?? (event.messages[event.messages.length - 1] as AssistantMessage), turn: runTurn, aborted };
+					return;
+				}
+				ctx.setRunning(false);
+				enforceDelivery(event);
 
 				return deps.session
 					.appendTurnEnd(runTurn, aborted ? "aborted" : agent.state.errorMessage ? "error" : "completed", Date.now(), agent.state.errorMessage ?? undefined)
@@ -300,11 +307,6 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 					.then(() => {
 						bridge.onTrajectoryUpdate();
 						bridge.onEnd(agent.state.errorMessage);
-						if (pendingChatWait) {
-							const pending = pendingChatWait;
-							pendingChatWait = null;
-							pending.resolve({ ok: !agent.state.errorMessage, error: agent.state.errorMessage ?? undefined });
-						}
 					});
 			default:
 				break;
@@ -330,7 +332,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		});
 	}
 
-	async function runPrompt(text: string) {
+	function prepareRun() {
 		const conversationStart = agent.state.messages.length === 0;
 		if (ctx.workspace_path == null) {
 			const reminder = "The workspace is not set yet. Remember to call `set_workspace` with the task's absolute path before other tools if the task needs file or command access.";
@@ -343,11 +345,98 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			persistReminder(context);
 			appendSystemReminder(agent.state.messages, context);
 		}
-
-		await agent.prompt(text);
 	}
 
-	let pendingChatWait: { resolve: (result: { ok: boolean; error?: string }) => void } | null = null;
+	let runAbort: AbortController | null = null;
+	let deferAgentEnd = false;
+	let deferredAgentEnd: { message: AssistantMessage; turn: number; aborted: boolean } | null = null;
+
+	function lastAssistantMessage(): AssistantMessage | null {
+		for (let i = agent.state.messages.length - 1; i >= 0; i--) {
+			const m = agent.state.messages[i];
+			if (m.role === "assistant") return m as AssistantMessage;
+		}
+		return null;
+	}
+
+	function removeMessage(message: AssistantMessage) {
+		agent.state.messages = agent.state.messages.filter((m) => m !== message);
+	}
+
+	async function runAttempt(text: string | null): Promise<AssistantMessage> {
+		if (text != null) await agent.prompt(text);
+		else await agent.continue();
+		const message = lastAssistantMessage();
+		if (!message) throw new Error("run ended without an assistant message");
+		return message;
+	}
+
+	async function finalizeRun(message: AssistantMessage) {
+		ctx.setRunning(false);
+		const end = deferredAgentEnd;
+		deferredAgentEnd = null;
+		const turn = end?.turn ?? runTurn;
+		const aborted = message.stopReason === "aborted";
+		const error = message.stopReason === "error" ? message.errorMessage : undefined;
+		enforceDelivery({ type: "agent_end", messages: agent.state.messages } as Extract<AgentEvent, { type: "agent_end" }>);
+		await deps.session.appendTurnEnd(turn, aborted ? "aborted" : error ? "error" : "completed", Date.now(), error).catch(logError);
+		bridge.onTrajectoryUpdate();
+		bridge.onEnd(error);
+	}
+
+	async function runWithRetry(text: string | null): Promise<AssistantMessage> {
+		if (text != null) prepareRun();
+		const policy = resolveRetryPolicy(await loadSettings());
+		runAbort = new AbortController();
+		deferAgentEnd = true;
+		let lastFailed: AssistantMessage | null = null;
+		let scheduled: { retryId: string; retry: number } | null = null;
+		try {
+			const message = policy.enabled
+				? await retryAssistantCall(
+						async () => {
+							if (lastFailed) removeMessage(lastFailed);
+							const message = await runAttempt(text);
+							if (message.stopReason === "error") lastFailed = message;
+							return message;
+						},
+						policy,
+						runAbort.signal,
+						{
+							onRetryScheduled: (attempt, maxRetries, delayMs, errorMessage) => {
+								const retryId = newRetryId();
+								scheduled = { retryId, retry: attempt };
+								void deps.session
+									.appendRetryScheduled(
+										{
+											retryId,
+											turn: ctx.turn,
+											step,
+											provider: ctx.model?.provider ?? "unknown",
+											model: ctx.model?.modelId ?? "unknown",
+											retry: attempt,
+											maxRetries,
+											delayMs,
+											errorMessage,
+										},
+										Date.now(),
+									)
+									.catch(logError);
+							},
+							onRetryAttemptStart: () => {
+								if (!scheduled) return;
+								void deps.session.appendRetryStarted({ retryId: scheduled.retryId, turn: ctx.turn, step, retry: scheduled.retry }, Date.now()).catch(logError);
+							},
+						},
+					)
+				: await runAttempt(text);
+			await finalizeRun(message);
+			return message;
+		} finally {
+			deferAgentEnd = false;
+			if (ctx.running && !deferredAgentEnd) ctx.setRunning(false);
+		}
+	}
 
 	async function promptAndWait(text: string): Promise<{ ok: boolean; error?: string }> {
 		if (text.trim() === "") return { ok: false, error: "empty message" };
@@ -355,11 +444,12 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		ctx.markUserMessage();
 		if (ctx.running) return { ok: false, error: "agent is running" };
 		ctx.setRunning(true);
-		const result = new Promise<{ ok: boolean; error?: string }>((resolve) => {
-			pendingChatWait = { resolve };
-		});
-		void runPrompt(text).catch(() => queueFollowUp(text));
-		return result;
+		try {
+			const message = await runWithRetry(text);
+			return { ok: message.stopReason !== "error", error: message.stopReason === "error" ? message.errorMessage : undefined };
+		} catch (error) {
+			return { ok: false, error: error instanceof Error ? error.message : String(error) };
+		}
 	}
 
 	return {
@@ -420,7 +510,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			if (ctx.running) return;
 			ctx.setRunning(true);
 			try {
-				await agent.continue();
+				await runWithRetry(null);
 			} catch (error) {
 				ctx.setRunning(false);
 				console.error("agent.continue failed:", error);
@@ -435,7 +525,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 				return;
 			}
 			ctx.setRunning(true);
-			void runPrompt(text).catch(() => queueFollowUp(text));
+			void runWithRetry(text).catch(() => queueFollowUp(text));
 		},
 		chatAndWait: promptAndWait,
 		async sendMessage(text: string) {
@@ -445,6 +535,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		},
 		stop() {
 			agent.abort();
+			runAbort?.abort();
 		},
 		markUserMessage() {
 			ctx.markUserMessage();
