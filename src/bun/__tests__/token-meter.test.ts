@@ -42,10 +42,9 @@ describe("surface-priced token meter", () => {
 		const surface = await session.surface(dir);
 		const breakdown = priceSurface("abcd", [], entries, surface);
 
-		// system "abcd" = 1 token; no tools passed → 0; messages 11+8+4+2 = 25 chars → 7 tokens
-		expect(breakdown.systemTokens).toBe(1);
+		expect(breakdown.systemTokens).toBe(5);
 		expect(breakdown.toolsTokens).toBe(0);
-		expect(breakdown.messageTokens).toBe(7);
+		expect(breakdown.messageTokens).toBe(51);
 	});
 
 	it("prices tools by their serialized schema (JSON.stringify → 4 chars ≈ 1 token)", async () => {
@@ -62,7 +61,7 @@ describe("surface-priced token meter", () => {
 		];
 		const breakdown = priceSurface("sys", tools, entries, surface);
 
-		expect(breakdown.toolsTokens).toBe(Math.ceil(JSON.stringify(tools).length / 4));
+		expect(breakdown.toolsTokens).toBe(Math.ceil(JSON.stringify(tools).length / 4) + 4);
 	});
 
 	it("after a replace, only surviving nodes are priced", async () => {
@@ -80,7 +79,6 @@ describe("surface-priced token meter", () => {
 		const entries = await session.rawEntries(dir);
 		const surface = await session.surface(dir);
 		const breakdown = priceSurface("sys", [], entries, surface);
-		// "first question" (14 chars) is gone; "first reply" (11) + "second question" (16) = 27 chars → 7 tokens
-		expect(breakdown.messageTokens).toBe(7);
+		expect(breakdown.messageTokens).toBe(23);
 	});
 });

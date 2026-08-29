@@ -13,50 +13,64 @@ import type { Surface } from "../../shared/surface";
 import type { ContextBreakdown } from "./context-estimate";
 
 const CHARS_PER_TOKEN = 4;
+const ROLE_OVERHEAD = 4;
+const BLOCK_OVERHEAD = 4;
 const tokens = (chars: number) => Math.ceil(chars / CHARS_PER_TOKEN);
 
-/** Text of one surface node's model-visible contribution ("" for log-only entries). */
-function nodeText(entry: Entry): string {
+function stringLength(value: unknown): number {
+	if (typeof value === "string") return value.length;
+	try {
+		return JSON.stringify(value)?.length ?? 0;
+	} catch {
+		return 0;
+	}
+}
+
+function priceContent(content: unknown): number {
+	if (typeof content === "string") return tokens(content.length) + BLOCK_OVERHEAD;
+	if (!Array.isArray(content)) return 0;
+	let total = 0;
+	for (const raw of content) {
+		const block = raw as { type?: unknown; text?: unknown; thinking?: unknown; name?: unknown; arguments?: unknown; content?: unknown } | null;
+		if (!block) continue;
+		switch (block.type) {
+			case "text":
+				total += tokens(stringLength(block.text)) + BLOCK_OVERHEAD;
+				break;
+			case "thinking":
+				total += tokens(stringLength(block.thinking)) + BLOCK_OVERHEAD;
+				break;
+			case "toolCall":
+				total += tokens(stringLength(block.name)) + tokens(stringLength(block.arguments)) + BLOCK_OVERHEAD;
+				break;
+			case "toolResult":
+				total += priceContent(block.content) + BLOCK_OVERHEAD;
+				break;
+			default:
+				total += BLOCK_OVERHEAD + tokens(stringLength(raw));
+				break;
+		}
+	}
+	return total;
+}
+
+function priceNode(entry: Entry): number {
 	if (entry.type === "message") {
 		const m = entry.message;
-		if (m.role === "user") return typeof m.content === "string" ? m.content : contentText(m.content);
-		if (m.role === "assistant") return textBlocks(m.content);
-		if (m.role === "toolResult") return contentText(m.content);
-		return "";
+		if (m.role === "user") return priceContent(m.content) + ROLE_OVERHEAD;
+		if (m.role === "assistant") return priceContent(m.content) + ROLE_OVERHEAD;
+		if (m.role === "toolResult") return priceContent(m.content) + ROLE_OVERHEAD;
+		return ROLE_OVERHEAD;
 	}
 	if (entry.type === "custom" && (entry.customType === "send_message" || entry.customType === "compaction_summary")) {
 		const data = (entry.data ?? {}) as { text?: unknown };
-		return typeof data.text === "string" ? data.text : "";
+		return (typeof data.text === "string" ? tokens(data.text.length) + BLOCK_OVERHEAD : 0) + ROLE_OVERHEAD;
 	}
-	// Tool results are model-visible surface nodes; the log keeps them as tool/result events (see persist/events.ts)
 	if (entry.type === "custom" && entry.customType === "tool/result") {
 		const data = (entry.data ?? {}) as { content?: unknown };
-		return contentText(data.content);
+		return priceContent(data.content) + ROLE_OVERHEAD;
 	}
-	return "";
-}
-
-/** Content block array → text (strings pass through unchanged; non-text blocks are skipped). */
-function contentText(content: unknown): string {
-	if (typeof content === "string") return content;
-	if (!Array.isArray(content)) return "";
-	return content
-		.map((b) => {
-			const block = b as { type?: unknown; text?: unknown } | null;
-			if (!block) return "";
-			if (block.type === "text") return String(block.text ?? "");
-			return "";
-		})
-		.join("\n");
-}
-
-/** Assistant content blocks → text blocks only (thinking/tool calls never count as message tokens). */
-function textBlocks(content: unknown): string {
-	if (!Array.isArray(content)) return "";
-	return content
-		.filter((b) => (b as { type?: unknown }).type === "text")
-		.map((b) => String((b as { text?: unknown }).text ?? ""))
-		.join("\n");
+	return ROLE_OVERHEAD;
 }
 
 /**
@@ -67,10 +81,10 @@ function textBlocks(content: unknown): string {
 export function priceSurface(systemPrompt: string, tools: RequestTool[], entries: Entry[], surface: Surface): ContextBreakdown {
 	const byId = new Map<string, Entry>();
 	for (const e of entries) byId.set(e.id, e);
-	let messageChars = 0;
+	let messageTokens = 0;
 	for (const node of surface.nodes) {
 		const entry = byId.get(node.id);
-		if (entry) messageChars += nodeText(entry).length;
+		if (entry) messageTokens += priceNode(entry);
 	}
 	let toolsChars = 0;
 	try {
@@ -79,8 +93,8 @@ export function priceSurface(systemPrompt: string, tools: RequestTool[], entries
 		// non-serializable schema → fall back to 0 rather than breaking the meter
 	}
 	return {
-		systemTokens: tokens(systemPrompt.length),
-		toolsTokens: tokens(toolsChars),
-		messageTokens: tokens(messageChars),
+		systemTokens: tokens(systemPrompt.length) + ROLE_OVERHEAD,
+		toolsTokens: tools.length === 0 ? 0 : tokens(toolsChars) + BLOCK_OVERHEAD,
+		messageTokens,
 	};
 }

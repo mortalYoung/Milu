@@ -328,7 +328,7 @@ export function Composer(props: {
 		const u = s.usage;
 		const billed = u.input + u.cacheRead + u.cacheWrite;
 		const hit = billed > 0 ? Math.round((u.cacheRead / billed) * 100) : null;
-		const parts = [`in ${formatTokens(u.input)}`, `out ${formatTokens(u.output)}`];
+		const parts = [`in ${formatTokens(u.input)} tok`, `out ${formatTokens(u.output)} tok`];
 		if (hit != null) parts.push(`cache ${hit}%`);
 		if (s.runtime.avgTtftMs != null) parts.push(`ttft ${(s.runtime.avgTtftMs / 1000).toFixed(1)}s`);
 		if (s.runtime.avgTps != null) parts.push(`${Math.round(s.runtime.avgTps)} tok/s`);

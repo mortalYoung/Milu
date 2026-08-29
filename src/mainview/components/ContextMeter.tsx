@@ -24,6 +24,8 @@ const ROWS = [
 	{ key: "messageTokens", label: "messages", color: "meter-messages" },
 ] as const;
 
+const MIN_SEGMENT_PCT = 3;
+
 export function ContextMeter(props: { usage: ContextUsage }) {
 	const [open, setOpen] = createSignal(false);
 	let rootRef: HTMLSpanElement | undefined;
@@ -54,18 +56,24 @@ export function ContextMeter(props: { usage: ContextUsage }) {
 	// The ring always carries the reading; the numeric percent appears only past 60% (warn/danger
 	// levels) — below that the arc alone is enough and the exact number lives in the click panel.
 
-	// The bar's overall length stays the provider-exact percent; the heuristic
-	// breakdown only proportions its colored parts. Zero-width parts are dropped
-	// instead of rendered (a min-width hairline would draw a filled bar at 0%).
 	const segments = () => {
 		const b = props.usage.breakdown;
-		const total = b ? b.systemTokens + b.toolsTokens + b.messageTokens : 0;
-		if (!b || total === 0) return [{ key: "total", color: "", width: percent() }];
-		return ROWS.map((row) => ({
+		if (!b) return [{ key: "total", color: "", width: percent() }];
+		const total = b.systemTokens + b.toolsTokens + b.messageTokens;
+		if (total === 0) return [{ key: "total", color: "", width: percent() }];
+		const raw = ROWS.map((row) => ({
 			key: row.key,
 			color: row.color,
 			width: (percent() * b[row.key]) / total,
 		})).filter((s) => s.width > 0);
+		if (raw.length <= 1) return raw;
+		const raised = raw.map((s) => ({ ...s, width: Math.max(s.width, MIN_SEGMENT_PCT) }));
+		const sum = raised.reduce((acc, s) => acc + s.width, 0);
+		if (sum > 100) {
+			const scale = 100 / sum;
+			return raised.map((s) => ({ ...s, width: s.width * scale }));
+		}
+		return raised;
 	};
 
 	return (
@@ -97,8 +105,10 @@ export function ContextMeter(props: { usage: ContextUsage }) {
 							const value = props.usage.breakdown?.[row.key] ?? 0;
 							return (
 								<li class="meter-row">
-									<span class={`meter-swatch ${row.color}`} />
-									<span class="meter-row-label">{row.label}</span>
+									<span class="meter-row-label">
+										<span class={`meter-swatch ${row.color}`} />
+										{row.label}
+									</span>
 									<span class="meter-row-value">~{formatTokens(value)}</span>
 								</li>
 							);

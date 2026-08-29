@@ -1403,10 +1403,10 @@ body::before {
 		@apply font-serif text-[15px] text-seal font-semibold;
 	}
 	.meter-bar {
-		@apply flex h-1 w-full overflow-hidden rounded-full bg-hairline-soft mb-2;
+		@apply flex h-1.5 w-full gap-[2px] overflow-hidden rounded-full bg-hairline-soft mb-2;
 	}
 	.meter-segment {
-		@apply block h-full;
+		@apply block h-full min-w-0 rounded-full;
 	}
 	.meter-segment.meter-system {
 		background: var(--color-seal);
@@ -1421,10 +1421,13 @@ body::before {
 		@apply flex flex-col gap-1;
 	}
 	.meter-row {
-		@apply flex items-center gap-2 font-mono text-[9px] text-muted;
+		@apply flex items-center justify-between gap-2 font-mono text-[9px] text-muted;
+	}
+	.meter-row-label {
+		@apply flex items-center gap-1.5;
 	}
 	.meter-swatch {
-		@apply size-2 rounded-full;
+		@apply size-2 rounded-[3px];
 	}
 	.meter-swatch.meter-system {
 		background: var(--color-seal);
