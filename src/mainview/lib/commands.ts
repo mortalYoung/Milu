@@ -2,7 +2,6 @@ import { createSignal } from "solid-js";
 import type { CommandDescriptor, CommandExecution } from "../../shared/rpc";
 import type { RPC } from "./rpc";
 
-/** Menu filtering: prefix first, includes fallback. Execution still requires an exact name. */
 export function filterCommands(commands: CommandDescriptor[], query: string): CommandDescriptor[] {
 	const q = query.toLowerCase();
 	if (!q) return commands;

@@ -610,21 +610,26 @@ body::before {
 	.msg-escalation-status.drp {
 		@apply text-muted/60;
 	}
-	/* Slash command: a quiet ledger card in the message list (like escalation, lighter) —
-	   head shows /name + status; running uses the breathing dots. */
+	/* Slash command: a user-like bubble with a distinct tint. Shows the bare command name;
+	   args expand on click (only when present); success shows a checkmark (no emoji). */
 	.msg-command {
-		@apply self-start mt-4 w-[560px] max-w-full border border-hairline rounded-[10px] bg-letter px-[18px] py-[10px] font-mono text-[11px] text-ink;
+		@apply self-end mt-6 max-w-full cursor-default rounded-[10px] border border-hairline bg-paper-hover px-[15px] py-[10px] font-mono text-[13px] leading-[1.5] text-ink transition-colors;
+	}
+	.msg-command.has-args {
+		@apply cursor-pointer;
+	}
+	.msg-command:hover {
+		@apply border-ink-soft/40 bg-paper;
 	}
 	.msg-command-head {
-		@apply flex items-center justify-between gap-2 mb-1;
+		@apply flex items-center justify-between gap-3;
 	}
 	.msg-command-name {
-		@apply text-[9px] uppercase tracking-[0.12em] text-muted;
+		@apply text-ink;
 	}
 	.msg-command-status {
-		@apply text-[9px] uppercase tracking-[0.12em];
+		@apply flex shrink-0 items-center text-[10px] uppercase tracking-[0.08em];
 	}
-	.msg-command-status.running,
 	.msg-command-status.success {
 		@apply text-seal;
 	}
@@ -635,13 +640,10 @@ body::before {
 		@apply text-muted/60;
 	}
 	.msg-command-args {
-		@apply whitespace-pre-wrap break-all text-[11px] leading-[1.5] mb-1;
-	}
-	.msg-command-text {
-		@apply whitespace-pre-wrap break-all text-[11px] leading-[1.5] text-body-muted;
+		@apply mt-1.5 whitespace-pre-wrap break-all border-t border-hairline pt-1.5 text-[11px] leading-[1.5] text-body-muted;
 	}
 	.msg-command-running {
-		@apply flex items-center gap-1.5 mt-1;
+		@apply flex items-center gap-1.5;
 	}
 	.msg-command-running .work-dot {
 		background: var(--color-ink-soft);

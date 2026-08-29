@@ -13,6 +13,7 @@ export interface SettingsData {
 	theme?: ThemeMode;
 	toastPlacement?: ToastPlacement;
 	sendMessageIntervalSec?: number | null;
+	commands_path?: string;
 }
 
 export interface RuntimeInfo {
@@ -35,6 +36,7 @@ type CatId = (typeof CATS)[number]["id"];
 const DEFAULTS = {
 	path: "~/.partner/",
 	instructions: "AGENTS.md",
+	commandsPath: "~/.config/letters/commands",
 	theme: "system" as ThemeMode,
 	sandbox: "workspace-write" as SandboxMode,
 	toastPlacement: "bottomcenter" as ToastPlacement,
@@ -147,6 +149,7 @@ export function SettingsView(props: {
 	const [tab, setTab] = createSignal<CatId>("general");
 	const [query, setQuery] = createSignal("");
 	const [path, setPath] = createSignal("");
+	const [commandsPath, setCommandsPath] = createSignal("");
 	const [instructionsFile, setInstructionsFile] = createSignal("");
 	const [defaultSandboxMode, setDefaultSandboxMode] = createSignal<SandboxMode>("workspace-write");
 	const [theme, setTheme] = createSignal<ThemeMode>("system");
@@ -176,6 +179,9 @@ export function SettingsView(props: {
 	}
 	if (props.settings && instructionsFile() === "" && props.settings.detect_instructions_file !== instructionsFile()) {
 		setInstructionsFile(props.settings.detect_instructions_file);
+	}
+	if (props.settings && commandsPath() === "") {
+		setCommandsPath(props.settings.commands_path?.trim() ? props.settings.commands_path : DEFAULTS.commandsPath);
 	}
 	if (props.settings && props.settings.defaultSandboxMode && defaultSandboxMode() !== props.settings.defaultSandboxMode) {
 		setDefaultSandboxMode(props.settings.defaultSandboxMode);
@@ -212,6 +218,7 @@ export function SettingsView(props: {
 		theme: theme(),
 		toastPlacement: toastPlacement(),
 		sendMessageIntervalSec: deliveryMode() === "unlimited" ? null : parsedDeliverySec(),
+		commands_path: commandsPath().trim() || undefined,
 	});
 	const flashError = (message: string) => {
 		setError(message);
@@ -448,7 +455,40 @@ export function SettingsView(props: {
 						variant="compact"
 						title="Partner profile path"
 						aria-label="Partner profile path"
-						onBlur={() => void persist({ ...currentSettings(), partner_profile_path: path() })}
+						onBlur={() => {
+							const next = path().trim() || DEFAULTS.path;
+							if (next === (props.settings?.partner_profile_path ?? DEFAULTS.path)) return;
+							void persist({ ...currentSettings(), partner_profile_path: next });
+						}}
+						onKeyDown={(e) => {
+							if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
+						}}
+						spellcheck={false}
+					/>
+				</TextField>
+			),
+		},
+		{
+			id: "commandsPath",
+			title: "Commands directory",
+			desc: "Folder containing user-defined TS command modules (trusted plugin).",
+			cats: ["general"],
+			modified: () => {
+				const p = commandsPath().trim();
+				return p !== "" && p !== DEFAULTS.commandsPath;
+			},
+			control: () => (
+				<TextField class="w-[200px] shrink-0" value={commandsPath()} onChange={setCommandsPath}>
+					<TextFieldInput
+						variant="compact"
+						title="Commands directory"
+						aria-label="Commands directory"
+						onBlur={() => {
+							const next = commandsPath().trim() || DEFAULTS.commandsPath;
+							const saved = props.settings?.commands_path?.trim() || DEFAULTS.commandsPath;
+							if (next === saved) return;
+							void persist({ ...currentSettings(), commands_path: next });
+						}}
 						onKeyDown={(e) => {
 							if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
 						}}
@@ -472,7 +512,11 @@ export function SettingsView(props: {
 						variant="compact"
 						title="Instructions file"
 						aria-label="Instructions file"
-						onBlur={() => void persist({ ...currentSettings(), detect_instructions_file: instructionsFile() })}
+						onBlur={() => {
+							const next = instructionsFile().trim() || DEFAULTS.instructions;
+							if (next === (props.settings?.detect_instructions_file ?? DEFAULTS.instructions)) return;
+							void persist({ ...currentSettings(), detect_instructions_file: next });
+						}}
 						onKeyDown={(e) => {
 							if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
 						}}

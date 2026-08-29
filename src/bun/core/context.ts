@@ -11,6 +11,7 @@ export class Context {
 	running = false;
 	lastVisibleAt = Date.now();
 	lastTurnEndAt = 0;
+	contextClearedAt = 0;
 	private partner: PartnerPrompt | null = null;
 	storage_path: string | null = null;
 	workspace_path: string | null = null;
@@ -46,5 +47,6 @@ export class Context {
 		this.turn = 0;
 		this.running = false;
 		this.lastVisibleAt = Date.now();
+		this.contextClearedAt = Date.now();
 	}
 }

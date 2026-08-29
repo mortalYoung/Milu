@@ -1,11 +1,14 @@
+import { watch } from "node:fs";
 import { homedir } from "node:os";
 import { sep } from "node:path";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import { getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
 import { ApplicationMenu, BrowserView, BrowserWindow } from "electrobun/main";
 import type { AppRPCSchema } from "../shared/rpc";
+import { loadCustomCommands, mergeCommandDefinitions } from "./commands/custom";
 import { defaultCommands } from "./commands/defaults";
 import { createCommandRegistry } from "./commands/registry";
+import { scaffoldCommandsDir } from "./commands/scaffold";
 import type { CommandContext } from "./commands/types";
 import { dailyActivity } from "./core/activity";
 import { type AgentHandle, createAgent } from "./core/agent";
@@ -35,7 +38,7 @@ import {
 	readPartnerReadAt,
 	recordPrompt,
 } from "./lib/partner-files";
-import { getPartnerDir, loadSettings, type Settings, saveSettings, sendMessageIntervalMs } from "./lib/settings";
+import { commandsDir, getPartnerDir, loadSettings, type Settings, saveSettings, sendMessageIntervalMs } from "./lib/settings";
 import { createPartner, deletePartner, listPartners, PartnerError, type PartnerInput } from "./partners";
 import type { EscalationDecision, EscalationRequest, SandboxMode } from "./permission";
 import { isSandboxMode, SandboxManager } from "./permission";
@@ -43,14 +46,52 @@ import { createSessionStore, type SessionScope } from "./persist";
 import { runEscalatedBash } from "./tools";
 
 await loadCredentials();
-for (const def of (await loadSettings()).customProviders ?? []) registerCustomProvider(def);
+const startupSettings = await loadSettings();
+for (const def of startupSettings.customProviders ?? []) registerCustomProvider(def);
 
 const session = createSessionStore();
 const sandbox = new SandboxManager();
 
 const commandRegistry = createCommandRegistry();
-for (const def of defaultCommands()) commandRegistry.register(def);
+{
+	await scaffoldCommandsDir(commandsDir(startupSettings));
+	const { defs: customDefs, errors: customErrors } = await loadCustomCommands(commandsDir(startupSettings));
+	const merged = mergeCommandDefinitions(defaultCommands(), customDefs);
+	for (const e of [...customErrors, ...merged.errors]) console.error("custom command:", e);
+	commandRegistry.replace(merged.defs);
+}
+
+let commandsReloadTimer: ReturnType<typeof setTimeout> | undefined;
+let commandsWatcher: ReturnType<typeof watch> | undefined;
+
+async function reloadCommands() {
+	const settings = await loadSettings();
+	const dir = commandsDir(settings);
+	armCommandsWatch(dir);
+	await scaffoldCommandsDir(dir);
+	const { defs, errors } = await loadCustomCommands(dir);
+	const merged = mergeCommandDefinitions(defaultCommands(), defs);
+	for (const e of errors) console.error("custom command:", e);
+	for (const e of merged.errors) console.error("custom command:", e);
+	commandRegistry.replace(merged.defs);
+	rpc.send.command_update({});
+}
+
+function scheduleCommandsReload() {
+	clearTimeout(commandsReloadTimer);
+	commandsReloadTimer = setTimeout(() => void reloadCommands(), 300);
+}
+
+function armCommandsWatch(dir: string) {
+	try {
+		commandsWatcher?.close();
+	} catch {}
+	commandsWatcher = watch(dir, (_event, filename) => {
+		if (typeof filename === "string" && filename.endsWith(".ts")) scheduleCommandsReload();
+	});
+}
 const pendingCommandIds = new Set<string>();
+const runningCommandPartners = new Set<string>();
 const pendingSandboxConfirms = new Map<string, { resolve: (decision: EscalationDecision) => void; to: SandboxMode; dir: string; partner: string }>();
 
 const respondedSandboxIds = new Set<string>();
@@ -266,18 +307,33 @@ function commandContextFor(entry: PartnerAgent): CommandContext {
 		scope: entry.scope,
 		agent: {
 			isStreaming: entry.agent.isStreaming,
+			context: entry.agent.context,
 			reset: () => entry.agent.reset(),
 			setWorkspace: (path) => entry.agent.setWorkspace(path),
 			permission: entry.agent.permission,
+			snapshot: () =>
+				projectSnapshot(entry.agent.context, {
+					session,
+					dir: entry.dir,
+					systemPrompt: entry.agent.systemPrompt,
+					tools: entry.agent.tools,
+				}),
+			prompt: (text) => entry.agent.chatAndWait(text),
+			sendMessage: (text) => entry.agent.sendMessage(text),
+			setModel: (model) => entry.agent.setModel(model),
+			setSandboxMode: (mode) => entry.agent.setSandboxMode(mode),
+			setThinkingLevel: (level) => entry.agent.setThinkingLevel(level),
 		},
 		persistWorkspace: (path) => persistWorkspace(entry.dir, path),
 		runManualCompact: () => runManualCompact(entry),
 		onCommandRun: (commandId) => {
 			pendingCommandIds.add(commandId);
+			runningCommandPartners.add(entry.profile.name);
 			rpc.send.command_update({});
 		},
 		onCommandDone: (commandId) => {
 			pendingCommandIds.delete(commandId);
+			runningCommandPartners.delete(entry.profile.name);
 			rpc.send.command_update({});
 		},
 	};
@@ -338,7 +394,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				const partners = await Promise.all(
 					[...agents.entries()].map(async ([name, pe]) => {
 						const entry = await pe;
-						return { name, streaming: entry.agent.isStreaming && pendingEscalationCount(name) === 0 };
+						return { name, streaming: entry.agent.isStreaming && pendingEscalationCount(name) === 0, writing: entry.agent.isStreaming || runningCommandPartners.has(name) };
 					}),
 				);
 				const addedProviders = (await loadSettings()).providers ?? [];
@@ -453,6 +509,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				const entry = target ? await agents.get(target.name) : undefined;
 				if (!target || !entry) return { ok: false, error: "no partner selected" };
 				if (entry.agent.isStreaming) return { ok: false, error: "agent is running" };
+				if (runningCommandPartners.has(target.name)) return { ok: false, error: "command is running" };
 				const ctx = commandContextFor(entry);
 				try {
 					const execution = await commandRegistry.execute(line, ctx);
@@ -533,6 +590,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					for (const gone of prevDefs.filter((d) => !nextDefs.some((n) => n.id === d.id))) {
 						unregisterCustomProvider(gone.id);
 					}
+					await reloadCommands();
 					return { ok: true };
 				} catch (error) {
 					console.error("update_settings failed:", error);
@@ -643,6 +701,8 @@ ApplicationMenu.setApplicationMenu([
 		submenu: [{ role: "minimize" }, { role: "zoom" }],
 	},
 ]);
+
+armCommandsWatch(commandsDir(startupSettings));
 
 new BrowserWindow({
 	title: "Coding",

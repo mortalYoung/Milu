@@ -109,6 +109,9 @@ export function App() {
 	rpc.addMessageListener("command_update", () => {
 		// command/run + command/done are persisted; the command row flips running → success/error.
 		void session.refreshHistory();
+		void commands.refresh();
+		status.calibrate();
+		void metrics.refresh();
 	});
 
 	// ————— user input —————

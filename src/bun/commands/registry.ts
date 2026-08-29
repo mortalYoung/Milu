@@ -1,6 +1,6 @@
 import type { CommandDescriptor, CommandResult } from "../../shared/rpc";
 import { parseCommand } from "./parse";
-import type { CommandContext, CommandDefinition } from "./types";
+import { type CommandContext, type CommandDefinition, commandUtilsFrom } from "./types";
 
 export interface CommandExecution {
 	commandId: string;
@@ -9,8 +9,8 @@ export interface CommandExecution {
 
 export interface CommandRegistry {
 	register(def: CommandDefinition): void;
+	replace(definitions: CommandDefinition[]): void;
 	list(): CommandDescriptor[];
-	/** Returns undefined for parse failures / unknown commands (nothing is logged). */
 	execute(line: string, ctx: CommandContext): Promise<CommandExecution | undefined>;
 }
 
@@ -23,6 +23,10 @@ export function createCommandRegistry(): CommandRegistry {
 			if (definitions.has(def.name)) throw new Error(`command /${def.name} already registered`);
 			definitions.set(def.name, def);
 		},
+		replace(defs) {
+			definitions.clear();
+			for (const def of defs) definitions.set(def.name, def);
+		},
 		list() {
 			return [...definitions.values()].map(({ name, description, kind, hint }) => ({ name, description, kind, ...(hint ? { hint } : {}) }));
 		},
@@ -34,7 +38,14 @@ export function createCommandRegistry(): CommandRegistry {
 			await ctx.scope.appendCommandRun({ commandId, name: def.name, ...(def.recordInput !== false && parsed.rawInput.trim() ? { args: parsed.rawInput.trim() } : {}) }, Date.now());
 			ctx.onCommandRun(commandId);
 			try {
-				const result = await def.handler({ commandId, ctx, rawInput: parsed.rawInput, signal: new AbortController().signal });
+				const result = await def.handler({
+					commandId,
+					ctx,
+					rawInput: parsed.rawInput,
+					signal: new AbortController().signal,
+					context: ctx.agent.context,
+					utils: commandUtilsFrom(ctx),
+				});
 				await ctx.scope.appendCommandDone({ commandId, kind: result.kind, ...(result.text ? { text: result.text } : {}) }, Date.now());
 				ctx.onCommandDone(commandId);
 				return { commandId, result };

@@ -1,14 +1,39 @@
-import type { CommandKind, CommandResult } from "../../shared/rpc";
+import type { CommandKind, CommandResult, ContextSnapshot, SandboxMode, ThinkingLevel } from "../../shared/rpc";
+import type { Permission } from "../permission";
 import type { SessionScope } from "../persist";
 
-/** The slice of PartnerAgent default command handlers need (keeps commands independent of index.ts). */
+export interface ReadonlyContext {
+	readonly turn: number;
+	readonly running: boolean;
+	readonly lastVisibleAt: number;
+	readonly lastTurnEndAt: number;
+	readonly storage_path: string | null;
+	readonly workspace_path: string | null;
+	readonly sandbox_mode: SandboxMode;
+	readonly model: { provider: string; modelId?: string } | null;
+	readonly thinkingLevel: ThinkingLevel;
+	composeSystemPrompt(): string;
+	visibleElapsedMs(): number;
+}
+
+export interface CommandUtils {
+	prompt(text: string): Promise<{ ok: boolean; error?: string }>;
+	snapshot(): Promise<ContextSnapshot>;
+	sendMessage(text: string): Promise<void>;
+}
+
 export interface CommandAgentSurface {
 	readonly isStreaming: boolean;
+	readonly context: ReadonlyContext;
 	reset(): void;
 	setWorkspace(path: string | null): void;
-	readonly permission: {
-		setWorkspace(path: string): { allowed: true; resolved: string } | { allowed: false; reason: string };
-	};
+	readonly permission: Permission;
+	snapshot(): Promise<ContextSnapshot>;
+	prompt(text: string): Promise<{ ok: boolean; error?: string }>;
+	sendMessage(text: string): Promise<void>;
+	setModel(model: { provider: string; modelId?: string } | null): void;
+	setSandboxMode(mode: SandboxMode): void;
+	setThinkingLevel(level: ThinkingLevel): void;
 }
 
 export interface CommandContext {
@@ -25,18 +50,25 @@ export interface CommandContext {
 export interface CommandInvocation {
 	commandId: string;
 	ctx: CommandContext;
-	/** Raw text after the command name, including the separating whitespace. */
 	rawInput: string;
 	signal: AbortSignal;
+	context: ReadonlyContext;
+	utils: CommandUtils;
 }
 
 export interface CommandDefinition {
 	name: string;
 	description: string;
 	kind: CommandKind;
-	/** leadingInput commands: hint shown after the command name. */
 	hint?: string;
-	/** Whether rawInput is recorded in command/run. Default true. */
 	recordInput?: boolean;
 	handler: (invocation: CommandInvocation) => Promise<CommandResult>;
+}
+
+export function commandUtilsFrom(ctx: CommandContext): CommandUtils {
+	return {
+		prompt: (text) => ctx.agent.prompt(text),
+		snapshot: () => ctx.agent.snapshot(),
+		sendMessage: (text) => ctx.agent.sendMessage(text),
+	};
 }

@@ -18,11 +18,24 @@ export interface ContextSnapshotDeps {
 export async function projectSnapshot(ctx: Context, deps: ContextSnapshotDeps): Promise<ContextSnapshot> {
 	const entries = deps.dir ? await deps.session.rawEntries(deps.dir) : [];
 	const surface: Surface = deps.dir ? await deps.session.surface(deps.dir) : { nodes: [], replaceGeneration: 0 };
-	const usage = lastTrajectoryUsage(entries);
+	let usage = lastTrajectoryUsage(entries);
+	let cleared = false;
+	if (usage && ctx.contextClearedAt > 0) {
+		let lastUsageTime = 0;
+		for (let i = entries.length - 1; i >= 0; i--) {
+			const e = entries[i];
+			if (e.type === "message" && e.message.role === "assistant" && e.message.usage) {
+				lastUsageTime = e.timestamp ?? 0;
+				break;
+			}
+		}
+		cleared = lastUsageTime < ctx.contextClearedAt;
+		if (cleared) usage = null;
+	}
 	const used = usage ? usage.input + usage.cacheRead + usage.cacheWrite : 0;
 	const window = contextWindow(ctx.model ?? undefined);
 	const hasAgent = deps.systemPrompt !== undefined && deps.tools !== undefined;
-	const breakdown = hasAgent ? priceSurface(deps.systemPrompt!, deps.tools!, entries, surface) : null;
+	const breakdown = hasAgent && !cleared ? priceSurface(deps.systemPrompt!, deps.tools!, entries, surface) : null;
 	let projectedTokens: number | undefined;
 	if (hasAgent && usage && breakdown) {
 		let lastUsageIdx = -1;

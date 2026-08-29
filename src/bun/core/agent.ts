@@ -35,6 +35,8 @@ export interface AgentHandle {
 	readonly runtimeStats: SessionStats["runtime"];
 	readonly tools: RequestTool[];
 	chat: (text: string) => Promise<void>;
+	chatAndWait: (text: string) => Promise<{ ok: boolean; error?: string }>;
+	sendMessage: (text: string) => Promise<void>;
 	continue: () => Promise<void>;
 	readonly permission: Permission;
 	stop: () => void;
@@ -298,6 +300,11 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 					.then(() => {
 						bridge.onTrajectoryUpdate();
 						bridge.onEnd(agent.state.errorMessage);
+						if (pendingChatWait) {
+							const pending = pendingChatWait;
+							pendingChatWait = null;
+							pending.resolve({ ok: !agent.state.errorMessage, error: agent.state.errorMessage ?? undefined });
+						}
 					});
 			default:
 				break;
@@ -338,6 +345,21 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		}
 
 		await agent.prompt(text);
+	}
+
+	let pendingChatWait: { resolve: (result: { ok: boolean; error?: string }) => void } | null = null;
+
+	async function promptAndWait(text: string): Promise<{ ok: boolean; error?: string }> {
+		if (text.trim() === "") return { ok: false, error: "empty message" };
+		await persistUser(text);
+		ctx.markUserMessage();
+		if (ctx.running) return { ok: false, error: "agent is running" };
+		ctx.setRunning(true);
+		const result = new Promise<{ ok: boolean; error?: string }>((resolve) => {
+			pendingChatWait = { resolve };
+		});
+		void runPrompt(text).catch(() => queueFollowUp(text));
+		return result;
 	}
 
 	return {
@@ -414,6 +436,12 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			}
 			ctx.setRunning(true);
 			void runPrompt(text).catch(() => queueFollowUp(text));
+		},
+		chatAndWait: promptAndWait,
+		async sendMessage(text: string) {
+			const timestamp = Date.now();
+			await deps.session.appendSendMessage(text, { toolCallId: "command" }, timestamp);
+			deliverVisible(text, timestamp);
 		},
 		stop() {
 			agent.abort();

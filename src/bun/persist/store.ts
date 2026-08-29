@@ -438,14 +438,13 @@ export function createSessionStore(): SessionStore {
 						{
 							id: entry.id,
 							kind: "command",
-							text: `/${name}${typeof data.args === "string" && data.args ? ` ${data.args}` : ""}`,
+							text: name,
 							time: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
 							command: {
 								commandId: String(data.commandId),
 								name,
 								...(typeof data.args === "string" ? { args: data.args } : {}),
 								status: done ? done.kind : "running",
-								...(done?.text ? { text: done.text } : {}),
 							},
 						},
 					];

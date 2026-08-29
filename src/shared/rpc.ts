@@ -254,7 +254,7 @@ export type AppRPCSchema = __schema<{
 
 					models: { provider: string; models: { id: string; name: string }[] }[];
 
-					partners: { name: string; streaming: boolean }[];
+					partners: { name: string; streaming: boolean; writing: boolean }[];
 				};
 			};
 

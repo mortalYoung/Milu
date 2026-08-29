@@ -5,6 +5,8 @@
  * agent = letter paper + dashed postmark + markdown body + signature line; running indicator = a "speaking"
  * letter bubble at the end (three ink dots + signature line); messages arriving mid-run render above it.
  */
+
+import { Check } from "lucide-solid";
 import { type Accessor, createEffect, createMemo, createSignal, For, onCleanup } from "solid-js";
 import { AnimatePresence, Motion, MotionConfigProvider } from "solid-motion";
 import type { EscalationStatus, SandboxMode } from "../../shared/rpc";
@@ -26,7 +28,6 @@ export interface CommandInfo {
 	name: string;
 	args?: string;
 	status: "running" | "success" | "error" | "interrupted";
-	text?: string;
 }
 
 export interface Entry {
@@ -301,6 +302,7 @@ export function Transcript(props: {
 	// scroll). Keeping older blocks unrendered avoids the O(n) markdown+shiki cost of rendering
 	// the whole history at once — entries stay fully loaded in memory; only the DOM is windowed.
 	const [windowStart, setWindowStart] = createSignal(0);
+	const [expandedCommand, setExpandedCommand] = createSignal<number | null>(null);
 	// Whether the scrollbar sits at the bottom: auto-scroll on new content only then (scroll
 	// anchoring — a user reading older messages is never yanked to the bottom).
 	let atBottom = true;
@@ -521,21 +523,32 @@ export function Transcript(props: {
 								return <div class="sys">{e.text}</div>;
 							}
 							if (e.kind === "command" && e.command) {
+								const args = e.command.args;
+								const expanded = expandedCommand() === e.id;
 								return (
-									<div class="msg-command" id={"entry-" + e.id}>
+									<div
+										class={"msg-command" + (e.command.status === "success" ? " ok" : "") + (args ? " has-args" : "") + (expanded ? " expanded" : "")}
+										id={"entry-" + e.id}
+										onClick={args ? () => setExpandedCommand(expanded ? null : e.id) : undefined}
+										role={args ? "button" : undefined}
+										aria-expanded={args ? expanded : undefined}
+									>
 										<div class="msg-command-head">
-											<span class="msg-command-name">/{e.command.name}</span>
-											<span class={"msg-command-status " + e.command.status}>{e.command.status}</span>
+											<span class="msg-command-name">{e.command.name}</span>
+											<span class={"msg-command-status " + e.command.status}>
+												{e.command.status === "success" ? <Check size={12} /> : null}
+												{e.command.status === "error" ? "error" : null}
+												{e.command.status === "interrupted" ? "interrupted" : null}
+												{e.command.status === "running" ? (
+													<span class="msg-command-running">
+														<span class="work-dot" />
+														<span class="work-dot" />
+														<span class="work-dot" />
+													</span>
+												) : null}
+											</span>
 										</div>
-										{e.command.args ? <div class="msg-command-args">{e.command.args}</div> : null}
-										{e.command.text ? <div class="msg-command-text">{e.command.text}</div> : null}
-										{e.command.status === "running" ? (
-											<div class="msg-command-running">
-												<span class="work-dot" />
-												<span class="work-dot" />
-												<span class="work-dot" />
-											</div>
-										) : null}
+										{expanded && args ? <div class="msg-command-args">{args}</div> : null}
 									</div>
 								);
 							}

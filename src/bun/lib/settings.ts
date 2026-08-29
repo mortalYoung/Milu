@@ -39,12 +39,14 @@ export interface Settings {
 	toastPlacement?: ToastPlacement;
 	/** Seconds between visible send_message heartbeats during a run; null/undefined = only first and last. */
 	sendMessageIntervalSec?: number | null;
+	commands_path?: string;
 }
 
 const DEFAULT_SETTINGS: Settings = {
 	partner_profile_path: "~/.partner/",
 	detect_instructions_file: "AGENTS.md",
 	defaultSandboxMode: "workspace-write",
+	commands_path: "~/.config/letters/commands",
 	theme: "system",
 	toastPlacement: "bottomcenter",
 };
@@ -85,4 +87,10 @@ export function partnerRoot(settings: Settings): string {
 
 export function getPartnerDir(settings: Settings, name: string): string {
 	return join(partnerRoot(settings), name);
+}
+
+const DEFAULT_COMMANDS_PATH = "~/.config/letters/commands";
+
+export function commandsDir(settings: Settings): string {
+	return expandHome(settings.commands_path?.trim() ? settings.commands_path : DEFAULT_COMMANDS_PATH);
 }
