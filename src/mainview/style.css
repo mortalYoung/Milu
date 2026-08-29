@@ -457,7 +457,7 @@ body::before {
 		@apply relative flex-1 flex min-h-0;
 	}
 	.chat-window {
-		@apply flex-1 flex flex-col min-w-0;
+		@apply relative flex-1 flex flex-col min-w-0;
 	}
 	/* Envelope header: 72px, hairline on top and bottom, centered name row */
 	.chat-header {
@@ -772,27 +772,60 @@ body::before {
 	.conv-unread-dot {
 		@apply inline-block size-[6px] shrink-0 rounded-full bg-seal;
 	}
-	/* Toast host: fixed stack of transient ink pills; placement + entry animation follow the setting */
 	.toast-host {
-		@apply fixed z-[60] flex flex-col gap-2 pointer-events-none;
+		@apply absolute z-50 flex flex-col gap-2 pointer-events-none;
 	}
 	.toast-host-topcenter {
-		@apply top-6 left-1/2 -translate-x-1/2 items-center;
+		@apply top-[88px] left-1/2 -translate-x-1/2 items-center;
 	}
 	.toast-host-topright {
-		@apply top-6 right-6 items-end;
+		@apply top-[88px] right-6 items-end;
 	}
 	.toast-host-bottomcenter {
-		@apply bottom-6 left-1/2 -translate-x-1/2 items-center;
+		@apply bottom-[72px] left-1/2 -translate-x-1/2 items-center;
 	}
 	.toast-host-bottomright {
-		@apply bottom-6 right-6 items-end;
+		@apply bottom-[72px] right-6 items-end;
 	}
 	.toast {
-		@apply pointer-events-auto cursor-pointer rounded-full bg-ink px-4 py-2 text-[12px] text-letter shadow-md;
+		@apply pointer-events-auto;
+	}
+	.toast--tooltip {
+		@apply cursor-pointer rounded-full bg-ink px-3.5 py-1.5 text-[11px] text-letter shadow-sm;
+	}
+	.toast--tooltip .toast-body {
+		@apply text-letter;
+	}
+	.toast--notification {
+		@apply flex items-center gap-3 rounded-[8px] border border-hairline bg-paper px-3.5 py-3 text-ink shadow-md;
+	}
+	.toast-content {
+		@apply flex min-w-0 flex-1 flex-col gap-0.5;
+	}
+	.toast-content--actionable {
+		cursor: pointer;
+	}
+	.toast-title {
+		@apply text-[13px] font-medium leading-tight;
+	}
+	.toast-body {
+		@apply text-[12px] leading-snug text-muted;
 	}
 	.toast-error {
 		@apply bg-seal text-paper;
+	}
+	.toast-error .toast-title,
+	.toast-error .toast-body {
+		@apply text-paper;
+	}
+	.toast-error .toast-body {
+		opacity: 0.85;
+	}
+	.toast-close {
+		@apply flex size-7 shrink-0 items-center justify-center rounded-[6px] text-muted transition-colors hover:bg-paper-hover hover:text-ink;
+	}
+	.toast-error .toast-close {
+		@apply text-paper hover:bg-paper/20 hover:text-paper;
 	}
 	.toast-in-top {
 		animation: toast-in-top 0.2s ease-out;

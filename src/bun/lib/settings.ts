@@ -37,6 +37,7 @@ export interface Settings {
 	theme?: ThemeMode;
 	/** Where toast notifications appear. */
 	toastPlacement?: ToastPlacement;
+	toastDurationMs?: number;
 	/** Seconds between visible send_message heartbeats during a run; null/undefined = only first and last. */
 	sendMessageIntervalSec?: number | null;
 	commands_path?: string;
@@ -50,6 +51,7 @@ const DEFAULT_SETTINGS: Settings = {
 	commands_path: "~/.config/letters/commands",
 	theme: "system",
 	toastPlacement: "bottomcenter",
+	toastDurationMs: 4000,
 };
 
 const SETTINGS_PATH = join(homedir(), ".config", "letters", "settings.json");

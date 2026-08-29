@@ -319,6 +319,7 @@ export type AppRPCSchema = __schema<{
 
 						theme?: ThemeMode;
 						toastPlacement?: ToastPlacement;
+						toastDurationMs?: number;
 						sendMessageIntervalSec?: number | null;
 						commands_path?: string;
 						retry?: { maxRetries?: number; baseDelayMs?: number };
@@ -342,6 +343,7 @@ export type AppRPCSchema = __schema<{
 
 						theme?: ThemeMode;
 						toastPlacement?: ToastPlacement;
+						toastDurationMs?: number;
 						sendMessageIntervalSec?: number | null;
 						commands_path?: string;
 						retry?: { maxRetries?: number; baseDelayMs?: number };

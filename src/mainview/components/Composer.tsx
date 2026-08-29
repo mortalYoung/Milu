@@ -340,7 +340,7 @@ export function Composer(props: {
 	const modelLabel = () => {
 		const m = props.model;
 		if (!m?.modelId) return "default model";
-		return `${m.provider}/${m.modelId}`;
+		return m.modelId;
 	};
 
 	return (
@@ -430,7 +430,7 @@ export function Composer(props: {
 									title="Model / Effort (per partner)"
 								>
 									<span class="truncate">
-										{modelLabel()} · {props.thinkingLevel}
+										{modelLabel()}·{props.thinkingLevel}
 									</span>
 									<svg
 										xmlns="http://www.w3.org/2000/svg"

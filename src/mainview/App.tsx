@@ -22,7 +22,7 @@ import { rpc } from "./lib/rpc";
 import { createSession } from "./lib/session";
 import { createSettings } from "./lib/settings";
 import { createShell } from "./lib/shell";
-import { createToast } from "./lib/toast";
+import { createToast, DEFAULT_TOAST_DURATION_MS } from "./lib/toast";
 import { createTrajectory } from "./lib/trajectory";
 import { createUnread } from "./lib/unread";
 import { ConversationPage } from "./pages/ConversationPage";
@@ -42,7 +42,11 @@ export function App() {
 	const commands = createCommandDirectory(rpc);
 	const shell = createShell();
 	const settings = createSettings(rpc);
-	const toast = createToast();
+	const toast = createToast(() => settings.settings()?.toastDurationMs ?? DEFAULT_TOAST_DURATION_MS);
+	const openPartner = (name: string) => {
+		const p = session.partners().find((x) => x.name === name);
+		if (p) session.select(p);
+	};
 	const unread = createUnread(
 		rpc,
 		() => session.selected(),
@@ -63,7 +67,20 @@ export function App() {
 		// restarts — the entry is already on disk before this event lands.
 		if (errForSelected) void session.refreshHistory();
 		if (partner !== session.selected()) {
-			toast.push(err ? `${partner} ended with an error` : `${partner} conversation finished`, err ? "error" : "default");
+			toast.push(
+				err
+					? {
+							title: `${partner} ended with an error`,
+							body: "Click to open this chat and review",
+							onClick: () => openPartner(partner),
+						}
+					: {
+							title: `${partner} finished`,
+							body: "Click to view the conversation",
+							onClick: () => openPartner(partner),
+						},
+				err ? "error" : "default",
+			);
 		}
 		session.bump();
 		status.calibrate();
@@ -222,6 +239,7 @@ export function App() {
 					workingFor={status.workingFor}
 					draft={session.selected() ? (composer.drafts()[session.selected()!] ?? "") : ""}
 					onDraftChange={composer.change}
+					toastHost={<ToastHost toasts={toast.toasts} placement={settings.settings()?.toastPlacement ?? "bottomcenter"} onDismiss={toast.dismiss} />}
 				/>
 			</main>
 
@@ -245,7 +263,6 @@ export function App() {
 			<PartnerDetailsDialog partner={shell.detailsPartner()} onOpenChange={(open) => !open && shell.setDetailsPartner(null)} />
 
 			<TrajectoryDrawer open={trajectory.open()} onOpenChange={trajectory.setOpen} records={trajectory.records()} />
-			<ToastHost toasts={toast.toasts} placement={settings.settings()?.toastPlacement ?? "bottomcenter"} onDismiss={toast.dismiss} />
 		</div>
 	);
 }

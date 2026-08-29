@@ -12,6 +12,7 @@ export interface SettingsData {
 	customProviders?: CustomProvider[];
 	theme?: ThemeMode;
 	toastPlacement?: ToastPlacement;
+	toastDurationMs?: number;
 	sendMessageIntervalSec?: number | null;
 	commands_path?: string;
 	retry?: { maxRetries?: number; baseDelayMs?: number };
@@ -44,6 +45,7 @@ const DEFAULTS = {
 	theme: "system" as ThemeMode,
 	sandbox: "workspace-write" as SandboxMode,
 	toastPlacement: "bottomcenter" as ToastPlacement,
+	toastDurationMs: 4000,
 };
 
 const EMPTY_CP = { id: "", name: "", baseUrl: "", models: [{ id: "", window: "" }], window: "", maxTokens: "" };
@@ -160,6 +162,7 @@ export function SettingsView(props: {
 	const [defaultSandboxMode, setDefaultSandboxMode] = createSignal<SandboxMode>("workspace-write");
 	const [theme, setTheme] = createSignal<ThemeMode>("system");
 	const [toastPlacement, setToastPlacement] = createSignal<ToastPlacement>("bottomcenter");
+	const [toastDurationMs, setToastDurationMs] = createSignal("4000");
 	const [deliveryMode, setDeliveryMode] = createSignal<"unlimited" | "custom">("unlimited");
 	const [deliverySec, setDeliverySec] = createSignal("20");
 	const [added, setAdded] = createSignal<string[]>([]);
@@ -204,6 +207,9 @@ export function SettingsView(props: {
 	if (props.settings && props.settings.toastPlacement !== undefined && toastPlacement() !== props.settings.toastPlacement) {
 		setToastPlacement(props.settings.toastPlacement);
 	}
+	if (props.settings && props.settings.toastDurationMs !== undefined && toastDurationMs() === "4000") {
+		setToastDurationMs(String(props.settings.toastDurationMs));
+	}
 	if (props.settings && typeof props.settings.sendMessageIntervalSec === "number" && deliveryMode() === "unlimited") {
 		setDeliveryMode("custom");
 		setDeliverySec(String(props.settings.sendMessageIntervalSec));
@@ -233,6 +239,7 @@ export function SettingsView(props: {
 		customProviders: customProviders() ?? undefined,
 		theme: theme(),
 		toastPlacement: toastPlacement(),
+		toastDurationMs: parsePositiveInt(toastDurationMs(), DEFAULTS.toastDurationMs),
 		sendMessageIntervalSec: deliveryMode() === "unlimited" ? null : parsedDeliverySec(),
 		commands_path: commandsPath().trim() || undefined,
 		retry: {
@@ -674,6 +681,33 @@ export function SettingsView(props: {
 						{ value: "bottomright", label: "bottom right" },
 					]}
 				/>
+			),
+		},
+		{
+			id: "toastDuration",
+			title: "Toast duration",
+			desc: "Milliseconds before a toast auto-closes; 0 keeps it until dismissed.",
+			cats: ["general"],
+			modified: () => parsePositiveInt(toastDurationMs(), DEFAULTS.toastDurationMs) !== DEFAULTS.toastDurationMs,
+			control: () => (
+				<TextField class="h-[32px] w-[110px] shrink-0 gap-0" value={toastDurationMs()} onChange={setToastDurationMs}>
+					<TextFieldInput
+						type="number"
+						min={0}
+						step={500}
+						variant="compact"
+						title="Toast duration (ms)"
+						aria-label="Toast duration (ms)"
+						onBlur={() => {
+							const next = parsePositiveInt(toastDurationMs(), DEFAULTS.toastDurationMs);
+							setToastDurationMs(String(next));
+							void persist({ ...currentSettings(), toastDurationMs: next });
+						}}
+						onKeyDown={(e) => {
+							if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
+						}}
+					/>
+				</TextField>
 			),
 		},
 	];

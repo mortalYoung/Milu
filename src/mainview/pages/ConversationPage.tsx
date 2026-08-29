@@ -3,7 +3,7 @@
  * The header title follows the selected Partner.
  */
 import { Activity, ListTree, PanelLeftClose, PanelLeftOpen } from "lucide-solid";
-import { type Accessor, createEffect, createSignal, onCleanup } from "solid-js";
+import { type Accessor, createEffect, createSignal, type JSX, onCleanup } from "solid-js";
 import { AnimatePresence, Motion } from "solid-motion";
 import type { CommandDescriptor, CommandExecution, ContextUsage, SandboxMode, SessionStats, ThinkingLevel } from "../../shared/rpc";
 import { Button } from "../components/Button";
@@ -70,6 +70,7 @@ export function ConversationPage(props: {
 	/** The selected chat's saved draft (per-chat, restored on switch-back). */
 	draft: string;
 	onDraftChange: (text: string) => void;
+	toastHost?: JSX.Element;
 }) {
 	// Replies outline: hidden by default; the header outline icon toggles it
 	const [outlineOpen, setOutlineOpen] = createSignal(false);
@@ -211,6 +212,7 @@ export function ConversationPage(props: {
 						<p class="eyebrow">the directory is on the left</p>
 					</div>
 				)}
+				{props.toastHost}
 			</div>
 
 			{/* Replies outline: floating index, hidden by default; the header outline icon toggles it */}
