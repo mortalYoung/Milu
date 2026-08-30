@@ -2,7 +2,7 @@
  * PartnerDetailsDialog — read a partner like a letter (direction C: salutation / body / P.S.).
  * A blank section stays visibly blank — writing nothing is a valid choice, shown as such.
  */
-import { createResource, Show } from "solid-js";
+import { createResource, For, Show } from "solid-js";
 import { renderMarkdown } from "../lib/markdown";
 import { rpc } from "../lib/rpc";
 import { ActivityHeatmap, HEATMAP_WEEKS } from "./ActivityHeatmap";
@@ -21,6 +21,10 @@ export function PartnerDetailsDialog(props: { partner: PartnerItem | null; onOpe
 	const [days] = createResource(
 		() => (p() ? p()!.name : null),
 		async (name) => (await rpc.request.partner_activity({ name, weeks: HEATMAP_WEEKS })).days,
+	);
+	const [skills] = createResource(
+		() => (p() ? p()!.name : null),
+		async (name) => (await rpc.request.skill_list({ partner: name })).skills,
 	);
 
 	return (
@@ -63,6 +67,21 @@ export function PartnerDetailsDialog(props: { partner: PartnerItem | null; onOpe
 							<div class="letter-pps">
 								<span class="letter-ps-label leading-[10px]">P.P.S.</span>
 								<ActivityHeatmap days={days()!} />
+							</div>
+						</Show>
+
+						<Show when={skills() && skills()!.length > 0}>
+							<div class="letter-pps">
+								<span class="letter-ps-label leading-[10px]">P.P.P.S.</span>
+								<ul class="mt-1 flex flex-col gap-1">
+									<For each={skills()}>
+										{(s) => (
+											<li class="font-mono text-[11px] text-ink-soft">
+												{s.name} <span class="text-muted">· {s.scope}</span>
+											</li>
+										)}
+									</For>
+								</ul>
 							</div>
 						</Show>
 

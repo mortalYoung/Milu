@@ -10,6 +10,7 @@ import { Check } from "lucide-solid";
 import { type Accessor, createEffect, createMemo, createSignal, For, onCleanup } from "solid-js";
 import { AnimatePresence, Motion, MotionConfigProvider } from "solid-motion";
 import type { EscalationStatus, SandboxMode } from "../../shared/rpc";
+import { Dialog, DialogContent, DialogTitle } from "../components/ui/dialog";
 import { renderMarkdown, renderMarkdownPlain } from "../lib/markdown";
 
 /** Sandbox escalation approval (kind "escalation"): the request payload + decision status. */
@@ -32,12 +33,13 @@ export interface CommandInfo {
 
 export interface Entry {
 	id: number;
-	kind: "user" | "agent" | "sys" | "sep" | "escalation" | "command";
+	kind: "user" | "agent" | "sys" | "sep" | "escalation" | "command" | "skill";
 	text: string;
 	time?: string;
 	error?: boolean;
 	escalation?: EscalationInfo;
 	command?: CommandInfo;
+	skill?: CommandInfo;
 }
 
 let nextId = 1;
@@ -60,6 +62,10 @@ export function makeEscalationEntry(item: { text: string; time: number; escalati
 
 export function makeCommandEntry(item: { text: string; time: number; command: CommandInfo }): Entry {
 	return { id: nextId++, kind: "command", text: item.text, time: fmtDateTime(new Date(item.time)), command: { ...item.command } };
+}
+
+export function makeSkillEntry(item: { text: string; time: number; skill: CommandInfo }): Entry {
+	return { id: nextId++, kind: "skill", text: item.text, time: fmtDateTime(new Date(item.time)), skill: { ...item.skill } };
 }
 
 export function makeSysEntry(text: string, error = false): Entry {
@@ -294,6 +300,7 @@ export function Transcript(props: {
 	locateFlashId?: Accessor<number | null>;
 	/** Respond to a pending sandbox escalation (inline Approve/Reject buttons). */
 	onEscalationRespond?: (id: string, approved: boolean) => void;
+	onSkillInspect?: (name: string) => Promise<string | null>;
 }) {
 	let container: HTMLElement | undefined;
 	let inner: HTMLDivElement | undefined;
@@ -303,6 +310,11 @@ export function Transcript(props: {
 	// the whole history at once — entries stay fully loaded in memory; only the DOM is windowed.
 	const [windowStart, setWindowStart] = createSignal(0);
 	const [expandedCommand, setExpandedCommand] = createSignal<number | null>(null);
+	const [skillDialog, setSkillDialog] = createSignal<{ name: string; content: string } | null>(null);
+	async function inspectSkill(name: string) {
+		const content = await props.onSkillInspect?.(name);
+		if (content != null) setSkillDialog({ name, content });
+	}
 	// Whether the scrollbar sits at the bottom: auto-scroll on new content only then (scroll
 	// anchoring — a user reading older messages is never yanked to the bottom).
 	let atBottom = true;
@@ -522,24 +534,28 @@ export function Transcript(props: {
 								}
 								return <div class="sys">{e.text}</div>;
 							}
-							if (e.kind === "command" && e.command) {
-								const args = e.command.args;
+							if ((e.kind === "command" || e.kind === "skill") && (e.command ?? e.skill)) {
+								const info = e.command ?? e.skill!;
+								const args = info.args;
 								const expanded = expandedCommand() === e.id;
 								return (
 									<div
-										class={"msg-command" + (e.command.status === "success" ? " ok" : "") + (args ? " has-args" : "") + (expanded ? " expanded" : "")}
+										class={
+											"msg-command" + (info.status === "success" ? " ok" : "") + (args ? " has-args" : "") + (expanded ? " expanded" : "") + (e.kind === "skill" ? " is-skill" : "")
+										}
 										id={"entry-" + e.id}
-										onClick={args ? () => setExpandedCommand(expanded ? null : e.id) : undefined}
-										role={args ? "button" : undefined}
+										onClick={e.kind === "skill" ? () => void inspectSkill(info.name) : args ? () => setExpandedCommand(expanded ? null : e.id) : undefined}
+										role={e.kind === "skill" || args ? "button" : undefined}
 										aria-expanded={args ? expanded : undefined}
 									>
 										<div class="msg-command-head">
-											<span class="msg-command-name">{e.command.name}</span>
-											<span class={"msg-command-status " + e.command.status}>
-												{e.command.status === "success" ? <Check size={12} /> : null}
-												{e.command.status === "error" ? "error" : null}
-												{e.command.status === "interrupted" ? "interrupted" : null}
-												{e.command.status === "running" ? (
+											{e.kind === "skill" ? <span class="msg-command-badge">skill</span> : null}
+											<span class="msg-command-name">{info.name}</span>
+											<span class={"msg-command-status " + info.status}>
+												{info.status === "success" ? <Check size={12} /> : null}
+												{info.status === "error" ? "error" : null}
+												{info.status === "interrupted" ? "interrupted" : null}
+												{info.status === "running" ? (
 													<span class="msg-command-running">
 														<span class="work-dot" />
 														<span class="work-dot" />
@@ -577,6 +593,15 @@ export function Transcript(props: {
 					</AnimatePresence>
 				</div>
 			</section>
+			<Dialog open={skillDialog() != null} onOpenChange={(open) => !open && setSkillDialog(null)}>
+				<DialogContent class="w-[560px] max-w-[560px] bg-paper p-0 gap-0">
+					<DialogTitle class="sr-only">{skillDialog()?.name ?? ""}</DialogTitle>
+					<div class="flex max-h-[70vh] flex-col gap-3 p-5">
+						<div class="font-mono text-[13px] font-medium text-ink">skill · {skillDialog()?.name}</div>
+						<div class="md overflow-y-auto" innerHTML={renderMarkdown(skillDialog()?.content ?? "")} />
+					</div>
+				</DialogContent>
+			</Dialog>
 		</MotionConfigProvider>
 	);
 }

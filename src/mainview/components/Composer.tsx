@@ -14,7 +14,7 @@
  */
 import { ArrowUp, SlidersHorizontal, Square } from "lucide-solid";
 import { createEffect, createMemo, createSignal, For, type JSX, onCleanup, Show } from "solid-js";
-import type { CommandDescriptor, CommandExecution, ContextUsage, SandboxMode, SessionStats, ThinkingLevel } from "../../shared/rpc";
+import type { CommandDescriptor, CommandExecution, ContextUsage, SandboxMode, SessionStats, SkillDescriptor, ThinkingLevel } from "../../shared/rpc";
 import { filterCommands } from "../lib/commands";
 import { formatWorkspacePath, shouldSendOnEnter } from "../lib/composer-input";
 import { detectTrigger, parseCommand } from "../lib/trigger";
@@ -75,6 +75,8 @@ export function Composer(props: {
 	/** The selected chat's saved draft (cleared + restored across chat switches, owned by the App). */
 	draft: string;
 	onDraftChange: (text: string) => void;
+	skills?: SkillDescriptor[];
+	onSkill?: (name: string) => Promise<{ ok: boolean; error?: string }>;
 }) {
 	const [text, setText] = createSignal(props.draft);
 	// The draft is per-chat: switching chats swaps the prop, loading the other chat's saved text
@@ -106,7 +108,16 @@ export function Composer(props: {
 	const [selectedIndex, setSelectedIndex] = createSignal(0);
 	const [claimed, setClaimed] = createSignal<CommandDescriptor | null>(null);
 	const [submitting, setSubmitting] = createSignal(false);
-	const menuItems = createMemo(() => filterCommands(props.commands, menuQuery()));
+	const menuItems = createMemo(() => {
+		const q = menuQuery();
+		const commands = filterCommands(props.commands, q);
+		const skillItems = (props.skills ?? [])
+			.filter((s) => s.userInvocable)
+			.map((s) => ({ name: `skill:${s.name}`, description: s.description, kind: "execute" as const, category: "skill" as const }))
+			.filter((s) => !q || s.name.startsWith(q) || s.name.includes(q))
+			.sort((a, b) => a.name.localeCompare(b.name));
+		return [...commands, ...skillItems];
+	});
 
 	// Run-settings panel: closed by default; the toggle icon left of the field opens it on demand.
 	const [panelOpen, setPanelOpen] = createSignal(false);
@@ -193,6 +204,19 @@ export function Composer(props: {
 		queueMicrotask(focusEnd);
 	}
 
+	async function executeSkill(name: string) {
+		if (submitting()) return;
+		setSubmitting(true);
+		setMenuOpen(false);
+		setClaimed(null);
+		try {
+			const res = await props.onSkill?.(name);
+			if (res?.ok) clearText();
+		} finally {
+			setSubmitting(false);
+		}
+	}
+
 	function pickCommand(index: number) {
 		const item = menuItems()[index];
 		if (!item) return;
@@ -204,6 +228,10 @@ export function Composer(props: {
 			setMenuOpen(false);
 			return;
 		}
+		if (item.category === "skill") {
+			void executeSkill(item.name.slice("skill:".length));
+			return;
+		}
 		void executeCommand(`/${item.name}`);
 	}
 
@@ -212,6 +240,12 @@ export function Composer(props: {
 		const value = text();
 		const trimmed = value.trim();
 		if (!trimmed) return;
+		const skillMatch = /^\/skill:([a-z0-9_-]+)$/.exec(trimmed);
+		if (skillMatch) {
+			setPanelOpen(false);
+			await executeSkill(skillMatch[1]);
+			return;
+		}
 		const parsed = parseCommand(trimmed);
 		const cmd = parsed ? props.commands.find((c) => c.name === parsed.name) : undefined;
 

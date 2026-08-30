@@ -48,7 +48,7 @@ function markerClass(record: TrajectoryRecord): string | null {
 		case "assistant":
 			return null;
 		case "user":
-			return "mq";
+			return record.skillName ? "mskill" : "mq";
 		case "toolResult":
 			return "mres";
 		case "modelChange":
@@ -82,7 +82,7 @@ function markerClass(record: TrajectoryRecord): string | null {
 function chipLabel(record: TrajectoryRecord): string {
 	switch (record.kind) {
 		case "user":
-			return "Q";
+			return record.skillName ? "SKILL" : "Q";
 		case "assistant":
 			return "MSG";
 		case "toolResult":

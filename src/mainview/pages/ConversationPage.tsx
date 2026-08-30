@@ -5,7 +5,7 @@
 import { Activity, ListTree, PanelLeftClose, PanelLeftOpen } from "lucide-solid";
 import { type Accessor, createEffect, createSignal, type JSX, onCleanup } from "solid-js";
 import { AnimatePresence, Motion } from "solid-motion";
-import type { CommandDescriptor, CommandExecution, ContextUsage, SandboxMode, SessionStats, ThinkingLevel } from "../../shared/rpc";
+import type { CommandDescriptor, CommandExecution, ContextUsage, SandboxMode, SessionStats, SkillDescriptor, ThinkingLevel } from "../../shared/rpc";
 import { Button } from "../components/Button";
 import { Composer } from "../components/Composer";
 import { ConversationList, type PartnerItem } from "../components/ConversationList";
@@ -71,6 +71,9 @@ export function ConversationPage(props: {
 	draft: string;
 	onDraftChange: (text: string) => void;
 	toastHost?: JSX.Element;
+	skills?: SkillDescriptor[];
+	onSkill?: (name: string) => Promise<{ ok: boolean; error?: string }>;
+	onSkillInspect?: (name: string) => Promise<string | null>;
 }) {
 	// Replies outline: hidden by default; the header outline icon toggles it
 	const [outlineOpen, setOutlineOpen] = createSignal(false);
@@ -183,6 +186,7 @@ export function ConversationPage(props: {
 							worker={props.selected}
 							locateFlashId={props.flashId}
 							onEscalationRespond={props.onEscalationRespond}
+							onSkillInspect={props.onSkillInspect}
 						/>
 						<Composer
 							busy={props.busy}
@@ -204,6 +208,8 @@ export function ConversationPage(props: {
 							stats={props.stats}
 							draft={props.draft}
 							onDraftChange={props.onDraftChange}
+							skills={props.skills}
+							onSkill={props.onSkill}
 						/>
 					</>
 				) : (

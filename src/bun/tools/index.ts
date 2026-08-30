@@ -5,12 +5,14 @@ import { loadSettings } from "../lib/settings";
 import type { SandboxMode } from "../permission";
 import { Permission } from "../permission";
 import type { SessionScope } from "../persist";
+import type { SkillDefinition, SkillSummary } from "../skills/types";
 import { createExecutionEnv, type SandboxedExecOptions } from "./execution-env";
 
 export interface ToolDeps {
 	store: SessionScope;
 	permission?: Permission;
 	onSetWorkspace?: (workspace: string) => { ok: true; path: string } | { ok: false; error: string };
+	skills?: { list(): Promise<SkillSummary[]>; get(name: string): Promise<SkillDefinition | undefined> };
 }
 
 const workspaceSchema = Type.Object({
@@ -148,9 +150,49 @@ export async function runEscalatedBash(command: string, mode: SandboxMode, deps:
 	return { text, exitCode, truncated: out.truncated };
 }
 
+const skillSchema = Type.Object({ name: Type.String({ description: "Kebab-case skill name to load, exactly as listed in <available_skills>." }) });
+
+type SkillDetails = { ok: boolean; error?: string };
+
+function skillTool(deps: ToolDeps): AgentTool<typeof skillSchema, SkillDetails> {
+	return {
+		name: "skill",
+		label: "Skill",
+		description:
+			"Load a skill's full instructions by its exact name from the <available_skills> catalog. Use it when a task matches one of the listed skills before or while doing the work.",
+		parameters: skillSchema,
+		executionMode: "sequential",
+		async execute(_toolCallId, { name }, _signal, _onUpdate) {
+			if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name)) {
+				return { content: [{ type: "text", text: `Error: invalid skill name "${name}".` }], details: { ok: false, error: "invalid-name" } };
+			}
+			if (!deps.skills) {
+				return { content: [{ type: "text", text: "Error: skills are not available in this session." }], details: { ok: false, error: "unavailable" } };
+			}
+			const def = await deps.skills.get(name);
+			if (!def) {
+				return { content: [{ type: "text", text: `Skill "${name}" is unknown or no longer available.` }], details: { ok: false, error: "not-found" } };
+			}
+			if (!def.invocation.modelInvocable) {
+				return { content: [{ type: "text", text: `Skill "${name}" is not available for model invocation.` }], details: { ok: false, error: "model-disabled" } };
+			}
+			const resources = def.path ? `<skill_resources>\n${def.path}\n</skill_resources>` : "<skill_resources>\n</skill_resources>";
+			const text = `<skill_content name="${def.name}">\n${resources}\n<skill_instructions>\n${def.content}\n</skill_instructions>\n</skill_content>`;
+			return { content: [{ type: "text", text }], details: { ok: true } };
+		},
+	};
+}
+
 export function createTools(deps: ToolDeps): AgentTool[] {
 	const env = createExecutionEnv("", deps.permission);
-	return [bindEnv(createReadTool(), env), bindEnv(createWriteTool(), env), bindEnv(createEditTool(), env), bindEnv(bashTool(deps), env), bindEnv(setWorkspaceTool(deps), env)];
+	return [
+		bindEnv(createReadTool(), env),
+		bindEnv(createWriteTool(), env),
+		bindEnv(createEditTool(), env),
+		bindEnv(bashTool(deps), env),
+		bindEnv(setWorkspaceTool(deps), env),
+		skillTool(deps),
+	];
 }
 
 function bindEnv<TParameters extends TSchema, TDetails>(tool: AgentHarnessTool<ExecutionToolContext, TParameters, TDetails>, env: ExecutionEnv): AgentTool<TParameters, TDetails> {

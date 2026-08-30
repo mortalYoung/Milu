@@ -1,6 +1,8 @@
+import { spawn } from "node:child_process";
 import { watch } from "node:fs";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { sep } from "node:path";
+import { join, sep } from "node:path";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import { getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
 import { ApplicationMenu, BrowserView, BrowserWindow } from "electrobun/main";
@@ -31,10 +33,12 @@ import { ensureModel, ensureSandboxMode, ensureStoragePath, ensureWorkspace, isT
 import {
 	partnerDirFor,
 	persistModel,
+	persistPartnerGrantedSkills,
 	persistPartnerReadAt,
 	persistSandboxMode,
 	persistWorkspace,
 	promptChangedSinceLastPersist,
+	readPartnerGrantedSkills,
 	readPartnerReadAt,
 	recordPrompt,
 } from "./lib/partner-files";
@@ -43,6 +47,10 @@ import { createPartner, deletePartner, listPartners, PartnerError, type PartnerI
 import type { EscalationDecision, EscalationRequest, SandboxMode } from "./permission";
 import { isSandboxMode, SandboxManager } from "./permission";
 import { createSessionStore, type SessionScope } from "./persist";
+import { scanSkillsRoot } from "./skills/filesystem";
+import { SKILL_NAME_RE } from "./skills/frontmatter";
+import { getSkill, listSkills } from "./skills/registry";
+import type { SkillsService } from "./skills/types";
 import { runEscalatedBash } from "./tools";
 
 await loadCredentials();
@@ -110,6 +118,8 @@ let viewPartner: { name: string; dir: string; profile: PartnerInput } | null = n
 
 const agents = new Map<string, Promise<PartnerAgent>>();
 
+let skillSeq = 0;
+
 function pendingEscalationCount(partner: string): number {
 	let n = 0;
 	for (const pending of pendingSandboxConfirms.values()) {
@@ -167,6 +177,17 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 	const workspace = await ensureWorkspace(dir);
 
 	const settings = await ensureSettings();
+
+	const skillsService: SkillsService = {
+		async list({ cwd, granted }) {
+			const s = await ensureSettings();
+			return listSkills({ cwd, home: homedir(), skillsDir: s.skills_dir ?? ".agents/skills", granted });
+		},
+		async get(name, { cwd, granted }) {
+			const s = await ensureSettings();
+			return getSkill(name, { cwd, home: homedir(), skillsDir: s.skills_dir ?? ".agents/skills", granted });
+		},
+	};
 	const defaultMode = isSandboxMode(settings.defaultSandboxMode) ? settings.defaultSandboxMode : "workspace-write";
 	const mode = await ensureSandboxMode(dir, defaultMode);
 	const model = await ensureModel(dir);
@@ -192,6 +213,9 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 			persistRuntimeStats: (snapshot) => void saveRuntimeStats(dir, snapshot).catch((error) => console.error("saveRuntimeStats failed:", error)),
 			sandbox,
 			deliverIntervalMs: () => sendMessageIntervalMs(settingsCache ?? settings),
+			partnerDir: dir,
+			grantedSkills: () => readPartnerGrantedSkills(dir),
+			skills: skillsService,
 			confirmEscalation: (request: EscalationRequest) =>
 				new Promise<EscalationDecision>((resolve) => {
 					const id = `sbx-${escalationNonce}-${++sandboxConfirmSeq}`;
@@ -518,6 +542,148 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				} catch (error) {
 					return { ok: false, error: error instanceof Error ? error.message : String(error) };
 				}
+			},
+
+			skill_list: async ({ partner }) => {
+				const settings = await ensureSettings();
+				const name = partner ?? viewPartner?.name;
+				if (!name) return { skills: [] };
+				const dir = await partnerDirFor(name);
+				const granted = await readPartnerGrantedSkills(dir);
+				const entry = await agents.get(name);
+				const cwd = entry?.agent.workspacePath ?? null;
+				const skills = await listSkills({ cwd, home: homedir(), skillsDir: settings.skills_dir ?? ".agents/skills", granted });
+				return {
+					skills: skills.map((s) => ({
+						name: s.name,
+						description: s.description,
+						...(s.whenToUse ? { whenToUse: s.whenToUse } : {}),
+						scope: s.scope,
+						userInvocable: s.invocation.userInvocable,
+					})),
+				};
+			},
+
+			skill_list_global: async () => {
+				const settings = await ensureSettings();
+				const root = join(homedir(), settings.skills_dir ?? ".agents/skills");
+				const candidates = await scanSkillsRoot(root, "global", "global", 200);
+				const profiles = await listPartners(settings);
+				const byName = new Map<string, string[]>();
+				for (const profile of profiles) {
+					const granted = await readPartnerGrantedSkills(getPartnerDir(settings, profile.name));
+					for (const skill of granted) {
+						const list = byName.get(skill) ?? [];
+						if (!list.includes(profile.name)) list.push(profile.name);
+						byName.set(skill, list);
+					}
+				}
+				return {
+					skills: candidates.map((c) => ({
+						name: c.name,
+						description: c.description,
+						...(c.path ? { path: c.path } : {}),
+						grantedPartners: byName.get(c.name) ?? [],
+					})),
+				};
+			},
+
+			skill_execute: async ({ name }) => {
+				const target = viewPartner;
+				if (!target) return { ok: false, error: "no partner selected" };
+				const entry = await ensureAgent(target.profile);
+				if (entry.agent.isStreaming) return { ok: false, error: "agent is running" };
+				const settings = await ensureSettings();
+				const granted = await readPartnerGrantedSkills(target.dir);
+				const def = await getSkill(name, {
+					cwd: entry.agent.workspacePath,
+					home: homedir(),
+					skillsDir: settings.skills_dir ?? ".agents/skills",
+					granted,
+				});
+				if (!def) return { ok: false, error: `skill "${name}" is unknown or not granted` };
+				if (!def.invocation.userInvocable) return { ok: false, error: `skill "${name}" is not user-invocable` };
+				const skillId = `skill-${Date.now().toString(36)}-${++skillSeq}`;
+				try {
+					await entry.scope.appendSkillRun({ skillId, name, content: def.content }, Date.now());
+					const framed = `The user invoked skill "${name}":\n\n<skill_instructions>\n${def.content}\n</skill_instructions>`;
+					const result = await entry.agent.chatAndWait(framed, name);
+					if (!result.ok) {
+						await entry.scope.appendSkillDone({ skillId, name, kind: "error", ...(result.error ? { text: result.error } : {}) }, Date.now());
+						return { ok: false, error: result.error };
+					}
+					await entry.scope.appendSkillDone({ skillId, name, kind: "success" }, Date.now());
+					return { ok: true };
+				} catch (error) {
+					const text = error instanceof Error ? error.message : String(error);
+					await entry.scope.appendSkillDone({ skillId, name, kind: "error", text }, Date.now()).catch(() => {});
+					return { ok: false, error: text };
+				}
+			},
+
+			skill_get: async ({ name }) => {
+				const target = viewPartner;
+				if (!target) return { ok: false, error: "no partner selected" };
+				const settings = await ensureSettings();
+				const granted = await readPartnerGrantedSkills(target.dir);
+				const entry = await agents.get(target.name);
+				const def = await getSkill(name, {
+					cwd: entry?.agent.workspacePath ?? null,
+					home: homedir(),
+					skillsDir: settings.skills_dir ?? ".agents/skills",
+					granted,
+				});
+				if (!def) return { ok: false, error: `skill "${name}" is unknown or not granted` };
+				return { ok: true, content: def.content };
+			},
+
+			skill_create: async ({ name, description }) => {
+				if (!SKILL_NAME_RE.test(name)) return { ok: false, error: `invalid skill name "${name}"` };
+				const settings = await ensureSettings();
+				const dir = join(homedir(), settings.skills_dir ?? ".agents/skills", name);
+				try {
+					await mkdir(dir, { recursive: true });
+					const file = join(dir, "SKILL.md");
+					await writeFile(file, `---\nname: ${name}\ndescription: ${description.replace(/\n/g, " ")}\n---\n\n# ${name}\n\nInstructions body for ${name}.\n`, "utf8");
+					return { ok: true, path: file };
+				} catch (error) {
+					return { ok: false, error: error instanceof Error ? error.message : String(error) };
+				}
+			},
+
+			skill_delete: async ({ name }) => {
+				const settings = await ensureSettings();
+				const root = join(homedir(), settings.skills_dir ?? ".agents/skills");
+				try {
+					await rm(join(root, name), { recursive: true, force: true });
+					await rm(join(root, `${name}.md`), { force: true });
+					return { ok: true };
+				} catch (error) {
+					return { ok: false, error: error instanceof Error ? error.message : String(error) };
+				}
+			},
+
+			skill_reveal: async ({ name }) => {
+				const settings = await ensureSettings();
+				const root = join(homedir(), settings.skills_dir ?? ".agents/skills");
+				const candidates = await scanSkillsRoot(root, "global", "global", 200);
+				const candidate = candidates.find((c) => c.name === name);
+				if (!candidate?.path) return { ok: false, error: `skill "${name}" not found` };
+				spawn("open", ["-R", candidate.path], { stdio: "ignore" }).unref();
+				return { ok: true };
+			},
+
+			skill_set_partners: async ({ name, partners }) => {
+				const settings = await ensureSettings();
+				const profiles = await listPartners(settings);
+				const target = new Set(partners);
+				for (const profile of profiles) {
+					const dir = getPartnerDir(settings, profile.name);
+					const current = await readPartnerGrantedSkills(dir);
+					const next = target.has(profile.name) ? (current.includes(name) ? current : [...current, name]) : current.filter((s) => s !== name);
+					if (next.join("\n") !== current.join("\n")) await persistPartnerGrantedSkills(dir, next);
+				}
+				return { ok: true };
 			},
 
 			context_usage: async () => {

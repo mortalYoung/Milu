@@ -2,10 +2,10 @@
  * AppRail — the 64px icon rail on the left (letter direction): brand letter circle + Chat tab + footer (Settings).
  * active = warm-ink solid + paper-colored icon.
  */
-import { MessageSquare, Settings } from "lucide-solid";
+import { MessageSquare, Settings, Sparkles } from "lucide-solid";
 import lettersLogo from "../assets/letters.png";
 
-export type RailTabId = "chat" | "settings";
+export type RailTabId = "chat" | "skills" | "settings";
 
 export function AppRail(props: { active: RailTabId; onSelect: (id: RailTabId) => void }) {
 	return (
@@ -24,6 +24,15 @@ export function AppRail(props: { active: RailTabId; onSelect: (id: RailTabId) =>
 				onClick={() => props.onSelect("chat")}
 			>
 				<MessageSquare size={18} />
+			</button>
+			<button
+				type="button"
+				class={"rail-tab electrobun-webkit-app-region-no-drag" + (props.active === "skills" ? " active" : "")}
+				title="Skills"
+				aria-label="Skills"
+				onClick={() => props.onSelect("skills")}
+			>
+				<Sparkles size={18} />
 			</button>
 
 			{/* Footer: settings */}

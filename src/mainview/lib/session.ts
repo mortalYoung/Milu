@@ -1,6 +1,6 @@
 import { createSignal } from "solid-js";
 import type { PartnerItem } from "../components/ConversationList";
-import { type Entry, makeAgentEntry, makeCommandEntry, makeEscalationEntry, makeSepEntry, makeSysEntry, makeUserEntry } from "../layouts/Transcript";
+import { type Entry, makeAgentEntry, makeCommandEntry, makeEscalationEntry, makeSepEntry, makeSkillEntry, makeSysEntry, makeUserEntry } from "../layouts/Transcript";
 import { createInFlightBoolean } from "./inflight";
 import type { RPC } from "./rpc";
 
@@ -90,6 +90,22 @@ export function createSession(rpc: RPC, opts: { onSessionLoaded: () => void }) {
 					}
 					continue;
 				}
+				if (item.kind === "skill" && item.skill) {
+					const entry = makeSkillEntry({ text: item.text, time: item.time, skill: item.skill });
+					const existing = entries().find((e) => e.kind === "skill" && e.skill?.commandId === item.skill!.commandId);
+					if (existing) {
+						replacements.set(item.skill.commandId, entry);
+					} else {
+						maybeTimeSeparator(new Date(item.time), pending);
+						pending.push(entry);
+					}
+					continue;
+				}
+				if (item.kind === "user" && item.skillName) {
+					if (renderedIds.has(item.id)) continue;
+					renderedIds.add(item.id);
+					continue;
+				}
 				if (renderedIds.has(item.id)) continue;
 				renderedIds.add(item.id);
 				maybeTimeSeparator(new Date(item.time), pending);
@@ -103,6 +119,7 @@ export function createSession(rpc: RPC, opts: { onSessionLoaded: () => void }) {
 						next = next.map((e) => {
 							if (e.kind === "escalation" && e.escalation && replacements.has(e.escalation.id)) return replacements.get(e.escalation.id)!;
 							if (e.kind === "command" && e.command && replacements.has(e.command.commandId)) return replacements.get(e.command.commandId)!;
+							if (e.kind === "skill" && e.skill && replacements.has(e.skill.commandId)) return replacements.get(e.skill.commandId)!;
 							return e;
 						});
 					}

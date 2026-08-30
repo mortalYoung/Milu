@@ -22,11 +22,13 @@ import { rpc } from "./lib/rpc";
 import { createSession } from "./lib/session";
 import { createSettings } from "./lib/settings";
 import { createShell } from "./lib/shell";
+import { createSkills } from "./lib/skills";
 import { createToast, DEFAULT_TOAST_DURATION_MS } from "./lib/toast";
 import { createTrajectory } from "./lib/trajectory";
 import { createUnread } from "./lib/unread";
 import { ConversationPage } from "./pages/ConversationPage";
 import { type SettingsData, SettingsView } from "./pages/SettingsView";
+import { SkillsView } from "./pages/SkillsView";
 
 export function App() {
 	// ————— state primitives —————
@@ -42,6 +44,7 @@ export function App() {
 	const commands = createCommandDirectory(rpc);
 	const shell = createShell();
 	const settings = createSettings(rpc);
+	const skills = createSkills(rpc);
 	const toast = createToast(() => settings.settings()?.toastDurationMs ?? DEFAULT_TOAST_DURATION_MS);
 	const openPartner = (name: string) => {
 		const p = session.partners().find((x) => x.name === name);
@@ -183,6 +186,10 @@ export function App() {
 		}
 	});
 
+	createEffect(() => {
+		void skills.refresh(session.selected());
+	});
+
 	// ————— mount —————
 	void session.refreshHistory();
 	void session.refreshPartners();
@@ -197,50 +204,63 @@ export function App() {
 	// ————— shell —————
 	return (
 		<div class="relative flex flex-1 min-h-0">
-			<AppRail active={shell.view()} onSelect={(tab) => (tab === "settings" ? shell.setSettingsOpen(true) : shell.setView("chat"))} />
+			<AppRail
+				active={shell.view()}
+				onSelect={(tab) => {
+					if (tab === "settings") shell.setSettingsOpen(true);
+					else shell.setView(tab);
+				}}
+			/>
 
 			<main class="flex-1 flex flex-col min-w-0 bg-qw-bg">
-				<ConversationPage
-					partners={session.partners()}
-					selected={session.selected()}
-					onSelect={(name) => session.select(session.partners().find((p) => p.name === name) ?? null)}
-					unread={unread.unread}
-					onAddPartner={() => shell.setShowModal(true)}
-					onDelete={onDeletePartner}
-					onViewDetails={(name) => shell.setDetailsPartner(session.partners().find((p) => p.name === name) ?? null)}
-					listCollapsed={shell.listCollapsed()}
-					onToggleList={shell.toggleList}
-					entries={session.entries}
-					working={status.isBusyForSelected}
-					tick={session.tick}
-					historyLoading={session.historyLoading}
-					busy={status.isBusyForSelected}
-					onSend={onSend}
-					onStop={() => void rpc.request.stop({})}
-					commands={commands.commands()}
-					onCommand={(line) => commands.execute(line)}
-					onViewTrajectory={trajectory.view}
-					onCloseTrajectory={() => trajectory.setOpen(false)}
-					flashId={trajectory.flashId}
-					onFlash={trajectory.flash}
-					workspacePath={status.workspacePath()}
-					storagePath={status.storagePath()}
-					sandboxMode={status.sandboxMode()}
-					onSetSandboxMode={(mode) => void status.onSetSandboxMode(mode)}
-					model={status.model()}
-					models={status.models()}
-					onSetModel={(model) => void status.onSetModel(model)}
-					thinkingLevel={status.thinkingLevel()}
-					thinkingLevels={status.thinkingLevels()}
-					onSetThinkingLevel={(level) => void status.onSetThinkingLevel(level)}
-					onEscalationRespond={(id, approved) => void rpc.request.sandbox_respond({ id, approved })}
-					contextUsage={metrics.contextUsage()}
-					stats={metrics.stats()}
-					workingFor={status.workingFor}
-					draft={session.selected() ? (composer.drafts()[session.selected()!] ?? "") : ""}
-					onDraftChange={composer.change}
-					toastHost={<ToastHost toasts={toast.toasts} placement={settings.settings()?.toastPlacement ?? "bottomcenter"} onDismiss={toast.dismiss} />}
-				/>
+				{shell.view() === "skills" ? (
+					<SkillsView />
+				) : (
+					<ConversationPage
+						partners={session.partners()}
+						selected={session.selected()}
+						onSelect={(name) => session.select(session.partners().find((p) => p.name === name) ?? null)}
+						unread={unread.unread}
+						onAddPartner={() => shell.setShowModal(true)}
+						onDelete={onDeletePartner}
+						onViewDetails={(name) => shell.setDetailsPartner(session.partners().find((p) => p.name === name) ?? null)}
+						listCollapsed={shell.listCollapsed()}
+						onToggleList={shell.toggleList}
+						entries={session.entries}
+						working={status.isBusyForSelected}
+						tick={session.tick}
+						historyLoading={session.historyLoading}
+						busy={status.isBusyForSelected}
+						onSend={onSend}
+						onStop={() => void rpc.request.stop({})}
+						commands={commands.commands()}
+						onCommand={(line) => commands.execute(line)}
+						onViewTrajectory={trajectory.view}
+						onCloseTrajectory={() => trajectory.setOpen(false)}
+						flashId={trajectory.flashId}
+						onFlash={trajectory.flash}
+						workspacePath={status.workspacePath()}
+						storagePath={status.storagePath()}
+						sandboxMode={status.sandboxMode()}
+						onSetSandboxMode={(mode) => void status.onSetSandboxMode(mode)}
+						model={status.model()}
+						models={status.models()}
+						onSetModel={(model) => void status.onSetModel(model)}
+						thinkingLevel={status.thinkingLevel()}
+						thinkingLevels={status.thinkingLevels()}
+						onSetThinkingLevel={(level) => void status.onSetThinkingLevel(level)}
+						onEscalationRespond={(id, approved) => void rpc.request.sandbox_respond({ id, approved })}
+						contextUsage={metrics.contextUsage()}
+						stats={metrics.stats()}
+						workingFor={status.workingFor}
+						draft={session.selected() ? (composer.drafts()[session.selected()!] ?? "") : ""}
+						onDraftChange={composer.change}
+						toastHost={<ToastHost toasts={toast.toasts} placement={settings.settings()?.toastPlacement ?? "bottomcenter"} onDismiss={toast.dismiss} />}
+						skills={skills.skills()}
+						onSkill={(name) => rpc.request.skill_execute({ name })}
+						onSkillInspect={(name) => rpc.request.skill_get({ name }).then((r) => (r.ok ? (r.content ?? null) : null))}
+					/>
+				)}
 			</main>
 
 			{/* Settings: dialog */}

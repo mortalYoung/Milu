@@ -46,6 +46,8 @@ export const EVENTS = {
 	thinkingLevelChange: "thinking_level_change",
 	commandRun: "command/run",
 	commandDone: "command/done",
+	skillRun: "skill/run",
+	skillDone: "skill/done",
 	retryScheduled: "retry/scheduled",
 	retryStarted: "retry/started",
 } as const;
@@ -90,6 +92,19 @@ export interface ToolResultEventData {
 	details?: unknown;
 	usage?: unknown;
 	isError: boolean;
+}
+
+export interface SkillRunEventData {
+	skillId: string;
+	name: string;
+	content?: string;
+}
+
+export interface SkillDoneEventData {
+	skillId: string;
+	name: string;
+	kind: "success" | "error";
+	text?: string;
 }
 
 /** command/run payload (log-only; never projected into the model context). */

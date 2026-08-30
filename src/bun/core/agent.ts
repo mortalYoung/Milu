@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import { type AssistantMessage, retryAssistantCall, type ToolResultMessage } from "@earendil-works/pi-ai";
 import type { RequestTool, RuntimeStatsSnapshot, SessionStats, ThinkingLevel } from "../../shared/rpc";
@@ -6,6 +7,8 @@ import { loadSettings } from "../lib/settings";
 import type { EscalationDecision, EscalationRequest, SandboxManager, SandboxMode } from "../permission";
 import { Permission, policyFor } from "../permission";
 import type { SessionScope } from "../persist";
+import { renderAvailableSkills } from "../skills/render";
+import type { SkillsService } from "../skills/types";
 import { createTools } from "../tools";
 import type { PartnerModel } from "./agent-config";
 import { convertToLlm, resolveModel, STREAM_FN } from "./agent-config";
@@ -37,7 +40,7 @@ export interface AgentHandle {
 	readonly runtimeStats: SessionStats["runtime"];
 	readonly tools: RequestTool[];
 	chat: (text: string) => Promise<void>;
-	chatAndWait: (text: string) => Promise<{ ok: boolean; error?: string }>;
+	chatAndWait: (text: string, skill?: string) => Promise<{ ok: boolean; error?: string }>;
 	sendMessage: (text: string) => Promise<void>;
 	continue: () => Promise<void>;
 	readonly permission: Permission;
@@ -58,6 +61,9 @@ export interface AgentDeps {
 	sandbox?: SandboxManager;
 	confirmEscalation?: (request: EscalationRequest) => Promise<EscalationDecision>;
 	deliverIntervalMs?: () => number;
+	partnerDir?: string;
+	grantedSkills?: () => Promise<string[]>;
+	skills?: SkillsService;
 }
 
 export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
@@ -95,12 +101,53 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	let stepFirstDeltaAt = 0;
 	let stepFirstDeltaWall = 0;
 
+	let lastSkillCatalogDigest: string | null = null;
+	let skillCatalogDirty = false;
+	const catalogDigest = (text: string) => createHash("sha256").update(text).digest("hex");
+	const grantedSkills = async () => (await deps.grantedSkills?.()) ?? [];
+	const skills = deps.skills
+		? {
+				list: async () => deps.skills!.list({ cwd: ctx.workspace_path, granted: await grantedSkills() }),
+				get: async (name: string) => deps.skills!.get(name, { cwd: ctx.workspace_path, granted: await grantedSkills() }),
+			}
+		: null;
+	function invalidateSkillCatalog() {
+		skillCatalogDirty = true;
+	}
+	async function ensureSkillCatalog() {
+		if (!skills) return;
+		const text = renderAvailableSkills(await skills.list());
+		const digest = catalogDigest(text);
+		if (!skillCatalogDirty && digest === lastSkillCatalogDigest) return;
+		skillCatalogDirty = false;
+		lastSkillCatalogDigest = digest;
+		if (!text) return;
+		persistReminder(text);
+		appendSystemReminder(agent.state.messages, text);
+	}
+
 	const agent = new Agent({
 		initialState: projectLoopContext(ctx, [], deps.initialMessages ?? []),
 		streamFn: STREAM_FN,
 		convertToLlm,
 		followUpMode: "one-at-a-time",
 		steeringMode: "one-at-a-time",
+		transformContext: async (messages) => {
+			if (!skills || !skillCatalogDirty) return messages;
+			const text = renderAvailableSkills(await skills.list());
+			const digest = catalogDigest(text);
+			if (digest === lastSkillCatalogDigest) {
+				skillCatalogDirty = false;
+				return messages;
+			}
+			skillCatalogDirty = false;
+			lastSkillCatalogDigest = digest;
+			if (!text) return messages;
+			const reminder = { role: "user" as const, content: `<system_reminder>${text}</system_reminder>`, timestamp: Date.now() };
+			persistReminder(text);
+			appendSystemReminder(agent.state.messages, text);
+			return [...messages, reminder];
+		},
 	});
 
 	function deliverVisible(text: string, timestamp: number) {
@@ -118,10 +165,12 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	agent.state.tools = createTools({
 		store: deps.session,
 		permission,
+		...(skills ? { skills } : {}),
 		onSetWorkspace: (workspace: string): { ok: true; path: string } | { ok: false; error: string } => {
 			const decision = permission.setWorkspace(workspace);
 			if (!decision.allowed) return { ok: false, error: decision.reason };
 			ctx.workspace_path = decision.resolved;
+			invalidateSkillCatalog();
 			bridge.onWorkspaceUpdate();
 			bridge.onWorkspaceSet?.(decision.resolved);
 			return { ok: true, path: decision.resolved };
@@ -315,9 +364,9 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 
 	agent.subscribe(handleEvent);
 
-	async function persistUser(text: string) {
+	async function persistUser(text: string, skill?: string) {
 		try {
-			await deps.session.appendUser(text, Date.now());
+			await deps.session.appendUser(text, Date.now(), skill ? { skill } : undefined);
 		} catch (error) {
 			console.error("session appendUser failed:", error);
 		}
@@ -332,19 +381,22 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		});
 	}
 
-	function prepareRun() {
+	let lastInjectedWorkspace: string | null | undefined;
+	async function prepareRun() {
 		const conversationStart = agent.state.messages.length === 0;
 		if (ctx.workspace_path == null) {
 			const reminder = "The workspace is not set yet. Remember to call `set_workspace` with the task's absolute path before other tools if the task needs file or command access.";
 			persistReminder(reminder);
 			appendSystemReminder(agent.state.messages, reminder);
 		}
-		if (conversationStart) {
+		if (conversationStart || ctx.workspace_path !== lastInjectedWorkspace) {
 			const context =
 				`Current workspace: ${ctx.workspace_path ?? "unset"}.\n` + `Current storage: ${ctx.storage_path ?? "unset"}.\n` + `Current sandbox mode: ${ctx.sandbox_mode}.`;
 			persistReminder(context);
 			appendSystemReminder(agent.state.messages, context);
+			lastInjectedWorkspace = ctx.workspace_path;
 		}
+		await ensureSkillCatalog();
 	}
 
 	let runAbort: AbortController | null = null;
@@ -385,7 +437,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	}
 
 	async function runWithRetry(text: string | null): Promise<AssistantMessage> {
-		if (text != null) prepareRun();
+		if (text != null) await prepareRun();
 		const policy = resolveRetryPolicy(await loadSettings());
 		runAbort = new AbortController();
 		deferAgentEnd = true;
@@ -438,9 +490,9 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		}
 	}
 
-	async function promptAndWait(text: string): Promise<{ ok: boolean; error?: string }> {
+	async function promptAndWait(text: string, skill?: string): Promise<{ ok: boolean; error?: string }> {
 		if (text.trim() === "") return { ok: false, error: "empty message" };
-		await persistUser(text);
+		await persistUser(text, skill);
 		ctx.markUserMessage();
 		if (ctx.running) return { ok: false, error: "agent is running" };
 		ctx.setRunning(true);
@@ -556,6 +608,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		},
 		setWorkspace(path: string | null) {
 			ctx.workspace_path = path;
+			invalidateSkillCatalog();
 			bridge.onWorkspaceUpdate();
 		},
 	};

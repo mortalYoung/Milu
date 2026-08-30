@@ -48,6 +48,23 @@ export async function persistPartnerReadAt(dir: string, readAt: number): Promise
 	}
 }
 
+export const grantedSkillsFilePath = (dir: string) => join(dir, "granted-skills.json");
+export async function readPartnerGrantedSkills(dir: string): Promise<string[]> {
+	try {
+		const saved = JSON.parse(await readFile(grantedSkillsFilePath(dir), "utf8")) as { skills?: unknown };
+		return Array.isArray(saved.skills) ? saved.skills.filter((s): s is string => typeof s === "string") : [];
+	} catch {
+		return [];
+	}
+}
+export async function persistPartnerGrantedSkills(dir: string, skills: string[]): Promise<void> {
+	try {
+		await writeFile(grantedSkillsFilePath(dir), JSON.stringify({ skills }, null, 2), "utf8");
+	} catch (error) {
+		console.error("persistPartnerGrantedSkills failed:", error);
+	}
+}
+
 // Per-partner model selection (provider + pinned model + thinking level): survives restart, restored on partner switch.
 export const modelFilePath = (dir: string) => join(dir, "model.json");
 export async function persistModel(dir: string, model: PartnerModelConfig) {

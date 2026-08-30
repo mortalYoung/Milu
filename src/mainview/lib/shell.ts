@@ -3,7 +3,7 @@ import type { PartnerItem } from "../components/ConversationList";
 
 /** Shell chrome state: which view/dialog/overlay is open right now. */
 export function createShell() {
-	const [view, setView] = createSignal<"chat" | "settings">("chat");
+	const [view, setView] = createSignal<"chat" | "skills" | "settings">("chat");
 	const [settingsOpen, setSettingsOpen] = createSignal(false);
 	const [showModal, setShowModal] = createSignal(false);
 	// Partner details dialog (shared by the list menu / header click)

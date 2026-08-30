@@ -28,7 +28,7 @@ export function createCommandRegistry(): CommandRegistry {
 			for (const def of defs) definitions.set(def.name, def);
 		},
 		list() {
-			return [...definitions.values()].map(({ name, description, kind, hint }) => ({ name, description, kind, ...(hint ? { hint } : {}) }));
+			return [...definitions.values()].map(({ name, description, kind, hint }) => ({ name, description, kind, category: "command" as const, ...(hint ? { hint } : {}) }));
 		},
 		async execute(line, ctx) {
 			const parsed = parseCommand(line);

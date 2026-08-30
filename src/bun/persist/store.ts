@@ -27,6 +27,8 @@ import {
 	EVENTS,
 	type RetryScheduledEventData,
 	type RetryStartedEventData,
+	type SkillDoneEventData,
+	type SkillRunEventData,
 	type ToolResultEventData,
 	type TurnEndReason,
 } from "./events";
@@ -78,7 +80,7 @@ export interface AssistantMeta {
 export interface VisibleItem {
 	/** pi entry id; the view dedupes incremental renders by it. */
 	id: string;
-	kind: "user" | "send_message" | "escalation" | "error" | "aborted" | "command";
+	kind: "user" | "send_message" | "escalation" | "error" | "aborted" | "command" | "skill";
 	text: string;
 	time: number;
 	/** Escalation payload (kind "escalation" only): the approval request + current status. */
@@ -92,6 +94,7 @@ export interface VisibleItem {
 	};
 	/** Command payload (kind "command" only): the paired command/run + command/done row. */
 	command?: CommandHistoryItem;
+	skill?: CommandHistoryItem;
 }
 
 /**
@@ -101,7 +104,7 @@ export interface VisibleItem {
  * agent loop awaits them at the exact boundaries that need it (see agent.ts).
  */
 export interface SessionScope {
-	appendUser(content: string, timestamp: number): Promise<void>;
+	appendUser(content: string, timestamp: number, meta?: { skill?: string }): Promise<void>;
 	/** The turn's assistant message; trailing tool results (batching callers) become tool/result events. */
 	appendAssistant(meta: AssistantMeta, timestamp: number): Promise<void>;
 	appendSendMessage(content: string, details: Record<string, unknown>, timestamp: number): Promise<void>;
@@ -130,6 +133,8 @@ export interface SessionScope {
 	/** Persist a command lifecycle record (command/run | command/done; log-only, never model-visible). */
 	appendCommandRun(details: CommandRunEventData, timestamp: number): Promise<void>;
 	appendCommandDone(details: CommandDoneEventData, timestamp: number): Promise<void>;
+	appendSkillRun(details: SkillRunEventData, timestamp: number): Promise<void>;
+	appendSkillDone(details: SkillDoneEventData, timestamp: number): Promise<void>;
 	/** Persist a retry lifecycle record (retry/scheduled | retry/started; log-only, never model-visible). */
 	appendRetryScheduled(details: RetryScheduledEventData, timestamp: number): Promise<void>;
 	appendRetryStarted(details: RetryStartedEventData, timestamp: number): Promise<void>;
@@ -283,8 +288,8 @@ export function createSessionStore(): SessionStore {
 
 	function scope(dir: string): SessionScope {
 		return {
-			async appendUser(content, timestamp) {
-				await appendMessage(dir, { role: "user", content, timestamp });
+			async appendUser(content, timestamp, meta) {
+				await appendMessage(dir, { role: "user", content, timestamp, ...(meta?.skill ? { skill: meta.skill } : {}) });
 			},
 			async appendAssistant(meta, timestamp) {
 				// Messages built by the pi loop may carry undefined fields (e.g. toolResult.details/usage),
@@ -353,6 +358,12 @@ export function createSessionStore(): SessionStore {
 			async appendCommandDone(details, timestamp) {
 				await appendCustom(dir, EVENTS.commandDone, { ...details, timestamp });
 			},
+			async appendSkillRun(details, timestamp) {
+				await appendCustom(dir, EVENTS.skillRun, { ...details, timestamp });
+			},
+			async appendSkillDone(details, timestamp) {
+				await appendCustom(dir, EVENTS.skillDone, { ...details, timestamp });
+			},
 			async appendRetryScheduled(details, timestamp) {
 				await appendCustom(dir, EVENTS.retryScheduled, { ...details, timestamp });
 			},
@@ -405,10 +416,26 @@ export function createSessionStore(): SessionStore {
 				if (data?.commandId == null) continue;
 				commandDones.set(String(data.commandId), { kind: data.kind === "error" ? "error" : "success", ...(typeof data.text === "string" ? { text: data.text } : {}) });
 			}
+			const skillDones = new Map<string, { kind: "success" | "error"; text?: string }>();
+			for (const entry of state.entries) {
+				if (entry.type !== "custom" || entry.customType !== EVENTS.skillDone) continue;
+				const data = entry.data as Partial<SkillDoneEventData> | undefined;
+				if (data?.skillId == null) continue;
+				skillDones.set(String(data.skillId), { kind: data.kind === "error" ? "error" : "success", ...(typeof data.text === "string" ? { text: data.text } : {}) });
+			}
 			return state.entries.flatMap((entry): VisibleItem[] => {
 				if (entry.type === "message" && entry.message.role === "user") {
 					const content = entry.message.content;
-					return [{ id: entry.id, kind: "user", text: typeof content === "string" ? content : "", time: entry.message.timestamp ?? 0 }];
+					const skill = (entry.message as { skill?: unknown }).skill;
+					return [
+						{
+							id: entry.id,
+							kind: "user",
+							text: typeof content === "string" ? content : "",
+							time: entry.message.timestamp ?? 0,
+							...(typeof skill === "string" ? { skillName: skill } : {}),
+						},
+					];
 				}
 				if (entry.type === "custom" && entry.customType === EVENTS.sendMessage) {
 					const data = entry.data as { text: string; timestamp: number } | undefined;
@@ -461,6 +488,25 @@ export function createSessionStore(): SessionStore {
 								commandId: String(data.commandId),
 								name,
 								...(typeof data.args === "string" ? { args: data.args } : {}),
+								status: done ? done.kind : "running",
+							},
+						},
+					];
+				}
+				if (entry.type === "custom" && entry.customType === EVENTS.skillRun) {
+					const data = entry.data as (Partial<SkillRunEventData> & { timestamp?: unknown }) | undefined;
+					if (data?.skillId == null) return [];
+					const done = skillDones.get(String(data.skillId));
+					const name = String(data.name ?? "");
+					return [
+						{
+							id: entry.id,
+							kind: "skill",
+							text: name,
+							time: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
+							skill: {
+								commandId: String(data.skillId),
+								name,
 								status: done ? done.kind : "running",
 							},
 						},

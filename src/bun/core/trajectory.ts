@@ -124,7 +124,13 @@ export function fold(entries: Entry[]): TrajectoryRecord[] {
 			case "message": {
 				const m = entry.message;
 				if (m.role === "user") {
-					push({ ...base, kind: "user", content: typeof m.content === "string" ? m.content : contentText(m.content) });
+					const skill = (m as { skill?: unknown }).skill;
+					push({
+						...base,
+						kind: "user",
+						content: typeof m.content === "string" ? m.content : contentText(m.content),
+						...(typeof skill === "string" ? { skillName: skill } : {}),
+					});
 				} else if (m.role === "assistant") {
 					turn += 1;
 					push({

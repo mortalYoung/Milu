@@ -13,6 +13,7 @@ export interface CommandDescriptor {
 	name: string;
 	description: string;
 	kind: CommandKind;
+	category?: "command" | "skill";
 
 	hint?: string;
 }
@@ -36,6 +37,21 @@ export interface CommandHistoryItem {
 
 	status: "running" | "success" | "error" | "interrupted";
 	text?: string;
+}
+
+export interface SkillDescriptor {
+	name: string;
+	description: string;
+	whenToUse?: string;
+	scope: "project" | "global";
+	userInvocable: boolean;
+}
+
+export interface GlobalSkillDescriptor {
+	name: string;
+	description: string;
+	path?: string;
+	grantedPartners: string[];
 }
 
 export type EscalationStatus = "pending" | "approved" | "rejected" | "dropped";
@@ -82,7 +98,7 @@ export interface TrajectoryBlock {
 }
 
 export type TrajectoryRecord =
-	| (TrajectoryBase & { kind: "user"; content: string })
+	| (TrajectoryBase & { kind: "user"; content: string; skillName?: string })
 	| (TrajectoryBase & {
 			kind: "assistant";
 
@@ -209,6 +225,46 @@ export type AppRPCSchema = __schema<{
 				response: CommandExecution;
 			};
 
+			skill_list: {
+				params: { partner?: string };
+				response: { skills: SkillDescriptor[] };
+			};
+
+			skill_list_global: {
+				params: {};
+				response: { skills: GlobalSkillDescriptor[] };
+			};
+
+			skill_execute: {
+				params: { name: string };
+				response: { ok: boolean; error?: string };
+			};
+
+			skill_get: {
+				params: { name: string };
+				response: { ok: boolean; content?: string; error?: string };
+			};
+
+			skill_create: {
+				params: { name: string; description: string };
+				response: { ok: boolean; error?: string; path?: string };
+			};
+
+			skill_delete: {
+				params: { name: string };
+				response: { ok: boolean; error?: string };
+			};
+
+			skill_reveal: {
+				params: { name: string };
+				response: { ok: boolean; error?: string };
+			};
+
+			skill_set_partners: {
+				params: { name: string; partners: string[] };
+				response: { ok: boolean; error?: string };
+			};
+
 			stop: {
 				params: {};
 				response: { accepted: boolean };
@@ -224,9 +280,10 @@ export type AppRPCSchema = __schema<{
 				response: {
 					items: {
 						id: string;
-						kind: "user" | "send_message" | "escalation" | "error" | "aborted" | "command";
+						kind: "user" | "send_message" | "escalation" | "error" | "aborted" | "command" | "skill";
 						text: string;
 						time: number;
+						skillName?: string;
 						escalation?: {
 							id: string;
 							command: string;
@@ -236,6 +293,7 @@ export type AppRPCSchema = __schema<{
 							status: EscalationStatus;
 						};
 						command?: CommandHistoryItem;
+						skill?: CommandHistoryItem;
 					}[];
 				};
 			};
