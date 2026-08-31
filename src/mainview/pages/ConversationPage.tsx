@@ -131,8 +131,8 @@ export function ConversationPage(props: {
 						<button
 							type="button"
 							class="size-8 rounded-full border-0 electrobun-webkit-app-region-no-drag flex items-center justify-center text-ink hover:bg-paper-hover disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
-							title={outlineOpen() ? "Hide outline" : "Show outline"}
-							aria-label="Toggle replies outline"
+							title={outlineOpen() ? "Hide replies" : "Show replies"}
+							aria-label="Toggle replies"
 							disabled={!hasConversation()}
 							onClick={() => {
 								if (!outlineOpen()) props.onCloseTrajectory?.();
