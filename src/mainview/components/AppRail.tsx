@@ -3,7 +3,7 @@
  * active = warm-ink solid + paper-colored icon.
  */
 import { MessageSquare, Settings, Sparkles } from "lucide-solid";
-import lettersLogo from "../assets/letters.png";
+import lettersLogo from "../../../assets/letters.png";
 
 export type RailTabId = "chat" | "skills" | "settings";
 

@@ -12,7 +12,8 @@
 		"typecheck": "tsc --noEmit",
 		"test": "bun test",
 		"format": "biome check --write .",
-		"format:check": "biome check ."
+		"format:check": "biome check .",
+		"icons": "bash scripts/gen-icons.sh"
 	},
 	"dependencies": {
 		"@earendil-works/pi-agent-core": "0.84.1",
