@@ -25,6 +25,7 @@ import { createShell } from "./lib/shell";
 import { createSkills } from "./lib/skills";
 import { createToast, DEFAULT_TOAST_DURATION_MS } from "./lib/toast";
 import { createTrajectory } from "./lib/trajectory";
+import { createTranscriptController, TranscriptProvider } from "./lib/transcript-controller";
 import { createUnread } from "./lib/unread";
 import { ConversationPage } from "./pages/ConversationPage";
 import { type SettingsData, SettingsView } from "./pages/SettingsView";
@@ -33,13 +34,20 @@ import { SkillsView } from "./pages/SkillsView";
 export function App() {
 	// ————— state primitives —————
 	const metrics = createMetrics(rpc);
+	let notifyEntriesChanged: (() => void) | null = null;
 	const session = createSession(rpc, {
 		// The session is loaded now (entries restored from JSONL): refresh the context meter too,
 		// so persisted usage survives restart instead of sitting at 0% until the next turn.
 		onSessionLoaded: () => void metrics.refresh(),
+		onEntriesChanged: () => notifyEntriesChanged?.(),
 	});
 	const status = createAgentStatus(rpc, () => session.selected());
 	const trajectory = createTrajectory(rpc, () => session.selected());
+	const transcript = createTranscriptController({
+		entries: session.entries,
+		onFlash: trajectory.flash,
+	});
+	notifyEntriesChanged = () => transcript.syncToBottom();
 	const composer = createComposer(() => session.selected());
 	const commands = createCommandDirectory(rpc);
 	const shell = createShell();
@@ -48,7 +56,10 @@ export function App() {
 	const toast = createToast(() => settings.settings()?.toastDurationMs ?? DEFAULT_TOAST_DURATION_MS);
 	const openPartner = (name: string) => {
 		const p = session.partners().find((x) => x.name === name);
-		if (p) session.select(p);
+		if (p) {
+			transcript.reset();
+			session.select(p);
+		}
 	};
 	const unread = createUnread(
 		rpc,
@@ -144,6 +155,7 @@ export function App() {
 			session.push(makeSysEntry("✳ follow-up queued"));
 			status.queueFollowUp();
 		}
+		transcript.scrollToBottom(true);
 		void rpc.request.chat({ text }).then((res) => {
 			// Each partner runs its own agent: a message to the selected chat is that agent's fresh
 			// run or its own follow-up (queued by the outer loop when busy) — never cross-partner.
@@ -156,7 +168,10 @@ export function App() {
 	async function onDeletePartner(name: string) {
 		await rpc.request.delete_partner({ name });
 		// If the deleted Partner was selected: close it immediately (reset selection and prompt)
-		if (session.selected() === name) session.select(null);
+		if (session.selected() === name) {
+			transcript.reset();
+			session.select(null);
+		}
 		void session.refreshPartners();
 	}
 
@@ -166,7 +181,10 @@ export function App() {
 		if (res.ok) {
 			shell.setShowModal(false);
 			void session.refreshPartners();
-			if (res.profile) session.select(res.profile);
+			if (res.profile) {
+				transcript.reset();
+				session.select(res.profile);
+			}
 			return null;
 		}
 		return res.error ?? "Failed to create partner";
@@ -220,50 +238,53 @@ export function App() {
 				{shell.view() === "skills" ? (
 					<SkillsView />
 				) : (
-					<ConversationPage
-						partners={session.partners()}
-						selected={session.selected()}
-						onSelect={(name) => session.select(session.partners().find((p) => p.name === name) ?? null)}
-						unread={unread.unread}
-						onAddPartner={() => shell.setShowModal(true)}
-						onDelete={onDeletePartner}
-						onViewDetails={(name) => shell.setDetailsPartner(session.partners().find((p) => p.name === name) ?? null)}
-						listCollapsed={shell.listCollapsed()}
-						onToggleList={shell.toggleList}
-						entries={session.entries}
-						working={status.isBusyForSelected}
-						tick={session.tick}
-						historyLoading={session.historyLoading}
-						busy={status.isBusyForSelected}
-						onSend={onSend}
-						onStop={() => void rpc.request.stop({})}
-						commands={commands.commands()}
-						onCommand={(line) => commands.execute(line)}
-						onViewTrajectory={trajectory.view}
-						onCloseTrajectory={() => trajectory.setOpen(false)}
-						flashId={trajectory.flashId}
-						onFlash={trajectory.flash}
-						workspacePath={status.workspacePath()}
-						storagePath={status.storagePath()}
-						sandboxMode={status.sandboxMode()}
-						onSetSandboxMode={(mode) => void status.onSetSandboxMode(mode)}
-						model={status.model()}
-						models={status.models()}
-						onSetModel={(model) => void status.onSetModel(model)}
-						thinkingLevel={status.thinkingLevel()}
-						thinkingLevels={status.thinkingLevels()}
-						onSetThinkingLevel={(level) => void status.onSetThinkingLevel(level)}
-						onEscalationRespond={(id, approved) => void rpc.request.sandbox_respond({ id, approved })}
-						contextUsage={metrics.contextUsage()}
-						stats={metrics.stats()}
-						workingFor={status.workingFor}
-						draft={session.selected() ? (composer.drafts()[session.selected()!] ?? "") : ""}
-						onDraftChange={composer.change}
-						toastHost={<ToastHost toasts={toast.toasts} placement={settings.settings()?.toastPlacement ?? "bottomcenter"} onDismiss={toast.dismiss} />}
-						skills={skills.skills()}
-						onSkill={(name) => rpc.request.skill_execute({ name })}
-						onSkillInspect={(name) => rpc.request.skill_get({ name }).then((r) => (r.ok ? (r.content ?? null) : null))}
-					/>
+					<TranscriptProvider controller={transcript}>
+						<ConversationPage
+							partners={session.partners()}
+							selected={session.selected()}
+							onSelect={(name) => {
+								transcript.reset();
+								session.select(session.partners().find((p) => p.name === name) ?? null);
+							}}
+							unread={unread.unread}
+							onAddPartner={() => shell.setShowModal(true)}
+							onDelete={onDeletePartner}
+							onViewDetails={(name) => shell.setDetailsPartner(session.partners().find((p) => p.name === name) ?? null)}
+							listCollapsed={shell.listCollapsed()}
+							onToggleList={shell.toggleList}
+							entries={session.entries}
+							working={status.isBusyForSelected}
+							historyLoading={session.historyLoading}
+							busy={status.isBusyForSelected}
+							onSend={onSend}
+							onStop={() => void rpc.request.stop({})}
+							commands={commands.commands()}
+							onCommand={(line) => commands.execute(line)}
+							onViewTrajectory={trajectory.view}
+							onCloseTrajectory={() => trajectory.setOpen(false)}
+							flashId={trajectory.flashId}
+							workspacePath={status.workspacePath()}
+							storagePath={status.storagePath()}
+							sandboxMode={status.sandboxMode()}
+							onSetSandboxMode={(mode) => void status.onSetSandboxMode(mode)}
+							model={status.model()}
+							models={status.models()}
+							onSetModel={(model) => void status.onSetModel(model)}
+							thinkingLevel={status.thinkingLevel()}
+							thinkingLevels={status.thinkingLevels()}
+							onSetThinkingLevel={(level) => void status.onSetThinkingLevel(level)}
+							onEscalationRespond={(id, approved) => void rpc.request.sandbox_respond({ id, approved })}
+							contextUsage={metrics.contextUsage()}
+							stats={metrics.stats()}
+							workingFor={status.workingFor}
+							draft={session.selected() ? (composer.drafts()[session.selected()!] ?? "") : ""}
+							onDraftChange={composer.change}
+							toastHost={<ToastHost toasts={toast.toasts} placement={settings.settings()?.toastPlacement ?? "bottomcenter"} onDismiss={toast.dismiss} />}
+							skills={skills.skills()}
+							onSkill={(name) => rpc.request.skill_execute({ name })}
+							onSkillInspect={(name) => rpc.request.skill_get({ name }).then((r) => (r.ok ? (r.content ?? null) : null))}
+						/>
+					</TranscriptProvider>
 				)}
 			</main>
 

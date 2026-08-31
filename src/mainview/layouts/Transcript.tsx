@@ -1,19 +1,11 @@
-/**
- * Transcript — the document layer, rendered with Solid.
- * Knows nothing about RPC or the agent: it receives entries and renders them.
- * Letter conversation: a 60%-centered narrow letter column, no avatars. user = warm-ink envelope bubble + seal time;
- * agent = letter paper + dashed postmark + markdown body + signature line; running indicator = a "speaking"
- * letter bubble at the end (three ink dots + signature line); messages arriving mid-run render above it.
- */
-
 import { Check } from "lucide-solid";
-import { type Accessor, createEffect, createMemo, createSignal, For, onCleanup } from "solid-js";
+import { type Accessor, createEffect, createSignal, For, onCleanup, Show } from "solid-js";
 import { AnimatePresence, Motion, MotionConfigProvider } from "solid-motion";
 import type { EscalationStatus, SandboxMode } from "../../shared/rpc";
 import { Dialog, DialogContent, DialogTitle } from "../components/ui/dialog";
 import { renderMarkdown, renderMarkdownPlain } from "../lib/markdown";
+import { useTranscript } from "../lib/transcript-controller";
 
-/** Sandbox escalation approval (kind "escalation"): the request payload + decision status. */
 export interface EscalationInfo {
 	id: string;
 	command: string;
@@ -23,7 +15,6 @@ export interface EscalationInfo {
 	status: EscalationStatus;
 }
 
-/** Slash command row (kind "command"): the paired command/run + command/done lifecycle. */
 export interface CommandInfo {
 	commandId: string;
 	name: string;
@@ -40,11 +31,13 @@ export interface Entry {
 	escalation?: EscalationInfo;
 	command?: CommandInfo;
 	skill?: CommandInfo;
+
+	key?: string;
 }
 
 let nextId = 1;
 const pad = (n: number) => String(n).padStart(2, "0");
-/** Full date-time format: 2026-08-13 10:22:27 */
+
 const fmtDateTime = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 
 export function makeUserEntry(text: string, time = Date.now()): Entry {
@@ -55,7 +48,6 @@ export function makeAgentEntry(text: string, time = Date.now()): Entry {
 	return { id: nextId++, kind: "agent", text, time: fmtDateTime(new Date(time)) };
 }
 
-/** Build an escalation entry from the persisted history item (status flips as a decision lands). */
 export function makeEscalationEntry(item: { text: string; time: number; escalation: EscalationInfo }): Entry {
 	return { id: nextId++, kind: "escalation", text: item.text, time: fmtDateTime(new Date(item.time)), escalation: { ...item.escalation } };
 }
@@ -76,7 +68,6 @@ export function makeSepEntry(text: string): Entry {
 	return { id: nextId++, kind: "sep", text };
 }
 
-/** Parse "2026-08-13 10:22:27" → postmark "OCT 13" / "10:22" */
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 function parseStamp(raw: string | undefined): { date: string; time: string } | null {
 	const m = raw?.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/);
@@ -84,20 +75,17 @@ function parseStamp(raw: string | undefined): { date: string; time: string } | n
 	return { date: `${MONTHS[Number(m[2]) - 1]} ${Number(m[3])}`, time: `${m[4]}:${m[5]}` };
 }
 
-/** 24-hour clock: 10:22:27 → "10:22" */
 function timeHM(raw: string | undefined): string {
 	const m = raw?.match(/ (\d{2}):(\d{2}):/);
 	if (!m) return "";
 	return `${m[1]}:${m[2]}`;
 }
 
-/** Deterministic pseudo-random in [-1, 1] from a seed — stable across re-renders and navigation. */
 function seededUnit(seed: number): number {
 	const x = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
 	return (x - Math.floor(x)) * 2 - 1;
 }
 
-/** Deterministic 32-bit string hash (FNV-1a) — a stable content-derived seed for jitter/rotation. */
 function hashString(s: string): number {
 	let h = 0x811c9dc5;
 	for (let i = 0; i < s.length; i++) {
@@ -107,23 +95,17 @@ function hashString(s: string): number {
 	return h >>> 0;
 }
 
-/**
- * Markdown body with deferred shiki: the first paint renders full markdown formatting without
- * shiki code highlighting (fast), then the highlighted version replaces it asynchronously when
- * the browser is idle. Keeps history load responsive even with many messages.
- */
 function Markdown(props: { text: string; class?: string }) {
 	let ref: HTMLDivElement | undefined;
 	createEffect(() => {
 		const el = ref;
 		if (!el) return;
-		// First paint: fast plain markdown (no shiki), so history load stays responsive.
+
 		el.innerHTML = renderMarkdownPlain(props.text);
 
-		// Lazy shiki upgrade: only when the message scrolls into (or near) the viewport.
 		let observer: IntersectionObserver | undefined;
 		const upgrade = () => {
-			if (el.querySelector(".shiki")) return; // already upgraded
+			if (el.querySelector(".shiki")) return;
 			el.innerHTML = renderMarkdown(props.text);
 			observer?.disconnect();
 		};
@@ -135,7 +117,7 @@ function Markdown(props: { text: string; class?: string }) {
 						if (entry.isIntersecting) upgrade();
 					}
 				},
-				{ root: null, rootMargin: "200px" }, // warm up just before it scrolls into view
+				{ root: null, rootMargin: "200px" },
 			);
 			observer.observe(el);
 		} else {
@@ -147,7 +129,6 @@ function Markdown(props: { text: string; class?: string }) {
 	return <div ref={ref} class={props.class} />;
 }
 
-/** A letter's body: postmark + markdown + signature line (shared by single replies and stack cards). */
 function letterBody(card: Entry, worker?: string, showPostmark = true, rich = true) {
 	const stamp = showPostmark ? parseStamp(card.time) : null;
 	return (
@@ -168,7 +149,6 @@ function letterBody(card: Entry, worker?: string, showPostmark = true, rich = tr
 	);
 }
 
-/** An escalation card's body: request head + command + mode change + status or Approve/Reject (shared by single bubbles and stack cards). No postmark. */
 function escalationBody(esc: EscalationInfo, onRespond?: (id: string, approved: boolean) => void) {
 	return (
 		<>
@@ -196,64 +176,44 @@ function escalationBody(esc: EscalationInfo, onRespond?: (id: string, approved: 
 	);
 }
 
-/**
- * Reply deck: consecutive agent replies and sandbox escalations stack like the motion.dev
- * card-stack — the newest card sits on top, the others peek translated/rotated behind it;
- * the button below cycles the deck. CSS-only (no drag); signal reads live in JSX expressions,
- * never hoisted to callback locals. Cards get a minimum height so short cards keep a
- * substantial deck; back cards are clipped to that height so the deck's bottom edges stay
- * even regardless of content. Letter cards postmark on the top card; escalation cards never.
- */
 const STACK_CARD_MIN_HEIGHT = 96;
-/** Reserved strip above the front card where the back cards' top edges peek out. */
+
 const STACK_PEEK = 10;
 const STACK_PEEK_STEP = 5;
-/** Hard cap on back-card tilt: depth-based rotation + jitter never exceeds this magnitude. */
-const STACK_MAX_ROTATION = 2.8;
-/** Render window: only the latest N blocks render on load; scrolling near the top prepends older ones. */
-const HISTORY_WINDOW = 30;
-/** Within this many px of the rendered top, the window expands upward. */
-const WINDOW_EXPAND_EDGE = 40;
 
-function MessageStack(props: { cards: Entry[]; worker?: string; locateFlashId?: Accessor<number | null>; onEscalationRespond?: (id: string, approved: boolean) => void }) {
+const STACK_MAX_ROTATION = 2.8;
+
+function MessageStack(props: {
+	cards: Entry[];
+	anchorKey: string;
+	worker?: string;
+	locateFlashId?: Accessor<number | null>;
+	onEscalationRespond?: (id: string, approved: boolean) => void;
+}) {
 	const [current, setCurrent] = createSignal(props.cards.length - 1);
-	// A growing deck (replies arriving mid-run) jumps to the newest card; a shrinking one clamps.
-	// Only react to LENGTH changes — never to the user's own navigation, which moves `current`
-	// without changing the length and would otherwise be snapped straight back to the newest card.
+
 	let prevLen = props.cards.length;
 	createEffect(() => {
 		const len = props.cards.length;
 		const c = current();
-		if (len > prevLen)
-			setCurrent(len - 1); // grew → jump to the newest card
-		else if (c >= len) setCurrent(len - 1); // shrank → clamp to the newest valid index
+		if (len > prevLen) setCurrent(len - 1);
+		else if (c >= len) setCurrent(len - 1);
 		prevLen = len;
 	});
 	const prev = () => setCurrent(Math.max(0, current() - 1));
 	const next = () => setCurrent(Math.min(props.cards.length - 1, current() + 1));
 	return (
-		<div class="msg-stack" style={{ "padding-top": `${STACK_PEEK}px` }}>
+		<div class="msg-stack" style={{ "padding-top": `${STACK_PEEK}px` }} data-chat-anchor-key={props.anchorKey} data-chat-flow-key={props.anchorKey}>
 			<For each={props.cards}>
 				{(card, i) => {
-					// Depth relative to the top card: 0 = visible, 1 = first behind, …
-					// Backward distance from `current`: the card directly behind the newest (the default
-					// view) is the second-newest, not the oldest — a forward wrap would reverse the fan.
 					const depth = () => (current() - i() + props.cards.length) % props.cards.length;
-					// Visual layer capped at the two visible back cards: deeper cards stack with the same
-					// lift/tilt as the second card so the deck never fans into a messy spread (rotation
-					// must not keep growing with depth, and jitter must not scatter cards that should
-					// be hidden behind the depth-2 card).
+
 					const layer = () => Math.min(depth(), 2);
-					// Back cards lift UP into the peek strip (capped at two visible edges)
+
 					const peek = () => layer() * STACK_PEEK_STEP;
-					// Stable per-card randomness (seeded by the message content via FNV-1a hash): a slight
-					// organic jitter in lift (peek), angle (rotation) and horizontal spread (depth feel) —
-					// deterministic, so it never flickers on re-renders, navigation, or restarts. Only the
-					// two visible back cards jitter; deeper cards sit dead-center behind them so they stay
-					// hidden.
+
 					const jitter = depth() <= 2 ? seededUnit(hashString(card.text)) : 0;
-					// Rotation: depth-based tilt (alternating sign, two visible layers) + organic jitter,
-					// clamped to ±STACK_MAX_ROTATION so a card never tilts past the cap even with jitter.
+
 					const rotation = Math.max(-STACK_MAX_ROTATION, Math.min(STACK_MAX_ROTATION, (layer() % 2 ? 1 : -1) * layer() * 1.4 + jitter * 0.8));
 					return (
 						<div
@@ -289,310 +249,208 @@ function MessageStack(props: { cards: Entry[]; worker?: string; locateFlashId?: 
 	);
 }
 
+const blockKey = (b: Entry | Entry[]) => (Array.isArray(b) ? b[0] : b).key ?? String(Array.isArray(b) ? b[0].id : b.id);
+
 export function Transcript(props: {
 	entries: Accessor<Entry[]>;
 	working: Accessor<boolean>;
-	tick: Accessor<number>;
-	/** True while persisted history is being (re)read — show the archives placeholder instead of the empty prompt. */
 	historyLoading: Accessor<boolean>;
 	worker?: string;
-	/** Outline locate target: the matching bubble briefly flashes seal-soft. */
 	locateFlashId?: Accessor<number | null>;
-	/** Respond to a pending sandbox escalation (inline Approve/Reject buttons). */
 	onEscalationRespond?: (id: string, approved: boolean) => void;
 	onSkillInspect?: (name: string) => Promise<string | null>;
 }) {
+	const controller = useTranscript();
 	let container: HTMLElement | undefined;
 	let inner: HTMLDivElement | undefined;
-
-	// Render window: which block index to start rendering from (tail first, expands upward on
-	// scroll). Keeping older blocks unrendered avoids the O(n) markdown+shiki cost of rendering
-	// the whole history at once — entries stay fully loaded in memory; only the DOM is windowed.
-	const [windowStart, setWindowStart] = createSignal(0);
 	const [expandedCommand, setExpandedCommand] = createSignal<number | null>(null);
 	const [skillDialog, setSkillDialog] = createSignal<{ name: string; content: string } | null>(null);
 	async function inspectSkill(name: string) {
 		const content = await props.onSkillInspect?.(name);
 		if (content != null) setSkillDialog({ name, content });
 	}
-	// Whether the scrollbar sits at the bottom: auto-scroll on new content only then (scroll
-	// anchoring — a user reading older messages is never yanked to the bottom).
-	let atBottom = true;
-	// Fresh-load detection: entries were cleared (select) then repopulated — restart the window at the tail.
-	let prevBlocksLen = 0;
-	// Whether the render window has been initialized for the current conversation. Until it is,
-	// visibleBlocks shows only the tail — never render the whole history on the first frame.
-	let windowInitialized = false;
-	// Track the newest user entry: the user's own send always jumps to the bottom — the composer
-	// is at the bottom, so their message should be visible even if they were reading older history.
-	let lastUserEntryId: number | null = null;
 
-	// Consecutive agent replies and sandbox escalations group into one deck per burst; user/sys/sep stay standalone.
-	// Declared FIRST: Solid effects run synchronously at creation (inside the component body), so anything that
-	// reads `blocks` before this const is initialized would hit the TDZ (Cannot access before initialization).
-	const blocks = createMemo(() => {
-		const out: (Entry | Entry[])[] = [];
-		let stack: Entry[] | null = null;
-		for (const e of props.entries()) {
-			if (e.kind === "agent" || e.kind === "escalation") {
-				(stack ??= []).push(e);
-			} else {
-				if (stack) {
-					out.push(stack);
-					stack = null;
-				}
-				out.push(e);
-			}
-		}
-		if (stack) out.push(stack);
-		return out;
-	});
-
-	const visibleBlocks = createMemo(() => {
-		const all = blocks();
-		// Read windowStart unconditionally so the memo subscribes to it from the first run — an
-		// early return before this read would leave windowStart untracked and window expansion dead.
-		const start = Math.min(windowStart(), all.length);
-		if (all.length === 0) return all;
-		// First pass after a load: never render the whole history — show the tail immediately.
-		// The fresh-load effect below takes over windowStart for subsequent scroll anchoring.
-		if (!windowInitialized) return all.slice(Math.max(0, all.length - HISTORY_WINDOW));
-		return start > 0 ? all.slice(start) : all;
-	});
-
-	// A fresh conversation load (entries 0 → N) starts the window at the tail and sticks to the bottom.
-	createEffect(() => {
-		const len = blocks().length;
-		if (len === 0) {
-			windowInitialized = false;
-			prevBlocksLen = 0;
-			return;
-		}
-		if (prevBlocksLen === 0 && len > 0) {
-			setWindowStart(Math.max(0, len - HISTORY_WINDOW));
-			windowInitialized = true;
-			atBottom = true;
-		}
-		prevBlocksLen = len;
-	});
-
-	// Scroll handling: track bottom-ness (anchor) and expand the window upward near the rendered top.
-	createEffect(() => {
-		const el = container;
-		if (!el) return;
-		const onScroll = () => {
-			atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
-			const expanding = el.scrollTop < WINDOW_EXPAND_EDGE && windowStart() > 0;
-			if (expanding) {
-				const before = el.scrollHeight;
-				setWindowStart(Math.max(0, windowStart() - HISTORY_WINDOW));
-				// The prepended older blocks grow the document above the viewport — shift scrollTop by
-				// the delta so the visible content stays put (scroll anchoring).
-				queueMicrotask(() => {
-					el.scrollTop += el.scrollHeight - before;
-				});
-			}
-		};
-		el.addEventListener("scroll", onScroll);
-		onCleanup(() => el.removeEventListener("scroll", onScroll));
-	});
-
-	// Outline/trajectory locate: if the target block isn't rendered yet, expand the window to include it.
-	createEffect(() => {
-		const id = props.locateFlashId?.();
-		if (id == null) return;
-		const all = blocks();
-		const idx = all.findIndex((b) => {
-			const cards = Array.isArray(b) ? b : [b];
-			return cards.some((c) => c.id === id);
-		});
-		if (idx >= 0 && idx < windowStart()) {
-			setWindowStart(idx);
-			queueMicrotask(() => {
-				document.getElementById("entry-" + id)?.scrollIntoView({ behavior: "smooth", block: "center" });
-			});
-		}
-	});
-
-	// The pin runs in a rAF: the commit's DOM is inserted but not laid out yet (letter bodies fill
-	// via effects, decks/images grow after), so a synchronous scrollHeight read would pin to a too-
-	// short document and the viewport lands mid-conversation. A frame later the layout is settled.
-	let pinRaf: number | null = null;
-	const pinToBottom = () => {
-		if (pinRaf != null) cancelAnimationFrame(pinRaf);
-		pinRaf = requestAnimationFrame(() => {
-			pinRaf = null;
-			if (!container) return;
-			container.scrollTop = container.scrollHeight;
-		});
+	const setContainer = (el: HTMLElement) => {
+		container = el;
+		if (el && inner) controller.attach(el, inner);
 	};
-
-	createEffect(() => {
-		props.tick(); // push, history, turn, end — all bump it
-		const all = blocks();
-		if (all.length === 0) {
-			lastUserEntryId = null;
-			return;
-		}
-		// A new user entry means the human just sent a message — force the bottom. Other new
-		// content (agent replies, sys lines) keeps the scroll-anchoring rule.
-		let lastUser: Entry | null = null;
-		for (const b of all) {
-			if (!Array.isArray(b) && b.kind === "user") lastUser = b;
-		}
-		const userSent = lastUser != null && lastUser.id !== lastUserEntryId;
-		lastUserEntryId = lastUser?.id ?? null;
-		if (container && (userSent || atBottom)) pinToBottom();
-	});
-
-	// The document keeps growing after the pin (letters fill, images load, decks grow, the window
-	// expands) — follow the bottom whenever it grows while the user is already there. Covers every
-	// async height source the rAF pin can't see (it only settles the frame it ran in).
-	createEffect(() => {
-		const el = inner;
-		if (!el) return;
-		const ro = new ResizeObserver(() => {
-			if (atBottom) pinToBottom();
-		});
-		ro.observe(el);
-		onCleanup(() => ro.disconnect());
-	});
+	const setInner = (el: HTMLDivElement) => {
+		inner = el;
+		if (el && container) controller.attach(container, el);
+	};
+	onCleanup(() => controller.detach());
 
 	return (
 		<MotionConfigProvider reducedMotion="user">
-			<section class="transcript flex-1 overflow-y-auto overscroll-contain px-4 py-3" id="transcript" aria-live="polite" ref={container}>
-				<div class="transcript-inner" ref={inner}>
-					{props.entries().length === 0 && !props.working() && (
-						<div class="text-center pt-16">
-							{props.historyLoading() ? (
-								<>
-									<p class="font-serif text-[17px] text-ink-soft">— reading the archives… —</p>
-									<p class="eyebrow mt-3">restoring the conversation from disk</p>
-								</>
-							) : (
-								<>
-									<p class="font-serif text-[17px] text-ink-soft">— waiting for your first prompt —</p>
-									<p class="eyebrow mt-3">ask it to read a file, run a command, or just talk</p>
-								</>
-							)}
-						</div>
-					)}
-					<For each={visibleBlocks()}>
-						{(block) => {
-							if (Array.isArray(block)) {
-								const card = block[0];
-								// One card stays standalone (a lone letter keeps its plain motion); several stack into a deck
-								if (block.length === 1) {
-									if (card.kind === "escalation" && card.escalation) {
+			<div class="relative flex-1 min-h-0 flex flex-col">
+				<section class="transcript flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3" id="transcript" aria-live="polite" ref={setContainer}>
+					<div class="transcript-inner" ref={setInner}>
+						{props.entries().length === 0 && !props.working() && (
+							<div class="text-center pt-16">
+								{props.historyLoading() ? (
+									<>
+										<p class="font-serif text-[17px] text-ink-soft">— reading the archives… —</p>
+										<p class="eyebrow mt-3">restoring the conversation from disk</p>
+									</>
+								) : (
+									<>
+										<p class="font-serif text-[17px] text-ink-soft">— waiting for your first prompt —</p>
+										<p class="eyebrow mt-3">ask it to read a file, run a command, or just talk</p>
+									</>
+								)}
+							</div>
+						)}
+
+						<Show when={controller.hasMoreOlder()}>
+							<div class="load-earlier-wrap">
+								<button class="load-earlier" onClick={() => controller.loadEarlier()} disabled={controller.loadEarlierPending()}>
+									{controller.loadEarlierPending() ? "loading…" : "↑ load earlier"}
+								</button>
+							</div>
+						</Show>
+						<For each={controller.visibleBlocks()}>
+							{(block) => {
+								if (Array.isArray(block)) {
+									const card = block[0];
+									const key = blockKey(block);
+
+									if (block.length === 1) {
+										if (card.kind === "escalation" && card.escalation) {
+											return (
+												<div class="msg-escalation" id={"entry-" + card.id} data-chat-anchor-key={key} data-chat-flow-key={key}>
+													{escalationBody(card.escalation, props.onEscalationRespond)}
+												</div>
+											);
+										}
 										return (
-											<div class="msg-escalation" id={"entry-" + card.id}>
-												{escalationBody(card.escalation, props.onEscalationRespond)}
+											<Motion
+												as="div"
+												class={"msg-letter" + (props.locateFlashId?.() === card.id ? " locate-flash" : "")}
+												id={"entry-" + card.id}
+												data-chat-anchor-key={key}
+												data-chat-flow-key={key}
+												initial={{ opacity: 0, scale: 0.96, rotate: 0.4 }}
+												animate={{ opacity: 1, scale: 1, rotate: 0 }}
+												transition={{ duration: 0.24, ease: [0.23, 1, 0.32, 1] }}
+											>
+												{letterBody(card, props.worker)}
+											</Motion>
+										);
+									}
+									return <MessageStack cards={block} anchorKey={key} worker={props.worker} locateFlashId={props.locateFlashId} onEscalationRespond={props.onEscalationRespond} />;
+								}
+								const e = block;
+								const key = blockKey(block);
+								if (e.kind === "user") {
+									return (
+										<>
+											<Motion
+												as="div"
+												class={"msg-user" + (props.locateFlashId?.() === e.id ? " locate-flash" : "")}
+												id={"entry-" + e.id}
+												data-chat-anchor-key={key}
+												data-chat-flow-key={key}
+												initial={{ opacity: 0, y: 6 }}
+												animate={{ opacity: 1, y: 0 }}
+												transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
+											>
+												{e.text}
+											</Motion>
+											<span class="msg-user-time">{timeHM(e.time)}</span>
+										</>
+									);
+								}
+								if (e.kind === "sys") {
+									if (e.error) {
+										return (
+											<div class="sys-error" data-chat-anchor-key={key} data-chat-flow-key={key}>
+												<span class="sys-error-tag">ERR</span>
+												<span class="sys-error-text">{e.text}</span>
 											</div>
 										);
 									}
 									return (
-										<Motion
-											as="div"
-											class={"msg-letter" + (props.locateFlashId?.() === card.id ? " locate-flash" : "")}
-											id={"entry-" + card.id}
-											initial={{ opacity: 0, scale: 0.96, rotate: 0.4 }}
-											animate={{ opacity: 1, scale: 1, rotate: 0 }}
-											transition={{ duration: 0.24, ease: [0.23, 1, 0.32, 1] }}
-										>
-											{letterBody(card, props.worker)}
-										</Motion>
-									);
-								}
-								return <MessageStack cards={block} worker={props.worker} locateFlashId={props.locateFlashId} onEscalationRespond={props.onEscalationRespond} />;
-							}
-							const e = block;
-							if (e.kind === "user") {
-								return (
-									<>
-										<Motion
-											as="div"
-											class={"msg-user" + (props.locateFlashId?.() === e.id ? " locate-flash" : "")}
-											id={"entry-" + e.id}
-											initial={{ opacity: 0, y: 6 }}
-											animate={{ opacity: 1, y: 0 }}
-											transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
-										>
+										<div class="sys" data-chat-anchor-key={key} data-chat-flow-key={key}>
 											{e.text}
-										</Motion>
-										<span class="msg-user-time">{timeHM(e.time)}</span>
-									</>
-								);
-							}
-							if (e.kind === "sys") {
-								if (e.error) {
-									return (
-										<div class="sys-error">
-											<span class="sys-error-tag">ERR</span>
-											<span class="sys-error-text">{e.text}</span>
 										</div>
 									);
 								}
-								return <div class="sys">{e.text}</div>;
-							}
-							if ((e.kind === "command" || e.kind === "skill") && (e.command ?? e.skill)) {
-								const info = e.command ?? e.skill!;
-								const args = info.args;
-								const expanded = expandedCommand() === e.id;
-								return (
-									<div
-										class={
-											"msg-command" + (info.status === "success" ? " ok" : "") + (args ? " has-args" : "") + (expanded ? " expanded" : "") + (e.kind === "skill" ? " is-skill" : "")
-										}
-										id={"entry-" + e.id}
-										onClick={e.kind === "skill" ? () => void inspectSkill(info.name) : args ? () => setExpandedCommand(expanded ? null : e.id) : undefined}
-										role={e.kind === "skill" || args ? "button" : undefined}
-										aria-expanded={args ? expanded : undefined}
-									>
-										<div class="msg-command-head">
-											{e.kind === "skill" ? <span class="msg-command-badge">skill</span> : null}
-											<span class="msg-command-name">{info.name}</span>
-											<span class={"msg-command-status " + info.status}>
-												{info.status === "success" ? <Check size={12} /> : null}
-												{info.status === "error" ? "error" : null}
-												{info.status === "interrupted" ? "interrupted" : null}
-												{info.status === "running" ? (
-													<span class="msg-command-running">
-														<span class="work-dot" />
-														<span class="work-dot" />
-														<span class="work-dot" />
-													</span>
-												) : null}
-											</span>
+								if ((e.kind === "command" || e.kind === "skill") && (e.command ?? e.skill)) {
+									const info = e.command ?? e.skill!;
+									const args = info.args;
+									const expanded = expandedCommand() === e.id;
+									return (
+										<div
+											class={
+												"msg-command" +
+												(info.status === "success" ? " ok" : "") +
+												(args ? " has-args" : "") +
+												(expanded ? " expanded" : "") +
+												(e.kind === "skill" ? " is-skill" : "")
+											}
+											id={"entry-" + e.id}
+											data-chat-anchor-key={key}
+											data-chat-flow-key={key}
+											onClick={e.kind === "skill" ? () => void inspectSkill(info.name) : args ? () => setExpandedCommand(expanded ? null : e.id) : undefined}
+											role={e.kind === "skill" || args ? "button" : undefined}
+											aria-expanded={args ? expanded : undefined}
+										>
+											<div class="msg-command-head">
+												{e.kind === "skill" ? <span class="msg-command-badge">skill</span> : null}
+												<span class="msg-command-name">{info.name}</span>
+												<span class={"msg-command-status " + info.status}>
+													{info.status === "success" ? <Check size={12} /> : null}
+													{info.status === "error" ? "error" : null}
+													{info.status === "interrupted" ? "interrupted" : null}
+													{info.status === "running" ? (
+														<span class="msg-command-running">
+															<span class="work-dot" />
+															<span class="work-dot" />
+															<span class="work-dot" />
+														</span>
+													) : null}
+												</span>
+											</div>
+											{expanded && args ? <div class="msg-command-args">{args}</div> : null}
 										</div>
-										{expanded && args ? <div class="msg-command-args">{args}</div> : null}
+									);
+								}
+								return (
+									<div class="time-sep" data-chat-anchor-key={key} data-chat-flow-key={key}>
+										{e.text}
 									</div>
 								);
-							}
-							return <div class="time-sep">{e.text}</div>;
-						}}
-					</For>
-					{/* Speaking: the letter bubble renders at the end; messages arriving mid-run are appended to entries and naturally appear above it */}
-					<AnimatePresence>
-						{props.working() && (
-							<Motion
-								as="div"
-								class="msg-letter msg-speaking"
-								initial={{ opacity: 0, scale: 0.97 }}
-								animate={{ opacity: 1, scale: 1 }}
-								exit={{ opacity: 0 }}
-								transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
-							>
-								<div class="msg-speaking-dots">
-									<span class="work-dot" />
-									<span class="work-dot" />
-									<span class="work-dot" />
-								</div>
-								{props.worker && <div class="msg-sign">— {props.worker} is writing…</div>}
-							</Motion>
-						)}
-					</AnimatePresence>
-				</div>
-			</section>
+							}}
+						</For>
+
+						<AnimatePresence>
+							{props.working() && (
+								<Motion
+									as="div"
+									class="msg-letter msg-speaking"
+									initial={{ opacity: 0, scale: 0.97 }}
+									animate={{ opacity: 1, scale: 1 }}
+									exit={{ opacity: 0 }}
+									transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
+								>
+									<div class="msg-speaking-dots">
+										<span class="work-dot" />
+										<span class="work-dot" />
+										<span class="work-dot" />
+									</div>
+									{props.worker && <div class="msg-sign">— {props.worker} is writing…</div>}
+								</Motion>
+							)}
+						</AnimatePresence>
+					</div>
+				</section>
+
+				<Show when={controller.showBackToBottom()}>
+					<button class="back-to-bottom" title="Back to latest" onClick={() => controller.scrollToBottom(true)}>
+						↓ latest
+					</button>
+				</Show>
+			</div>
 			<Dialog open={skillDialog() != null} onOpenChange={(open) => !open && setSkillDialog(null)}>
 				<DialogContent class="w-[560px] max-w-[560px] bg-paper p-0 gap-0">
 					<DialogTitle class="sr-only">{skillDialog()?.name ?? ""}</DialogTitle>

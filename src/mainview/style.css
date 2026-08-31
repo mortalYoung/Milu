@@ -1,15 +1,6 @@
-/* ————————————————————————————————
-   LETTERS — letter conversation (see DESIGN.md, direction B).
-   Old paper #f7f3ea / letter paper #fffdf8 / warm ink #2a2620 / seal red #b03a2e / hairline #e2dccb.
-   Newsreader for reading only, Public Sans for UI only, JetBrains Mono for inline code only.
-   Messages are 60%-centered narrow-column letters; no avatars; dashed postmarks; three-dot Writing capsule.
-   No shadows, no gradients; hierarchy comes from alternating paper, hairlines, and letter-spacing. Motion: postmark-stamp entry.
-   ———————————————————————————————— */
-
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* Fonts (bundled locally, OFL): Newsreader (letter body) / Public Sans (UI) / JetBrains Mono (inline code) */
 @font-face {
 	font-family: "Newsreader";
 	src: url("assets/fonts/newsreader.woff2") format("woff2-variations");
@@ -33,10 +24,6 @@
 }
 
 @theme {
-	/* Letter-conversation palette (DESIGN.md) — each token is a light / warm-night dark pair.
-	   The dark set mirrors the light set (paper → near-black night paper, ink → cream ink),
-	   resolved by color-scheme, so the whole system flips without a single component-level
-	   dark rule. Base values lean black; the warm undertone keeps the paper identity. */
 	--color-paper: light-dark(#f7f3ea, #141210);
 	--color-paper-deep: light-dark(#ece5d6, #201b15);
 	--color-paper-hover: light-dark(#f0ead9, #1a1612);
@@ -51,7 +38,6 @@
 	--color-seal-soft: light-dark(#e8d5d1, #362420);
 	--color-on-ink: light-dark(#fffdf8, #141210);
 
-	/* Backward-compatible aliases */
 	--color-qw-bg: light-dark(#f7f3ea, #141210);
 	--color-qw-panel: light-dark(#f7f3ea, #141210);
 	--color-qw-text: light-dark(#2a2620, #f3edde);
@@ -60,12 +46,10 @@
 	--color-qw-hover: light-dark(#f0ead9, #1a1612);
 	--color-qw-active: light-dark(#2a2620, #f3edde);
 
-	/* Fonts: serif for reading only, sans for UI only, mono for inline code only */
 	--font-sans: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
 	--font-serif: "Newsreader", Georgia, "Times New Roman", serif;
 	--font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
-	/* shadcn/SolidUI theme variables (mapped to the letter palette) */
 	--color-background: light-dark(#f7f3ea, #141210);
 	--color-foreground: light-dark(#2a2620, #f3edde);
 	--color-card: light-dark(#fffdf8, #1f1b16);
@@ -88,13 +72,11 @@
 	--color-error: light-dark(#b03a2e, #d97a68);
 	--color-error-foreground: light-dark(#b03a2e, #d97a68);
 
-	/* Dialog direction C palette (print orange, used by the details/settings dialogs) */
 	--color-print: light-dark(#e2552d, #e0684a);
 	--color-print-line: light-dark(#d8d8d4, #40382e);
 	--color-print-tint: light-dark(#f4f4f2, #211d17);
 }
 
-/* Atmosphere layer: old-paper micro-noise (opacity <4%, pointer-events pass-through) */
 body::before {
 	content: "";
 	position: fixed;
@@ -110,8 +92,7 @@ body::before {
 	body {
 		height: 100%;
 	}
-	/* The theme lives on color-scheme: the light-dark() tokens above resolve against it.
-	   Default = follow the system; the settings theme (SettingsView → data-theme) overrides. */
+
 	:root {
 		color-scheme: light dark;
 	}
@@ -124,7 +105,7 @@ body::before {
 	body {
 		@apply bg-paper text-ink font-sans antialiased;
 	}
-	/* Bare border classes default to --border (shadcn convention) */
+
 	*,
 	::after,
 	::before {
@@ -133,14 +114,13 @@ body::before {
 	button:not(:disabled) {
 		cursor: pointer;
 	}
-	/* Selected text = seal red paper (brand color) */
+
 	::selection {
 		background: var(--color-seal);
 		color: var(--color-on-ink);
 	}
 }
 
-/* Uppercase label (eyebrow: section headers/system rows; Public Sans 11px + 0.6px positive tracking) */
 @utility eyebrow {
 	font-family: var(--font-sans);
 	font-size: 11px;
@@ -150,9 +130,6 @@ body::before {
 	color: var(--color-muted);
 }
 
-/* Ruled paper: printed lines under the text, like a real letter sheet — writing sits on the lines.
-   The line color is baked into the SVG (data URIs can't read CSS variables), so the night paper
-   gets its own dark-warm line set. */
 @utility letter-lines {
 	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='32'%3E%3Cline x1='0' y1='31' x2='120' y2='31' stroke='%23ddd6c6' stroke-opacity='0.65'/%3E%3C/svg%3E");
 	background-size: 100% 32px;
@@ -168,11 +145,10 @@ body::before {
 }
 
 @layer components {
-	/* ————— Left icon rail (paper surface; active = warm-ink solid) ————— */
 	.rail {
 		@apply w-16 shrink-0 bg-paper border-r border-hairline flex flex-col items-center pt-4;
 	}
-	/* Top empty drag region (24px): makes room for the traffic lights */
+
 	.rail-spacer {
 		@apply h-6 w-full shrink-0;
 	}
@@ -192,7 +168,7 @@ body::before {
 		background: var(--color-ink);
 		color: var(--color-paper);
 	}
-	/* Footer (top border) */
+
 	.rail-footer {
 		@apply mt-auto w-full pb-[14px] flex flex-col items-center gap-3;
 	}
@@ -207,12 +183,10 @@ body::before {
 		color: var(--color-paper);
 	}
 
-	/* ————— Top bar (settings page: eyebrow label) ————— */
 	.topbar {
 		@apply h-16 shrink-0 bg-paper border-b border-hairline flex items-center px-6 eyebrow;
 	}
 
-	/* ————— Conversation list (letter directory) ————— */
 	.conv-list-head {
 		@apply flex items-center justify-between pl-1 pr-3 mb-[14px];
 	}
@@ -237,7 +211,7 @@ body::before {
 	.conv-avatar {
 		@apply size-[34px] rounded-full flex items-center justify-center shrink-0 font-serif text-[15px] font-semibold leading-none;
 	}
-	/* Optical centering of the initial: serif lowercase sits on the baseline, visual center sits high, nudge down 0.1em */
+
 	.avatar-initial {
 		@apply block leading-none;
 		transform: translateY(0.1em);
@@ -266,7 +240,7 @@ body::before {
 	.conv-preview-main {
 		@apply flex-1 min-w-0 truncate;
 	}
-	/* Ellipsis that appears floating on hover (absolutely positioned over the row, no layout footprint) */
+
 	.conv-ellipsis {
 		@apply absolute right-1.5 top-1/2 -translate-y-1/2 size-6 flex items-center justify-center rounded text-body-muted cursor-pointer transition-opacity bg-letter/80;
 	}
@@ -274,7 +248,6 @@ body::before {
 		background: var(--color-letter);
 	}
 
-	/* ————— Markdown rendering (create preview / details right column) ————— */
 	.md {
 		@apply font-serif text-[15px] leading-[1.6] text-ink break-words;
 	}
@@ -331,12 +304,9 @@ body::before {
 		@apply bg-transparent border-0 p-0;
 	}
 	.md pre.shiki {
-		/* Token colors come from shiki's light-dark() pairs; the surface stays ours — the
-		   themes' own backgrounds (white / github-dark blue) would break the paper system. */
 		background-color: var(--color-print-tint) !important;
 	}
-	/* Plain and shiki code blocks share the same box model so the async highlight swap doesn't
-	   change height — no scroll jump when a message upgrades as it enters the viewport. */
+
 	.md pre,
 	.md pre.shiki {
 		font-size: 13px;
@@ -349,9 +319,6 @@ body::before {
 		text-decoration: underline;
 	}
 
-	/* ————— Letter dialogs (direction C): add/read a partner like a letter —————
-	   The sheet is the letter itself, filling the dialog edge to edge. No drawn border —
-	   the paper reads against the desk by tone, with a faint grain (P-5: texture ≤ 3%). */
 	.letter-sheet {
 		@apply relative flex flex-col gap-3.5 px-8 pt-7 pb-9 bg-letter rounded-[8px] h-full;
 		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.042'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
@@ -359,7 +326,7 @@ body::before {
 	.letter-sheet ::selection {
 		background: var(--color-seal-soft);
 	}
-	/* Salutation: "Dear <alias>," — the alias is just a handle, written inline like a letter opening */
+
 	.letter-sal {
 		@apply font-serif text-[20px] font-semibold text-ink flex items-baseline gap-1 flex-wrap;
 	}
@@ -376,26 +343,25 @@ body::before {
 	.letter-error {
 		@apply font-sans text-[12px] text-seal;
 	}
-	/* Postmark: the same dashed rubber stamp as the conversation letters (58px circle, -12°),
-	   stamped beside the salutation, clear of the dialog's close button (below its 40px zone) */
+
 	.letter-postmark {
 		@apply absolute right-5 top-[52px] size-[58px] rounded-full border border-dashed border-seal flex flex-col items-center justify-center font-sans text-[8.5px] uppercase tracking-[0.12em] text-seal leading-[1.6] text-center;
 		background: light-dark(rgba(247, 243, 234, 0.55), rgba(31, 27, 22, 0.55));
 		transform: rotate(-12deg);
 	}
-	/* Signature: right-aligned seal-red sign-off, mirroring the conversation letters */
+
 	.letter-sign {
 		@apply font-sans text-[12px] text-seal tracking-[0.03em] text-right mt-6;
 	}
-	/* Writing header: "new letter" above the salutation (a letter begins with its header) */
+
 	.letter-eyebrow {
 		@apply eyebrow text-muted;
 	}
-	/* Writing on ruled paper: no box, no chrome — just the lines, the caret and the words */
+
 	.letter-lines-input {
 		@apply letter-lines w-full resize-none bg-transparent border-0 rounded-none px-0 py-0 font-mono text-[13px] text-ink placeholder:text-muted outline-none focus-visible:outline-none;
 	}
-	/* Rendered content sits on the same ruled lines as writing */
+
 	.letter-lines .md {
 		line-height: 32px;
 	}
@@ -452,14 +418,13 @@ body::before {
 		@apply bg-seal;
 	}
 
-	/* ————— Chat page ————— */
 	.chat-page {
 		@apply relative flex-1 flex min-h-0;
 	}
 	.chat-window {
 		@apply relative flex-1 flex flex-col min-w-0;
 	}
-	/* Envelope header: 72px, hairline on top and bottom, centered name row */
+
 	.chat-header {
 		@apply relative h-[72px] shrink-0 bg-paper border-t border-b border-hairline flex items-center justify-center;
 	}
@@ -476,15 +441,12 @@ body::before {
 		@apply absolute left-4 top-1/2 -translate-y-1/2;
 		-webkit-app-region: no-drag;
 	}
-	/* Header action group (outline + trajectory toggles): one absolute anchor at the right,
-	   the buttons lay out with flex. The explicit no-drag app-region is belt-and-suspenders:
-	   the JS drag-region check uses the class, but the native titlebar layer also needs to
-	   know this element is interactive. */
+
 	.btn-group {
 		@apply absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1;
 		-webkit-app-region: no-drag;
 	}
-	/* Replies panel: plain floating index of the agent replies (question-anchored rows) */
+
 	.outline {
 		@apply absolute top-[80px] right-4 z-20 w-[246px] max-h-[65vh] bg-letter flex flex-col overflow-hidden border border-hairline rounded-[8px] outline-0 outline-none;
 	}
@@ -522,11 +484,11 @@ body::before {
 	.outline-a {
 		@apply font-sans text-[12.5px] leading-[1.45] text-ink truncate;
 	}
-	/* Stack badge: the row represents a deck of consecutive replies (transcript MessageStack) */
+
 	.outline-stack {
 		@apply self-start font-mono text-[9px] text-seal/80;
 	}
-	/* Locate feedback: the target bubble flashes, then fades back (agent = seal-soft paper; user = seal outline on ink) */
+
 	@keyframes locate-flash {
 		0% {
 			background: var(--color-seal-soft);
@@ -562,7 +524,6 @@ body::before {
 		}
 	}
 
-	/* Letter stream: 60% centered narrow column */
 	.transcript-inner {
 		@apply w-[60%] mx-auto flex flex-col;
 	}
@@ -572,8 +533,18 @@ body::before {
 	.msg-user-time {
 		@apply self-end font-sans text-[10.5px] text-seal tracking-[0.05em] mt-1.5;
 	}
-	/* Sandbox escalation: a quiet ledger card in the message list — a pending approval
-	   carries inline Approve/Reject; once decided the status text replaces the buttons. */
+
+	.load-earlier-wrap {
+		@apply flex justify-center pt-3 pb-1;
+	}
+	.load-earlier {
+		@apply font-mono text-[10px] uppercase tracking-[0.12em] text-seal rounded-full border border-hairline bg-letter/80 px-3 py-1 cursor-pointer hover:bg-paper-hover transition-colors disabled:opacity-50 disabled:cursor-default;
+	}
+
+	.back-to-bottom {
+		@apply absolute right-4 bottom-4 z-20 font-mono text-[10.5px] text-seal rounded-full border border-hairline bg-letter/95 backdrop-blur px-3 py-1.5 shadow-sm cursor-pointer hover:bg-paper-hover transition-opacity;
+	}
+
 	.msg-escalation {
 		@apply self-start mt-4 w-[560px] max-w-full border border-hairline rounded-[10px] bg-letter px-[18px] py-[10px] font-mono text-[11px] text-ink;
 	}
@@ -610,8 +581,7 @@ body::before {
 	.msg-escalation-status.drp {
 		@apply text-muted/60;
 	}
-	/* Slash command: a user-like bubble with a distinct tint. Shows the bare command name;
-	   args expand on click (only when present); success shows a checkmark (no emoji). */
+
 	.msg-command {
 		@apply self-end mt-6 max-w-full cursor-default rounded-[10px] border border-hairline bg-paper-hover px-[15px] py-[10px] font-mono text-[13px] leading-[1.5] text-ink transition-colors;
 	}
@@ -657,18 +627,17 @@ body::before {
 	.msg-letter-text {
 		@apply font-serif text-[16px] leading-[1.62] break-words text-ink;
 	}
-	/* Dashed postmark: top-right of the letter, rotated -12° */
+
 	.msg-postmark {
 		@apply absolute -top-4 -right-4 size-[58px] rounded-full border border-dashed border-seal flex flex-col items-center justify-center font-sans text-[8.5px] tracking-[0.12em] text-seal leading-[1.6] text-center;
 		background: light-dark(rgba(247, 243, 234, 0.55), rgba(31, 27, 22, 0.55));
 		transform: rotate(-12deg);
 	}
-	/* Signature line: seal red, right-aligned */
+
 	.msg-sign {
 		@apply font-sans text-[12px] text-seal tracking-[0.03em] text-right mt-[9px];
 	}
-	/* Per-letter chrome (postmark + signature) is archival, not immediate — collapsed until hover.
-	   The speaking bubble keeps its signature: it reports live activity. */
+
 	.msg-letter:not(.msg-speaking) .msg-postmark,
 	.msg-letter:not(.msg-speaking) .msg-sign {
 		opacity: 0;
@@ -682,7 +651,7 @@ body::before {
 		opacity: 1;
 		visibility: visible;
 	}
-	/* Working indicator: three staggered breathing ink dots (paper color on dark backgrounds, ink color on light ones, overridden by the various .xxx .work-dot rules) */
+
 	.work-dot {
 		@apply size-[5px] rounded-full;
 		background: var(--color-paper);
@@ -704,23 +673,20 @@ body::before {
 			opacity: 1;
 		}
 	}
-	/* Speaking bubble (letter style, reuses msg-letter): ink dots + signature line */
+
 	.msg-speaking-dots {
 		@apply flex items-center gap-1.5;
 	}
 	.msg-speaking .work-dot {
 		background: var(--color-ink-soft);
 	}
-	/* Reply deck: consecutive agent replies stack like the motion.dev card-stack — the top
-	   card is in flow (defines the height); the back cards are anchored at the content top
-	   and lift UP into the container's padding strip (STACK_PEEK in Transcript.tsx), so their
-	   top edges peek out above the front card. The letter's mt-6 belongs to the container. */
+
 	.msg-stack {
 		@apply relative mt-6 self-start w-[560px] max-w-full;
 	}
 	.msg-stack-card {
 		@apply absolute left-0 right-0;
-		/* aligns the back cards with the front card (container padding-top = STACK_PEEK) */
+
 		top: 10px;
 		margin-top: 0;
 		transition: transform 220ms cubic-bezier(0.23, 1, 0.32, 1);
@@ -728,10 +694,7 @@ body::before {
 	.msg-stack-card.on-top {
 		@apply relative;
 	}
-	/* The nav is a minimal pill centered on the message's top edge. Absolute + z-20 keeps it
-	   above the deck and the peeked back-card edges. Hidden until the deck is hovered, so it
-	   never clutters the transcript; stays visible while the pointer is on it (clickable) and
-	   while a button inside has focus (keyboard). */
+
 	.msg-stack-nav {
 		@apply absolute z-20 flex items-center gap-1.5;
 		left: 50%;
@@ -764,14 +727,14 @@ body::before {
 	.msg-stack-count {
 		@apply font-mono text-[9px] text-muted;
 	}
-	/* List-row working indicator: three ink dots in the preview slot */
+
 	.conv-preview-dots {
 		@apply inline-flex items-center gap-[3px] pt-[3px];
 	}
 	.conv-preview-dots .work-dot {
 		background: var(--color-ink-soft);
 	}
-	/* Unread indicator: seal dot beside the partner name (messages newer than the read watermark) */
+
 	.conv-unread-dot {
 		@apply inline-block size-[6px] shrink-0 rounded-full bg-seal;
 	}
@@ -869,21 +832,18 @@ body::before {
 			transform: translateX(0);
 		}
 	}
-	/* Envelope-header working status: separator + three ink dots + Writing… */
+
 	.chat-worker-status {
 		@apply inline-flex items-center gap-[3px] ml-2 pl-2 border-l border-hairline font-sans text-[9px] uppercase tracking-[0.14em] text-ink-soft;
 	}
 	.chat-worker-status .work-dot {
 		background: var(--color-ink-soft);
 	}
-	/* Trajectory drawer (density strip, direction B): the whole origin log.
-   Width is capped so the chat stays visible to its left; the drawer is standalone (no chat linkage). */
-	/* No horizontal padding at the drawer level: divider lines (run heads) span edge to edge.
-	   Every text element carries its own px-4 so the content inset stays the same. */
+
 	.traj-drawer {
 		@apply absolute top-0 right-0 bottom-0 z-20 w-[440px] max-w-[72vw] bg-letter border-l border-hairline flex flex-col py-4;
 	}
-	/* Entry is a CSS animation (no solid-motion wrapper — AnimatePresence freezes child reactivity) */
+
 	.traj-enter {
 		animation: traj-drawer-in 220ms cubic-bezier(0.23, 1, 0.32, 1);
 	}
@@ -1022,11 +982,11 @@ body::before {
 		border: 1.5px dotted var(--color-ink-soft);
 		border-radius: 2px 2px 0 0;
 	}
-	/* Turn boundary: a vertical hairline spanning the band */
+
 	.traj-boundary {
 		@apply w-px self-stretch bg-hairline flex-none;
 	}
-	/* Layer 3: the entry list — one expandable row per log entry, separators only */
+
 	.traj-all {
 		@apply flex-1 min-h-0 overflow-y-auto mt-2 pt-2;
 	}
@@ -1041,7 +1001,7 @@ body::before {
 	}
 	.traj-row.open .traj-row-head {
 		@apply bg-paper-hover;
-		/* the expanded body carries the bottom border — no double line */
+
 		border-bottom: none;
 	}
 	.traj-row-head b {
@@ -1053,11 +1013,10 @@ body::before {
 	.traj-row-head .row-time {
 		@apply flex-none font-mono text-[8.5px] text-muted;
 	}
-	/* Run folder head: a divider line with the label riding it — click to fold/unfold the run.
-	   The label sits between two line segments (flex gap), so the line never passes under the text. */
+
 	.traj-run-head {
 		@apply w-full flex items-center gap-2 py-[7px] bg-transparent border-0 cursor-pointer;
-		/* the button spans edge to edge; the label stays centered in the content inset */
+
 		padding-left: 1rem;
 		padding-right: 1rem;
 	}
@@ -1069,7 +1028,7 @@ body::before {
 		background: var(--color-hairline);
 		transition: background 120ms ease;
 	}
-	/* pull the lines across the button padding so they reach the drawer edges */
+
 	.traj-run-head::before {
 		margin-left: -1rem;
 	}
@@ -1101,7 +1060,7 @@ body::before {
 		outline-offset: 1px;
 		border-radius: 3px;
 	}
-	/* Step corner label: a small tag at the top of each step's region — no divider line */
+
 	.traj-step-label {
 		@apply font-sans text-[8.5px] font-medium text-muted px-4;
 		letter-spacing: 0.14em;
@@ -1110,7 +1069,7 @@ body::before {
 		padding-bottom: 1px;
 		user-select: none;
 	}
-	/* Folded runs hide their body; expanding a run enters with the same soft slide as a row body */
+
 	.traj-run-body {
 		@apply flex flex-col;
 	}
@@ -1123,8 +1082,7 @@ body::before {
 			transform: translateY(-3px);
 		}
 	}
-	/* Row tint per family — every row shares the base style (seal chip + ink caption);
-	   only these families differ, so only their overrides exist */
+
 	.traj-row.sys b {
 		@apply text-ink;
 	}
@@ -1132,7 +1090,7 @@ body::before {
 	.traj-row.custom b {
 		@apply text-ink-soft;
 	}
-	/* Thinking gets its own quieter tone — the model's inner monologue */
+
 	.traj-row.think b {
 		@apply text-body-muted;
 	}
@@ -1143,15 +1101,13 @@ body::before {
 	.traj-row.tool .row-cap {
 		@apply text-ink-soft;
 	}
-	/* Floating request dot: marks the divider the request preceded — on the line at the left edge
-	   (inside the scroll container, so overflow never clips it). A letter-colored rim separates
-	   the seal bead from the hairline it sits on. */
+
 	.req-dot {
 		@apply absolute left-4 top-0 -translate-y-1/2 w-[9px] h-[9px] rounded-full z-10 pointer-events-none;
 		background: var(--color-seal);
 		border: 2px solid var(--color-letter);
 	}
-	/* Expanded body (accordion): gentle slide-in, 180ms, transform/opacity only */
+
 	.traj-body {
 		@apply px-2 pb-2 pt-1 border-b border-hairline-soft;
 		animation: traj-body-in 180ms cubic-bezier(0.23, 1, 0.32, 1);
@@ -1162,11 +1118,8 @@ body::before {
 			transform: translateY(-3px);
 		}
 	}
-	/* Unified body — every kind of content shares one style:
-	   prose in the reading face, code in one mono box, everything else in one muted tone.
-	   Only errors keep the seal marking (isError is data, not decoration). */
+
 	.traj-body .one-cap,
-	/* Thinking detail: styled as a markdown quote (left print line, indented, muted) */
 	.traj-body .one-thinking {
 		@apply mt-2 font-serif text-[13px] leading-[1.6] text-ink-soft whitespace-pre-wrap max-h-[220px] overflow-y-auto;
 		border-left: 2px solid var(--color-print);
@@ -1197,7 +1150,7 @@ body::before {
 	.traj-body .one-args.err {
 		@apply border-seal/60 text-seal;
 	}
-	/* Labels / meta / footers: one muted tone */
+
 	.traj-body .one-think-label,
 	.traj-body .traj-meta,
 	.traj-body .traj-id,
@@ -1217,7 +1170,7 @@ body::before {
 	.traj-foot {
 		@apply px-4 pt-2 font-sans text-[8px] text-muted text-right;
 	}
-	/* Empty state: the drawer with no persisted entries yet */
+
 	.traj-empty {
 		@apply flex-1 flex items-center justify-center px-4 font-serif text-[14px] text-muted;
 	}
@@ -1228,7 +1181,7 @@ body::before {
 			animation: none;
 		}
 	}
-	/* Error notice: seal-tagged mono card (failed runs — ERR § in the transcript) */
+
 	.sys-error {
 		@apply flex items-start gap-2 px-2 py-1 rounded-md border border-seal/30 mt-6;
 	}
@@ -1238,7 +1191,7 @@ body::before {
 	.sys-error-text {
 		@apply font-mono text-[11px] leading-snug text-seal break-all min-w-0;
 	}
-	/* Date separator: small text + short lines on both sides (44px) */
+
 	.time-sep {
 		@apply flex items-center justify-center gap-3 font-sans text-[10px] tracking-[0.18em] text-body-muted mt-6 mb-6;
 	}
@@ -1249,16 +1202,14 @@ body::before {
 		height: 1px;
 		background: var(--color-hairline);
 	}
-	/* Input area (direction D · workbench): the static composer is a single pill — a quiet settings
-	   toggle on its left, the send button on the right; run settings live in a paper panel above
-	   the pill that opens only on demand (see the toggle in Composer.tsx). */
+
 	.composer {
 		@apply relative shrink-0 min-h-[60px] border-t border-hairline flex items-center justify-center px-6 py-2 bg-paper;
 	}
 	.composer-row {
 		@apply flex items-center gap-2 w-[60%] min-w-0;
 	}
-	/* Settings toggle: quiet ghost circle, seal when the panel is open (seal = active semantics) */
+
 	.composer-toggle {
 		@apply size-7 p-0 rounded-full shrink-0 text-muted;
 	}
@@ -1268,19 +1219,15 @@ body::before {
 	.composer-toggle[aria-expanded="true"] {
 		color: var(--color-seal);
 	}
-	/* Stop button (shown while running): keeps the paper-outline circle but tints it seal red —
-	   the red square reads as "stop" at a glance without breaking the letter-postmark language. */
+
 	.composer-stop {
 		@apply border-seal text-seal hover:bg-seal/10;
 	}
-	/* The pill: 44px tall, radius 22px (DESIGN.md — the field grows with the textarea, so the
-	   radius caps at 22px instead of staying a full capsule) */
+
 	.composer-field {
 		@apply flex items-center gap-2 flex-1 min-h-11 bg-letter border border-hairline rounded-[22px] px-[14px] py-0 transition-colors focus-within:border-seal;
 	}
-	/* Run-settings panel: letter paper + hairline + 8px radius (dialog language, no shadow), anchored
-	   above the pill; two rows — controls (path/model/sandbox) and a quiet footnote (status + metrics).
-	   Entrance = rise 6px + fade, 180ms ease-out; reduced-motion keeps only the fade. */
+
 	.composer-panel {
 		position: absolute;
 		bottom: calc(100% + 8px);
@@ -1300,7 +1247,7 @@ body::before {
 			transform: translate(-50%, 0);
 		}
 	}
-	/* Command palette: paper panel above the pill (same language as run-settings) */
+
 	.command-menu {
 		position: absolute;
 		bottom: calc(100% + 8px);
@@ -1343,7 +1290,7 @@ body::before {
 	.composer-panel-path {
 		@apply flex items-center min-w-0;
 	}
-	/* Path line: read-only display of workspace + storage (both full paths in the tooltip) */
+
 	.composer-path {
 		@apply font-mono text-[10px] text-body-muted truncate min-w-0;
 	}
@@ -1359,7 +1306,7 @@ body::before {
 	.composer-panel-foot {
 		@apply flex items-center gap-3 min-w-0 whitespace-nowrap font-mono text-[10px] text-body-muted;
 	}
-	/* Live status: the panel's footnote (the header and the working chip in the stream already carry it) */
+
 	.composer-status {
 		@apply flex items-center gap-1.5;
 	}
@@ -1370,12 +1317,11 @@ body::before {
 	}
 	.composer-input {
 		@apply flex-1 min-w-0 bg-transparent border-none outline-none font-sans text-[14px] leading-[20px] text-ink placeholder:text-muted resize-none py-[11px];
-		/* single line sits vertically centered (the field is items-center); grows from the top */
+
 		max-height: 120px;
 		overflow-y: auto;
 	}
 
-	/* Context meter: 14px occupancy ring beside the send button + click panel */
 	.context-meter {
 		@apply relative shrink-0;
 	}
@@ -1454,7 +1400,6 @@ body::before {
 	}
 }
 
-/* Thin scrollbar (paper hairline) */
 .transcript,
 .home-page,
 .traj-all {
@@ -1478,7 +1423,6 @@ body::before {
 	background: transparent;
 }
 
-/* Accessibility: reduced motion (keep opacity transitions, remove the breathing) */
 @media (prefers-reduced-motion: reduce) {
 	.work-dot {
 		animation: none;
@@ -1486,9 +1430,6 @@ body::before {
 	}
 }
 
-/* Theme switch: one quiet cross-fade of surface + ink colors (200ms), no layout motion.
-   App.tsx adds .theme-flip to <html> for the duration of a theme change only, so the
-   transition never competes with (or slows) normal interaction. */
 html.theme-flip,
 html.theme-flip *,
 html.theme-flip *::before,

@@ -1,41 +1,23 @@
-/**
- * RepliesPane — the replies index: a floating panel of the agent replies on the
- * right of the chat. Hidden by default; the header outline icon toggles it.
- * The transcript stacks consecutive replies into decks, so one row here represents
- * one deck (burst): the row labels itself with the deck's front card (the newest
- * reply, which is what the stack displays first) and shows a small stack badge
- * when the burst holds more than one reply. Clicking a row scrolls the transcript
- * to the deck and flashes its front card.
- */
 import { type Accessor, createEffect, createMemo, createSignal, For } from "solid-js";
 import type { Entry } from "../layouts/Transcript";
+import { useTranscript } from "../lib/transcript-controller";
 
 interface ReplyRow {
 	question: string;
 	questionId: number;
-	/** The deck's front card (the newest reply) — what the stack displays first. */
+
 	entry: Entry;
-	/** Replies in this burst; >1 means the transcript renders them as a stack. */
+
 	count: number;
 }
 
-/** Single-line label: the first non-empty line, truncated to ~42 chars. */
 const outlineLabel = (text: string) => {
 	const first = text.split("\n").find((l) => l.trim() !== "") ?? "";
 	return first.length > 42 ? first.slice(0, 42) + "…" : first;
 };
 
-export function RepliesPane(props: {
-	/** Whether the outline is visible (toggled by the header outline icon). */
-	open: boolean;
-	entries: Accessor<Entry[]>;
-	/** Flash the located transcript bubble (shared with the trajectory drawer). */
-	onFlash: (id: number) => void;
-}) {
-	// One row per reply deck: consecutive agent replies (no user/sys/sep between them) group
-	// into a burst, mirroring the transcript's MessageStack. Escalations are skipped — they are
-	// not replies and they do not split a burst. The row anchors on the question that triggered
-	// the burst and labels itself with the deck's front card (the newest reply).
+export function RepliesPane(props: { open: boolean; entries: Accessor<Entry[]> }) {
+	const transcript = useTranscript();
 	const rows = createMemo<ReplyRow[]>(() => {
 		const out: ReplyRow[] = [];
 		let lastQuestion = "";
@@ -68,19 +50,15 @@ export function RepliesPane(props: {
 	const [activeReply, setActiveReply] = createSignal<number | null>(null);
 	let listEl: HTMLDivElement | undefined;
 
-	// The panel is mounted only while open: keep the newest reply in view (opens at the bottom).
-	// props.open is read so the effect re-runs on every open, not just when the list changes.
 	createEffect(() => {
 		props.open;
 		rows();
 		if (listEl) listEl.scrollTop = listEl.scrollHeight;
 	});
 
-	// Clicking a row jumps to the deck's front card (the card the stack displays); flash it
 	const locate = (row: ReplyRow) => {
 		setActiveReply(row.entry.id);
-		document.getElementById("entry-" + row.entry.id)?.scrollIntoView({ behavior: "smooth", block: "center" });
-		props.onFlash(row.entry.id);
+		transcript.locate(row.entry.id);
 	};
 
 	return (
