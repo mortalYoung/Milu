@@ -119,8 +119,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		if (!skills) return;
 		const text = renderAvailableSkills(await skills.list());
 		const digest = catalogDigest(text);
-		if (!skillCatalogDirty && digest === lastSkillCatalogDigest) return;
-		skillCatalogDirty = false;
+		if (digest === lastSkillCatalogDigest) return;
 		lastSkillCatalogDigest = digest;
 		if (!text) return;
 		persistReminder(text);
@@ -382,7 +381,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		});
 	}
 
-	let lastInjectedWorkspace: string | null | undefined;
+	let lastInjectedContext: { workspace: string | null; storage: string | null; sandbox: SandboxMode } | null = null;
 	async function prepareRun() {
 		const conversationStart = agent.state.messages.length === 0;
 		if (ctx.workspace_path == null) {
@@ -390,12 +389,19 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			persistReminder(reminder);
 			appendSystemReminder(agent.state.messages, reminder);
 		}
-		if (conversationStart || ctx.workspace_path !== lastInjectedWorkspace) {
+		const snapshot = { workspace: ctx.workspace_path, storage: ctx.storage_path, sandbox: ctx.sandbox_mode };
+		if (
+			conversationStart ||
+			!lastInjectedContext ||
+			snapshot.workspace !== lastInjectedContext.workspace ||
+			snapshot.storage !== lastInjectedContext.storage ||
+			snapshot.sandbox !== lastInjectedContext.sandbox
+		) {
 			const context =
 				`Current workspace: ${ctx.workspace_path ?? "unset"}.\n` + `Current storage: ${ctx.storage_path ?? "unset"}.\n` + `Current sandbox mode: ${ctx.sandbox_mode}.`;
 			persistReminder(context);
 			appendSystemReminder(agent.state.messages, context);
-			lastInjectedWorkspace = ctx.workspace_path;
+			lastInjectedContext = snapshot;
 		}
 		await ensureSkillCatalog();
 	}
