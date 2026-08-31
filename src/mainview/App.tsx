@@ -281,7 +281,7 @@ export function App() {
 							onDraftChange={composer.change}
 							toastHost={<ToastHost toasts={toast.toasts} placement={settings.settings()?.toastPlacement ?? "bottomcenter"} onDismiss={toast.dismiss} />}
 							skills={skills.skills()}
-							onSkill={(name) => rpc.request.skill_execute({ name })}
+							onSkill={(name, hint) => rpc.request.skill_execute({ name, ...(hint ? { hint } : {}) })}
 							onSkillInspect={(name) => rpc.request.skill_get({ name }).then((r) => (r.ok ? (r.content ?? null) : null))}
 						/>
 					</TranscriptProvider>

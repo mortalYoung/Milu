@@ -76,7 +76,7 @@ export function Composer(props: {
 	draft: string;
 	onDraftChange: (text: string) => void;
 	skills?: SkillDescriptor[];
-	onSkill?: (name: string) => Promise<{ ok: boolean; error?: string }>;
+	onSkill?: (name: string, hint?: string) => Promise<{ ok: boolean; error?: string }>;
 }) {
 	const [text, setText] = createSignal(props.draft);
 	// The draft is per-chat: switching chats swaps the prop, loading the other chat's saved text
@@ -113,7 +113,14 @@ export function Composer(props: {
 		const commands = filterCommands(props.commands, q);
 		const skillItems = (props.skills ?? [])
 			.filter((s) => s.userInvocable)
-			.map((s) => ({ name: `skill:${s.name}`, description: s.description, kind: "execute" as const, category: "skill" as const }))
+			.map(
+				(s): CommandDescriptor => ({
+					name: `skill:${s.name}`,
+					description: s.description,
+					kind: "execute",
+					category: "skill",
+				}),
+			)
 			.filter((s) => !q || s.name.startsWith(q) || s.name.includes(q))
 			.sort((a, b) => a.name.localeCompare(b.name));
 		return [...commands, ...skillItems];
@@ -204,13 +211,13 @@ export function Composer(props: {
 		queueMicrotask(focusEnd);
 	}
 
-	async function executeSkill(name: string) {
+	async function executeSkill(name: string, hint?: string) {
 		if (submitting()) return;
 		setSubmitting(true);
 		setMenuOpen(false);
 		setClaimed(null);
 		try {
-			const res = await props.onSkill?.(name);
+			const res = await props.onSkill?.(name, hint);
 			if (res?.ok) clearText();
 		} finally {
 			setSubmitting(false);
@@ -220,16 +227,12 @@ export function Composer(props: {
 	function pickCommand(index: number) {
 		const item = menuItems()[index];
 		if (!item) return;
-		if (item.kind === "leadingInput") {
+		if (item.kind === "leadingInput" || item.hint || item.category === "skill") {
 			claimLeading(item);
 			return;
 		}
 		if (item.kind === "popupSelect") {
 			setMenuOpen(false);
-			return;
-		}
-		if (item.category === "skill") {
-			void executeSkill(item.name.slice("skill:".length));
 			return;
 		}
 		void executeCommand(`/${item.name}`);
@@ -240,10 +243,10 @@ export function Composer(props: {
 		const value = text();
 		const trimmed = value.trim();
 		if (!trimmed) return;
-		const skillMatch = /^\/skill:([a-z0-9_-]+)$/.exec(trimmed);
+		const skillMatch = /^\/skill:([a-z0-9_-]+)(?:\s+(.*))?$/.exec(trimmed);
 		if (skillMatch) {
 			setPanelOpen(false);
-			await executeSkill(skillMatch[1]);
+			await executeSkill(skillMatch[1], skillMatch[2]?.trim() || undefined);
 			return;
 		}
 		const parsed = parseCommand(trimmed);

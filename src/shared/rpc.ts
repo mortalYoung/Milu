@@ -236,7 +236,7 @@ export type AppRPCSchema = __schema<{
 			};
 
 			skill_execute: {
-				params: { name: string };
+				params: { name: string; hint?: string };
 				response: { ok: boolean; error?: string };
 			};
 

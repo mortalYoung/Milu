@@ -646,7 +646,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				};
 			},
 
-			skill_execute: async ({ name }) => {
+			skill_execute: async ({ name, hint }) => {
 				const target = viewPartner;
 				if (!target) return { ok: false, error: "no partner selected" };
 				const entry = await ensureAgent(target.profile);
@@ -664,7 +664,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				const skillId = `skill-${Date.now().toString(36)}-${++skillSeq}`;
 				try {
 					await entry.scope.appendSkillRun({ skillId, name, content: def.content }, Date.now());
-					const framed = `The user invoked skill "${name}":\n\n<skill_instructions>\n${def.content}\n</skill_instructions>`;
+					const framed = `The user invoked skill "${name}"${hint ? ` with the request: ${hint}` : ""}:\n\n<skill_instructions>\n${def.content}\n</skill_instructions>`;
 					const result = await entry.agent.chatAndWait(framed, name);
 					if (!result.ok) {
 						await entry.scope.appendSkillDone({ skillId, name, kind: "error", ...(result.error ? { text: result.error } : {}) }, Date.now());
@@ -745,6 +745,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					const next = target.has(profile.name) ? (current.includes(name) ? current : [...current, name]) : current.filter((s) => s !== name);
 					if (next.join("\n") !== current.join("\n")) await persistPartnerGrantedSkills(dir, next);
 				}
+				scheduleSkillsRefresh();
 				return { ok: true };
 			},
 
