@@ -25,6 +25,8 @@ export const EVENTS = {
 	contextChanged: "context/changed",
 	skillRun: "skill/run",
 	skillDone: "skill/done",
+	shellRun: "shell/run",
+	shellDone: "shell/done",
 	retryScheduled: "retry/scheduled",
 	retryStarted: "retry/started",
 } as const;
@@ -92,6 +94,19 @@ export interface CommandDoneEventData {
 	commandId: string;
 	kind: "success" | "error";
 	text?: string;
+}
+
+export interface ShellRunEventData {
+	shellId: string;
+	command: string;
+}
+
+export interface ShellDoneEventData {
+	shellId: string;
+	command: string;
+	kind: "success" | "error";
+	text?: string;
+	exitCode?: number;
 }
 
 export interface SkillDigestItem {

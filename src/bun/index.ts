@@ -146,6 +146,7 @@ async function armSkillsWatchers() {
 }
 const pendingCommandIds = new Set<string>();
 const runningCommandPartners = new Set<string>();
+const pendingShellIds = new Set<string>();
 const pendingSandboxConfirms = new Map<string, { resolve: (decision: EscalationDecision) => void; to: SandboxMode; dir: string; partner: string }>();
 
 const respondedSandboxIds = new Set<string>();
@@ -165,6 +166,7 @@ let viewPartner: { name: string; dir: string; profile: PartnerInput } | null = n
 const agents = new Map<string, Promise<PartnerAgent>>();
 
 let skillSeq = 0;
+let shellSeq = 0;
 
 function pendingEscalationCount(partner: string): number {
 	let n = 0;
@@ -449,6 +451,10 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					if (item.kind !== "command" || !item.command || item.command.status !== "running") continue;
 					if (!pendingCommandIds.has(item.command.commandId)) item.command.status = "interrupted";
 				}
+				for (const item of items) {
+					if (item.kind !== "shell" || !item.command || item.command.status !== "running") continue;
+					if (!pendingShellIds.has(item.command.commandId)) item.command.status = "interrupted";
+				}
 				const tResolve = performance.now();
 
 				for (const item of items) {
@@ -681,6 +687,34 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					await entry.scope.appendSkillDone({ skillId, name, kind: "error", text }, Date.now()).catch(() => {});
 					rpc.send.skill_update({});
 					return { ok: false, error: text };
+				}
+			},
+
+			shell_execute: async ({ command, timeout }) => {
+				const target = viewPartner;
+				if (!target) return { ok: false, error: "no partner selected" };
+				const entry = await ensureAgent(target.profile);
+				if (entry.agent.isStreaming) return { ok: false, error: "agent is running" };
+				const shellId = `shell-${Date.now().toString(36)}-${++shellSeq}`;
+				pendingShellIds.add(shellId);
+				try {
+					await entry.scope.appendShellRun({ shellId, command }, Date.now());
+					rpc.send.shell_update({});
+					const mode = entry.agent.permission.getMode();
+					const result = await runEscalatedBash(command, mode, { permission: entry.agent.permission }, timeout);
+					const text = result.text;
+					await entry.scope.appendShellDone({ shellId, command, kind: "success", text, ...(typeof result.exitCode === "number" ? { exitCode: result.exitCode } : {}) }, Date.now());
+					await entry.scope.appendSendMessage(`$ ${command}\n\n${text}`, { toolCallId: `shell:${shellId}` }, Date.now()).catch(() => {});
+					rpc.send.shell_update({});
+					return { ok: true, shellId };
+				} catch (error) {
+					const text = error instanceof Error ? error.message : String(error);
+					await entry.scope.appendShellDone({ shellId, command, kind: "error", text }, Date.now()).catch(() => {});
+					await entry.scope.appendSendMessage(`$ ${command}\n\n${text}`, { toolCallId: `shell:${shellId}` }, Date.now()).catch(() => {});
+					rpc.send.shell_update({});
+					return { ok: false, error: text, shellId };
+				} finally {
+					pendingShellIds.delete(shellId);
 				}
 			},
 

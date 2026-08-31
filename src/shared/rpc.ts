@@ -280,7 +280,7 @@ export type AppRPCSchema = __schema<{
 				response: {
 					items: {
 						id: string;
-						kind: "user" | "send_message" | "escalation" | "error" | "aborted" | "command" | "skill";
+						kind: "user" | "send_message" | "escalation" | "error" | "aborted" | "command" | "skill" | "shell";
 						text: string;
 						time: number;
 						skillName?: string;
@@ -296,6 +296,11 @@ export type AppRPCSchema = __schema<{
 						skill?: CommandHistoryItem;
 					}[];
 				};
+			};
+
+			shell_execute: {
+				params: { command: string; timeout?: number };
+				response: { ok: boolean; error?: string; shellId?: string };
 			};
 
 			get_status: {
@@ -509,6 +514,7 @@ export type AppRPCSchema = __schema<{
 			command_update: {};
 			skills_change: {};
 			skill_update: {};
+			shell_update: {};
 		};
 	};
 }>;

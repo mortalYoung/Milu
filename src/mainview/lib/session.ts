@@ -1,6 +1,16 @@
 import { createSignal } from "solid-js";
 import type { PartnerItem } from "../components/ConversationList";
-import { type Entry, makeAgentEntry, makeCommandEntry, makeEscalationEntry, makeSepEntry, makeSkillEntry, makeSysEntry, makeUserEntry } from "../layouts/Transcript";
+import {
+	type Entry,
+	makeAgentEntry,
+	makeCommandEntry,
+	makeEscalationEntry,
+	makeSepEntry,
+	makeShellEntry,
+	makeSkillEntry,
+	makeSysEntry,
+	makeUserEntry,
+} from "../layouts/Transcript";
 import { createInFlightBoolean } from "./inflight";
 import type { RPC } from "./rpc";
 
@@ -87,6 +97,18 @@ export function createSession(rpc: RPC, opts: { onSessionLoaded: () => void; onE
 					const existing = entries().find((e) => e.kind === "skill" && e.skill?.commandId === item.skill!.commandId);
 					if (existing) {
 						replacements.set(item.skill.commandId, entry);
+					} else {
+						maybeTimeSeparator(new Date(item.time), pending);
+						pending.push(entry);
+					}
+					continue;
+				}
+				if (item.kind === "shell" && item.command) {
+					const entry = makeShellEntry({ text: item.text, time: item.time, command: item.command });
+					entry.key = item.id;
+					const existing = entries().find((e) => e.kind === "shell" && e.command?.commandId === item.command!.commandId);
+					if (existing) {
+						replacements.set(item.command.commandId, entry);
 					} else {
 						maybeTimeSeparator(new Date(item.time), pending);
 						pending.push(entry);

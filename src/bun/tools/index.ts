@@ -141,9 +141,14 @@ function bashTool(deps: ToolDeps): AgentHarnessTool<ExecutionToolContext, TSchem
 	};
 }
 
-export async function runEscalatedBash(command: string, mode: SandboxMode, deps: { permission: Permission }): Promise<{ text: string; exitCode?: number; truncated: boolean }> {
+export async function runEscalatedBash(
+	command: string,
+	mode: SandboxMode,
+	deps: { permission: Permission },
+	timeout?: number,
+): Promise<{ text: string; exitCode?: number; truncated: boolean }> {
 	const env = createExecutionEnv("", deps.permission);
-	const { stdout, stderr, exitCode } = await runBash(env, command, { sandboxMode: mode });
+	const { stdout, stderr, exitCode } = await runBash(env, command, { sandboxMode: mode, ...(timeout ? { timeout } : {}) });
 	const out = tail([stdout, stderr].filter((s) => s).join("\n"));
 	let text = out.text || "(no output)";
 	if (exitCode !== 0 && exitCode !== undefined) text += `\n\nCommand exited with code ${exitCode}`;

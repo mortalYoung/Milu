@@ -150,6 +150,10 @@ export function App() {
 		void session.refreshHistory();
 	});
 
+	rpc.addMessageListener("shell_update", () => {
+		void session.refreshHistory();
+	});
+
 	rpc.addMessageListener("skills_change", () => {
 		void skills.refresh(session.selected());
 	});
@@ -288,6 +292,7 @@ export function App() {
 							skills={skills.skills()}
 							onSkill={(name, hint) => rpc.request.skill_execute({ name, ...(hint ? { hint } : {}) })}
 							onSkillInspect={(name) => rpc.request.skill_get({ name }).then((r) => (r.ok ? (r.content ?? null) : null))}
+							onShell={(command) => rpc.request.shell_execute({ command })}
 						/>
 					</TranscriptProvider>
 				)}

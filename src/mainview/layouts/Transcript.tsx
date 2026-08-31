@@ -19,12 +19,13 @@ export interface CommandInfo {
 	commandId: string;
 	name: string;
 	args?: string;
+	text?: string;
 	status: "running" | "success" | "error" | "interrupted";
 }
 
 export interface Entry {
 	id: number;
-	kind: "user" | "agent" | "sys" | "sep" | "escalation" | "command" | "skill";
+	kind: "user" | "agent" | "sys" | "sep" | "escalation" | "command" | "skill" | "shell";
 	text: string;
 	time?: string;
 	error?: boolean;
@@ -54,6 +55,10 @@ export function makeEscalationEntry(item: { text: string; time: number; escalati
 
 export function makeCommandEntry(item: { text: string; time: number; command: CommandInfo }): Entry {
 	return { id: nextId++, kind: "command", text: item.text, time: fmtDateTime(new Date(item.time)), command: { ...item.command } };
+}
+
+export function makeShellEntry(item: { text: string; time: number; command: CommandInfo }): Entry {
+	return { id: nextId++, kind: "shell", text: item.text, time: fmtDateTime(new Date(item.time)), command: { ...item.command } };
 }
 
 export function makeSkillEntry(item: { text: string; time: number; skill: CommandInfo }): Entry {
@@ -375,28 +380,33 @@ export function Transcript(props: {
 										</div>
 									);
 								}
-								if ((e.kind === "command" || e.kind === "skill") && (e.command ?? e.skill)) {
-									const info = e.command ?? e.skill!;
+								if ((e.kind === "command" || e.kind === "skill" || e.kind === "shell") && (e.command ?? e.skill)) {
+									const info = e.kind === "skill" ? e.skill! : e.command!;
 									const args = info.args;
+									const output = info.text;
+									const expandable = e.kind === "command" ? !!args : false;
 									const expanded = expandedCommand() === e.id;
 									return (
 										<div
 											class={
 												"msg-command" +
 												(info.status === "success" ? " ok" : "") +
-												(args ? " has-args" : "") +
+												(expandable ? " has-args" : "") +
 												(expanded ? " expanded" : "") +
-												(e.kind === "skill" ? " is-skill" : "")
+												(e.kind === "skill" ? " is-skill" : "") +
+												(e.kind === "shell" ? " is-shell" : "")
 											}
 											id={"entry-" + e.id}
 											data-chat-anchor-key={key}
 											data-chat-flow-key={key}
-											onClick={e.kind === "skill" ? () => void inspectSkill(info.name) : args ? () => setExpandedCommand(expanded ? null : e.id) : undefined}
-											role={e.kind === "skill" || args ? "button" : undefined}
-											aria-expanded={e.kind === "skill" ? undefined : args ? expanded : undefined}
+											onClick={
+												e.kind === "skill" ? () => void inspectSkill(info.name) : e.kind === "command" && expandable ? () => setExpandedCommand(expanded ? null : e.id) : undefined
+											}
+											role={e.kind === "skill" || (e.kind === "command" && expandable) ? "button" : undefined}
+											aria-expanded={e.kind === "skill" ? undefined : e.kind === "command" && expandable ? expanded : undefined}
 										>
 											<div class="msg-command-head">
-												{e.kind === "skill" ? <span class="msg-command-badge">skill</span> : null}
+												{e.kind === "skill" ? <span class="msg-command-badge">skill</span> : e.kind === "shell" ? <span class="msg-command-badge">shell</span> : null}
 												<span class="msg-command-name">{info.name}</span>
 												<span class={"msg-command-status " + info.status}>
 													{info.status === "success" ? <Check size={12} /> : null}
@@ -411,7 +421,17 @@ export function Transcript(props: {
 													) : null}
 												</span>
 											</div>
-											{e.kind === "skill" ? args ? <div class="msg-command-args">{args}</div> : null : expanded && args ? <div class="msg-command-args">{args}</div> : null}
+											{e.kind === "skill" ? (
+												args ? (
+													<div class="msg-command-args">{args}</div>
+												) : null
+											) : e.kind === "shell" ? (
+												output ? (
+													<div class="msg-command-args is-shell-out">{output}</div>
+												) : null
+											) : expanded && args ? (
+												<div class="msg-command-args">{args}</div>
+											) : null}
 										</div>
 									);
 								}

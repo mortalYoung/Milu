@@ -77,6 +77,7 @@ export function Composer(props: {
 	onDraftChange: (text: string) => void;
 	skills?: SkillDescriptor[];
 	onSkill?: (name: string, hint?: string) => Promise<{ ok: boolean; error?: string }>;
+	onShell?: (command: string) => Promise<{ ok: boolean; error?: string; shellId?: string }>;
 }) {
 	const [text, setText] = createSignal(props.draft);
 	// The draft is per-chat: switching chats swaps the prop, loading the other chat's saved text
@@ -108,6 +109,7 @@ export function Composer(props: {
 	const [selectedIndex, setSelectedIndex] = createSignal(0);
 	const [claimed, setClaimed] = createSignal<CommandDescriptor | null>(null);
 	const [submitting, setSubmitting] = createSignal(false);
+	const [shellMode, setShellMode] = createSignal(false);
 	const menuItems = createMemo(() => {
 		const q = menuQuery();
 		const commands = filterCommands(props.commands, q);
@@ -224,6 +226,26 @@ export function Composer(props: {
 		}
 	}
 
+	async function executeShell() {
+		if (submitting()) return;
+		const value = text();
+		const trimmed = value.trim();
+		if (!trimmed) return;
+		setSubmitting(true);
+		setMenuOpen(false);
+		setClaimed(null);
+		clearText();
+		try {
+			const res = await props.onShell?.(trimmed);
+			if (res && !res.ok) {
+				setText(trimmed);
+				props.onDraftChange(trimmed);
+			}
+		} finally {
+			setSubmitting(false);
+		}
+	}
+
 	function pickCommand(index: number) {
 		const item = menuItems()[index];
 		if (!item) return;
@@ -310,6 +332,11 @@ export function Composer(props: {
 			pickCommand(selectedIndex());
 			return;
 		}
+		if (e.key === "Tab" && !e.shiftKey && !menuOpen() && text().trim() === "") {
+			e.preventDefault();
+			setShellMode((v) => !v);
+			return;
+		}
 		if (e.key === " " && !e.shiftKey) {
 			const parsed = parseCommand(text());
 			if (parsed && !parsed.rawInput.trim()) {
@@ -323,6 +350,10 @@ export function Composer(props: {
 		}
 		if (shouldSendOnEnter({ keyCode: e.keyCode, shiftKey: e.shiftKey, repeat: e.repeat, composing, isComposing: e.isComposing })) {
 			e.preventDefault();
+			if (shellMode()) {
+				void executeShell();
+				return;
+			}
 			const parsed = parseCommand(text());
 			const exact = parsed ? props.commands.find((c) => c.name === parsed.name) : undefined;
 			const canExecuteLine = exact && (exact.kind === "execute" || (exact.kind === "leadingInput" && parsed!.rawInput.trim()));
@@ -399,7 +430,13 @@ export function Composer(props: {
 					icon={<SlidersHorizontal size={15} />}
 					onClick={() => setPanelOpen((v) => !v)}
 				/>
-				<div class="composer-field">
+				<div class={"composer-field" + (shellMode() ? " shell" : "")}>
+					{shellMode() && (
+						<span class="composer-shell-prefix" aria-hidden="true">
+							$
+						</span>
+					)}
+					{shellMode() && <span class="composer-shell-tag">shell</span>}
 					<textarea
 						id="prompt-input"
 						ref={textareaRef}

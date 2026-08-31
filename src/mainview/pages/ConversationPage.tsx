@@ -66,6 +66,7 @@ export function ConversationPage(props: {
 	toastHost?: JSX.Element;
 	skills?: SkillDescriptor[];
 	onSkill?: (name: string, hint?: string) => Promise<{ ok: boolean; error?: string }>;
+	onShell?: (command: string) => Promise<{ ok: boolean; error?: string; shellId?: string }>;
 	onSkillInspect?: (name: string) => Promise<string | null>;
 }) {
 	const [outlineOpen, setOutlineOpen] = createSignal(false);
@@ -190,6 +191,7 @@ export function ConversationPage(props: {
 							onDraftChange={props.onDraftChange}
 							skills={props.skills}
 							onSkill={props.onSkill}
+							onShell={props.onShell}
 						/>
 					</>
 				) : (

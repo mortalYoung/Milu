@@ -722,6 +722,14 @@ body::before {
 	.msg-command-badge {
 		@apply font-sans text-[9px] uppercase tracking-[0.08em] text-seal border border-seal/30 rounded-[3px] px-1 py-[1px];
 	}
+	.msg-command.is-shell .msg-command-badge {
+		@apply font-mono;
+	}
+	.msg-command-args.is-shell-out {
+		@apply font-mono text-[11.5px] whitespace-pre-wrap;
+		max-height: 320px;
+		overflow-y: auto;
+	}
 	.msg-command-status {
 		@apply flex shrink-0 items-center text-[10px] uppercase tracking-[0.08em];
 	}
@@ -1442,6 +1450,19 @@ body::before {
 
 		max-height: 120px;
 		overflow-y: auto;
+	}
+	.composer-field.shell {
+		@apply font-mono;
+	}
+	.composer-field.shell .composer-input {
+		@apply font-mono text-[13px];
+		padding-left: 4px;
+	}
+	.composer-shell-prefix {
+		@apply font-mono text-[13px] text-seal select-none;
+	}
+	.composer-shell-tag {
+		@apply shrink-0 font-mono text-[9px] uppercase tracking-[0.12em] text-seal border border-seal/40 rounded-[3px] px-1.5 py-[2px];
 	}
 
 	.context-meter {

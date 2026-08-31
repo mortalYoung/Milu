@@ -13,6 +13,8 @@ import {
 	EVENTS,
 	type RetryScheduledEventData,
 	type RetryStartedEventData,
+	type ShellDoneEventData,
+	type ShellRunEventData,
 	type SkillDoneEventData,
 	type SkillRunEventData,
 	type ToolResultEventData,
@@ -61,7 +63,7 @@ export interface AssistantMeta {
 
 export interface VisibleItem {
 	id: string;
-	kind: "user" | "send_message" | "escalation" | "error" | "aborted" | "command" | "skill";
+	kind: "user" | "send_message" | "escalation" | "error" | "aborted" | "command" | "skill" | "shell";
 	text: string;
 	time: number;
 	escalation?: {
@@ -96,6 +98,8 @@ export interface SessionScope {
 	lastContextChanged(): Promise<{ data: ContextChangedEventData; timestamp: number } | null>;
 	appendSkillRun(details: SkillRunEventData, timestamp: number): Promise<void>;
 	appendSkillDone(details: SkillDoneEventData, timestamp: number): Promise<void>;
+	appendShellRun(details: ShellRunEventData, timestamp: number): Promise<void>;
+	appendShellDone(details: ShellDoneEventData, timestamp: number): Promise<void>;
 	appendRetryScheduled(details: RetryScheduledEventData, timestamp: number): Promise<void>;
 	appendRetryStarted(details: RetryStartedEventData, timestamp: number): Promise<void>;
 	appendSurfaceOp(op: SurfaceOpRecord, timestamp: number): Promise<void>;
@@ -331,6 +335,12 @@ export function createSessionStore(): SessionStore {
 			async appendSkillDone(details, timestamp) {
 				await appendCustom(dir, EVENTS.skillDone, { ...details, timestamp });
 			},
+			async appendShellRun(details, timestamp) {
+				await appendCustom(dir, EVENTS.shellRun, { ...details, timestamp });
+			},
+			async appendShellDone(details, timestamp) {
+				await appendCustom(dir, EVENTS.shellDone, { ...details, timestamp });
+			},
 			async appendRetryScheduled(details, timestamp) {
 				await appendCustom(dir, EVENTS.retryScheduled, { ...details, timestamp });
 			},
@@ -388,6 +398,13 @@ export function createSessionStore(): SessionStore {
 				if (data?.skillId == null) continue;
 				skillDones.set(String(data.skillId), { kind: data.kind === "error" ? "error" : "success", ...(typeof data.text === "string" ? { text: data.text } : {}) });
 			}
+			const shellDones = new Map<string, { kind: "success" | "error"; text?: string }>();
+			for (const entry of state.entries) {
+				if (entry.type !== "custom" || entry.customType !== EVENTS.shellDone) continue;
+				const data = entry.data as Partial<ShellDoneEventData> | undefined;
+				if (data?.shellId == null) continue;
+				shellDones.set(String(data.shellId), { kind: data.kind === "error" ? "error" : "success", ...(typeof data.text === "string" ? { text: data.text } : {}) });
+			}
 			return state.entries.flatMap((entry): VisibleItem[] => {
 				if (entry.type === "message" && entry.message.role === "user") {
 					const content = entry.message.content;
@@ -403,8 +420,9 @@ export function createSessionStore(): SessionStore {
 					];
 				}
 				if (entry.type === "custom" && entry.customType === EVENTS.sendMessage) {
-					const data = entry.data as { text: string; timestamp: number } | undefined;
+					const data = entry.data as { text: string; timestamp: number; toolCallId?: unknown } | undefined;
 					if (!data) return [];
+					if (typeof data.toolCallId === "string" && data.toolCallId.startsWith("shell:")) return [];
 					return [{ id: entry.id, kind: "send_message", text: data.text, time: data.timestamp }];
 				}
 				if (entry.type === "custom" && entry.customType === EVENTS.turnEnd) {
@@ -472,6 +490,26 @@ export function createSessionStore(): SessionStore {
 								name,
 								...(typeof data.hint === "string" && data.hint ? { args: data.hint } : {}),
 								status: done ? done.kind : "running",
+							},
+						},
+					];
+				}
+				if (entry.type === "custom" && entry.customType === EVENTS.shellRun) {
+					const data = entry.data as (Partial<ShellRunEventData> & { timestamp?: unknown }) | undefined;
+					if (data?.shellId == null) return [];
+					const done = shellDones.get(String(data.shellId));
+					const command = String(data.command ?? "");
+					return [
+						{
+							id: entry.id,
+							kind: "shell",
+							text: command,
+							time: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
+							command: {
+								commandId: String(data.shellId),
+								name: command,
+								status: done ? done.kind : "running",
+								...(done?.text ? { text: done.text } : {}),
 							},
 						},
 					];
