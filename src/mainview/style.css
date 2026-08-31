@@ -172,6 +172,127 @@ body::before {
 	.rail-settings:hover {
 		background: var(--color-paper-deep);
 	}
+
+	/* Skills · 信笺册：global skill 列表像一叠信封；创建、授权、删除、详情展开 */
+	.skills-create-trigger {
+		@apply w-full rounded-[10px] border border-dashed text-seal font-sans text-[11.5px] tracking-[0.04em] py-[9px] text-center cursor-pointer transition-colors;
+		border-color: color-mix(in srgb, var(--color-seal) 55%, transparent);
+	}
+	.skills-create-trigger:hover {
+		background: var(--color-paper-hover);
+	}
+	.skills-error {
+		@apply mt-2 font-sans text-[11px];
+		color: var(--color-destructive);
+	}
+	.skills-letters {
+		@apply grid gap-4;
+		grid-template-columns: 1fr;
+	}
+	@media (min-width: 768px) {
+		.skills-letters {
+			grid-template-columns: repeat(2, minmax(0, 1fr));
+		}
+	}
+	@media (min-width: 1200px) {
+		.skills-letters {
+			grid-template-columns: repeat(3, minmax(0, 1fr));
+		}
+	}
+	.skill-letter {
+		@apply rounded-[10px] border border-hairline bg-letter px-4 py-3 cursor-pointer;
+		transition:
+			border-color 140ms ease-out,
+			box-shadow 140ms ease-out,
+			transform 140ms ease-out;
+	}
+	.skill-letter:hover {
+		border-color: color-mix(in srgb, var(--color-seal) 40%, var(--color-hairline));
+		transform: translateY(-1px);
+	}
+	.skill-letter:focus-visible,
+	.skill-delete:focus-visible,
+	.skills-create-trigger:focus-visible {
+		outline: 2px solid var(--color-seal);
+		outline-offset: 2px;
+	}
+	.skill-letter.open {
+		border-color: var(--color-seal);
+		box-shadow:
+			0 1px 2px rgba(42, 38, 32, 0.06),
+			0 4px 12px rgba(42, 38, 32, 0.08);
+	}
+	.skill-letter-top {
+		@apply flex items-baseline gap-2.5;
+	}
+	.skill-stamp {
+		@apply font-mono text-[9px] tracking-[0.14em] text-seal rounded-[6px] px-1.5 py-[2px] leading-none;
+		border: 1px dashed var(--color-seal);
+	}
+	.skill-letter-name {
+		@apply font-serif text-[15px] font-semibold text-ink;
+	}
+	.skill-letter-desc {
+		@apply mt-1 font-sans text-[11.5px] leading-snug text-body-muted line-clamp-2;
+	}
+	.skill-letter-foot {
+		@apply mt-2.5 flex items-center justify-between border-t border-dashed border-hairline pt-2;
+	}
+	.skill-avatars {
+		@apply flex items-center;
+	}
+	.skill-avatars-empty {
+		@apply font-sans text-[10px] text-muted;
+	}
+	.skill-avatar {
+		@apply size-5 rounded-full flex items-center justify-center font-serif text-[10px] font-semibold leading-none shrink-0;
+		background: var(--color-letter);
+		color: var(--color-ink);
+		border: 1px solid var(--color-hairline);
+		margin-left: -8px;
+		transition: margin-left 140ms ease-out;
+	}
+	.skill-avatar:first-child {
+		margin-left: 0;
+	}
+	.skill-letter:hover .skill-avatar {
+		margin-left: 0;
+	}
+	.skill-delete {
+		@apply rounded-full border-none bg-transparent font-sans text-[11px] text-muted px-2.5 py-1 cursor-pointer transition-colors;
+	}
+	.skill-delete:hover {
+		color: var(--color-destructive);
+		background: color-mix(in srgb, var(--color-destructive) 8%, transparent);
+	}
+	.skill-delete.armed {
+		color: var(--color-destructive-foreground);
+		background: var(--color-destructive);
+	}
+	.skill-letter-more {
+		@apply mt-3 border-t border-hairline pt-3;
+	}
+	.skill-letter-path {
+		@apply font-mono text-[10.5px] text-muted truncate;
+	}
+	.skill-grants {
+		@apply mt-3 flex flex-wrap gap-x-5 gap-y-2;
+	}
+	.skill-grants-empty {
+		@apply mt-3 font-sans text-[10.5px] text-muted;
+	}
+	.skill-grant {
+		@apply flex cursor-pointer items-center gap-1.5 font-sans text-[11px] text-muted;
+	}
+	.skill-grant-avatar {
+		@apply size-4 rounded-full flex items-center justify-center font-serif text-[9px] font-semibold leading-none;
+		background: var(--color-letter);
+		color: var(--color-ink);
+		border: 1px solid var(--color-hairline);
+	}
+	.skills-empty {
+		@apply rounded-[10px] border border-dashed border-hairline p-6 text-center font-sans text-[12px] text-muted;
+	}
 	.rail-settings.active {
 		background: var(--color-ink);
 		color: var(--color-paper);

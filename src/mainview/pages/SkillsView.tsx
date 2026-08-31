@@ -2,6 +2,7 @@ import { createSignal, For, onMount, Show } from "solid-js";
 import type { GlobalSkillDescriptor } from "../../shared/rpc";
 import { Button } from "../components/Button";
 import type { PartnerItem } from "../components/ConversationList";
+import { Dialog, DialogContent, DialogTitle } from "../components/ui/dialog";
 import { TextField, TextFieldInput } from "../components/ui/text-field";
 import { rpc } from "../lib/rpc";
 
@@ -12,6 +13,10 @@ export function SkillsView() {
 	const [description, setDescription] = createSignal("");
 	const [busy, setBusy] = createSignal(false);
 	const [error, setError] = createSignal<string | null>(null);
+	const [createOpen, setCreateOpen] = createSignal(false);
+	const [openSkill, setOpenSkill] = createSignal<string | null>(null);
+	const [confirming, setConfirming] = createSignal<string | null>(null);
+	let confirmTimer: ReturnType<typeof setTimeout> | undefined;
 
 	async function load() {
 		const [{ skills: list }, { partners: ps }] = await Promise.all([rpc.request.skill_list_global({}), rpc.request.list_partners({})]);
@@ -42,6 +47,7 @@ export function SkillsView() {
 				setError(null);
 				setName("");
 				setDescription("");
+				setCreateOpen(false);
 				await load();
 			}
 		} finally {
@@ -51,11 +57,22 @@ export function SkillsView() {
 
 	async function removeSkill(name: string) {
 		await rpc.request.skill_delete({ name });
+		setConfirming(null);
 		await load();
 	}
 
-	async function revealSkill(name: string) {
-		await rpc.request.skill_reveal({ name });
+	function armDelete(name: string) {
+		if (confirming() === name) {
+			void removeSkill(name);
+			return;
+		}
+		setConfirming(name);
+		clearTimeout(confirmTimer);
+		confirmTimer = setTimeout(() => setConfirming(null), 2600);
+	}
+
+	function toggleOpen(name: string) {
+		setOpenSkill((v) => (v === name ? null : name));
 	}
 
 	async function togglePartner(skill: string, partner: string, on: boolean) {
@@ -67,77 +84,132 @@ export function SkillsView() {
 
 	return (
 		<div class="flex-1 min-h-0 overflow-y-auto">
-			<div class="mx-auto flex max-w-[760px] flex-col gap-5 px-6 py-6">
+			<div class="flex flex-col gap-5 px-6 py-6">
 				<div>
 					<h1 class="font-serif text-[20px] font-semibold text-ink">Skills</h1>
 					<p class="mt-1 font-sans text-[12px] text-body-muted">Global skills live in your home skills directory; grant each skill to the partners that may use it.</p>
 				</div>
 
-				<section class="rounded-[8px] border border-hairline bg-letter p-4">
-					<h2 class="mb-3 font-serif text-[15px] font-semibold text-ink">New global skill</h2>
-					<div class="flex items-end gap-2">
-						<TextField class="w-[200px]" value={name()} onChange={setName}>
-							<TextFieldInput variant="compact" placeholder="kebab-name" aria-label="Skill name" spellcheck={false} />
-						</TextField>
-						<TextField class="min-w-0 flex-1" value={description()} onChange={setDescription}>
-							<TextFieldInput variant="compact" placeholder="Short description" aria-label="Skill description" />
-						</TextField>
-						<Button variant="seal" size="sm" disabled={busy()} onClick={() => void createSkill()}>
-							Create
-						</Button>
-					</div>
-					<Show when={error()}>
-						<p class="mt-2 font-sans text-[11px] text-seal">{error()}</p>
-					</Show>
-				</section>
+				<button type="button" class="skills-create-trigger" onClick={() => setCreateOpen(true)}>
+					+ write a new skill
+				</button>
 
-				<section class="flex flex-col gap-3">
+				<Dialog
+					open={createOpen()}
+					onOpenChange={(open) => {
+						if (!open) {
+							setCreateOpen(false);
+							setError(null);
+						}
+					}}
+				>
+					<DialogContent class="w-[480px] max-w-[480px] bg-paper p-5">
+						<DialogTitle class="font-serif text-[15px] font-semibold text-ink">New global skill</DialogTitle>
+						<div class="mt-4 flex flex-col gap-3">
+							<TextField class="w-full" value={name()} onChange={setName}>
+								<TextFieldInput variant="compact" placeholder="kebab-name" aria-label="Skill name" spellcheck={false} />
+							</TextField>
+							<TextField class="w-full" value={description()} onChange={setDescription}>
+								<TextFieldInput variant="compact" placeholder="Short description" aria-label="Skill description" />
+							</TextField>
+							<Show when={error()}>
+								<p class="skills-error">{error()}</p>
+							</Show>
+							<div class="mt-1 flex justify-end gap-2">
+								<Button
+									variant="ghost"
+									size="sm"
+									disabled={busy()}
+									onClick={() => {
+										setCreateOpen(false);
+										setError(null);
+									}}
+								>
+									Cancel
+								</Button>
+								<Button variant="seal" size="sm" disabled={busy()} onClick={() => void createSkill()}>
+									Create
+								</Button>
+							</div>
+						</div>
+					</DialogContent>
+				</Dialog>
+
+				<div class="skills-letters">
 					<For each={skills()}>
 						{(skill) => (
-							<div class="rounded-[8px] border border-hairline bg-letter p-4">
-								<div class="flex items-start justify-between gap-3">
-									<div class="min-w-0">
-										<div class="flex items-baseline gap-2">
-											<span class="font-mono text-[13px] font-medium text-ink">{skill.name}</span>
-											<Show when={skill.path}>
-												<span class="truncate font-mono text-[10px] text-muted">{skill.path}</span>
-											</Show>
-										</div>
-										<p class="mt-1 font-sans text-[12px] leading-snug text-ink-soft">{skill.description}</p>
-									</div>
-									<div class="flex shrink-0 items-center gap-1.5">
-										<Button variant="outline" size="sm" onClick={() => void revealSkill(skill.name)}>
-											Reveal
-										</Button>
-										<Button variant="destructive" size="sm" onClick={() => void removeSkill(skill.name)}>
-											Delete
-										</Button>
-									</div>
+							<article
+								class={"skill-letter" + (openSkill() === skill.name ? " open" : "")}
+								role="button"
+								tabindex="0"
+								aria-expanded={openSkill() === skill.name}
+								onClick={() => toggleOpen(skill.name)}
+								onKeyDown={(e) => {
+									if (e.target !== e.currentTarget) return;
+									if (e.key === "Enter" || e.key === " ") {
+										e.preventDefault();
+										toggleOpen(skill.name);
+									}
+								}}
+							>
+								<div class="skill-letter-top">
+									<span class="skill-stamp">SKILL</span>
+									<span class="skill-letter-name">{skill.name}</span>
 								</div>
-								<Show when={partners().length > 0}>
-									<div class="mt-3 flex flex-wrap gap-x-4 gap-y-1.5 border-t border-hairline pt-3">
-										<For each={partners()}>
-											{(partner) => (
-												<label class="flex cursor-pointer items-center gap-1.5 font-sans text-[11px] text-muted">
-													<input
-														type="checkbox"
-														class="accent-[var(--color-seal)]"
-														checked={skill.grantedPartners.includes(partner.name)}
-														onChange={(e) => void togglePartner(skill.name, partner.name, e.currentTarget.checked)}
-													/>
-													{partner.name}
-												</label>
-											)}
-										</For>
+								<p class="skill-letter-desc">{skill.description}</p>
+								<div class="skill-letter-foot">
+									<div class="skill-avatars" title={skill.grantedPartners.length > 0 ? skill.grantedPartners.join(" · ") : "no grants"}>
+										<Show when={skill.grantedPartners.length > 0} fallback={<span class="skill-avatars-empty">no grants</span>}>
+											<For each={skill.grantedPartners}>{(p) => <span class="skill-avatar">{p.charAt(0)}</span>}</For>
+										</Show>
+									</div>
+									<button
+										type="button"
+										class={"skill-delete" + (confirming() === skill.name ? " armed" : "")}
+										aria-label={confirming() === skill.name ? `Confirm delete ${skill.name}` : `Delete ${skill.name}`}
+										onClick={(e) => {
+											e.stopPropagation();
+											armDelete(skill.name);
+										}}
+									>
+										{confirming() === skill.name ? "confirm delete?" : "delete"}
+									</button>
+								</div>
+								<Show when={openSkill() === skill.name}>
+									<div class="skill-letter-more" onClick={(e) => e.stopPropagation()}>
+										<Show when={skill.path}>
+											<div class="skill-letter-path" title={skill.path}>
+												{skill.path}
+											</div>
+										</Show>
+										<div class="skill-grants">
+											<For each={partners()}>
+												{(partner) => (
+													<label class="skill-grant">
+														<input
+															type="checkbox"
+															class="accent-[var(--color-seal)]"
+															checked={skill.grantedPartners.includes(partner.name)}
+															onChange={(e) => void togglePartner(skill.name, partner.name, e.currentTarget.checked)}
+														/>
+														<span class="skill-grant-avatar">{partner.name.charAt(0)}</span>
+														<span>{partner.name}</span>
+													</label>
+												)}
+											</For>
+										</div>
+										<Show when={partners().length === 0}>
+											<div class="skill-grants-empty">no partners available to grant</div>
+										</Show>
 									</div>
 								</Show>
-							</div>
+							</article>
 						)}
 					</For>
 					<Show when={skills().length === 0}>
-						<div class="rounded-[8px] border border-dashed border-hairline p-6 text-center font-sans text-[12px] text-muted">no global skills yet — create one above</div>
+						<div class="skills-empty">no global skills yet — write one above</div>
 					</Show>
-				</section>
+				</div>
 			</div>
 		</div>
 	);

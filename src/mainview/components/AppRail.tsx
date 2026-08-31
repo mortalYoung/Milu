@@ -1,4 +1,4 @@
-import { MessageSquare, Settings, Sparkles } from "lucide-solid";
+import { Feather, MessageSquare, Settings } from "lucide-solid";
 
 export type RailTabId = "chat" | "skills" | "settings";
 
@@ -22,7 +22,7 @@ export function AppRail(props: { active: RailTabId; onSelect: (id: RailTabId) =>
 				aria-label="Skills"
 				onClick={() => props.onSelect("skills")}
 			>
-				<Sparkles size={18} />
+				<Feather size={18} />
 			</button>
 
 			<div class="rail-footer">
