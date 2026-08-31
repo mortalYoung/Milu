@@ -226,7 +226,7 @@ interface RunSection {
 	rows: DisplayRow[];
 }
 
-export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: boolean) => void; records: TrajectoryRecord[] }) {
+export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: boolean) => void; records: TrajectoryRecord[]; loading: boolean }) {
 	const [expandedKey, setExpandedKey] = createSignal<string | null>(null);
 	// Folded runs (by run number); everything is expanded by default
 	const [foldedRuns, setFoldedRuns] = createSignal<Set<number>>(new Set());
@@ -715,15 +715,15 @@ export function TrajectoryDrawer(props: { open: boolean; onOpenChange: (open: bo
 			<aside class="traj-drawer traj-enter">
 				<div class="traj-head">
 					<span class="traj-title">Trajectory</span>
-					<span class="traj-count">
-						{nodes().length} entries · {turns().length} turns
-					</span>
+					<span class="traj-count">{props.loading ? "…" : `${nodes().length} entries · ${turns().length} turns`}</span>
 					<button class="traj-close" title="Close" onClick={() => props.onOpenChange(false)}>
 						×
 					</button>
 				</div>
 
-				{nodes().length === 0 ? (
+				{props.loading ? (
+					<div class="traj-empty">loading…</div>
+				) : nodes().length === 0 ? (
 					<div class="traj-empty">no log entries yet — run a conversation first</div>
 				) : (
 					<>

@@ -6,6 +6,7 @@ import type { RPC } from "./rpc";
 export function createTrajectory(rpc: RPC, getSelectedName: () => string | null) {
 	const [open, setOpen] = createSignal(false);
 	const [records, setRecords] = createSignal<TrajectoryRecord[]>([]);
+	const [loading, setLoading] = createSignal(false);
 	// Locate flash: the target bubble briefly flashes seal-soft (replies outline locate)
 	const [flashId, setFlashId] = createSignal<number | null>(null);
 
@@ -18,32 +19,29 @@ export function createTrajectory(rpc: RPC, getSelectedName: () => string | null)
 		const name = getSelectedName();
 		if (!name) return;
 		if (cache === null || cache.name !== name) {
-			const res = await rpc.request.trajectory({ name });
-			// The selection may have changed while fetching — never show another chat's log
-			if (getSelectedName() !== name) return;
-			cache = { name, records: res.records };
+			setLoading(true);
+			try {
+				const res = await rpc.request.trajectory({ name });
+				// The selection may have changed while fetching — never show another chat's log
+				if (getSelectedName() !== name) return;
+				cache = { name, records: res.records };
+				setRecords(cache.records);
+			} finally {
+				setLoading(false);
+			}
+		} else {
+			setRecords(cache.records);
 		}
-		setRecords(cache.records);
 		setOpen(true);
 	}
 
-	// The drawer shows one chat's log: on a partner switch drop the cached/rendered records
-	// immediately (never another chat's data on screen). If the drawer is open, load the newly
-	// selected chat's log in place; with no selection the drawer closes.
 	let lastSeenName: string | null = null;
 	createEffect(() => {
 		const name = getSelectedName();
 		if (name === lastSeenName) return;
 		lastSeenName = name;
-		// Clear cache directly here (not invalidate): invalidate() would also refetch when open,
-		// and this effect already fetches explicitly below.
 		cache = null;
-		setRecords([]);
-		if (!name) {
-			setOpen(false);
-			return;
-		}
-		if (open()) void view();
+		setOpen(false);
 	});
 
 	function flash(id: number) {
@@ -58,5 +56,5 @@ export function createTrajectory(rpc: RPC, getSelectedName: () => string | null)
 		if (open()) void view();
 	}
 
-	return { open, records, flashId, view, flash, invalidate, setOpen };
+	return { open, records, loading, flashId, view, flash, invalidate, setOpen };
 }
