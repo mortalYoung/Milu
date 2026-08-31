@@ -508,6 +508,7 @@ export type AppRPCSchema = __schema<{
 
 			command_update: {};
 			skills_change: {};
+			skill_update: {};
 		};
 	};
 }>;

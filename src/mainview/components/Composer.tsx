@@ -216,9 +216,9 @@ export function Composer(props: {
 		setSubmitting(true);
 		setMenuOpen(false);
 		setClaimed(null);
+		clearText();
 		try {
-			const res = await props.onSkill?.(name, hint);
-			if (res?.ok) clearText();
+			await props.onSkill?.(name, hint);
 		} finally {
 			setSubmitting(false);
 		}

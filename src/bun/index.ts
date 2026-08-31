@@ -664,17 +664,21 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				const skillId = `skill-${Date.now().toString(36)}-${++skillSeq}`;
 				try {
 					await entry.scope.appendSkillRun({ skillId, name, content: def.content }, Date.now());
+					rpc.send.skill_update({});
 					const framed = `The user invoked skill "${name}"${hint ? ` with the request: ${hint}` : ""}:\n\n<skill_instructions>\n${def.content}\n</skill_instructions>`;
 					const result = await entry.agent.chatAndWait(framed, name);
 					if (!result.ok) {
 						await entry.scope.appendSkillDone({ skillId, name, kind: "error", ...(result.error ? { text: result.error } : {}) }, Date.now());
+						rpc.send.skill_update({});
 						return { ok: false, error: result.error };
 					}
 					await entry.scope.appendSkillDone({ skillId, name, kind: "success" }, Date.now());
+					rpc.send.skill_update({});
 					return { ok: true };
 				} catch (error) {
 					const text = error instanceof Error ? error.message : String(error);
 					await entry.scope.appendSkillDone({ skillId, name, kind: "error", text }, Date.now()).catch(() => {});
+					rpc.send.skill_update({});
 					return { ok: false, error: text };
 				}
 			},

@@ -145,6 +145,11 @@ export function App() {
 		void metrics.refresh();
 	});
 
+	rpc.addMessageListener("skill_update", () => {
+		// skill/run + skill/done are persisted; the skill row appears and flips running → success/error.
+		void session.refreshHistory();
+	});
+
 	rpc.addMessageListener("skills_change", () => {
 		void skills.refresh(session.selected());
 	});
