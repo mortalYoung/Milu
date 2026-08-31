@@ -38,7 +38,9 @@ export interface Settings {
 	/** Where toast notifications appear. */
 	toastPlacement?: ToastPlacement;
 	toastDurationMs?: number;
-	skills_dir?: string;
+	skills_dirs?: string[];
+	skills_watch?: boolean;
+	skills_watch_delay_ms?: number;
 	/** Seconds between visible send_message heartbeats during a run; null/undefined = only first and last. */
 	sendMessageIntervalSec?: number | null;
 	commands_path?: string;
@@ -53,15 +55,21 @@ const DEFAULT_SETTINGS: Settings = {
 	theme: "system",
 	toastPlacement: "bottomcenter",
 	toastDurationMs: 4000,
-	skills_dir: ".agents/skills",
+	skills_dirs: [".agents/skills"],
+	skills_watch: true,
+	skills_watch_delay_ms: 300,
 };
 
 const SETTINGS_PATH = join(homedir(), ".config", "letters", "settings.json");
 
 export async function loadSettings(): Promise<Settings> {
 	try {
-		const parsed = JSON.parse(await readFile(SETTINGS_PATH, "utf8")) as Partial<Settings>;
-		return { ...DEFAULT_SETTINGS, ...parsed };
+		const parsed = JSON.parse(await readFile(SETTINGS_PATH, "utf8")) as Partial<Settings> & { skills_dir?: unknown };
+		const merged = { ...DEFAULT_SETTINGS, ...parsed };
+		if (merged.skills_dirs === undefined && typeof parsed.skills_dir === "string" && parsed.skills_dir.trim()) {
+			merged.skills_dirs = [parsed.skills_dir.trim()];
+		}
+		return merged;
 	} catch {
 		return { ...DEFAULT_SETTINGS };
 	}

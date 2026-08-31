@@ -8,24 +8,30 @@ export interface SkillCandidate extends SkillSummary {
 }
 
 export async function scanSkillsRoot(root: string, scope: SkillScope, source: SkillSummary["source"], rank: number): Promise<SkillCandidate[]> {
-	let entries;
+	let names: string[];
 	try {
-		entries = await readdir(root, { withFileTypes: true });
+		names = await readdir(root);
 	} catch {
 		return [];
 	}
 	const out: SkillCandidate[] = [];
-	for (const entry of entries) {
-		const full = join(root, entry.name);
+	for (const name of names) {
+		const full = join(root, name);
+		let st;
+		try {
+			st = await stat(full);
+		} catch {
+			continue;
+		}
 		let file: string | null = null;
-		if (entry.isDirectory()) {
+		if (st.isDirectory()) {
 			const skillFile = join(full, "SKILL.md");
 			try {
 				if ((await stat(skillFile)).isFile()) file = skillFile;
 			} catch {
 				file = null;
 			}
-		} else if (entry.isFile() && entry.name.endsWith(".md")) {
+		} else if (st.isFile() && name.endsWith(".md")) {
 			file = full;
 		}
 		if (!file) continue;

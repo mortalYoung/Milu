@@ -1,25 +1,32 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { filterVisible } from "./authorize";
-import { scanSkillsRoot } from "./filesystem";
+import { type SkillCandidate, scanSkillsRoot } from "./filesystem";
 import { parseSkillFile, SKILL_NAME_RE } from "./frontmatter";
 import type { SkillDefinition, SkillLookup, SkillSummary } from "./types";
 
-const PROJECT_RANK = 100;
-const GLOBAL_RANK = 200;
-
 export async function listSkills(lookup: SkillLookup): Promise<SkillSummary[]> {
-	const projectRoot = lookup.cwd ? join(lookup.cwd, lookup.skillsDir) : null;
-	const globalRoot = join(lookup.home, lookup.skillsDir);
-	const [project, global] = await Promise.all([
-		projectRoot ? scanSkillsRoot(projectRoot, "project", "project-agents", PROJECT_RANK) : Promise.resolve([]),
-		scanSkillsRoot(globalRoot, "global", "global", GLOBAL_RANK),
-	]);
-	const byName = new Map<string, SkillSummary>();
-	for (const candidate of [...project, ...global]) {
+	const dirs = lookup.skillsDirs.length > 0 ? lookup.skillsDirs : [".agents/skills"];
+	const candidates: SkillCandidate[] = [];
+	for (let i = 0; i < dirs.length; i++) {
+		const rank = 100 + i * 10;
+		const projectRoot = lookup.cwd ? join(lookup.cwd, dirs[i]) : null;
+		if (projectRoot) candidates.push(...(await scanSkillsRoot(projectRoot, "project", "project-agents", rank)));
+		candidates.push(...(await scanSkillsRoot(join(lookup.home, dirs[i]), "global", "global", rank + 1)));
+	}
+	const byName = new Map<string, SkillCandidate>();
+	for (const candidate of candidates) {
 		if (!filterVisible([candidate], lookup.granted).length) continue;
 		const existing = byName.get(candidate.name);
-		if (!existing || (existing.scope !== "project" && candidate.scope === "project")) {
+		if (!existing) {
+			byName.set(candidate.name, candidate);
+			continue;
+		}
+		if (candidate.scope === "project" && existing.scope !== "project") {
+			byName.set(candidate.name, candidate);
+			continue;
+		}
+		if (candidate.scope === existing.scope && candidate.rank < existing.rank) {
 			byName.set(candidate.name, candidate);
 		}
 	}

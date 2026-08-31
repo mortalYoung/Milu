@@ -134,6 +134,10 @@ export function App() {
 		void metrics.refresh();
 	});
 
+	rpc.addMessageListener("skills_change", () => {
+		void skills.refresh(session.selected());
+	});
+
 	// ————— user input —————
 	function onSend(text: string) {
 		if (status.isBusyForSelected()) {

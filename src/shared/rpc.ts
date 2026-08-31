@@ -378,6 +378,9 @@ export type AppRPCSchema = __schema<{
 						theme?: ThemeMode;
 						toastPlacement?: ToastPlacement;
 						toastDurationMs?: number;
+						skills_dirs?: string[];
+						skills_watch?: boolean;
+						skills_watch_delay_ms?: number;
 						sendMessageIntervalSec?: number | null;
 						commands_path?: string;
 						retry?: { maxRetries?: number; baseDelayMs?: number };
@@ -402,6 +405,9 @@ export type AppRPCSchema = __schema<{
 						theme?: ThemeMode;
 						toastPlacement?: ToastPlacement;
 						toastDurationMs?: number;
+						skills_dirs?: string[];
+						skills_watch?: boolean;
+						skills_watch_delay_ms?: number;
 						sendMessageIntervalSec?: number | null;
 						commands_path?: string;
 						retry?: { maxRetries?: number; baseDelayMs?: number };
@@ -501,6 +507,7 @@ export type AppRPCSchema = __schema<{
 			escalation_update: {};
 
 			command_update: {};
+			skills_change: {};
 		};
 	};
 }>;

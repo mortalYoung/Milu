@@ -98,6 +98,52 @@ function armCommandsWatch(dir: string) {
 		if (typeof filename === "string" && filename.endsWith(".ts")) scheduleCommandsReload();
 	});
 }
+
+let skillsWatchers: ReturnType<typeof watch>[] = [];
+let skillsReloadTimer: ReturnType<typeof setTimeout> | undefined;
+
+function scheduleSkillsRefresh() {
+	clearTimeout(skillsReloadTimer);
+	const settings = settingsCache ?? startupSettings;
+	const delay = typeof settings.skills_watch_delay_ms === "number" && settings.skills_watch_delay_ms >= 0 ? settings.skills_watch_delay_ms : 300;
+	skillsReloadTimer = setTimeout(() => void refreshSkillsChanged(), delay);
+}
+
+async function refreshSkillsChanged() {
+	for (const pending of agents.values()) {
+		void pending.then((e) => e.agent.invalidateSkillCatalog()).catch(() => {});
+	}
+	rpc.send.skills_change({});
+}
+
+async function armSkillsWatchers() {
+	const settings = settingsCache ?? (await ensureSettings());
+	for (const w of skillsWatchers) {
+		try {
+			w.close();
+		} catch {}
+	}
+	skillsWatchers = [];
+	if (settings.skills_watch === false) return;
+	const add = (dir: string | null) => {
+		if (!dir) return;
+		try {
+			skillsWatchers.push(
+				watch(dir, { recursive: true }, (_event, filename) => {
+					if (typeof filename === "string" && filename.includes("/") && !filename.endsWith(".md")) return;
+					scheduleSkillsRefresh();
+				}),
+			);
+		} catch {}
+	};
+	const dirs = skillsDirsOf(settings);
+	for (const dir of dirs) add(join(homedir(), dir));
+	if (viewPartner) {
+		const entry = await agents.get(viewPartner.name);
+		const ws = entry?.agent.workspacePath ?? null;
+		if (ws) for (const dir of dirs) add(join(ws, dir));
+	}
+}
 const pendingCommandIds = new Set<string>();
 const runningCommandPartners = new Set<string>();
 const pendingSandboxConfirms = new Map<string, { resolve: (decision: EscalationDecision) => void; to: SandboxMode; dir: string; partner: string }>();
@@ -169,6 +215,10 @@ async function ensureSettings(): Promise<Settings> {
 	return settings;
 }
 
+function skillsDirsOf(settings: Settings): string[] {
+	return settings.skills_dirs?.length ? settings.skills_dirs : [".agents/skills"];
+}
+
 async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> {
 	const dir = await partnerDirFor(profile.name);
 
@@ -181,11 +231,11 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 	const skillsService: SkillsService = {
 		async list({ cwd, granted }) {
 			const s = await ensureSettings();
-			return listSkills({ cwd, home: homedir(), skillsDir: s.skills_dir ?? ".agents/skills", granted });
+			return listSkills({ cwd, home: homedir(), skillsDirs: skillsDirsOf(s), granted });
 		},
 		async get(name, { cwd, granted }) {
 			const s = await ensureSettings();
-			return getSkill(name, { cwd, home: homedir(), skillsDir: s.skills_dir ?? ".agents/skills", granted });
+			return getSkill(name, { cwd, home: homedir(), skillsDirs: skillsDirsOf(s), granted });
 		},
 	};
 	const defaultMode = isSandboxMode(settings.defaultSandboxMode) ? settings.defaultSandboxMode : "workspace-write";
@@ -199,7 +249,10 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 			onTurnStart: (turn) => rpc.send.agent_turn({ turn, partner: profile.name }),
 			onMessage: () => rpc.send.agent_message({}),
 			onTrajectoryUpdate: () => rpc.send.trajectory_update({}),
-			onWorkspaceUpdate: () => rpc.send.workspace_update({}),
+			onWorkspaceUpdate: () => {
+				rpc.send.workspace_update({});
+				void armSkillsWatchers();
+			},
 			onWorkspaceSet: (path) => void persistWorkspace(dir, path),
 			onEnd: (error) => {
 				rejectPendingEscalations(profile.name, "run ended while awaiting approval");
@@ -552,7 +605,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				const granted = await readPartnerGrantedSkills(dir);
 				const entry = await agents.get(name);
 				const cwd = entry?.agent.workspacePath ?? null;
-				const skills = await listSkills({ cwd, home: homedir(), skillsDir: settings.skills_dir ?? ".agents/skills", granted });
+				const skills = await listSkills({ cwd, home: homedir(), skillsDirs: skillsDirsOf(settings), granted });
 				return {
 					skills: skills.map((s) => ({
 						name: s.name,
@@ -566,8 +619,13 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 
 			skill_list_global: async () => {
 				const settings = await ensureSettings();
-				const root = join(homedir(), settings.skills_dir ?? ".agents/skills");
-				const candidates = await scanSkillsRoot(root, "global", "global", 200);
+				const candidates: Awaited<ReturnType<typeof scanSkillsRoot>> = [];
+				const dirs = skillsDirsOf(settings);
+				for (let i = 0; i < dirs.length; i++) {
+					candidates.push(...(await scanSkillsRoot(join(homedir(), dirs[i]), "global", "global", 200 + i * 10)));
+				}
+				const seen = new Set<string>();
+				const unique = [...candidates].sort((a, b) => a.rank - b.rank).filter((c) => (seen.has(c.name) ? false : (seen.add(c.name), true)));
 				const profiles = await listPartners(settings);
 				const byName = new Map<string, string[]>();
 				for (const profile of profiles) {
@@ -579,7 +637,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					}
 				}
 				return {
-					skills: candidates.map((c) => ({
+					skills: unique.map((c) => ({
 						name: c.name,
 						description: c.description,
 						...(c.path ? { path: c.path } : {}),
@@ -598,7 +656,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				const def = await getSkill(name, {
 					cwd: entry.agent.workspacePath,
 					home: homedir(),
-					skillsDir: settings.skills_dir ?? ".agents/skills",
+					skillsDirs: skillsDirsOf(settings),
 					granted,
 				});
 				if (!def) return { ok: false, error: `skill "${name}" is unknown or not granted` };
@@ -630,7 +688,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				const def = await getSkill(name, {
 					cwd: entry?.agent.workspacePath ?? null,
 					home: homedir(),
-					skillsDir: settings.skills_dir ?? ".agents/skills",
+					skillsDirs: skillsDirsOf(settings),
 					granted,
 				});
 				if (!def) return { ok: false, error: `skill "${name}" is unknown or not granted` };
@@ -640,7 +698,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 			skill_create: async ({ name, description }) => {
 				if (!SKILL_NAME_RE.test(name)) return { ok: false, error: `invalid skill name "${name}"` };
 				const settings = await ensureSettings();
-				const dir = join(homedir(), settings.skills_dir ?? ".agents/skills", name);
+				const dir = join(homedir(), skillsDirsOf(settings)[0], name);
 				try {
 					await mkdir(dir, { recursive: true });
 					const file = join(dir, "SKILL.md");
@@ -653,10 +711,11 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 
 			skill_delete: async ({ name }) => {
 				const settings = await ensureSettings();
-				const root = join(homedir(), settings.skills_dir ?? ".agents/skills");
 				try {
-					await rm(join(root, name), { recursive: true, force: true });
-					await rm(join(root, `${name}.md`), { force: true });
+					for (const dir of skillsDirsOf(settings)) {
+						await rm(join(homedir(), dir, name), { recursive: true, force: true });
+						await rm(join(homedir(), dir, `${name}.md`), { force: true });
+					}
 					return { ok: true };
 				} catch (error) {
 					return { ok: false, error: error instanceof Error ? error.message : String(error) };
@@ -665,8 +724,11 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 
 			skill_reveal: async ({ name }) => {
 				const settings = await ensureSettings();
-				const root = join(homedir(), settings.skills_dir ?? ".agents/skills");
-				const candidates = await scanSkillsRoot(root, "global", "global", 200);
+				const candidates: Awaited<ReturnType<typeof scanSkillsRoot>> = [];
+				const dirs = skillsDirsOf(settings);
+				for (let i = 0; i < dirs.length; i++) {
+					candidates.push(...(await scanSkillsRoot(join(homedir(), dirs[i]), "global", "global", 200 + i * 10)));
+				}
 				const candidate = candidates.find((c) => c.name === name);
 				if (!candidate?.path) return { ok: false, error: `skill "${name}" not found` };
 				spawn("open", ["-R", candidate.path], { stdio: "ignore" }).unref();
@@ -749,6 +811,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					}
 					await saveSettings(settings);
 					settingsCache = settings;
+					void armSkillsWatchers();
 					for (const removed of prevProviders.filter((p) => !nextProviders.includes(p))) {
 						await deleteApiKey(removed);
 					}
@@ -805,8 +868,10 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					await ensureAgent(profile);
 
 					rpc.send.workspace_update({});
+					void armSkillsWatchers();
 				} else {
 					viewPartner = null;
+					void armSkillsWatchers();
 				}
 				return { ok: true };
 			},
@@ -869,6 +934,7 @@ ApplicationMenu.setApplicationMenu([
 ]);
 
 armCommandsWatch(commandsDir(startupSettings));
+void armSkillsWatchers();
 
 new BrowserWindow({
 	title: "Coding",

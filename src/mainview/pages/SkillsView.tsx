@@ -19,7 +19,10 @@ export function SkillsView() {
 		setPartners(ps);
 	}
 
-	onMount(() => void load());
+	onMount(() => {
+		void load();
+		rpc.addMessageListener("skills_change", () => void load());
+	});
 
 	async function createSkill() {
 		const n = name().trim().toLowerCase();

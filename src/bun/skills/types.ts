@@ -23,7 +23,7 @@ export interface SkillDefinition extends SkillSummary {
 export interface SkillLookup {
 	cwd: string | null;
 	home: string;
-	skillsDir: string;
+	skillsDirs: string[];
 	granted: string[];
 }
 

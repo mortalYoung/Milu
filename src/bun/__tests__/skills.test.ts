@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { scanSkillsRoot } from "../skills/filesystem";
@@ -68,6 +68,18 @@ describe("scanSkillsRoot", () => {
 	it("returns [] for a missing root", async () => {
 		expect(await scanSkillsRoot(join(await tempDir(), "missing"), "project", "project-agents", 100)).toEqual([]);
 	});
+
+	it("follows symlinked skill bundles and flat files", async () => {
+		const root = await tempDir();
+		const target = await tempDir();
+		await mkdir(join(target, "bundle"), { recursive: true });
+		await writeFile(join(target, "bundle", "SKILL.md"), skillFile("link-bundle", "name: link-bundle\ndescription: via link"));
+		await writeFile(join(target, "flat.md"), skillFile("link-flat", "name: link-flat\ndescription: via link"));
+		await symlink(join(target, "bundle"), join(root, "link-bundle"));
+		await symlink(join(target, "flat.md"), join(root, "link-flat.md"));
+		const found = await scanSkillsRoot(root, "project", "project-agents", 100);
+		expect(found.map((s) => s.name).sort()).toEqual(["link-bundle", "link-flat"]);
+	});
 });
 
 describe("registry", () => {
@@ -80,7 +92,7 @@ describe("registry", () => {
 		await writeFile(join(home, ".agents", "skills", "shared.md"), skillFile("shared", "name: shared\ndescription: global version"));
 		await writeFile(join(home, ".agents", "skills", "global-only.md"), skillFile("global-only", "name: global-only\ndescription: global skill"));
 
-		const lookup: SkillLookup = { cwd, home, skillsDir: ".agents/skills", granted: [] };
+		const lookup: SkillLookup = { cwd, home, skillsDirs: [".agents/skills"], granted: [] };
 		const skills = await listSkills(lookup);
 		expect(skills.find((s) => s.name === "shared")!.description).toBe("project version");
 		expect(skills.find((s) => s.name === "global-only")).toBeUndefined();
@@ -90,7 +102,7 @@ describe("registry", () => {
 		const home = await tempDir();
 		await mkdir(join(home, ".agents", "skills"), { recursive: true });
 		await writeFile(join(home, ".agents", "skills", "g.md"), skillFile("g", "name: g\ndescription: global skill"));
-		const base: SkillLookup = { cwd: null, home, skillsDir: ".agents/skills", granted: [] };
+		const base: SkillLookup = { cwd: null, home, skillsDirs: [".agents/skills"], granted: [] };
 		expect(await listSkills(base)).toHaveLength(0);
 		expect(await listSkills({ ...base, granted: ["g"] })).toHaveLength(1);
 	});
@@ -100,7 +112,7 @@ describe("registry", () => {
 		await mkdir(join(home, ".agents", "skills"), { recursive: true });
 		await writeFile(join(home, ".agents", "skills", "b.md"), skillFile("b", "name: b\ndescription: b skill"));
 		await writeFile(join(home, ".agents", "skills", "a.md"), skillFile("a", "name: a\ndescription: a skill"));
-		const lookup: SkillLookup = { cwd: null, home, skillsDir: ".agents/skills", granted: ["a", "b"] };
+		const lookup: SkillLookup = { cwd: null, home, skillsDirs: [".agents/skills"], granted: ["a", "b"] };
 		expect((await listSkills(lookup)).map((s) => s.name)).toEqual(["a", "b"]);
 		const def = await getSkill("a", lookup);
 		expect(def!.content).toContain("Instructions body for a");

@@ -43,6 +43,7 @@ export interface AgentHandle {
 	chatAndWait: (text: string, skill?: string) => Promise<{ ok: boolean; error?: string }>;
 	sendMessage: (text: string) => Promise<void>;
 	continue: () => Promise<void>;
+	invalidateSkillCatalog: () => void;
 	readonly permission: Permission;
 	stop: () => void;
 	markUserMessage: () => void;
@@ -610,6 +611,9 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			ctx.workspace_path = path;
 			invalidateSkillCatalog();
 			bridge.onWorkspaceUpdate();
+		},
+		invalidateSkillCatalog() {
+			skillCatalogDirty = true;
 		},
 	};
 }

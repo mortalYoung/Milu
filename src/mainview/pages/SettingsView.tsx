@@ -1,6 +1,8 @@
-import { createMemo, createSignal, For, indexArray, type JSX, Match, Show, Switch } from "solid-js";
+import { createMemo, createSignal, For, Index, indexArray, type JSX, Show } from "solid-js";
 import type { CustomModel, CustomProvider, SandboxMode, ThemeMode, ToastPlacement } from "../../shared/rpc";
+import { Button } from "../components/Button";
 import { Select } from "../components/ui/select";
+import { Switch as SwitchToggle } from "../components/ui/switch";
 import { TextField, TextFieldInput } from "../components/ui/text-field";
 import { cn } from "../lib/utils";
 
@@ -13,6 +15,9 @@ export interface SettingsData {
 	theme?: ThemeMode;
 	toastPlacement?: ToastPlacement;
 	toastDurationMs?: number;
+	skills_dirs?: string[];
+	skills_watch?: boolean;
+	skills_watch_delay_ms?: number;
 	sendMessageIntervalSec?: number | null;
 	commands_path?: string;
 	retry?: { maxRetries?: number; baseDelayMs?: number };
@@ -30,6 +35,7 @@ export interface SaveResult {
 
 const CATS = [
 	{ id: "general", label: "General" },
+	{ id: "skills", label: "Skills" },
 	{ id: "permission", label: "Permission" },
 	{ id: "providers", label: "Providers" },
 	{ id: "retry", label: "Retry" },
@@ -46,6 +52,9 @@ const DEFAULTS = {
 	sandbox: "workspace-write" as SandboxMode,
 	toastPlacement: "bottomcenter" as ToastPlacement,
 	toastDurationMs: 4000,
+	skills_dirs: [".agents/skills"],
+	skills_watch: true,
+	skills_watch_delay_ms: 300,
 };
 
 const EMPTY_CP = { id: "", name: "", baseUrl: "", models: [{ id: "", window: "" }], window: "", maxTokens: "" };
@@ -54,20 +63,33 @@ type CpModelRow = CpForm["models"][number];
 
 const COLS = "grid grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)_56px_76px] items-center gap-2";
 
-function SettingRow(props: { title: string; desc: string; modified?: boolean; q?: string; children: JSX.Element }) {
+function SettingRow(props: { title: string; desc: string; modified?: boolean; q?: string; stacked?: boolean; children: JSX.Element }) {
+	const head = () => (
+		<div class="flex items-center gap-2">
+			<span class="font-serif text-[13px] leading-tight text-ink">{props.q ? highlight(props.title, props.q) : props.title}</span>
+			<Show when={props.modified}>
+				<span class="flex items-center gap-1.5">
+					<span class="size-[5px] shrink-0 rounded-full bg-seal" />
+					<span class="font-sans text-[10px] font-medium text-seal">modified</span>
+				</span>
+			</Show>
+		</div>
+	);
+	const body = () => <div class="mt-1 font-sans text-[11px] leading-snug text-body-muted">{props.q ? highlight(props.desc, props.q) : props.desc}</div>;
+	if (props.stacked) {
+		return (
+			<div class="py-2.5">
+				{head()}
+				{body()}
+				<div class="mt-2">{props.children}</div>
+			</div>
+		);
+	}
 	return (
 		<div class="flex items-center gap-5 py-2.5">
 			<div class="min-w-0 flex-1">
-				<div class="flex items-center gap-2">
-					<span class="font-serif text-[13px] leading-tight text-ink">{props.q ? highlight(props.title, props.q) : props.title}</span>
-					<Show when={props.modified}>
-						<span class="flex items-center gap-1.5">
-							<span class="size-[5px] shrink-0 rounded-full bg-seal" />
-							<span class="font-sans text-[10px] font-medium text-seal">modified</span>
-						</span>
-					</Show>
-				</div>
-				<div class="mt-1 font-sans text-[11px] leading-snug text-body-muted">{props.q ? highlight(props.desc, props.q) : props.desc}</div>
+				{head()}
+				{body()}
 			</div>
 			<div class="shrink-0">{props.children}</div>
 		</div>
@@ -163,6 +185,28 @@ export function SettingsView(props: {
 	const [theme, setTheme] = createSignal<ThemeMode>("system");
 	const [toastPlacement, setToastPlacement] = createSignal<ToastPlacement>("bottomcenter");
 	const [toastDurationMs, setToastDurationMs] = createSignal("4000");
+	const [skillsDirs, setSkillsDirs] = createSignal<string[]>(props.settings?.skills_dirs?.length ? props.settings.skills_dirs : [".agents/skills"]);
+	const [skillsWatch, setSkillsWatch] = createSignal(props.settings?.skills_watch ?? true);
+	const [skillsWatchDelay, setSkillsWatchDelay] = createSignal(String(props.settings?.skills_watch_delay_ms ?? 300));
+
+	function persistSkillsDirs() {
+		const dirs = skillsDirs()
+			.map((d) => d.trim())
+			.filter(Boolean);
+		setSkillsDirs(dirs);
+		void persist({ ...currentSettings(), skills_dirs: dirs });
+	}
+	function updateSkillsDir(i: number, v: string) {
+		setSkillsDirs((prev) => prev.map((d, idx) => (idx === i ? v : d)));
+	}
+	function addSkillsDir() {
+		setSkillsDirs((prev) => [...prev, ""]);
+	}
+	function removeSkillsDir(i: number) {
+		setSkillsDirs((prev) => prev.filter((_, idx) => idx !== i));
+		persistSkillsDirs();
+	}
+
 	const [deliveryMode, setDeliveryMode] = createSignal<"unlimited" | "custom">("unlimited");
 	const [deliverySec, setDeliverySec] = createSignal("20");
 	const [added, setAdded] = createSignal<string[]>([]);
@@ -210,6 +254,16 @@ export function SettingsView(props: {
 	if (props.settings && props.settings.toastDurationMs !== undefined && toastDurationMs() === "4000") {
 		setToastDurationMs(String(props.settings.toastDurationMs));
 	}
+	if (props.settings && props.settings.skills_dirs !== undefined && JSON.stringify(props.settings.skills_dirs) !== JSON.stringify(skillsDirs())) {
+		setSkillsDirs(props.settings.skills_dirs);
+	}
+	if (props.settings && typeof props.settings.skills_watch === "boolean" && props.settings.skills_watch !== skillsWatch()) {
+		setSkillsWatch(props.settings.skills_watch);
+	}
+	if (props.settings && typeof props.settings.skills_watch_delay_ms === "number" && String(props.settings.skills_watch_delay_ms) !== skillsWatchDelay()) {
+		setSkillsWatchDelay(String(props.settings.skills_watch_delay_ms));
+	}
+
 	if (props.settings && typeof props.settings.sendMessageIntervalSec === "number" && deliveryMode() === "unlimited") {
 		setDeliveryMode("custom");
 		setDeliverySec(String(props.settings.sendMessageIntervalSec));
@@ -240,6 +294,11 @@ export function SettingsView(props: {
 		theme: theme(),
 		toastPlacement: toastPlacement(),
 		toastDurationMs: parsePositiveInt(toastDurationMs(), DEFAULTS.toastDurationMs),
+		skills_dirs: skillsDirs()
+			.map((d) => d.trim())
+			.filter(Boolean),
+		skills_watch: skillsWatch(),
+		skills_watch_delay_ms: parsePositiveInt(skillsWatchDelay(), DEFAULTS.skills_watch_delay_ms),
 		sendMessageIntervalSec: deliveryMode() === "unlimited" ? null : parsedDeliverySec(),
 		commands_path: commandsPath().trim() || undefined,
 		retry: {
@@ -408,6 +467,7 @@ export function SettingsView(props: {
 		title: string;
 		desc: string;
 		cats: CatId[];
+		stacked?: boolean;
 		modified: () => boolean;
 		control: () => JSX.Element;
 	}[] => [
@@ -710,6 +770,107 @@ export function SettingsView(props: {
 				</TextField>
 			),
 		},
+		{
+			id: "skillsDirs",
+			title: "Skills directories",
+			desc: "Each directory is scanned as <workspace>/<dir> (project) and <home>/<dir> (global).",
+			cats: ["skills"],
+			stacked: true,
+			modified: () =>
+				JSON.stringify(
+					skillsDirs()
+						.map((d) => d.trim())
+						.filter(Boolean),
+				) !== JSON.stringify(DEFAULTS.skills_dirs),
+			control: () => (
+				<div class="flex flex-col gap-1.5">
+					<table class="w-full text-left">
+						<thead>
+							<tr>
+								<th class="pb-1 font-sans text-[10px] uppercase tracking-[0.14em] text-muted">Directory</th>
+								<th class="w-10 pb-1" />
+							</tr>
+						</thead>
+						<tbody>
+							<Index each={skillsDirs()}>
+								{(d, i) => (
+									<tr>
+										<td class="pb-1 pr-2">
+											<TextField class="w-full" value={d()} onChange={(v) => updateSkillsDir(i, v)}>
+												<TextFieldInput
+													variant="compact"
+													class="w-full"
+													placeholder=".agents/skills"
+													aria-label="Skills directory"
+													spellcheck={false}
+													onBlur={() => persistSkillsDirs()}
+													onKeyDown={(e) => {
+														if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
+													}}
+												/>
+											</TextField>
+										</td>
+										<td class="pb-1 text-right">
+											<Button variant="ghost" size="sm" title="Remove directory" onClick={() => removeSkillsDir(i)}>
+												×
+											</Button>
+										</td>
+									</tr>
+								)}
+							</Index>
+						</tbody>
+					</table>
+					<div>
+						<Button variant="outline" size="sm" onClick={addSkillsDir}>
+							Add directory
+						</Button>
+					</div>
+				</div>
+			),
+		},
+		{
+			id: "skillsWatch",
+			title: "Skill watching",
+			desc: "Hot-reload skills on file changes.",
+			cats: ["skills"],
+			modified: () => skillsWatch() !== DEFAULTS.skills_watch,
+			control: () => (
+				<SwitchToggle
+					checked={skillsWatch()}
+					onChange={(on) => {
+						setSkillsWatch(on);
+						void persist({ ...currentSettings(), skills_watch: on });
+					}}
+				/>
+			),
+		},
+		{
+			id: "skillsWatchDelay",
+			title: "Skill watch delay",
+			desc: "Milliseconds to debounce before refreshing skills after a change.",
+			cats: ["skills"],
+			modified: () => parsePositiveInt(skillsWatchDelay(), DEFAULTS.skills_watch_delay_ms) !== DEFAULTS.skills_watch_delay_ms,
+			control: () => (
+				<TextField class="h-[32px] w-[110px] shrink-0 gap-0" value={skillsWatchDelay()} onChange={setSkillsWatchDelay}>
+					<TextFieldInput
+						type="number"
+						min={0}
+						step={100}
+						variant="compact"
+						title="Skill watch delay (ms)"
+						aria-label="Skill watch delay (ms)"
+						onBlur={() => {
+							const next = parsePositiveInt(skillsWatchDelay(), DEFAULTS.skills_watch_delay_ms);
+							setSkillsWatchDelay(String(next));
+							void persist({ ...currentSettings(), skills_watch_delay_ms: next });
+						}}
+						onKeyDown={(e) => {
+							if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
+						}}
+					/>
+				</TextField>
+			),
+		},
 	];
 
 	const q = createMemo(() => query().trim().toLowerCase());
@@ -833,76 +994,66 @@ export function SettingsView(props: {
 				</div>
 
 				<div class="min-h-0 flex-1 overflow-y-auto px-3 pb-6">
-					<Switch>
-						<Match when={searching()}>
-							<div class="space-y-4">
-								<For each={CATS}>
-									{(cat) => (
-										<Show when={catHasMatches(cat.id)}>
-											<div>
-												<div class="mb-2 font-serif text-[15px] font-medium text-ink">{cat.label}</div>
-												<div class="divide-y divide-hairline">
-													<For each={matchedRows().filter((r) => r.cats.includes(cat.id))}>
-														{(row) => (
-															<SettingRow title={row.title} desc={row.desc} modified={row.modified()} q={q()}>
-																{row.control()}
-															</SettingRow>
+					<Show when={searching()}>
+						<div class="space-y-4">
+							<For each={CATS}>
+								{(cat) => (
+									<Show when={catHasMatches(cat.id)}>
+										<div>
+											<div class="mb-2 font-serif text-[15px] font-medium text-ink">{cat.label}</div>
+											<div class="divide-y divide-hairline">
+												<For each={matchedRows().filter((r) => r.cats.includes(cat.id))}>
+													{(row) => (
+														<SettingRow title={row.title} desc={row.desc} modified={row.modified()} q={q()} stacked={row.stacked}>
+															{row.control()}
+														</SettingRow>
+													)}
+												</For>
+												<Show when={cat.id === "providers"}>
+													<For each={providerMatches()}>
+														{(id) => (
+															<div class="flex items-center gap-2 py-3.5">
+																<span class="font-serif text-[13px] text-ink">{highlight(id, q())}</span>
+																<Show when={configured(id)}>
+																	<span class="size-[5px] shrink-0 rounded-full bg-[#7FB069]" title="configured" />
+																</Show>
+															</div>
 														)}
 													</For>
-													<Show when={cat.id === "providers"}>
-														<For each={providerMatches()}>
-															{(id) => (
-																<div class="flex items-center gap-2 py-3.5">
-																	<span class="font-serif text-[13px] text-ink">{highlight(id, q())}</span>
-																	<Show when={configured(id)}>
-																		<span class="size-[5px] shrink-0 rounded-full bg-[#7FB069]" title="configured" />
-																	</Show>
-																</div>
-															)}
-														</For>
-													</Show>
-												</div>
+												</Show>
 											</div>
-										</Show>
-									)}
-								</For>
-								<Show when={totalMatches() === 0}>
-									<div class="pt-8 text-center">
-										<div class="font-serif text-[14px] text-ink-soft">No matching settings</div>
-										<div class="mt-1 font-sans text-[11px] text-body-muted">Try a different search.</div>
+										</div>
+									</Show>
+								)}
+							</For>
+							<Show when={totalMatches() === 0}>
+								<div class="pt-8 text-center">
+									<div class="font-serif text-[14px] text-ink-soft">No matching settings</div>
+									<div class="mt-1 font-sans text-[11px] text-body-muted">Try a different search.</div>
+								</div>
+							</Show>
+						</div>
+					</Show>
+					<Show when={!searching()}>
+						<For each={CATS}>
+							{(cat) => (
+								<Show when={tab() === cat.id && cat.id !== "providers"}>
+									<div>
+										<div class="mb-2 font-serif text-[15px] font-medium text-ink">{cat.label}</div>
+										<div class="divide-y divide-hairline">
+											<For each={rows().filter((r) => r.cats.includes(cat.id))}>
+												{(row) => (
+													<SettingRow title={row.title} desc={row.desc} modified={row.modified()} stacked={row.stacked}>
+														{row.control()}
+													</SettingRow>
+												)}
+											</For>
+										</div>
 									</div>
 								</Show>
-							</div>
-						</Match>
-						<Match when={tab() === "general"}>
-							<div>
-								<div class="mb-2 font-serif text-[15px] font-medium text-ink">General</div>
-								<div class="divide-y divide-hairline">
-									<For each={rows().filter((r) => r.cats.includes("general"))}>
-										{(row) => (
-											<SettingRow title={row.title} desc={row.desc} modified={row.modified()}>
-												{row.control()}
-											</SettingRow>
-										)}
-									</For>
-								</div>
-							</div>
-						</Match>
-						<Match when={tab() === "permission"}>
-							<div>
-								<div class="mb-2 font-serif text-[15px] font-medium text-ink">Permission</div>
-								<div class="divide-y divide-hairline">
-									<For each={rows().filter((r) => r.cats.includes("permission"))}>
-										{(row) => (
-											<SettingRow title={row.title} desc={row.desc} modified={row.modified()}>
-												{row.control()}
-											</SettingRow>
-										)}
-									</For>
-								</div>
-							</div>
-						</Match>
-						<Match when={tab() === "providers"}>
+							)}
+						</For>
+						<Show when={tab() === "providers"}>
 							<div>
 								<div class="mb-2 font-serif text-[15px] font-medium text-ink">Providers</div>
 								<Show when={tableRows().length} fallback={<div class="mb-3 font-mono text-[11px] text-muted">no providers added — add one below</div>}>
@@ -1127,22 +1278,8 @@ export function SettingsView(props: {
 									</Show>
 								</div>
 							</div>
-						</Match>
-						<Match when={tab() === "retry"}>
-							<div>
-								<div class="mb-2 font-serif text-[15px] font-medium text-ink">Retry</div>
-								<div class="divide-y divide-hairline">
-									<For each={rows().filter((r) => r.cats.includes("retry"))}>
-										{(row) => (
-											<SettingRow title={row.title} desc={row.desc} modified={row.modified()}>
-												{row.control()}
-											</SettingRow>
-										)}
-									</For>
-								</div>
-							</div>
-						</Match>
-					</Switch>
+						</Show>
+					</Show>
 				</div>
 			</div>
 
