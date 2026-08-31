@@ -1,29 +1,6 @@
-/**
- * The session log's event vocabulary: every event type that can be persisted,
- * its custom-entry name, and the shape of its payload. Adapted from the
- * deepseek-harness session-log design (session-log-content-and-durability.md):
- *
- * - turn/start · turn/end — one outer-loop run (agent_start → agent_end)
- * - step/start · step/end — one inner-loop iteration (pi turn_start → turn_end),
- *   i.e. one model call + the tool executions it requested
- * - tool/call · tool/result — a tool invocation, recorded at execution time so a
- *   crash mid-turn leaves the call (and result) in the log
- * - request/header — the full rendered request head (system prompt + tool names),
- *   appended before the request is dispatched (every request is reconstructable)
- *
- * Message-shaped events (user, assistant) are persisted as pi message entries;
- * everything here is a custom entry. Tool results are the only vocabulary events
- * that join the surface (the model's next request must see them); the rest are
- * log-only.
- *
- * Appends are durability barriers: each scope append resolves only after the
- * entry has been written to the log file, so an awaited append is a checkpoint.
- * A write-behind batching layer could sit behind this interface without
- * changing callers.
- */
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
+import type { SandboxMode } from "../../shared/rpc";
 
-/** Custom-entry names for the vocabulary (the log format contract). */
 export const EVENTS = {
 	turnStart: "turn/start",
 	turnEnd: "turn/end",
@@ -34,7 +11,6 @@ export const EVENTS = {
 	requestHeader: "request/header",
 	sendMessage: "send_message",
 	systemPrompt: "system_prompt",
-	systemReminder: "system_reminder",
 	followUp: "message/follow_up",
 	escalationRequest: "escalation/request",
 	escalationDecision: "escalation/decision",
@@ -46,13 +22,13 @@ export const EVENTS = {
 	thinkingLevelChange: "thinking_level_change",
 	commandRun: "command/run",
 	commandDone: "command/done",
+	contextChanged: "context/changed",
 	skillRun: "skill/run",
 	skillDone: "skill/done",
 	retryScheduled: "retry/scheduled",
 	retryStarted: "retry/started",
 } as const;
 
-/** Why a run ended (turn/end payload). */
 export type TurnEndReason = "completed" | "error" | "aborted" | "interrupted";
 
 export interface TurnStartEventData {
@@ -62,7 +38,6 @@ export interface TurnStartEventData {
 export interface TurnEndEventData {
 	turn: number;
 	reason: TurnEndReason;
-	/** The run's error message (reason "error" only) — persisted so a failed run is reconstructable after restart. */
 	error?: string;
 }
 
@@ -84,7 +59,6 @@ export interface ToolCallEventData {
 	args: unknown;
 }
 
-/** The pieces of a ToolResultMessage the log must keep to rebuild it (see surface.deriveEventMessage). */
 export interface ToolResultEventData {
 	toolCallId: string;
 	toolName: string;
@@ -98,6 +72,7 @@ export interface SkillRunEventData {
 	skillId: string;
 	name: string;
 	content?: string;
+	hint?: string;
 }
 
 export interface SkillDoneEventData {
@@ -107,22 +82,31 @@ export interface SkillDoneEventData {
 	text?: string;
 }
 
-/** command/run payload (log-only; never projected into the model context). */
 export interface CommandRunEventData {
 	commandId: string;
 	name: string;
-	/** Command args after the name, trimmed; absent when the command opts out of recording input. */
 	args?: string;
 }
 
-/** command/done payload (log-only; pairs with command/run by commandId). */
 export interface CommandDoneEventData {
 	commandId: string;
 	kind: "success" | "error";
 	text?: string;
 }
 
-/** retry/scheduled payload (log-only; a retry was scheduled before the backoff wait). */
+export interface SkillDigestItem {
+	name: string;
+	description: string;
+	digest: string;
+}
+
+export interface ContextChangedEventData {
+	workspace: string | null;
+	storage: string | null;
+	sandbox: SandboxMode;
+	skills: SkillDigestItem[];
+}
+
 export interface RetryScheduledEventData {
 	retryId: string;
 	turn: number;
@@ -135,7 +119,6 @@ export interface RetryScheduledEventData {
 	errorMessage: string;
 }
 
-/** retry/started payload (log-only; the backoff wait ended and the retried attempt begins). */
 export interface RetryStartedEventData {
 	retryId: string;
 	turn: number;

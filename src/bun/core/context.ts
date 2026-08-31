@@ -1,10 +1,5 @@
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { SandboxMode, ThinkingLevel } from "../../shared/rpc";
 import { buildSystemPrompt, type PartnerPrompt } from "./prompt";
-
-export function appendSystemReminder(messages: AgentMessage[], content: string, timestamp = Date.now()): void {
-	messages.push({ role: "user", content: `<system_reminder>${content}</system_reminder>`, timestamp });
-}
 
 export class Context {
 	turn = 0;
@@ -12,6 +7,7 @@ export class Context {
 	lastVisibleAt = Date.now();
 	lastTurnEndAt = 0;
 	contextClearedAt = 0;
+	skills: { name: string; description: string; digest: string }[] = [];
 	private partner: PartnerPrompt | null = null;
 	storage_path: string | null = null;
 	workspace_path: string | null = null;

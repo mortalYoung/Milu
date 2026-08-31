@@ -1,25 +1,13 @@
-/**
- * Surface folding (log → surface → dialogue), adapted from the deepseek-harness
- * session-surface design (docs/2026-08-19-session-surface-refactor.md).
- *
- * The log (pi JSONL) is the SSOT and never mutates. foldSurface replays it in
- * order: message-shaped events append a node; `surface_op` custom entries apply
- * a logged replace (splice + provenance check). deriveMessages projects the
- * surface into the pi AgentMessage chain the model sees — the derivation path
- * the agent should use for restore and compaction.
- */
 import type { AgentMessage, Entry } from "@earendil-works/pi-agent-core";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import type { RequestTool } from "../../shared/rpc";
 import type { Surface, SurfaceNode, SurfaceOpRecord } from "../../shared/surface";
-import { EVENTS } from "../persist/events";
+import { type ContextChangedEventData, EVENTS } from "../persist/events";
 
-/** Custom entry types that join the surface (log-only custom types are skipped). */
-const SURFACE_CUSTOM_TYPES = new Set<string>([EVENTS.sendMessage, EVENTS.toolResult]);
+const SURFACE_CUSTOM_TYPES = new Set<string>([EVENTS.sendMessage, EVENTS.toolResult, EVENTS.contextChanged]);
 
 export class SurfaceError extends Error {}
 
-/** True when a pi entry can appear as a surface node (append-origin). */
 export function isSurfaceEntry(entry: Entry): boolean {
 	if (entry.type === "message") {
 		return entry.message.role === "user" || entry.message.role === "assistant";
@@ -27,7 +15,6 @@ export function isSurfaceEntry(entry: Entry): boolean {
 	return entry.type === "custom" && SURFACE_CUSTOM_TYPES.has(entry.customType);
 }
 
-/** The time of a pi entry (message timestamp or custom data timestamp). */
 function entryTime(entry: Entry): number {
 	if (entry.type === "message") return entry.message.timestamp ?? entry.timestamp ?? 0;
 	if (entry.type === "custom") {
@@ -37,7 +24,6 @@ function entryTime(entry: Entry): number {
 	return entry.timestamp ?? 0;
 }
 
-/** Build the surface node for an entry at the given surface position (null when log-only). */
 function nodeFor(entry: Entry, seq: number): SurfaceNode | null {
 	if (entry.type === "message") {
 		const time = entryTime(entry);
@@ -54,14 +40,9 @@ function nodeFor(entry: Entry, seq: number): SurfaceNode | null {
 	return null;
 }
 
-/**
- * Fold the full log into the current surface by replaying entries in order.
- * Deterministic: the same log always yields the same surface.
- */
 export function foldSurface(entries: Entry[]): Surface {
 	const nodes: SurfaceNode[] = [];
 	let replaceGeneration = 0;
-	// compaction summaries referenced by a later surface_op as the replacement checkpoint node
 	const pendingSummaries = new Map<string, Entry>();
 	for (const entry of entries) {
 		if (entry.type === "custom") {
@@ -82,7 +63,6 @@ export function foldSurface(entries: Entry[]): Surface {
 	return { nodes, replaceGeneration };
 }
 
-/** Apply a logged replace to the surface (inclusive [start,end]); validate provenance. */
 export function applyReplace(nodes: SurfaceNode[], op: SurfaceOpRecord, opEntryId: string, pendingSummaries?: Map<string, Entry>): void {
 	if (op.op !== "replace") {
 		throw new SurfaceError(`surface_op ${opEntryId}: unknown op ${JSON.stringify(op)}`);
@@ -110,15 +90,31 @@ export function applyReplace(nodes: SurfaceNode[], op: SurfaceOpRecord, opEntryI
 	}
 }
 
-/** Project the surface into the pi AgentMessage chain the model sees. */
 export function deriveMessages(entries: Entry[], surface: Surface): AgentMessage[] {
 	return dropDanglingTurn(projectChain(entries, surface));
 }
 
-/** One surface node → one message (null for log-only entries that never reach the surface). */
+function escapeXml(text: string): string {
+	return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+export function contextChangedText(data: ContextChangedEventData): string {
+	const lines = [`Current workspace: ${data.workspace ?? "unset"}.`, `Current storage: ${data.storage ?? "unset"}.`, `Current sandbox mode: ${data.sandbox}.`];
+	if (data.skills.length > 0) {
+		lines.push(
+			"",
+			"<available_skills>",
+			...data.skills.map((s) => `- ${escapeXml(s.name)}: ${escapeXml(s.description)}`),
+			"</available_skills>",
+			"",
+			"When a task matches a skill above, call the skill tool with its exact name to load the full instructions. The latest <available_skills> message is authoritative.",
+		);
+	}
+	return `<system_reminder>${lines.join("\n")}</system_reminder>`;
+}
+
 export function deriveEventMessage(entry: Entry): AgentMessage | null {
 	if (entry.type === "message") {
-		// The persisted pi message is already the exact shape the agent loop consumes
 		return entry.message as unknown as AgentMessage;
 	}
 	if (entry.type === "custom" && entry.customType === EVENTS.sendMessage) {
@@ -132,7 +128,6 @@ export function deriveEventMessage(entry: Entry): AgentMessage | null {
 		} as AgentMessage;
 	}
 	if (entry.type === "custom" && entry.customType === EVENTS.toolResult) {
-		// The log keeps a tool/result event (see persist/events.ts); rebuild the toolResult message
 		const data = (entry.data ?? {}) as {
 			toolCallId?: unknown;
 			toolName?: unknown;
@@ -156,7 +151,6 @@ export function deriveEventMessage(entry: Entry): AgentMessage | null {
 		} as unknown as AgentMessage;
 	}
 	if (entry.type === "custom" && entry.customType === EVENTS.compactionSummary) {
-		// The compaction checkpoint projects as a user message (the summary the model sees)
 		const data = (entry.data ?? {}) as { text?: unknown; timestamp?: unknown };
 		return {
 			role: "user",
@@ -164,10 +158,22 @@ export function deriveEventMessage(entry: Entry): AgentMessage | null {
 			timestamp: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
 		} as AgentMessage;
 	}
+	if (entry.type === "custom" && entry.customType === EVENTS.contextChanged) {
+		const data = (entry.data ?? {}) as Partial<ContextChangedEventData> & { timestamp?: unknown };
+		return {
+			role: "user",
+			content: contextChangedText({
+				workspace: typeof data.workspace === "string" ? data.workspace : null,
+				storage: typeof data.storage === "string" ? data.storage : null,
+				sandbox: data.sandbox ?? "workspace-write",
+				skills: Array.isArray(data.skills) ? data.skills : [],
+			}),
+			timestamp: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
+		} as AgentMessage;
+	}
 	return null;
 }
 
-/** Surface → message chain without the dangling-turn guard (the resume path keeps the turn). */
 export function projectChain(entries: Entry[], surface?: Surface): AgentMessage[] {
 	const byId = new Map<string, Entry>();
 	for (const e of entries) byId.set(e.id, e);
@@ -175,20 +181,13 @@ export function projectChain(entries: Entry[], surface?: Surface): AgentMessage[
 	const nodes = (surface ?? foldSurface(entries)).nodes;
 	for (const node of nodes) {
 		const entry = byId.get(node.id);
-		if (!entry) continue; // shadowed or unknown → nothing to project
+		if (!entry) continue;
 		const msg = deriveEventMessage(entry);
 		if (msg) out.push(msg);
 	}
 	return pairToolResults(out);
 }
 
-/**
- * The OpenAI-compatible API requires each tool message to immediately follow the assistant that
- * called it. The log records events in arrival order — a user message persisted mid-tool (a
- * follow-up while an escalation paused the run) lands before the tool/result — so flat rebuilding
- * would put a user between an assistant's tool_calls and its results and 400. Move each tool
- * result back next to its owning assistant (by toolCallId), preserving relative order.
- */
 export function pairToolResults(messages: AgentMessage[]): AgentMessage[] {
 	const out: AgentMessage[] = [];
 	for (const m of messages) {
@@ -196,8 +195,6 @@ export function pairToolResults(messages: AgentMessage[]): AgentMessage[] {
 			out.push(m);
 			continue;
 		}
-		// Owning assistant = the nearest assistant whose tool_calls include this result's id,
-		// scanning back across anything (user/custom/other results).
 		let owner = -1;
 		for (let i = out.length - 1; i >= 0; i--) {
 			const prev = out[i];
@@ -210,10 +207,9 @@ export function pairToolResults(messages: AgentMessage[]): AgentMessage[] {
 			}
 		}
 		if (owner < 0) {
-			out.push(m); // orphaned result (dropped turn) — keep its log position
+			out.push(m);
 			continue;
 		}
-		// Insert after the assistant's contiguous tool results (before anything that followed them).
 		let k = owner;
 		while (k + 1 < out.length && out[k + 1].role === "toolResult") k++;
 		out.splice(k + 1, 0, m);
@@ -221,12 +217,6 @@ export function pairToolResults(messages: AgentMessage[]): AgentMessage[] {
 	return out;
 }
 
-/**
- * Locate the assistant tool-call turn for a restart-resume: project without dropping the
- * dangling turn and return the messages plus the insertion index for the matching tool
- * result. Null when the turn is gone (compacted away) or superseded by a later run — the
- * escalation is then orphaned, not resumable.
- */
 export function buildResumeTurn(entries: Entry[], toolCallId: string): { messages: AgentMessage[]; insertAt: number } | null {
 	const messages = projectChain(entries);
 	for (let i = messages.length - 1; i >= 0; i--) {
@@ -234,19 +224,12 @@ export function buildResumeTurn(entries: Entry[], toolCallId: string): { message
 		if (m.role !== "assistant") continue;
 		const blocks = m.content as { type: string; id: string }[];
 		if (!blocks.some((b) => b.type === "toolCall" && b.id === toolCallId)) continue;
-		// Anything but user messages after the turn means a later run (or another tool turn)
-		// superseded it — inserting the result mid-history would corrupt the chain.
 		if (messages.slice(i + 1).some((m2) => m2.role === "assistant" || m2.role === "toolResult")) return null;
 		return { messages, insertAt: i + 1 };
 	}
 	return null;
 }
 
-/**
- * Guard for an unfinished final turn: the last assistant contains toolCall blocks but lacks the
- * matching toolResult (restart-interruption scenario) → drop that turn so the model never sees a
- * dangling tool call. Mirrors pi's restart repair at the surface layer (see also persist/store.ts).
- */
 export function dropDanglingTurn(messages: AgentMessage[]): AgentMessage[] {
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const m = messages[i];
@@ -263,7 +246,6 @@ export function dropDanglingTurn(messages: AgentMessage[]): AgentMessage[] {
 	return messages;
 }
 
-/** Reconstruct the last request header (system prompt + tool definitions) from the log — invariant 1. */
 export function reconstructRequestHeader(entries: Entry[]): { systemPrompt: string; tools: RequestTool[]; toolNames: string[]; time: number } | null {
 	for (let i = entries.length - 1; i >= 0; i--) {
 		const entry = entries[i];

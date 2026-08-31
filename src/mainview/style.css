@@ -152,12 +152,6 @@ body::before {
 	.rail-spacer {
 		@apply h-6 w-full shrink-0;
 	}
-	.rail-brand {
-		@apply size-[30px] rounded-full bg-ink text-paper font-serif text-[15px] font-semibold flex items-center justify-center cursor-default select-none overflow-hidden;
-	}
-	.rail-brand-img {
-		@apply size-full rounded-full object-cover;
-	}
 	.rail-tab {
 		@apply mt-3 size-10 flex items-center justify-center rounded-[10px] text-ink cursor-pointer transition-colors;
 	}
@@ -305,6 +299,13 @@ body::before {
 	}
 	.md pre.shiki {
 		background-color: var(--color-print-tint) !important;
+	}
+
+	.md-wrap-pre pre,
+	.md-wrap-pre code {
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+		overflow-x: hidden;
 	}
 
 	.md pre,

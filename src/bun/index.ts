@@ -663,9 +663,10 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				if (!def.invocation.userInvocable) return { ok: false, error: `skill "${name}" is not user-invocable` };
 				const skillId = `skill-${Date.now().toString(36)}-${++skillSeq}`;
 				try {
-					await entry.scope.appendSkillRun({ skillId, name, content: def.content }, Date.now());
+					await entry.scope.appendSkillRun({ skillId, name, content: def.content, ...(hint ? { hint } : {}) }, Date.now());
 					rpc.send.skill_update({});
-					const framed = `The user invoked skill "${name}"${hint ? ` with the request: ${hint}` : ""}:\n\n<skill_instructions>\n${def.content}\n</skill_instructions>`;
+					const resources = def.path ? `<skill_resources>\n${def.path}\n</skill_resources>` : "<skill_resources>\n</skill_resources>";
+					const framed = `The user invoked skill "${name}"${hint ? ` with the request: ${hint}` : ""}:\n\n<skill_content name="${name}">\n${resources}\n<skill_instructions>\n${def.content}\n</skill_instructions>\n</skill_content>`;
 					const result = await entry.agent.chatAndWait(framed, name);
 					if (!result.ok) {
 						await entry.scope.appendSkillDone({ skillId, name, kind: "error", ...(result.error ? { text: result.error } : {}) }, Date.now());

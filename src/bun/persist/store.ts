@@ -1,29 +1,15 @@
-/**
- * The persistence layer: a per-root session log backed by pi's JSONL session
- * repo (append-only, torn-write repaired on load). Everything that writes or
- * reads the log lives here; the agent loop and compaction consume the
- * SessionScope / SessionStore contracts and never touch the log format.
- *
- * - Single continuous session per root: open the newest session in the repo, create one if none exists; keep appending to the same session
- * - Full ingestion: user / assistant (thinking, tool_use blocks verbatim) as pi messages; the event
- *   vocabulary (turn/step markers, tool calls/results, request headers, compaction, escalations)
- *   as custom entries — see persist/events.ts
- * - One store, many roots: reads take the root dir explicitly; appends go through a per-root
- *   SessionScope (each partner's agent owns one, so concurrent runs append to their own logs)
- * - Restore: buildSessionContext + entryProjectors reconstruct the AgentMessage chain
- *   (pi's JSONL backend has built-in append-only writes and torn-write repair)
- */
 import { cp } from "node:fs/promises";
 import type { AgentMessage, CustomEntry, Entry } from "@earendil-works/pi-agent-core";
 import { buildSessionContext, JsonlSessionRepo, Session } from "@earendil-works/pi-agent-core";
 import { type AssistantMessage, type ToolResultMessage, type Usage, uuidv7 } from "@earendil-works/pi-ai";
 import type { CommandHistoryItem, EscalationStatus, RequestTool, SandboxMode, ThinkingLevel } from "../../shared/rpc";
 import type { Surface, SurfaceOpRecord } from "../../shared/surface";
-import { buildResumeTurn, deriveMessages as deriveSurfaceMessages, dropDanglingTurn, foldSurface, pairToolResults } from "../core/surface";
+import { buildResumeTurn, contextChangedText, deriveMessages as deriveSurfaceMessages, dropDanglingTurn, foldSurface, pairToolResults } from "../core/surface";
 import { createExecutionEnv } from "../tools/execution-env";
 import {
 	type CommandDoneEventData,
 	type CommandRunEventData,
+	type ContextChangedEventData,
 	EVENTS,
 	type RetryScheduledEventData,
 	type RetryStartedEventData,
@@ -42,10 +28,6 @@ const EMPTY_USAGE: Usage = {
 	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 };
 
-/**
- * send_message visible messages: enter the agent context as custom messages,
- * projected by convertToLlm into visible text; display:false ones are dropped.
- */
 declare module "@earendil-works/pi-agent-core" {
 	interface CustomAgentMessages {
 		sendMessage: {
@@ -78,12 +60,10 @@ export interface AssistantMeta {
 }
 
 export interface VisibleItem {
-	/** pi entry id; the view dedupes incremental renders by it. */
 	id: string;
 	kind: "user" | "send_message" | "escalation" | "error" | "aborted" | "command" | "skill";
 	text: string;
 	time: number;
-	/** Escalation payload (kind "escalation" only): the approval request + current status. */
 	escalation?: {
 		id: string;
 		command: string;
@@ -92,76 +72,46 @@ export interface VisibleItem {
 		justification: string;
 		status: EscalationStatus;
 	};
-	/** Command payload (kind "command" only): the paired command/run + command/done row. */
 	command?: CommandHistoryItem;
 	skill?: CommandHistoryItem;
 }
 
-/**
- * The write path: appends bound to one session root — each partner's agent
- * writes through its own scope. Every method resolves only after the entry is
- * on disk, so an awaited append is a durability barrier (checkpoint); the
- * agent loop awaits them at the exact boundaries that need it (see agent.ts).
- */
 export interface SessionScope {
 	appendUser(content: string, timestamp: number, meta?: { skill?: string }): Promise<void>;
-	/** The turn's assistant message; trailing tool results (batching callers) become tool/result events. */
 	appendAssistant(meta: AssistantMeta, timestamp: number): Promise<void>;
 	appendSendMessage(content: string, details: Record<string, unknown>, timestamp: number): Promise<void>;
-	/** Persist the current system prompt (custom entry; the trajectory view shows it). */
 	appendSystemPrompt(text: string, timestamp: number): Promise<void>;
-	/** Persist a system reminder (custom entry; part of the trajectory timeline). */
-	appendReminder(text: string, timestamp: number): Promise<void>;
-	/** Mark the preceding user message as a follow-up (queued mid-run; log-only). */
 	appendFollowUp(timestamp: number): Promise<void>;
-	/** Persist a request header (system prompt + resolved tool definitions) so every model request is reconstructable (invariant 1). */
 	appendRequestHeader(systemPrompt: string, tools: RequestTool[], timestamp: number): Promise<void>;
-	/** A run began (agent_start): the log gets a turn/start marker. */
 	appendTurnStart(turn: number, timestamp: number): Promise<void>;
-	/** A run settled (agent_end): the log gets a turn/end marker with the reason (and the error on failure). */
 	appendTurnEnd(turn: number, reason: TurnEndReason, timestamp: number, error?: string): Promise<void>;
-	/** A step began (pi turn_start): the log gets a step/start marker. */
 	appendStepStart(turn: number, step: number, timestamp: number): Promise<void>;
-	/** A step settled (pi turn_end): the log gets a step/end marker. */
 	appendStepEnd(turn: number, step: number, timestamp: number): Promise<void>;
-	/** A tool call was requested (tool_execution_start): the log gets the call before the tool runs. */
 	appendToolCall(callId: string, name: string, args: unknown, turn: number, step: number, timestamp: number): Promise<void>;
-	/** A tool result landed (tool_execution_end; also the restart-resume path). Becomes a surface node. */
 	appendToolResult(result: ToolResultMessage, timestamp: number): Promise<void>;
-	/** Persist a sandbox-escalation lifecycle record (escalation/request | escalation/decision; log-only). */
 	appendEscalationRecord(type: "escalation/request" | "escalation/decision", details: Record<string, unknown>, timestamp: number): Promise<void>;
-	/** Persist a command lifecycle record (command/run | command/done; log-only, never model-visible). */
 	appendCommandRun(details: CommandRunEventData, timestamp: number): Promise<void>;
 	appendCommandDone(details: CommandDoneEventData, timestamp: number): Promise<void>;
+	appendContextChanged(details: ContextChangedEventData, timestamp: number): Promise<void>;
+	lastContextChanged(): Promise<{ data: ContextChangedEventData; timestamp: number } | null>;
 	appendSkillRun(details: SkillRunEventData, timestamp: number): Promise<void>;
 	appendSkillDone(details: SkillDoneEventData, timestamp: number): Promise<void>;
-	/** Persist a retry lifecycle record (retry/scheduled | retry/started; log-only, never model-visible). */
 	appendRetryScheduled(details: RetryScheduledEventData, timestamp: number): Promise<void>;
 	appendRetryStarted(details: RetryStartedEventData, timestamp: number): Promise<void>;
-	/** Record a surface replace (compaction checkpoint) as an append-only `surface_op` log entry. */
 	appendSurfaceOp(op: SurfaceOpRecord, timestamp: number): Promise<void>;
-	/** Persist a compaction summary (custom entry; becomes the replacement checkpoint node). Returns its pi entry id. */
 	appendCompactionSummary(text: string, timestamp: number): Promise<string>;
-	/** Persist a compaction transaction marker (compaction/start | compaction/end; log-only). */
 	appendCompactionRecord(type: "compaction/start" | "compaction/end", details: Record<string, unknown>, timestamp: number): Promise<void>;
 	appendModelChange(model: { provider: string; modelId?: string }, timestamp: number): Promise<void>;
 	appendThinkingLevelChange(level: ThinkingLevel, timestamp: number): Promise<void>;
 }
 
 export interface SessionStore {
-	/** Appends bound to `dir` (the store caches open roots; nothing opens until first use). */
 	scope(dir: string): SessionScope;
-	/** Records visible to the frontend (user + send_message), in session order. */
 	visibleHistory(dir: string): Promise<VisibleItem[]>;
-	/** The last visible message (user or send_message), or null for an empty session. */
 	lastMessage(dir: string): Promise<VisibleItem | null>;
-	/** The full conversation chain (for agent context restore). */
 	restoreMessages(dir: string): Promise<AgentMessage[]>;
-	/** Fold the session log into the model-visible surface. */
 	surface(dir: string): Promise<Surface>;
-	/** Project the surface into the pi message chain the model sees. */
 	deriveMessages(dir: string): Promise<AgentMessage[]>;
-	/** The persisted escalation request by id (restart-resume: command, granted mode, blocked tool call), or null. */
 	escalationRequest(
 		dir: string,
 		id: string,
@@ -173,13 +123,9 @@ export interface SessionStore {
 		toolCallId: string;
 		timestamp: number;
 	} | null>;
-	/** The blocked assistant turn for a resume: the messages and where the tool result must be inserted. Null when unresumable. */
 	resumeTurn(dir: string, toolCallId: string): Promise<{ messages: AgentMessage[]; insertAt: number } | null>;
-	/** Fork the log into a new root (raw JSONL copy); the surface re-folds there (fork/restore). */
 	forkTo(sourceDir: string, targetDir: string): Promise<void>;
-	/** Drop a cached root state (partner deletion: a recreated same-name partner must start empty, not replay the old in-memory session). */
 	evictRoot(dir: string): void;
-	/** Raw pi entries (for trajectory folding; thinking/tool content still never enters visibleHistory). */
 	rawEntries(dir: string): Promise<Entry[]>;
 }
 
@@ -197,7 +143,23 @@ const SEND_MESSAGE_PROJECTOR = (entry: CustomEntry): AgentMessage[] | undefined 
 	];
 };
 
-/** Project a persisted tool/result event back into the toolResult message the model chain expects. */
+const CONTEXT_CHANGED_PROJECTOR = (entry: CustomEntry): AgentMessage[] | undefined => {
+	const data = entry.data as (Partial<ContextChangedEventData> & { timestamp?: unknown }) | undefined;
+	if (!data) return undefined;
+	return [
+		{
+			role: "user",
+			content: contextChangedText({
+				workspace: typeof data.workspace === "string" ? data.workspace : null,
+				storage: typeof data.storage === "string" ? data.storage : null,
+				sandbox: data.sandbox ?? "workspace-write",
+				skills: Array.isArray(data.skills) ? data.skills : [],
+			}),
+			timestamp: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
+		},
+	];
+};
+
 const TOOL_RESULT_PROJECTOR = (entry: CustomEntry): AgentMessage[] | undefined => {
 	const data = entry.data as Partial<ToolResultEventData> | undefined;
 	if (!data || typeof data.toolCallId !== "string") return undefined;
@@ -215,7 +177,6 @@ const TOOL_RESULT_PROJECTOR = (entry: CustomEntry): AgentMessage[] | undefined =
 	];
 };
 
-/** One open session repo per root directory (sessions isolated per Partner). */
 interface RootState {
 	repo: JsonlSessionRepo;
 	session: Session;
@@ -223,16 +184,12 @@ interface RootState {
 }
 
 export function createSessionStore(): SessionStore {
-	// pi's JSONL backend needs a FileSystem adapter; reuse the execution environment directly (pure fs part)
-	// Promise-valued: first opens race (mount-time history + set_partner can both touch a fresh root) —
-	// sharing the in-flight open keeps concurrent callers on one session instead of creating a second file.
 	const roots = new Map<string, Promise<RootState>>();
 
 	function openRoot(newRoot: string): Promise<RootState> {
 		const cached = roots.get(newRoot);
 		if (cached) return cached;
 		const opening = openRootUncached(newRoot).catch((error) => {
-			// A failed open must not poison the cache for later retries
 			if (roots.get(newRoot) === opening) roots.delete(newRoot);
 			throw error;
 		});
@@ -243,7 +200,6 @@ export function createSessionStore(): SessionStore {
 	async function openRootUncached(newRoot: string): Promise<RootState> {
 		const repo = new JsonlSessionRepo({ fs: createExecutionEnv(newRoot), sessionsRoot: newRoot });
 		const sessions = await repo.list();
-		// Single continuous session: take the newest
 		const session = sessions.length > 0 ? await repo.open(sessions[sessions.length - 1]) : await repo.create({ cwd: newRoot });
 		const state: RootState = { repo, session, entries: [] };
 		roots.set(newRoot, Promise.resolve(state));
@@ -257,7 +213,6 @@ export function createSessionStore(): SessionStore {
 
 	async function refreshEntries(state: RootState) {
 		const leafId = await state.session.getLeafId();
-		// findEntriesOnBranch returns leaves first; reverse so the root comes first (session order)
 		const walked = leafId ? await state.session.findEntriesOnBranch({ start: leafId }) : [];
 		state.entries = walked.reverse();
 	}
@@ -274,7 +229,6 @@ export function createSessionStore(): SessionStore {
 		await refreshEntries(state);
 	}
 
-	/** A tool result persisted as a tool/result event (surface node; see core/surface.ts). */
 	function toolResultEventData(result: ToolResultMessage): ToolResultEventData {
 		return stripUndefined({
 			toolCallId: result.toolCallId,
@@ -292,8 +246,6 @@ export function createSessionStore(): SessionStore {
 				await appendMessage(dir, { role: "user", content, timestamp, ...(meta?.skill ? { skill: meta.skill } : {}) });
 			},
 			async appendAssistant(meta, timestamp) {
-				// Messages built by the pi loop may carry undefined fields (e.g. toolResult.details/usage),
-				// which assertJsonSerializable would reject → recursively strip them before appending
 				const assistant: AssistantMessage & { timing?: AssistantTiming } = {
 					role: "assistant",
 					content: stripUndefined(meta.blocks) as AssistantMessage["content"],
@@ -308,8 +260,6 @@ export function createSessionStore(): SessionStore {
 					...(meta.timing ? { timing: meta.timing } : {}),
 				};
 				await appendMessage(dir, assistant);
-				// Batching callers (tests) hand results with the turn; the live loop writes them at
-				// tool_execution_end instead. Either way they land as tool/result events.
 				for (const result of meta.toolResults ?? []) {
 					await appendCustom(dir, EVENTS.toolResult, { ...toolResultEventData(result), timestamp });
 				}
@@ -320,15 +270,10 @@ export function createSessionStore(): SessionStore {
 			async appendSystemPrompt(text, timestamp) {
 				await appendCustom(dir, EVENTS.systemPrompt, { text, timestamp });
 			},
-			async appendReminder(text, timestamp) {
-				await appendCustom(dir, EVENTS.systemReminder, { text, timestamp });
-			},
 			async appendFollowUp(timestamp) {
 				await appendCustom(dir, EVENTS.followUp, { timestamp });
 			},
 			async appendRequestHeader(systemPrompt, tools, timestamp) {
-				// Tool descriptors may carry undefined label/description/parameters — pi's
-				// assertJsonSerializable rejects undefined values, so strip them like appendAssistant does.
 				await appendCustom(dir, EVENTS.requestHeader, stripUndefined({ systemPrompt, toolNames: tools.map((t) => t.name), tools, timestamp }) as Record<string, unknown>);
 			},
 			async appendTurnStart(turn, timestamp) {
@@ -357,6 +302,28 @@ export function createSessionStore(): SessionStore {
 			},
 			async appendCommandDone(details, timestamp) {
 				await appendCustom(dir, EVENTS.commandDone, { ...details, timestamp });
+			},
+			async appendContextChanged(details, timestamp) {
+				await appendCustom(dir, EVENTS.contextChanged, { ...details, timestamp });
+			},
+			async lastContextChanged() {
+				const state = await stateFor(dir);
+				for (let i = state.entries.length - 1; i >= 0; i--) {
+					const entry = state.entries[i];
+					if (entry.type !== "custom" || entry.customType !== EVENTS.contextChanged) continue;
+					const data = entry.data as (Partial<ContextChangedEventData> & { timestamp?: unknown }) | undefined;
+					if (!data) continue;
+					return {
+						data: {
+							workspace: typeof data.workspace === "string" ? data.workspace : null,
+							storage: typeof data.storage === "string" ? data.storage : null,
+							sandbox: data.sandbox ?? "workspace-write",
+							skills: Array.isArray(data.skills) ? data.skills : [],
+						},
+						timestamp: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
+					};
+				}
+				return null;
 			},
 			async appendSkillRun(details, timestamp) {
 				await appendCustom(dir, EVENTS.skillRun, { ...details, timestamp });
@@ -400,7 +367,6 @@ export function createSessionStore(): SessionStore {
 		scope,
 		async visibleHistory(dir) {
 			const state = await stateFor(dir);
-			// Escalation decisions by escalation id (a decision may follow its request later in the log)
 			const decisions = new Map<string, { approved: boolean; reason?: string }>();
 			for (const entry of state.entries) {
 				if (entry.type !== "custom" || entry.customType !== EVENTS.escalationDecision) continue;
@@ -408,7 +374,6 @@ export function createSessionStore(): SessionStore {
 				if (data?.escalationId == null) continue;
 				decisions.set(String(data.escalationId), { approved: data.approved === true });
 			}
-			// Command done records by command id (a done may follow its run later in the log)
 			const commandDones = new Map<string, { kind: "success" | "error"; text?: string }>();
 			for (const entry of state.entries) {
 				if (entry.type !== "custom" || entry.customType !== EVENTS.commandDone) continue;
@@ -443,10 +408,8 @@ export function createSessionStore(): SessionStore {
 					return [{ id: entry.id, kind: "send_message", text: data.text, time: data.timestamp }];
 				}
 				if (entry.type === "custom" && entry.customType === EVENTS.turnEnd) {
-					// A failed run renders its persisted error (reason "error" carries the message)
 					const data = entry.data as { reason?: unknown; error?: unknown; timestamp?: unknown } | undefined;
 					if (data?.reason === "aborted") {
-						// A user-initiated stop is neutral — not a red error bubble.
 						return [{ id: entry.id, kind: "aborted", text: "stopped", time: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0) }];
 					}
 					if (data?.reason !== "error" || typeof data.error !== "string") return [];
@@ -507,6 +470,7 @@ export function createSessionStore(): SessionStore {
 							skill: {
 								commandId: String(data.skillId),
 								name,
+								...(typeof data.hint === "string" && data.hint ? { args: data.hint } : {}),
 								status: done ? done.kind : "running",
 							},
 						},
@@ -517,7 +481,6 @@ export function createSessionStore(): SessionStore {
 		},
 		async lastMessage(dir) {
 			const state = await stateFor(dir);
-			// Entries are in session order; take the last visible one without materializing the whole history
 			let last: VisibleItem | null = null;
 			for (const entry of state.entries) {
 				if (entry.type === "message" && entry.message.role === "user") {
@@ -537,10 +500,9 @@ export function createSessionStore(): SessionStore {
 				entryProjectors: {
 					[EVENTS.sendMessage]: SEND_MESSAGE_PROJECTOR,
 					[EVENTS.toolResult]: TOOL_RESULT_PROJECTOR,
+					[EVENTS.contextChanged]: CONTEXT_CHANGED_PROJECTOR,
 				},
 			});
-			// The log records arrival order — a user message persisted mid-tool lands before the
-			// tool/result — so pair tool results back to their assistant before exposing the chain.
 			return dropDanglingTurn(pairToolResults(context.messages));
 		},
 		async surface(dir) {
@@ -571,17 +533,10 @@ export function createSessionStore(): SessionStore {
 			return null;
 		},
 		async resumeTurn(dir, toolCallId) {
-			// The blocked turn is always in the log: the assistant message lands at message_end,
-			// before any tool runs — a blocked-and-interrupted run still has its turn persisted
-			// (only the tool result is missing). Superseded runs (something followed the turn)
-			// resolve to null — the escalation is orphaned, not resumable.
 			const state = await stateFor(dir);
 			return buildResumeTurn(state.entries, toolCallId);
 		},
 		async forkTo(sourceDir, targetDir) {
-			// Load the source first (validates it is a readable session root), then copy the whole log
-			// tree (pi nests session files under a cwd-derived directory) and re-open the target so its
-			// surface re-folds deterministically (fork/restore: log prefix boundary = the copied log).
 			await openRoot(sourceDir);
 			await cp(sourceDir, targetDir, { recursive: true, force: true, filter: (src) => !src.endsWith(".tmp") });
 			await openRoot(targetDir);
@@ -596,7 +551,6 @@ export function createSessionStore(): SessionStore {
 	};
 }
 
-/** Recursively strip undefined (pi's assertJsonSerializable rejects undefined values). */
 function stripUndefined(value: unknown): unknown {
 	if (Array.isArray(value)) return value.map(stripUndefined);
 	if (value !== null && typeof value === "object") {

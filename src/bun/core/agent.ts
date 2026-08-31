@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+
 import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import { type AssistantMessage, retryAssistantCall, type ToolResultMessage } from "@earendil-works/pi-ai";
 import type { RequestTool, RuntimeStatsSnapshot, SessionStats, ThinkingLevel } from "../../shared/rpc";
@@ -7,14 +8,15 @@ import { loadSettings } from "../lib/settings";
 import type { EscalationDecision, EscalationRequest, SandboxManager, SandboxMode } from "../permission";
 import { Permission, policyFor } from "../permission";
 import type { SessionScope } from "../persist";
-import { renderAvailableSkills } from "../skills/render";
+import type { ContextChangedEventData } from "../persist/events";
 import type { SkillsService } from "../skills/types";
 import { createTools } from "../tools";
 import type { PartnerModel } from "./agent-config";
 import { convertToLlm, resolveModel, STREAM_FN } from "./agent-config";
-import { appendSystemReminder, Context } from "./context";
+import { Context } from "./context";
 import { projectLoopContext } from "./context-project";
 import type { PartnerPrompt } from "./prompt";
+import { contextChangedText } from "./surface";
 
 export interface AgentBridge {
 	onTurnStart: (turn: number) => void;
@@ -102,8 +104,8 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	let stepFirstDeltaAt = 0;
 	let stepFirstDeltaWall = 0;
 
-	let lastSkillCatalogDigest: string | null = null;
 	let skillCatalogDirty = false;
+	let contextDirty = true;
 	const catalogDigest = (text: string) => createHash("sha256").update(text).digest("hex");
 	const grantedSkills = async () => (await deps.grantedSkills?.()) ?? [];
 	const skills = deps.skills
@@ -114,16 +116,39 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		: null;
 	function invalidateSkillCatalog() {
 		skillCatalogDirty = true;
+		contextDirty = true;
 	}
-	async function ensureSkillCatalog() {
+	async function refreshSkillCatalog() {
+		skillCatalogDirty = false;
 		if (!skills) return;
-		const text = renderAvailableSkills(await skills.list());
-		const digest = catalogDigest(text);
-		if (digest === lastSkillCatalogDigest) return;
-		lastSkillCatalogDigest = digest;
-		if (!text) return;
-		persistReminder(text);
-		appendSystemReminder(agent.state.messages, text);
+		const list = await skills.list();
+		ctx.skills = list.map((s) => ({ name: s.name, description: s.description, digest: catalogDigest(`${s.name}\n${s.description}`) }));
+	}
+	function currentContextSnapshot(): ContextChangedEventData {
+		return { workspace: ctx.workspace_path, storage: ctx.storage_path, sandbox: ctx.sandbox_mode, skills: ctx.skills.map((s) => ({ ...s })) };
+	}
+	function sameContext(a: ContextChangedEventData, b: ContextChangedEventData): boolean {
+		if (a.workspace !== b.workspace || a.storage !== b.storage || a.sandbox !== b.sandbox) return false;
+		if (a.skills.length !== b.skills.length) return false;
+		for (let i = 0; i < a.skills.length; i++) {
+			const x = a.skills[i];
+			const y = b.skills[i];
+			if (x.name !== y.name || x.description !== y.description || x.digest !== y.digest) return false;
+		}
+		return true;
+	}
+	async function syncContextChanged(): Promise<boolean> {
+		if (!contextDirty) return false;
+		if (skillCatalogDirty) await refreshSkillCatalog();
+		const snapshot = currentContextSnapshot();
+		const last = await deps.session.lastContextChanged();
+		if (last && sameContext(last.data, snapshot)) {
+			contextDirty = false;
+			return false;
+		}
+		await deps.session.appendContextChanged(snapshot, Date.now()).catch(logError);
+		contextDirty = false;
+		return true;
 	}
 
 	const agent = new Agent({
@@ -133,19 +158,9 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		followUpMode: "one-at-a-time",
 		steeringMode: "one-at-a-time",
 		transformContext: async (messages) => {
-			if (!skills || !skillCatalogDirty) return messages;
-			const text = renderAvailableSkills(await skills.list());
-			const digest = catalogDigest(text);
-			if (digest === lastSkillCatalogDigest) {
-				skillCatalogDirty = false;
-				return messages;
-			}
-			skillCatalogDirty = false;
-			lastSkillCatalogDigest = digest;
-			if (!text) return messages;
-			const reminder = { role: "user" as const, content: `<system_reminder>${text}</system_reminder>`, timestamp: Date.now() };
-			persistReminder(text);
-			appendSystemReminder(agent.state.messages, text);
+			if (!skills || !(await syncContextChanged())) return messages;
+			const reminder = { role: "user" as const, content: contextChangedText(currentContextSnapshot()), timestamp: Date.now() };
+			agent.state.messages.push(reminder);
 			return [...messages, reminder];
 		},
 	});
@@ -177,10 +192,6 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		},
 	});
 	agent.state.systemPrompt = ctx.composeSystemPrompt();
-
-	function persistReminder(text: string) {
-		void deps.session.appendReminder(`<system_reminder>${text}</system_reminder>`, Date.now()).catch((error) => console.error("session appendReminder failed:", error));
-	}
 
 	function assistantText(assistant: AssistantMessage): string {
 		return assistant.content
@@ -381,29 +392,10 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		});
 	}
 
-	let lastInjectedContext: { workspace: string | null; storage: string | null; sandbox: SandboxMode } | null = null;
 	async function prepareRun() {
-		const conversationStart = agent.state.messages.length === 0;
-		if (ctx.workspace_path == null) {
-			const reminder = "The workspace is not set yet. Remember to call `set_workspace` with the task's absolute path before other tools if the task needs file or command access.";
-			persistReminder(reminder);
-			appendSystemReminder(agent.state.messages, reminder);
+		if (await syncContextChanged()) {
+			agent.state.messages.push({ role: "user", content: contextChangedText(currentContextSnapshot()), timestamp: Date.now() });
 		}
-		const snapshot = { workspace: ctx.workspace_path, storage: ctx.storage_path, sandbox: ctx.sandbox_mode };
-		if (
-			conversationStart ||
-			!lastInjectedContext ||
-			snapshot.workspace !== lastInjectedContext.workspace ||
-			snapshot.storage !== lastInjectedContext.storage ||
-			snapshot.sandbox !== lastInjectedContext.sandbox
-		) {
-			const context =
-				`Current workspace: ${ctx.workspace_path ?? "unset"}.\n` + `Current storage: ${ctx.storage_path ?? "unset"}.\n` + `Current sandbox mode: ${ctx.sandbox_mode}.`;
-			persistReminder(context);
-			appendSystemReminder(agent.state.messages, context);
-			lastInjectedContext = snapshot;
-		}
-		await ensureSkillCatalog();
 	}
 
 	let runAbort: AbortController | null = null;
@@ -532,6 +524,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		},
 		setSandboxMode(mode: SandboxMode) {
 			ctx.sandbox_mode = mode;
+			contextDirty = true;
 		},
 		get model() {
 			return ctx.model;
@@ -612,6 +605,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		},
 		setStoragePath(path: string | null) {
 			ctx.storage_path = path;
+			contextDirty = true;
 		},
 		setWorkspace(path: string | null) {
 			ctx.workspace_path = path;
@@ -620,6 +614,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		},
 		invalidateSkillCatalog() {
 			skillCatalogDirty = true;
+			contextDirty = true;
 		},
 	};
 }

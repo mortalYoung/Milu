@@ -1,13 +1,3 @@
-/**
- * What the agent IS: provider, model, stream function, context projection.
- * No loop mechanics here — `src/bun/core/agent.ts` only cares about the
- * double loop; tools live in `src/bun/tools/`.
- *
- * Providers/models are chosen per partner: resolveModel takes the partner's
- * selection (provider + modelId) explicitly. Every pi-ai built-in provider is
- * registered; api keys come from .credentials.yaml via the credential store
- * (no env fallback — resolveModel refuses to run keyless).
- */
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { CredentialStore, Message, Model } from "@earendil-works/pi-ai";
 import { createProvider, envApiKeyAuth, getSupportedThinkingLevels } from "@earendil-works/pi-ai";
@@ -16,13 +6,11 @@ import { builtinModels, getBuiltinProviders } from "@earendil-works/pi-ai/provid
 import type { CustomProvider, ThinkingLevel } from "../../shared/rpc";
 import { getApiKey } from "../lib/credentials";
 
-/** A partner's model selection: provider + pinned model id (null modelId → the provider default). */
 export interface PartnerModel {
 	provider: string;
 	modelId?: string;
 }
 
-/** The .credentials.yaml key is the only credential source — the store never falls back to env. */
 const credentials: CredentialStore = {
 	async read(providerId) {
 		const key = getApiKey(providerId);
@@ -39,7 +27,6 @@ const credentials: CredentialStore = {
 
 const MODELS = builtinModels({ credentials });
 
-/** Known-good defaults per provider; anything else falls back to the catalog's first model. */
 const DEFAULT_MODELS: Record<string, string> = { deepseek: "deepseek-v4-flash" };
 
 const DEFAULT_CONTEXT_WINDOW = 128_000;
@@ -108,7 +95,6 @@ export function validateCustomProviders(list: CustomProvider[]): string | null {
 	return null;
 }
 
-/** The catalog models of one provider (for the composer's grouped select). */
 export function providerModels(provider: string): { id: string; name: string }[] {
 	return MODELS.getModels(provider).map((m) => ({ id: m.id, name: m.name }));
 }
@@ -125,17 +111,6 @@ export function supportedThinkingLevels(model?: PartnerModel): ThinkingLevel[] {
 	}
 }
 
-/**
- * Project the agent context into provider messages:
- * - send_message custom messages (display:true) become user-visible text;
- * - system reminders ride as plain user messages (see appendSystemReminder);
- * - other custom messages are dropped.
- *
- * custom projections (user role) must not land between an assistant (tool_calls) and its tool results —
- * the OpenAI-compatible API requires tool messages to immediately follow their tool_calls' assistant;
- * a different-role message in between would 400. So custom projections are buffered first and
- * inserted before the next user/assistant.
- */
 export function convertToLlm(messages: AgentMessage[]): Message[] {
 	const out: Message[] = [];
 	const pending: Message[] = [];
@@ -148,7 +123,6 @@ export function convertToLlm(messages: AgentMessage[]): Message[] {
 			flush();
 			out.push(m);
 		} else if (m.role === "toolResult") {
-			// Must stay adjacent to the assistant with its tool_calls; do not buffer
 			out.push(m);
 		} else if ("display" in m && m.display) {
 			pending.push({ role: "user", content: `[to user]: ${m.content}`, timestamp: m.timestamp });
@@ -171,10 +145,8 @@ export function resolveModel(model?: PartnerModel): Model<any> {
 	return resolved;
 }
 
-/** The current model's context window in tokens, from the model catalog (not hardcoded). */
 export function contextWindow(model?: PartnerModel): number {
 	return resolveModel(model).contextWindow;
 }
 
-/** How the loop talks to the LLM. */
 export const STREAM_FN = MODELS.streamSimple.bind(MODELS);

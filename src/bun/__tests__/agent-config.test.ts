@@ -1,18 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { convertToLlm } from "../core/agent-config";
-import { appendSystemReminder } from "../core/context";
 
 const USER: AgentMessage = { role: "user", content: "hello", timestamp: 2 };
-
-describe("appendSystemReminder", () => {
-	test("appends a user-role message wrapped in <system_reminder>", () => {
-		const messages: AgentMessage[] = [];
-		appendSystemReminder(messages, "check time");
-		expect(messages).toHaveLength(1);
-		expect(messages[0]).toMatchObject({ role: "user", content: "<system_reminder>check time</system_reminder>" });
-	});
-});
 
 describe("convertToLlm projection", () => {
 	test("user messages (including reminders) pass through verbatim", () => {

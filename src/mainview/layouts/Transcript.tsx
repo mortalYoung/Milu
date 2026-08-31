@@ -393,7 +393,7 @@ export function Transcript(props: {
 											data-chat-flow-key={key}
 											onClick={e.kind === "skill" ? () => void inspectSkill(info.name) : args ? () => setExpandedCommand(expanded ? null : e.id) : undefined}
 											role={e.kind === "skill" || args ? "button" : undefined}
-											aria-expanded={args ? expanded : undefined}
+											aria-expanded={e.kind === "skill" ? undefined : args ? expanded : undefined}
 										>
 											<div class="msg-command-head">
 												{e.kind === "skill" ? <span class="msg-command-badge">skill</span> : null}
@@ -411,7 +411,7 @@ export function Transcript(props: {
 													) : null}
 												</span>
 											</div>
-											{expanded && args ? <div class="msg-command-args">{args}</div> : null}
+											{e.kind === "skill" ? args ? <div class="msg-command-args">{args}</div> : null : expanded && args ? <div class="msg-command-args">{args}</div> : null}
 										</div>
 									);
 								}
@@ -456,7 +456,7 @@ export function Transcript(props: {
 					<DialogTitle class="sr-only">{skillDialog()?.name ?? ""}</DialogTitle>
 					<div class="flex max-h-[70vh] flex-col gap-3 p-5">
 						<div class="font-mono text-[13px] font-medium text-ink">skill · {skillDialog()?.name}</div>
-						<div class="md overflow-y-auto" innerHTML={renderMarkdown(skillDialog()?.content ?? "")} />
+						<div class="md md-wrap-pre overflow-y-auto overflow-x-hidden" innerHTML={renderMarkdown(skillDialog()?.content ?? "")} />
 					</div>
 				</DialogContent>
 			</Dialog>

@@ -1,21 +1,11 @@
-/**
- * AppRail — the 64px icon rail on the left (letter direction): brand letter circle + Chat tab + footer (Settings).
- * active = warm-ink solid + paper-colored icon.
- */
 import { MessageSquare, Settings, Sparkles } from "lucide-solid";
-import lettersLogo from "../../../assets/letters.png";
 
 export type RailTabId = "chat" | "skills" | "settings";
 
 export function AppRail(props: { active: RailTabId; onSelect: (id: RailTabId) => void }) {
 	return (
 		<nav class="rail electrobun-webkit-app-region-drag">
-			{/* Top empty drag region: makes room for the floating traffic lights */}
 			<div class="rail-spacer" />
-			{/* Brand area: app logo */}
-			<div class="rail-brand" title="Letters">
-				<img src={lettersLogo} alt="Letters" class="rail-brand-img" />
-			</div>
 			<button
 				type="button"
 				class={"rail-tab electrobun-webkit-app-region-no-drag" + (props.active === "chat" ? " active" : "")}
@@ -35,7 +25,6 @@ export function AppRail(props: { active: RailTabId; onSelect: (id: RailTabId) =>
 				<Sparkles size={18} />
 			</button>
 
-			{/* Footer: settings */}
 			<div class="rail-footer">
 				<button
 					type="button"
