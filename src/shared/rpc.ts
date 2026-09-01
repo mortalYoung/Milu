@@ -351,8 +351,8 @@ export type AppRPCSchema = __schema<{
 			};
 
 			trajectory: {
-				params: { name: string };
-				response: { records: TrajectoryRecord[] };
+				params: { name: string; before?: number; limit?: number; surfaceOnly?: boolean };
+				response: { records: TrajectoryRecord[]; hasMore: boolean; total: number };
 			};
 			partner_activity: {
 				params: { name: string; weeks: number };

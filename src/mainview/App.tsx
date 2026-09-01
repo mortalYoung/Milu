@@ -317,7 +317,18 @@ export function App() {
 
 			<PartnerDetailsDialog partner={shell.detailsPartner()} onOpenChange={(open) => !open && shell.setDetailsPartner(null)} />
 
-			<TrajectoryDrawer open={trajectory.open()} onOpenChange={trajectory.setOpen} records={trajectory.records()} loading={trajectory.loading()} />
+			<TrajectoryDrawer
+				open={trajectory.open()}
+				onOpenChange={trajectory.setOpen}
+				records={trajectory.records()}
+				total={trajectory.total()}
+				surfaceOnly={trajectory.surfaceOnly()}
+				onToggleSurface={trajectory.toggleSurface}
+				loading={trajectory.loading()}
+				hasMore={trajectory.hasMore()}
+				loadingOlder={trajectory.loadingOlder()}
+				onLoadOlder={() => trajectory.loadOlder()}
+			/>
 		</div>
 	);
 }

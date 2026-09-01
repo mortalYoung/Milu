@@ -20,6 +20,8 @@
 		"@earendil-works/pi-ai": "0.84.1",
 		"@kobalte/core": "^0.13.13",
 		"@shikijs/markdown-it": "^4.4.3",
+		"@tanstack/solid-virtual": "^3.13.37",
+		"@tanstack/virtual-core": "^3.17.8",
 		"class-variance-authority": "^0.7.1",
 		"clsx": "^2.1.1",
 		"electrobun": "2.0.1",

@@ -27,7 +27,7 @@ import { applyCompaction, type CompactionPlan, planCompaction } from "./core/com
 import { Context } from "./core/context";
 import { projectSnapshot } from "./core/context-project";
 import { loadRuntimeStats, saveRuntimeStats } from "./core/runtime-stats";
-import { aggregateUsage, fold, lastUsage } from "./core/trajectory";
+import { aggregateUsage, dedupeRequestHeaders, fold, lastUsage } from "./core/trajectory";
 import { deleteApiKey, getApiKey, loadCredentials, setApiKey } from "./lib/credentials";
 import { ensureModel, ensureSandboxMode, ensureStoragePath, ensureWorkspace, isThinkingLevel } from "./lib/ensure";
 import {
@@ -798,11 +798,37 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					tools: entry?.agent.tools,
 				});
 			},
-			trajectory: async ({ name }) => {
+			trajectory: async ({ name, before, limit = 200, surfaceOnly = false }) => {
 				const settings = await loadSettings();
 				const profile = (await listPartners(settings)).find((p) => p.name === name);
-				if (!profile) return { records: [] };
-				return { records: fold(await session.rawEntries(getPartnerDir(settings, name))) };
+				if (!profile) return { records: [], hasMore: false, total: 0 };
+				const dir = getPartnerDir(settings, name);
+				const allRecords = fold(await session.rawEntries(dir));
+				const total = allRecords.length;
+				// Header dedup is a display rule (tool-set content repeats across steps); it lives
+				// server-side so paging cannot resurrect a header that was already deduplicated.
+				let records = dedupeRequestHeaders(allRecords);
+				if (surfaceOnly) {
+					try {
+						const surface = await session.surface(dir);
+						const ids = new Set(surface.nodes.map((n) => n.id));
+						records = records.filter((r) => ids.has(r.entryId));
+					} catch {
+						// Surface fold can fail mid-compaction; fall back to the whole log instead of an empty view.
+					}
+				}
+				let end = records.length;
+				if (before != null) {
+					const i = records.findIndex((r) => r.seq >= before);
+					if (i !== -1) end = i;
+				}
+				let start = Math.max(0, end - limit);
+				// Align the page start to a natural boundary (a user question or an assistant reply),
+				// so the top of the loaded window isn't a mid-turn marker like request/header.
+				while (start > 0 && records[start].kind !== "user" && records[start].kind !== "assistant") {
+					start--;
+				}
+				return { records: records.slice(start, end), hasMore: start > 0, total };
 			},
 			partner_activity: async ({ name, weeks }) => {
 				const settings = await loadSettings();

@@ -7,7 +7,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Entry } from "@earendil-works/pi-agent-core";
 import { timelineNodes } from "../../shared/trajectory";
-import { aggregateUsage, fold, lastUsage } from "../core/trajectory";
+import { aggregateUsage, dedupeRequestHeaders, fold, lastUsage } from "../core/trajectory";
 
 let counter = 1;
 function entry(partial: Record<string, unknown>): Entry {
@@ -336,7 +336,7 @@ describe("timelineNodes whole-log view model", () => {
 		expect(nodes[0]).toBe(prompts[0]);
 	});
 
-	test("request/header dedupes to one node placed right after system_prompt", () => {
+	test("request/header nodes all stay; the first is placed right after system_prompt", () => {
 		const { nodes } = timelineNodes(
 			fold([
 				entry({ type: "custom", customType: "system_prompt", data: { text: "# IDENTIFY", timestamp: 0 } }),
@@ -348,7 +348,7 @@ describe("timelineNodes whole-log view model", () => {
 			]),
 		);
 		const headers = nodes.filter((n) => n.record.kind === "custom" && n.record.customType === "request/header");
-		expect(headers).toHaveLength(1);
+		expect(headers).toHaveLength(2);
 		const sysIdx = nodes.findIndex((n) => n.record.kind === "custom" && n.record.customType === "system_prompt");
 		expect(nodes[sysIdx + 1]).toBe(headers[0]);
 	});
@@ -366,7 +366,7 @@ describe("timelineNodes whole-log view model", () => {
 			]),
 		);
 		const headers = nodes.filter((n) => n.record.kind === "custom" && n.record.customType === "request/header");
-		expect(headers).toHaveLength(1);
+		expect(headers).toHaveLength(2);
 		// request headers are list rows now (their expanded body shows the tool definitions)
 		for (const h of headers) expect(h.positionOnly).toBeFalsy();
 		// one request per question segment — the dot sits on the question row that starts it
@@ -376,5 +376,28 @@ describe("timelineNodes whole-log view model", () => {
 		// mid-segment rows carry no dots
 		expect(nodes.find((n) => n.record.kind === "assistant")?.requestMarks).toBeUndefined();
 		expect(nodes.find((n) => n.record.kind === "toolResult")?.requestMarks).toBeUndefined();
+	});
+});
+
+describe("dedupeRequestHeaders server-side header dedup", () => {
+	test("keeps the first occurrence of each distinct header content", () => {
+		const records = fold([
+			userEntry("q1"),
+			entry({ type: "custom", customType: "request/header", data: { toolNames: ["bash"], systemPrompt: "# IDENTIFY" } }),
+			assistantEntry([{ type: "text", text: "a" }]),
+			entry({ type: "custom", customType: "request/header", data: { toolNames: ["bash"], systemPrompt: "# IDENTIFY" } }),
+			assistantEntry([{ type: "text", text: "b" }]),
+			entry({ type: "custom", customType: "request/header", data: { toolNames: ["read"], systemPrompt: "# IDENTIFY" } }),
+			assistantEntry([{ type: "text", text: "c" }]),
+		]);
+		const deduped = dedupeRequestHeaders(records);
+		const headers = deduped.filter((r) => r.kind === "custom" && r.customType === "request/header");
+		expect(headers).toHaveLength(2);
+		expect(headers.map((h) => h.seq)).toEqual([1, 5]);
+	});
+
+	test("non-header records pass through unchanged", () => {
+		const records = fold([userEntry("q"), assistantEntry([{ type: "text", text: "a" }])]);
+		expect(dedupeRequestHeaders(records)).toEqual(records);
 	});
 });

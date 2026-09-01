@@ -992,6 +992,15 @@ body::before {
 	.traj-count {
 		@apply ml-auto font-mono text-[10px] text-seal;
 	}
+	.traj-surface-toggle {
+		@apply flex-none font-mono text-[9px] uppercase tracking-[0.12em] text-body-muted border border-hairline rounded-[4px] px-1.5 py-[2px] cursor-pointer bg-transparent transition-colors;
+	}
+	.traj-surface-toggle:hover {
+		@apply text-ink border-ink-soft;
+	}
+	.traj-surface-toggle.on {
+		@apply text-seal border-seal/40;
+	}
 	.traj-close {
 		@apply font-sans text-[15px] leading-none text-body-muted hover:text-ink cursor-pointer bg-transparent border-0 p-0 ml-2;
 	}
@@ -1066,10 +1075,6 @@ body::before {
 	.traj-marker button:hover {
 		transform: translateY(-2px);
 	}
-	.traj-marker .mstep {
-		@apply block w-full h-full;
-		background: var(--color-hairline);
-	}
 	.traj-marker .mq {
 		background: var(--color-seal);
 		border-radius: 2px 2px 0 0;
@@ -1118,13 +1123,85 @@ body::before {
 	}
 
 	.traj-all {
-		@apply flex-1 min-h-0 overflow-y-auto mt-2 pt-2;
+		@apply flex-1 min-h-0 overflow-y-auto pt-2;
 	}
 	.traj-row {
 		@apply relative w-full px-4;
+		border-top: 1px solid var(--color-hairline-soft);
+	}
+	.traj-row.run-start {
+		border-top: 1px solid color-mix(in srgb, var(--color-ink) 22%, transparent);
+	}
+	.traj-row.selected {
+		background: var(--color-paper-hover);
+	}
+	.traj-load-earlier {
+		@apply w-full font-mono text-[10px] uppercase tracking-[0.12em] text-seal bg-paper border-b border-hairline py-1.5 cursor-pointer hover:bg-paper-hover;
+	}
+	.traj-popover {
+		@apply absolute flex flex-col bg-letter border border-hairline;
+		right: calc(100% + 14px);
+		width: min(380px, 54vw);
+		max-width: calc(100vw - min(440px, 72vw) - 28px);
+		max-height: calc(100vh - 24px);
+		z-index: 25;
+		border-radius: 10px;
+		box-shadow:
+			0 12px 32px color-mix(in srgb, var(--color-ink) 18%, transparent),
+			0 2px 8px color-mix(in srgb, var(--color-ink) 10%, transparent);
+		opacity: 0;
+	}
+	.traj-popover.ready {
+		opacity: 1;
+		animation: traj-popover-in 160ms cubic-bezier(0.23, 1, 0.32, 1);
+	}
+	@keyframes traj-popover-in {
+		from {
+			opacity: 0;
+			transform: translateX(10px) scale(0.97);
+		}
+		to {
+			opacity: 1;
+			transform: translateX(0) scale(1);
+		}
+	}
+	.traj-popover-head {
+		@apply flex items-center gap-2 border-b border-hairline px-4 py-2.5;
+		border-radius: 10px 10px 0 0;
+	}
+	.traj-popover-arrow {
+		@apply absolute pointer-events-none;
+		right: -6px;
+		width: 11px;
+		height: 11px;
+		background: var(--color-letter);
+		border-right: 1px solid var(--color-hairline);
+		border-bottom: 1px solid var(--color-hairline);
+		transform: translateY(-50%) rotate(45deg);
+		border-radius: 0 2px 0 0;
+		z-index: 1;
+	}
+	.traj-popover-chip {
+		@apply font-mono text-[9px] tracking-[0.08em] text-seal border border-seal/30 rounded-[3px] px-1 py-[1px];
+	}
+	.traj-popover-title {
+		@apply flex-1 min-w-0 truncate font-sans text-[12px] text-ink-soft;
+	}
+	.traj-popover-close {
+		@apply shrink-0 size-6 flex items-center justify-center rounded-full text-muted cursor-pointer border-none bg-transparent hover:bg-paper-hover hover:text-ink;
+	}
+	.traj-popover-body {
+		@apply flex-1 min-h-0 overflow-y-auto px-4 py-3;
+	}
+	.traj-popover-meta {
+		@apply border-t border-hairline px-4 py-2;
+	}
+	.traj-popover-meta .traj-id {
+		@apply font-mono text-[8.5px] text-muted;
+		margin: 0;
 	}
 	.traj-row-head {
-		@apply flex items-baseline gap-2 w-full text-left py-[5px] border-b border-hairline-soft cursor-pointer bg-transparent;
+		@apply flex items-baseline gap-2 w-full text-left py-[5px] cursor-pointer bg-transparent;
 	}
 	.traj-row-head:hover {
 		@apply bg-paper-hover;
@@ -1191,15 +1268,6 @@ body::before {
 		border-radius: 3px;
 	}
 
-	.traj-step-label {
-		@apply font-sans text-[8.5px] font-medium text-muted px-4;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-		padding-top: 5px;
-		padding-bottom: 1px;
-		user-select: none;
-	}
-
 	.traj-run-body {
 		@apply flex flex-col;
 	}
@@ -1250,34 +1318,44 @@ body::before {
 	}
 
 	.traj-body .one-cap,
-	.traj-body .one-thinking {
+	.traj-body .one-thinking,
+	.traj-popover-body .one-cap,
+	.traj-popover-body .one-thinking {
 		@apply mt-2 font-serif text-[13px] leading-[1.6] text-ink-soft whitespace-pre-wrap max-h-[220px] overflow-y-auto;
 		border-left: 2px solid var(--color-print);
 		padding-left: 10px;
 	}
-	.traj-body .one-tools {
+	.traj-body .one-tools,
+	.traj-popover-body .one-tools {
 		@apply mt-2 flex flex-col gap-1.5;
 	}
-	.traj-body .one-tool {
+	.traj-body .one-tool,
+	.traj-popover-body .one-tool {
 		@apply border border-hairline rounded-[4px] px-2 py-1;
 	}
-	.traj-body .one-tool summary {
+	.traj-body .one-tool summary,
+	.traj-popover-body .one-tool summary {
 		@apply flex items-baseline gap-1.5 cursor-pointer;
 		list-style: none;
 	}
-	.traj-body .one-tool summary::-webkit-details-marker {
+	.traj-body .one-tool summary::-webkit-details-marker,
+	.traj-popover-body .one-tool summary::-webkit-details-marker {
 		display: none;
 	}
-	.traj-body .one-tool-name {
+	.traj-body .one-tool-name,
+	.traj-popover-body .one-tool-name {
 		@apply font-mono text-[9px] text-ink-soft;
 	}
-	.traj-body .one-call-id {
+	.traj-body .one-call-id,
+	.traj-popover-body .one-call-id {
 		@apply font-mono text-[8.5px] text-muted;
 	}
-	.traj-body .one-args {
+	.traj-body .one-args,
+	.traj-popover-body .one-args {
 		@apply mt-2 max-h-[140px] overflow-auto whitespace-pre-wrap break-words font-mono text-[10px] leading-[1.6] text-ink-soft border border-hairline rounded-[4px] px-2 py-1.5;
 	}
-	.traj-body .one-args.err {
+	.traj-body .one-args.err,
+	.traj-popover-body .one-args.err {
 		@apply border-seal/60 text-seal;
 	}
 
@@ -1285,16 +1363,24 @@ body::before {
 	.traj-body .traj-meta,
 	.traj-body .traj-id,
 	.traj-body .traj-op,
-	.traj-body .traj-interrupted {
+	.traj-body .traj-interrupted,
+	.traj-popover-body .one-think-label,
+	.traj-popover-body .traj-meta,
+	.traj-popover-body .traj-id,
+	.traj-popover-body .traj-op,
+	.traj-popover-body .traj-interrupted {
 		@apply mt-2 font-mono text-[8.5px] text-muted;
 	}
-	.traj-body .one-think-label {
+	.traj-body .one-think-label,
+	.traj-popover-body .one-think-label {
 		@apply uppercase tracking-[0.16em];
 	}
-	.traj-body .traj-meta {
+	.traj-body .traj-meta,
+	.traj-popover-body .traj-meta {
 		@apply flex flex-wrap items-baseline gap-x-3 gap-y-0.5;
 	}
-	.traj-body .traj-meta .err {
+	.traj-body .traj-meta .err,
+	.traj-popover-body .traj-meta .err {
 		@apply text-seal;
 	}
 	.traj-foot {

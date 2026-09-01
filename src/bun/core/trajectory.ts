@@ -183,6 +183,23 @@ export function fold(entries: Entry[]): TrajectoryRecord[] {
 	return records;
 }
 
+/**
+ * Deduplicate request/header records by their tool-set content: keep only the first
+ * occurrence of each distinct header (headers with a different tool set stay visible).
+ * This is a display-layer rule, not a log mutation.
+ */
+export function dedupeRequestHeaders(records: TrajectoryRecord[]): TrajectoryRecord[] {
+	const seen = new Set<string>();
+	return records.filter((r) => {
+		if (r.kind !== "custom" || r.customType !== "request/header") return true;
+		const data = (r.data ?? {}) as { systemPrompt?: unknown; toolNames?: unknown };
+		const key = JSON.stringify({ systemPrompt: data.systemPrompt ?? null, toolNames: data.toolNames ?? null });
+		if (seen.has(key)) return false;
+		seen.add(key);
+		return true;
+	});
+}
+
 function contentText(content: unknown): string {
 	if (typeof content === "string") return content;
 	if (!Array.isArray(content)) return "";

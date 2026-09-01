@@ -105,18 +105,12 @@ export function timelineNodes(records: TrajectoryRecord[]): { nodes: TimelineNod
 	const promptNode = nodes.find((n) => n.record.kind === "custom" && n.record.customType === "system_prompt");
 	const headerNode = nodes.find((n) => n.record.kind === "custom" && n.record.customType === "request/header");
 	let sawPrompt = false;
-	let sawHeader = false;
 	const out: TimelineNode[] = [];
 	for (const n of nodes) {
 		const r = n.record;
-		if (r.kind === "custom") {
-			if (r.customType === "system_prompt") {
-				if (sawPrompt) continue;
-				sawPrompt = true;
-			} else if (r.customType === "request/header") {
-				if (sawHeader) continue;
-				sawHeader = true;
-			}
+		if (r.kind === "custom" && r.customType === "system_prompt") {
+			if (sawPrompt) continue;
+			sawPrompt = true;
 		}
 		out.push(n);
 	}
