@@ -781,13 +781,13 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					const result = await runEscalatedBash(command, mode, { permission: entry.agent.permission }, timeout);
 					const text = result.text;
 					await entry.scope.appendShellDone({ shellId, command, kind: "success", text, ...(typeof result.exitCode === "number" ? { exitCode: result.exitCode } : {}) }, Date.now());
-					await entry.scope.appendSendMessage(`$ ${command}\n\n${text}`, { toolCallId: `shell:${shellId}` }, Date.now()).catch(() => {});
+					await entry.agent.sendShellMessage(`$ ${command}\n\n${text}`, shellId).catch(() => {});
 					rpc.send.shell_update({});
 					return { ok: true, shellId };
 				} catch (error) {
 					const text = error instanceof Error ? error.message : String(error);
 					await entry.scope.appendShellDone({ shellId, command, kind: "error", text }, Date.now()).catch(() => {});
-					await entry.scope.appendSendMessage(`$ ${command}\n\n${text}`, { toolCallId: `shell:${shellId}` }, Date.now()).catch(() => {});
+					await entry.agent.sendShellMessage(`$ ${command}\n\n${text}`, shellId).catch(() => {});
 					rpc.send.shell_update({});
 					return { ok: false, error: text, shellId };
 				} finally {

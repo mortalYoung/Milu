@@ -44,6 +44,7 @@ export interface AgentHandle {
 	chat: (text: string) => Promise<void>;
 	chatAndWait: (text: string, skill?: string) => Promise<{ ok: boolean; error?: string }>;
 	sendMessage: (text: string) => Promise<void>;
+	sendShellMessage: (text: string, shellId: string) => Promise<void>;
 	continue: () => Promise<void>;
 	invalidateSkillCatalog: () => void;
 	readonly permission: Permission;
@@ -602,6 +603,11 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		async sendMessage(text: string) {
 			const timestamp = Date.now();
 			await deps.session.appendSendMessage(text, { toolCallId: "command" }, timestamp);
+			deliverVisible(text, timestamp);
+		},
+		async sendShellMessage(text: string, shellId: string) {
+			const timestamp = Date.now();
+			await deps.session.appendSendMessage(text, { toolCallId: `shell:${shellId}` }, timestamp);
 			deliverVisible(text, timestamp);
 		},
 		stop() {

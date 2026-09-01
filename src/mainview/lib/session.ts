@@ -136,6 +136,7 @@ export function createSession(rpc: RPC, opts: { onSessionLoaded: () => void; onE
 							if (e.kind === "escalation" && e.escalation && replacements.has(e.escalation.id)) return replacements.get(e.escalation.id)!;
 							if (e.kind === "command" && e.command && replacements.has(e.command.commandId)) return replacements.get(e.command.commandId)!;
 							if (e.kind === "skill" && e.skill && replacements.has(e.skill.commandId)) return replacements.get(e.skill.commandId)!;
+							if (e.kind === "shell" && e.command && replacements.has(e.command.commandId)) return replacements.get(e.command.commandId)!;
 							return e;
 						});
 					}
