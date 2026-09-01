@@ -3,11 +3,11 @@ import { For, Show } from "solid-js";
 import type { ToastPlacement } from "../../shared/rpc";
 import type { ToastItem } from "../lib/toast";
 
-const PLACEMENT: Record<ToastPlacement, { host: string; anim: string }> = {
-	topcenter: { host: "toast-host-topcenter", anim: "toast-in-top" },
-	topright: { host: "toast-host-topright", anim: "toast-in-right" },
-	bottomcenter: { host: "toast-host-bottomcenter", anim: "toast-in-bottom" },
-	bottomright: { host: "toast-host-bottomright", anim: "toast-in-right" },
+const PLACEMENT: Record<ToastPlacement, { host: string; anim: string; out: string }> = {
+	topcenter: { host: "toast-host-topcenter", anim: "toast-in-top", out: "toast-out-top" },
+	topright: { host: "toast-host-topright", anim: "toast-in-right", out: "toast-out-right" },
+	bottomcenter: { host: "toast-host-bottomcenter", anim: "toast-in-bottom", out: "toast-out-bottom" },
+	bottomright: { host: "toast-host-bottomright", anim: "toast-in-right", out: "toast-out-right" },
 };
 
 function toastStyle(placement: ToastPlacement): "tooltip" | "notification" {
@@ -21,7 +21,11 @@ export function ToastHost(props: { toasts: () => ToastItem[]; placement: ToastPl
 		<div class={`toast-host ${p().host} toast-host--${style()}`}>
 			<For each={props.toasts()}>
 				{(t) => (
-					<div class={`toast toast--${style()} ${p().anim}` + (t.variant === "error" ? " toast-error" : "")} onClick={() => style() === "tooltip" && props.onDismiss(t.id)}>
+					<div
+						class={`toast toast--${style()} ${t.leaving ? p().out : p().anim}` + (t.variant === "error" ? " toast-error" : "")}
+						role={t.variant === "error" ? "alert" : "status"}
+						onClick={() => style() === "tooltip" && props.onDismiss(t.id)}
+					>
 						{style() === "tooltip" ? (
 							<span class="toast-body">{t.body}</span>
 						) : (

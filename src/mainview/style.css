@@ -870,6 +870,7 @@ body::before {
 	}
 	.toast-host {
 		@apply absolute z-50 flex flex-col gap-2 pointer-events-none;
+		--toast-ease: cubic-bezier(0.23, 1, 0.32, 1);
 	}
 	.toast-host-topcenter {
 		@apply top-[88px] left-1/2 -translate-x-1/2 items-center;
@@ -918,19 +919,42 @@ body::before {
 		opacity: 0.85;
 	}
 	.toast-close {
-		@apply flex size-7 shrink-0 items-center justify-center rounded-[6px] text-muted transition-colors hover:bg-paper-hover hover:text-ink;
+		@apply flex size-7 shrink-0 items-center justify-center rounded-[6px] text-muted transition-colors;
+	}
+	.toast-close:focus-visible {
+		outline: 2px solid var(--color-seal);
+		outline-offset: 1px;
 	}
 	.toast-error .toast-close {
-		@apply text-paper hover:bg-paper/20 hover:text-paper;
+		color: var(--color-paper);
+	}
+	@media (hover: hover) and (pointer: fine) {
+		.toast-close:hover {
+			background: var(--color-paper-hover);
+			color: var(--color-ink);
+		}
+		.toast-error .toast-close:hover {
+			background: color-mix(in srgb, var(--color-paper) 20%, transparent);
+			color: var(--color-paper);
+		}
 	}
 	.toast-in-top {
-		animation: toast-in-top 0.2s ease-out;
+		animation: toast-in-top 0.18s var(--toast-ease) both;
 	}
 	.toast-in-bottom {
-		animation: toast-in-bottom 0.2s ease-out;
+		animation: toast-in-bottom 0.18s var(--toast-ease) both;
 	}
 	.toast-in-right {
-		animation: toast-in-right 0.2s ease-out;
+		animation: toast-in-right 0.18s var(--toast-ease) both;
+	}
+	.toast-out-top {
+		animation: toast-out-top 0.16s var(--toast-ease) both;
+	}
+	.toast-out-bottom {
+		animation: toast-out-bottom 0.16s var(--toast-ease) both;
+	}
+	.toast-out-right {
+		animation: toast-out-right 0.16s var(--toast-ease) both;
 	}
 	@keyframes toast-in-top {
 		from {
@@ -960,6 +984,34 @@ body::before {
 		to {
 			opacity: 1;
 			transform: translateX(0);
+		}
+	}
+	@keyframes toast-out-top {
+		to {
+			opacity: 0;
+			transform: translateY(-6px);
+		}
+	}
+	@keyframes toast-out-bottom {
+		to {
+			opacity: 0;
+			transform: translateY(6px);
+		}
+	}
+	@keyframes toast-out-right {
+		to {
+			opacity: 0;
+			transform: translateX(10px);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.toast-in-top,
+		.toast-in-bottom,
+		.toast-in-right,
+		.toast-out-top,
+		.toast-out-bottom,
+		.toast-out-right {
+			animation: none;
 		}
 	}
 
