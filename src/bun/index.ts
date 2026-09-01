@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { join, sep } from "node:path";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import { getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
-import { ApplicationMenu, BrowserView, BrowserWindow } from "electrobun/main";
+import { ApplicationMenu, BrowserView, BrowserWindow, Utils } from "electrobun/main";
 import type { AppRPCSchema } from "../shared/rpc";
 import { loadCustomCommands, mergeCommandDefinitions } from "./commands/custom";
 import { defaultCommands } from "./commands/defaults";
@@ -579,6 +579,21 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				const target = viewPartner;
 				if (!target) return { nodes: [], replaceGeneration: 0 };
 				return session.surface(target.dir);
+			},
+			pick_directory: async ({ startingFolder }) => {
+				try {
+					const raw = startingFolder || "~/";
+					const expanded = raw === "~" ? homedir() : raw.startsWith("~/") ? join(homedir(), raw.slice(2)) : raw;
+					const paths = await Utils.openFileDialog({
+						startingFolder: expanded,
+						canChooseFiles: false,
+						canChooseDirectory: true,
+						allowsMultipleSelection: false,
+					});
+					return { path: paths[0] ?? null };
+				} catch {
+					return { path: null };
+				}
 			},
 			compact: async () => {
 				const target = viewPartner;

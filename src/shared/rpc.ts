@@ -364,6 +364,11 @@ export type AppRPCSchema = __schema<{
 				response: { nodes: SurfaceNode[]; replaceGeneration: number };
 			};
 
+			pick_directory: {
+				params: { startingFolder?: string };
+				response: { path: string | null };
+			};
+
 			compact: {
 				params: {};
 				response: { ok: boolean; error?: string; compacted?: number };
