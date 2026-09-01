@@ -19,14 +19,18 @@ import {
 	providerBaseUrl,
 	providerModels,
 	registerCustomProvider,
+	resolveModel,
 	supportedThinkingLevels,
 	unregisterCustomProvider,
 	validateCustomProviders,
 } from "./core/agent-config";
-import { applyCompaction, type CompactionPlan, planCompaction } from "./core/compaction";
+import { applyCompaction, type CompactionPlan, hasOrphanCompactionStart, planCompaction } from "./core/compaction";
 import { Context } from "./core/context";
 import { projectSnapshot } from "./core/context-project";
 import { loadRuntimeStats, saveRuntimeStats } from "./core/runtime-stats";
+import { createLlmSummarizer, localSummarizer } from "./core/summarizer";
+import { reconstructRequestHeader } from "./core/surface";
+import { applyToolResultPrunes, planToolResultPrunes } from "./core/tool-result-pruner";
 import { aggregateUsage, dedupeRequestHeaders, fold, lastUsage } from "./core/trajectory";
 import { deleteApiKey, getApiKey, loadCredentials, setApiKey } from "./lib/credentials";
 import { ensureModel, ensureSandboxMode, ensureStoragePath, ensureWorkspace, isThinkingLevel } from "./lib/ensure";
@@ -271,6 +275,22 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 			partnerDir: dir,
 			grantedSkills: () => readPartnerGrantedSkills(dir),
 			skills: skillsService,
+			onContextOverflow: async () => {
+				const target = await agents.get(profile.name);
+				if (!target) return false;
+				try {
+					const genBefore = (await session.surface(dir)).replaceGeneration;
+					await pruneSession(target);
+					const input = await compactionInput(target);
+					const plan = await planCompaction(input.entries, input.surface, { ...input.opts, tailBudget: 0 });
+					if (!plan) return false;
+					await runCompaction(target, plan);
+					return (await session.surface(dir)).replaceGeneration > genBefore;
+				} catch (error) {
+					await compactionFailure(target, error);
+					return false;
+				}
+			},
 			confirmEscalation: (request: EscalationRequest) =>
 				new Promise<EscalationDecision>((resolve) => {
 					const id = `sbx-${escalationNonce}-${++sandboxConfirmSeq}`;
@@ -338,7 +358,25 @@ async function resumeApprovedEscalation(entry: PartnerAgent, request: Escalation
 	}
 }
 
-const COMPACT_THRESHOLD = 0.7;
+async function compactionInput(entry: PartnerAgent) {
+	const settings = await ensureSettings();
+	const c = settings.compaction ?? {};
+	const entries = await session.rawEntries(entry.dir);
+	const surface = await session.surface(entry.dir);
+	const header = reconstructRequestHeader(entries);
+	return {
+		entries,
+		surface,
+		opts: {
+			tailBudget: c.tailBudget ?? 16,
+			capChars: c.summaryCapChars ?? 2000,
+			summarizer: c.summarizer === "local" ? localSummarizer : createLlmSummarizer(),
+			systemPrompt: header?.systemPrompt ?? "",
+			tools: header?.tools ?? [],
+			model: entry.agent.model ? resolveModel(entry.agent.model) : undefined,
+		},
+	};
+}
 
 async function runCompaction(entry: PartnerAgent, plan: CompactionPlan): Promise<void> {
 	await applyCompaction(session, entry.dir, plan);
@@ -346,36 +384,60 @@ async function runCompaction(entry: PartnerAgent, plan: CompactionPlan): Promise
 	rpc.send.trajectory_update({});
 }
 
+async function compactionFailure(entry: PartnerAgent, error: unknown): Promise<void> {
+	console.error("compact failed:", error);
+	try {
+		await session.scope(entry.dir).appendCompactionRecord("compaction/end", { ok: false, error: error instanceof Error ? error.message : String(error) }, Date.now());
+	} catch {}
+}
+
+async function pruneSession(entry: PartnerAgent): Promise<void> {
+	const settings = await ensureSettings();
+	const entries = await session.rawEntries(entry.dir);
+	const surface = await session.surface(entry.dir);
+	const prunes = planToolResultPrunes(entries, surface, settings.compaction?.prune ?? {});
+	if (prunes.length === 0) return;
+	await applyToolResultPrunes(session.scope(entry.dir), surface, prunes);
+	console.log(`pruned ${prunes.length} oversized tool results`);
+}
+
 async function runManualCompact(entry: PartnerAgent): Promise<{ ok: boolean; error?: string; compacted?: number }> {
 	if (entry.agent.isStreaming) return { ok: false, error: "agent is running" };
 	try {
-		const entries = await session.rawEntries(entry.dir);
-		const surface = await session.surface(entry.dir);
-		const plan = planCompaction(entries, surface);
+		await pruneSession(entry);
+		const input = await compactionInput(entry);
+		const plan = await planCompaction(input.entries, input.surface, input.opts);
 		if (!plan) return { ok: true, compacted: 0 };
 		await runCompaction(entry, plan);
 		return { ok: true, compacted: plan.range.end - plan.range.start + 1 };
 	} catch (error) {
+		await compactionFailure(entry, error);
 		return { ok: false, error: error instanceof Error ? error.message : String(error) };
 	}
 }
 
 async function maybeAutoCompact(entry: PartnerAgent): Promise<void> {
 	if (entry.agent.isStreaming) return;
+	const settings = await ensureSettings();
 	const entries = await session.rawEntries(entry.dir);
+	if (hasOrphanCompactionStart(entries)) {
+		console.warn("compaction skipped: orphan compaction/start found (previous run may have crashed)");
+		return;
+	}
 	const usage = lastUsage(entries);
 	if (!usage) return;
 	const window = contextWindow(entry.agent.model ?? undefined);
 	const used = usage.input + usage.cacheRead + usage.cacheWrite;
-	if (used < window * COMPACT_THRESHOLD) return;
+	if (used < window * (settings.compaction?.thresholdRatio ?? 0.8)) return;
 	try {
-		const surface = await session.surface(entry.dir);
-		const plan = planCompaction(entries, surface);
+		await pruneSession(entry);
+		const input = await compactionInput(entry);
+		const plan = await planCompaction(input.entries, input.surface, input.opts);
 		if (!plan) return;
 		await runCompaction(entry, plan);
 		console.log(`auto-compacted ${plan.range.end - plan.range.start + 1} surface nodes`);
 	} catch (error) {
-		console.error("auto-compact failed:", error);
+		await compactionFailure(entry, error);
 	}
 }
 

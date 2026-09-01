@@ -44,16 +44,29 @@ export function foldSurface(entries: Entry[]): Surface {
 	const nodes: SurfaceNode[] = [];
 	let replaceGeneration = 0;
 	const pendingSummaries = new Map<string, Entry>();
+	// tool/result entries that a later surface_op will splice into the range as `replacementId`
+	// (the pruner's in-place replace). They must not also append at the end of the surface.
+	const pendingReplacements = new Map<string, Entry>();
+	const replacementIds = new Set<string>();
+	for (const e of entries) {
+		if (e.type !== "custom" || e.customType !== EVENTS.surfaceOp) continue;
+		const d = (e.data ?? {}) as SurfaceOpRecord;
+		if (typeof d.replacementId === "string") replacementIds.add(d.replacementId);
+	}
 	for (const entry of entries) {
 		if (entry.type === "custom") {
-			if (entry.customType === "compaction_summary") {
+			if (entry.customType === EVENTS.compactionSummary) {
 				pendingSummaries.set(entry.id, entry);
 				continue;
 			}
-			if (entry.customType === "surface_op") {
+			if (entry.customType === EVENTS.surfaceOp) {
 				const op = (entry.data ?? {}) as SurfaceOpRecord;
-				applyReplace(nodes, op, entry.id, pendingSummaries);
+				applyReplace(nodes, op, entry.id, pendingSummaries, pendingReplacements);
 				replaceGeneration = op.replaceGeneration;
+				continue;
+			}
+			if (entry.customType === EVENTS.toolResult && replacementIds.has(entry.id)) {
+				pendingReplacements.set(entry.id, entry);
 				continue;
 			}
 		}
@@ -63,7 +76,7 @@ export function foldSurface(entries: Entry[]): Surface {
 	return { nodes, replaceGeneration };
 }
 
-export function applyReplace(nodes: SurfaceNode[], op: SurfaceOpRecord, opEntryId: string, pendingSummaries?: Map<string, Entry>): void {
+export function applyReplace(nodes: SurfaceNode[], op: SurfaceOpRecord, opEntryId: string, pendingSummaries?: Map<string, Entry>, pendingReplacements?: Map<string, Entry>): void {
 	if (op.op !== "replace") {
 		throw new SurfaceError(`surface_op ${opEntryId}: unknown op ${JSON.stringify(op)}`);
 	}
@@ -87,6 +100,16 @@ export function applyReplace(nodes: SurfaceNode[], op: SurfaceOpRecord, opEntryI
 			throw new SurfaceError(`surface_op ${opEntryId}: checkpoint ${op.checkpointId} not found`);
 		}
 		nodes.splice(op.start, 0, { kind: "user", seq: op.start, id: summary.id, time: entryTime(summary) });
+	} else if (op.replacementId) {
+		const entry = pendingReplacements?.get(op.replacementId);
+		if (!entry) {
+			throw new SurfaceError(`surface_op ${opEntryId}: replacement ${op.replacementId} not found`);
+		}
+		const node = nodeFor(entry, op.start);
+		if (!node) {
+			throw new SurfaceError(`surface_op ${opEntryId}: replacement ${op.replacementId} is not a surface node`);
+		}
+		nodes.splice(op.start, 0, node);
 	}
 }
 

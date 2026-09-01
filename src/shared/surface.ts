@@ -38,4 +38,6 @@ export interface SurfaceOpRecord {
 	replaceGeneration: number;
 	/** Optional id of the `compaction_summary` entry that replaces the range (a checkpoint node). */
 	checkpointId?: string;
+	/** Optional id of a replacement surface entry (e.g. a pruned `tool/result`) inserted at `start` in place of the range. */
+	replacementId?: string;
 }

@@ -132,7 +132,7 @@ describe("compaction transaction (surface-only rewrite, log stays append-only)",
 		const surface = await session.surface(dir);
 		expect(surface.nodes).toHaveLength(6);
 
-		const plan = planCompaction(entries, surface, 2);
+		const plan = await planCompaction(entries, surface, { tailBudget: 2 });
 		expect(plan).not.toBeNull();
 		expect(plan!.range).toEqual({ start: 0, end: 3 });
 
@@ -144,7 +144,7 @@ describe("compaction transaction (surface-only rewrite, log stays append-only)",
 		// the checkpoint text is a user message the model sees
 		const derived = await session.deriveMessages(dir);
 		expect(derived[0]).toMatchObject({ role: "user" });
-		expect(contentOf(derived[0])).toContain("[compacted 4 earlier messages]");
+		expect(contentOf(derived[0])).toContain("<compacted-summary>");
 		expect(contentOf(derived[0])).toContain("Can you please explain");
 		// the tail survived intact
 		expect(contentOf(derived[1])).toContain("(third)");
@@ -169,7 +169,7 @@ describe("compaction transaction (surface-only rewrite, log stays append-only)",
 
 		const entries = await session.rawEntries(dir);
 		const surface = await session.surface(dir);
-		expect(planCompaction(entries, surface, 1)).toBeNull();
+		expect(await planCompaction(entries, surface, { tailBudget: 1 })).toBeNull();
 	});
 
 	it("supports repeated compactions as the session grows (generation increments)", async () => {
@@ -182,7 +182,7 @@ describe("compaction transaction (surface-only rewrite, log stays append-only)",
 		}
 		let entries = await session.rawEntries(dir);
 		let surface = await session.surface(dir);
-		const plan1 = planCompaction(entries, surface, 4);
+		const plan1 = await planCompaction(entries, surface, { tailBudget: 4 });
 		expect(plan1).not.toBeNull();
 		await applyCompaction(session, dir, plan1!);
 		expect((await session.surface(dir)).replaceGeneration).toBe(1);
@@ -195,7 +195,7 @@ describe("compaction transaction (surface-only rewrite, log stays append-only)",
 		entries = await session.rawEntries(dir);
 		surface = await session.surface(dir);
 		expect(surface.nodes).toHaveLength(13); // checkpoint + 12 grown nodes
-		const plan2 = planCompaction(entries, surface, 4);
+		const plan2 = await planCompaction(entries, surface, { tailBudget: 4 });
 		expect(plan2).not.toBeNull();
 		await applyCompaction(session, dir, plan2!);
 		const after = await session.surface(dir);
@@ -216,5 +216,39 @@ describe("compaction transaction (surface-only rewrite, log stays append-only)",
 		await scope.appendCompactionSummary("[compacted]", 3);
 		await scope.appendSurfaceOp({ op: "replace", start: 0, end: 0, sourceEventSeqs: [nodes[0].id], replaceGeneration: 1, checkpointId: "missing-id" }, 4);
 		await expect(session.surface(dir)).rejects.toThrow();
+	});
+
+	it("defaults the tail budget to 16 surface nodes", async () => {
+		const dir = await tempDir();
+		const session = createSessionStore();
+		const scope = session.scope(dir);
+		for (let i = 0; i < 20; i++) {
+			await scope.appendUser(`${LONG_Q} #${i}`, i);
+		}
+		const plan = await planCompaction(await session.rawEntries(dir), await session.surface(dir));
+		expect(plan).not.toBeNull();
+		expect(plan!.range).toEqual({ start: 0, end: 3 }); // 20 − 16 − 1
+	});
+
+	it("reframes a repeated compaction with the previous checkpoint as a byte prefix", async () => {
+		const dir = await tempDir();
+		const session = createSessionStore();
+		const scope = session.scope(dir);
+		await scope.appendUser(LONG_Q, 1);
+		await scope.appendSendMessage(LONG_A, {}, 2);
+		await scope.appendUser(LONG_Q + " (second)", 3);
+		await scope.appendSendMessage(LONG_A + " (second)", {}, 4);
+
+		let plan = await planCompaction(await session.rawEntries(dir), await session.surface(dir), { tailBudget: 1 });
+		expect(plan).not.toBeNull();
+		await applyCompaction(session, dir, plan!);
+		const firstCheckpoint = plan!.checkpointText;
+
+		await scope.appendUser("third question", 5);
+		await scope.appendSendMessage("third answer", {}, 6);
+		plan = await planCompaction(await session.rawEntries(dir), await session.surface(dir), { tailBudget: 1 });
+		expect(plan).not.toBeNull();
+		expect(plan!.checkpointText.startsWith(firstCheckpoint)).toBe(true);
+		expect(plan!.checkpointText).toContain("third question");
 	});
 });

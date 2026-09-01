@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core";
-import { type AssistantMessage, retryAssistantCall, type ToolResultMessage } from "@earendil-works/pi-ai";
+import { type AssistantMessage, isContextOverflow, retryAssistantCall, type ToolResultMessage } from "@earendil-works/pi-ai";
 import type { RequestTool, RuntimeStatsSnapshot, SessionStats, ThinkingLevel } from "../../shared/rpc";
 import { newRetryId, resolveRetryPolicy } from "../lib/retry";
 import { loadSettings } from "../lib/settings";
@@ -67,6 +67,7 @@ export interface AgentDeps {
 	partnerDir?: string;
 	grantedSkills?: () => Promise<string[]>;
 	skills?: SkillsService;
+	onContextOverflow?: () => Promise<boolean>;
 }
 
 export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
@@ -334,7 +335,10 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 					isError: event.isError,
 					timestamp: Date.now(),
 				};
-				return deps.session.appendToolResult(result, Date.now()).catch(logError);
+				return deps.session
+					.appendToolResult(result, Date.now())
+					.then(() => undefined)
+					.catch(logError);
 			}
 			case "turn_end":
 				ctx.endTurn();
@@ -435,6 +439,21 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		bridge.onEnd(error);
 	}
 
+	async function runAttemptWithOverflowRecovery(text: string | null): Promise<AssistantMessage> {
+		let overflowAttempts = 0;
+		const maxOverflow = (await loadSettings()).compaction?.maxOverflowRetries ?? 1;
+		for (;;) {
+			const message = await runAttempt(text);
+			if (!isContextOverflow(message, agent.state.model?.contextWindow) || overflowAttempts >= maxOverflow || !deps.onContextOverflow) {
+				return message;
+			}
+			const recovered = await deps.onContextOverflow();
+			if (!recovered) return message;
+			overflowAttempts += 1;
+			removeMessage(message);
+		}
+	}
+
 	async function runWithRetry(text: string | null): Promise<AssistantMessage> {
 		if (text != null) await prepareRun();
 		const policy = resolveRetryPolicy(await loadSettings());
@@ -447,7 +466,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 				? await retryAssistantCall(
 						async () => {
 							if (lastFailed) removeMessage(lastFailed);
-							const message = await runAttempt(text);
+							const message = await runAttemptWithOverflowRecovery(text);
 							if (message.stopReason === "error") lastFailed = message;
 							return message;
 						},
@@ -480,7 +499,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 							},
 						},
 					)
-				: await runAttempt(text);
+				: await runAttemptWithOverflowRecovery(text);
 			await finalizeRun(message);
 			return message;
 		} finally {

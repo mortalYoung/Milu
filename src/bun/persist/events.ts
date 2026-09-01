@@ -18,6 +18,7 @@ export const EVENTS = {
 	compactionSummary: "compaction_summary",
 	compactionStart: "compaction/start",
 	compactionEnd: "compaction/end",
+	compactionPrune: "compaction/prune",
 	modelChange: "model_change",
 	thinkingLevelChange: "thinking_level_change",
 	commandRun: "command/run",

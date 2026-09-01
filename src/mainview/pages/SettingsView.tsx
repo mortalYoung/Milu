@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Index, indexArray, type JSX, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, Index, indexArray, type JSX, Show } from "solid-js";
 import type { CustomModel, CustomProvider, SandboxMode, ThemeMode, ToastPlacement } from "../../shared/rpc";
 import { Button } from "../components/Button";
 import { PickFile } from "../components/PickFile";
@@ -23,6 +23,14 @@ export interface SettingsData {
 	commands_path?: string;
 	retry?: { maxRetries?: number; baseDelayMs?: number };
 	webFetch?: { timeoutMs?: number; maxBytes?: number; maxChars?: number; userAgent?: string };
+	compaction?: {
+		thresholdRatio?: number;
+		tailBudget?: number;
+		summaryCapChars?: number;
+		maxOverflowRetries?: number;
+		summarizer?: "local" | "llm";
+		prune?: { thresholdChars?: number; headChars?: number; tailChars?: number };
+	};
 }
 
 export interface RuntimeInfo {
@@ -39,6 +47,7 @@ const CATS = [
 	{ id: "general", label: "General" },
 	{ id: "skills", label: "Skills" },
 	{ id: "webFetch", label: "Web Fetch" },
+	{ id: "compaction", label: "Compaction" },
 	{ id: "permission", label: "Permission" },
 	{ id: "providers", label: "Providers" },
 	{ id: "retry", label: "Retry" },
@@ -187,6 +196,11 @@ export function SettingsView(props: {
 	const [webFetchMaxBytes, setWebFetchMaxBytes] = createSignal("1000000");
 	const [webFetchMaxChars, setWebFetchMaxChars] = createSignal("50000");
 	const [webFetchUserAgent, setWebFetchUserAgent] = createSignal("Letters-web-fetch/0.1");
+	const [compactionThreshold, setCompactionThreshold] = createSignal("0.8");
+	const [compactionTailBudget, setCompactionTailBudget] = createSignal("16");
+	const [compactionSummaryCap, setCompactionSummaryCap] = createSignal("2000");
+	const [compactionOverflowRetries, setCompactionOverflowRetries] = createSignal("1");
+	const [compactionSummarizer, setCompactionSummarizer] = createSignal<"local" | "llm">("llm");
 	const [instructionsFile, setInstructionsFile] = createSignal("");
 	const [defaultSandboxMode, setDefaultSandboxMode] = createSignal<SandboxMode>("workspace-write");
 	const [theme, setTheme] = createSignal<ThemeMode>("system");
@@ -203,6 +217,20 @@ export function SettingsView(props: {
 		setSkillsDirs(dirs);
 		void persist({ ...currentSettings(), skills_dirs: dirs });
 	}
+
+	createEffect(() => {
+		const s = props.settings;
+		if (!s) return;
+		if (s.webFetch?.timeoutMs !== undefined) setWebFetchTimeout(String(s.webFetch.timeoutMs));
+		if (s.webFetch?.maxBytes !== undefined) setWebFetchMaxBytes(String(s.webFetch.maxBytes));
+		if (s.webFetch?.maxChars !== undefined) setWebFetchMaxChars(String(s.webFetch.maxChars));
+		if (s.webFetch?.userAgent !== undefined) setWebFetchUserAgent(s.webFetch.userAgent);
+		if (s.compaction?.thresholdRatio !== undefined) setCompactionThreshold(String(s.compaction.thresholdRatio));
+		if (s.compaction?.tailBudget !== undefined) setCompactionTailBudget(String(s.compaction.tailBudget));
+		if (s.compaction?.summaryCapChars !== undefined) setCompactionSummaryCap(String(s.compaction.summaryCapChars));
+		if (s.compaction?.maxOverflowRetries !== undefined) setCompactionOverflowRetries(String(s.compaction.maxOverflowRetries));
+		if (s.compaction?.summarizer !== undefined) setCompactionSummarizer(s.compaction.summarizer);
+	});
 	function updateSkillsDir(i: number, v: string) {
 		setSkillsDirs((prev) => prev.map((d, idx) => (idx === i ? v : d)));
 	}
@@ -260,6 +288,21 @@ export function SettingsView(props: {
 	}
 	if (props.settings && props.settings.webFetch?.userAgent !== undefined && webFetchUserAgent() === "Letters-web-fetch/0.1") {
 		setWebFetchUserAgent(props.settings.webFetch.userAgent);
+	}
+	if (props.settings && props.settings.compaction?.thresholdRatio !== undefined && compactionThreshold() === "0.8") {
+		setCompactionThreshold(String(props.settings.compaction.thresholdRatio));
+	}
+	if (props.settings && props.settings.compaction?.tailBudget !== undefined && compactionTailBudget() === "16") {
+		setCompactionTailBudget(String(props.settings.compaction.tailBudget));
+	}
+	if (props.settings && props.settings.compaction?.summaryCapChars !== undefined && compactionSummaryCap() === "2000") {
+		setCompactionSummaryCap(String(props.settings.compaction.summaryCapChars));
+	}
+	if (props.settings && props.settings.compaction?.maxOverflowRetries !== undefined && compactionOverflowRetries() === "1") {
+		setCompactionOverflowRetries(String(props.settings.compaction.maxOverflowRetries));
+	}
+	if (props.settings && props.settings.compaction?.summarizer !== undefined && compactionSummarizer() === "llm") {
+		setCompactionSummarizer(props.settings.compaction.summarizer);
 	}
 	if (props.settings && props.settings.defaultSandboxMode && defaultSandboxMode() !== props.settings.defaultSandboxMode) {
 		setDefaultSandboxMode(props.settings.defaultSandboxMode);
@@ -329,6 +372,14 @@ export function SettingsView(props: {
 			maxBytes: parsePositiveInt(webFetchMaxBytes(), 1_000_000),
 			maxChars: parsePositiveInt(webFetchMaxChars(), 50_000),
 			userAgent: webFetchUserAgent().trim() || undefined,
+		},
+		compaction: {
+			thresholdRatio: Number(compactionThreshold()) || 0.8,
+			tailBudget: parsePositiveInt(compactionTailBudget(), 16),
+			summaryCapChars: parsePositiveInt(compactionSummaryCap(), 2000),
+			maxOverflowRetries: parsePositiveInt(compactionOverflowRetries(), 1),
+			summarizer: compactionSummarizer(),
+			...(props.settings?.compaction?.prune ? { prune: props.settings.compaction.prune } : {}),
 		},
 	});
 	const flashError = (message: string) => {
@@ -744,6 +795,183 @@ export function SettingsView(props: {
 						spellcheck={false}
 					/>
 				</TextField>
+			),
+		},
+		{
+			id: "compactionThreshold",
+			title: "Compaction threshold ratio",
+			desc: "Auto-compact when usage reaches this fraction of the context window.",
+			cats: ["compaction"],
+			modified: () => (Number(compactionThreshold()) || 0.8) !== 0.8,
+			control: () => (
+				<TextField class="w-[200px] shrink-0" value={compactionThreshold()} onChange={setCompactionThreshold}>
+					<TextFieldInput
+						type="number"
+						min={0}
+						max={1}
+						step={0.05}
+						variant="compact"
+						title="Compaction threshold ratio"
+						aria-label="Compaction threshold ratio"
+						onBlur={() => {
+							const next = Number(compactionThreshold()) || 0.8;
+							const saved = props.settings?.compaction?.thresholdRatio ?? 0.8;
+							if (next === saved) return;
+							void persist({
+								...currentSettings(),
+								compaction: {
+									tailBudget: parsePositiveInt(compactionTailBudget(), 16),
+									summaryCapChars: parsePositiveInt(compactionSummaryCap(), 2000),
+									maxOverflowRetries: parsePositiveInt(compactionOverflowRetries(), 1),
+									summarizer: compactionSummarizer(),
+									...(compactionThreshold() ? { thresholdRatio: next } : {}),
+								},
+							});
+						}}
+						onKeyDown={(e) => {
+							if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
+						}}
+					/>
+				</TextField>
+			),
+		},
+		{
+			id: "compactionTailBudget",
+			title: "Compaction tail budget",
+			desc: "Surface nodes kept verbatim at the tail of a compaction.",
+			cats: ["compaction"],
+			modified: () => parsePositiveInt(compactionTailBudget(), 16) !== 16,
+			control: () => (
+				<TextField class="w-[200px] shrink-0" value={compactionTailBudget()} onChange={setCompactionTailBudget}>
+					<TextFieldInput
+						type="number"
+						min={0}
+						variant="compact"
+						title="Compaction tail budget"
+						aria-label="Compaction tail budget"
+						onBlur={() => {
+							const next = parsePositiveInt(compactionTailBudget(), 16);
+							const saved = props.settings?.compaction?.tailBudget ?? 16;
+							if (next === saved) return;
+							void persist({
+								...currentSettings(),
+								compaction: {
+									tailBudget: next,
+									summaryCapChars: parsePositiveInt(compactionSummaryCap(), 2000),
+									maxOverflowRetries: parsePositiveInt(compactionOverflowRetries(), 1),
+									summarizer: compactionSummarizer(),
+								},
+							});
+						}}
+						onKeyDown={(e) => {
+							if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
+						}}
+					/>
+				</TextField>
+			),
+		},
+		{
+			id: "compactionSummaryCap",
+			title: "Summary cap (chars)",
+			desc: "Max length of a checkpoint summary.",
+			cats: ["compaction"],
+			modified: () => parsePositiveInt(compactionSummaryCap(), 2000) !== 2000,
+			control: () => (
+				<TextField class="w-[200px] shrink-0" value={compactionSummaryCap()} onChange={setCompactionSummaryCap}>
+					<TextFieldInput
+						type="number"
+						min={0}
+						variant="compact"
+						title="Summary cap (chars)"
+						aria-label="Summary cap (chars)"
+						onBlur={() => {
+							const next = parsePositiveInt(compactionSummaryCap(), 2000);
+							const saved = props.settings?.compaction?.summaryCapChars ?? 2000;
+							if (next === saved) return;
+							void persist({
+								...currentSettings(),
+								compaction: {
+									tailBudget: parsePositiveInt(compactionTailBudget(), 16),
+									summaryCapChars: next,
+									maxOverflowRetries: parsePositiveInt(compactionOverflowRetries(), 1),
+									summarizer: compactionSummarizer(),
+								},
+							});
+						}}
+						onKeyDown={(e) => {
+							if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
+						}}
+					/>
+				</TextField>
+			),
+		},
+		{
+			id: "compactionOverflowRetries",
+			title: "Overflow retries",
+			desc: "Max compact-and-retry attempts after a context overflow.",
+			cats: ["compaction"],
+			modified: () => parsePositiveInt(compactionOverflowRetries(), 1) !== 1,
+			control: () => (
+				<TextField class="w-[200px] shrink-0" value={compactionOverflowRetries()} onChange={setCompactionOverflowRetries}>
+					<TextFieldInput
+						type="number"
+						min={0}
+						variant="compact"
+						title="Overflow retries"
+						aria-label="Overflow retries"
+						onBlur={() => {
+							const next = parsePositiveInt(compactionOverflowRetries(), 1);
+							const saved = props.settings?.compaction?.maxOverflowRetries ?? 1;
+							if (next === saved) return;
+							void persist({
+								...currentSettings(),
+								compaction: {
+									tailBudget: parsePositiveInt(compactionTailBudget(), 16),
+									summaryCapChars: parsePositiveInt(compactionSummaryCap(), 2000),
+									maxOverflowRetries: next,
+									summarizer: compactionSummarizer(),
+								},
+							});
+						}}
+						onKeyDown={(e) => {
+							if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
+						}}
+					/>
+				</TextField>
+			),
+		},
+		{
+			id: "compactionSummarizer",
+			title: "Summarizer",
+			desc: "local is free and deterministic; llm produces cache-friendly checkpoints via a real model call.",
+			cats: ["compaction"],
+			modified: () => compactionSummarizer() !== "llm",
+			control: () => (
+				<Select
+					class="h-[32px] w-[200px] shrink-0 rounded-[10px] font-sans text-[12px]"
+					itemClass="font-sans text-[12px]"
+					contentClass="w-[200px] rounded-[10px]"
+					title="Summarizer"
+					ariaLabel="Summarizer"
+					portalMount={rootRef}
+					value={compactionSummarizer()}
+					onChange={(value) => {
+						const next = value as "local" | "llm";
+						void persist({
+							...currentSettings(),
+							compaction: {
+								tailBudget: parsePositiveInt(compactionTailBudget(), 16),
+								summaryCapChars: parsePositiveInt(compactionSummaryCap(), 2000),
+								maxOverflowRetries: parsePositiveInt(compactionOverflowRetries(), 1),
+								summarizer: next,
+							},
+						});
+					}}
+					options={[
+						{ value: "local", label: "local" },
+						{ value: "llm", label: "llm" },
+					]}
+				/>
 			),
 		},
 		{

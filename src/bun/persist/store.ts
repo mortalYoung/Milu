@@ -90,7 +90,7 @@ export interface SessionScope {
 	appendStepStart(turn: number, step: number, timestamp: number): Promise<void>;
 	appendStepEnd(turn: number, step: number, timestamp: number): Promise<void>;
 	appendToolCall(callId: string, name: string, args: unknown, turn: number, step: number, timestamp: number): Promise<void>;
-	appendToolResult(result: ToolResultMessage, timestamp: number): Promise<void>;
+	appendToolResult(result: ToolResultMessage, timestamp: number): Promise<string>;
 	appendEscalationRecord(type: "escalation/request" | "escalation/decision", details: Record<string, unknown>, timestamp: number): Promise<void>;
 	appendCommandRun(details: CommandRunEventData, timestamp: number): Promise<void>;
 	appendCommandDone(details: CommandDoneEventData, timestamp: number): Promise<void>;
@@ -104,7 +104,7 @@ export interface SessionScope {
 	appendRetryStarted(details: RetryStartedEventData, timestamp: number): Promise<void>;
 	appendSurfaceOp(op: SurfaceOpRecord, timestamp: number): Promise<void>;
 	appendCompactionSummary(text: string, timestamp: number): Promise<string>;
-	appendCompactionRecord(type: "compaction/start" | "compaction/end", details: Record<string, unknown>, timestamp: number): Promise<void>;
+	appendCompactionRecord(type: "compaction/start" | "compaction/end" | "compaction/prune", details: Record<string, unknown>, timestamp: number): Promise<void>;
 	appendModelChange(model: { provider: string; modelId?: string }, timestamp: number): Promise<void>;
 	appendThinkingLevelChange(level: ThinkingLevel, timestamp: number): Promise<void>;
 }
@@ -297,6 +297,10 @@ export function createSessionStore(): SessionStore {
 			},
 			async appendToolResult(result, timestamp) {
 				await appendCustom(dir, EVENTS.toolResult, { ...toolResultEventData(result), timestamp });
+				const state = await stateFor(dir);
+				const entry = state.entries.filter((e) => e.type === "custom" && e.customType === EVENTS.toolResult).at(-1);
+				if (!entry) throw new Error("tool/result append failed");
+				return entry.id;
 			},
 			async appendEscalationRecord(type, details, timestamp) {
 				await appendCustom(dir, type, { ...details, timestamp });

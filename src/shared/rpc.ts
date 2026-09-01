@@ -395,6 +395,15 @@ export type AppRPCSchema = __schema<{
 						commands_path?: string;
 						retry?: { maxRetries?: number; baseDelayMs?: number };
 						webFetch?: { timeoutMs?: number; maxBytes?: number; maxChars?: number; userAgent?: string };
+						compaction?: {
+							thresholdRatio?: number;
+							tailBudget?: number;
+							summaryCapChars?: number;
+							maxOverflowRetries?: number;
+							summarizer?: "local" | "llm";
+							summarizationModel?: string;
+							prune?: { thresholdChars?: number; headChars?: number; tailChars?: number };
+						};
 					};
 					runtime: {
 						providers: { id: string; configured: boolean; baseUrl?: string; modelCount: number }[];
@@ -423,6 +432,15 @@ export type AppRPCSchema = __schema<{
 						commands_path?: string;
 						retry?: { maxRetries?: number; baseDelayMs?: number };
 						webFetch?: { timeoutMs?: number; maxBytes?: number; maxChars?: number; userAgent?: string };
+						compaction?: {
+							thresholdRatio?: number;
+							tailBudget?: number;
+							summaryCapChars?: number;
+							maxOverflowRetries?: number;
+							summarizer?: "local" | "llm";
+							summarizationModel?: string;
+							prune?: { thresholdChars?: number; headChars?: number; tailChars?: number };
+						};
 					};
 
 					credentials?: Record<string, string>;
