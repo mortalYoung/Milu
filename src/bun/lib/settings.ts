@@ -45,6 +45,7 @@ export interface Settings {
 	sendMessageIntervalSec?: number | null;
 	commands_path?: string;
 	retry?: { maxRetries?: number; baseDelayMs?: number };
+	webFetch?: { timeoutMs?: number; maxBytes?: number; maxChars?: number; userAgent?: string };
 }
 
 const DEFAULT_SETTINGS: Settings = {

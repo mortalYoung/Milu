@@ -22,6 +22,7 @@ export interface SettingsData {
 	sendMessageIntervalSec?: number | null;
 	commands_path?: string;
 	retry?: { maxRetries?: number; baseDelayMs?: number };
+	webFetch?: { timeoutMs?: number; maxBytes?: number; maxChars?: number; userAgent?: string };
 }
 
 export interface RuntimeInfo {
@@ -181,6 +182,9 @@ export function SettingsView(props: {
 	const [commandsPath, setCommandsPath] = createSignal("");
 	const [retryMaxRetries, setRetryMaxRetries] = createSignal("2");
 	const [retryBaseDelayMs, setRetryBaseDelayMs] = createSignal("500");
+	const [webFetchTimeout, setWebFetchTimeout] = createSignal("15000");
+	const [webFetchMaxBytes, setWebFetchMaxBytes] = createSignal("1000000");
+	const [webFetchMaxChars, setWebFetchMaxChars] = createSignal("50000");
 	const [instructionsFile, setInstructionsFile] = createSignal("");
 	const [defaultSandboxMode, setDefaultSandboxMode] = createSignal<SandboxMode>("workspace-write");
 	const [theme, setTheme] = createSignal<ThemeMode>("system");
@@ -242,6 +246,15 @@ export function SettingsView(props: {
 	}
 	if (props.settings && props.settings.retry?.baseDelayMs !== undefined && retryBaseDelayMs() === "500") {
 		setRetryBaseDelayMs(String(props.settings.retry.baseDelayMs));
+	}
+	if (props.settings && props.settings.webFetch?.timeoutMs !== undefined && webFetchTimeout() === "15000") {
+		setWebFetchTimeout(String(props.settings.webFetch.timeoutMs));
+	}
+	if (props.settings && props.settings.webFetch?.maxBytes !== undefined && webFetchMaxBytes() === "1000000") {
+		setWebFetchMaxBytes(String(props.settings.webFetch.maxBytes));
+	}
+	if (props.settings && props.settings.webFetch?.maxChars !== undefined && webFetchMaxChars() === "50000") {
+		setWebFetchMaxChars(String(props.settings.webFetch.maxChars));
 	}
 	if (props.settings && props.settings.defaultSandboxMode && defaultSandboxMode() !== props.settings.defaultSandboxMode) {
 		setDefaultSandboxMode(props.settings.defaultSandboxMode);
@@ -305,6 +318,11 @@ export function SettingsView(props: {
 		retry: {
 			maxRetries: parsePositiveInt(retryMaxRetries(), DEFAULTS.retryMaxRetries),
 			baseDelayMs: parsePositiveInt(retryBaseDelayMs(), DEFAULTS.retryBaseDelayMs),
+		},
+		webFetch: {
+			timeoutMs: parsePositiveInt(webFetchTimeout(), 15000),
+			maxBytes: parsePositiveInt(webFetchMaxBytes(), 1_000_000),
+			maxChars: parsePositiveInt(webFetchMaxChars(), 50_000),
 		},
 	});
 	const flashError = (message: string) => {
@@ -581,6 +599,83 @@ export function SettingsView(props: {
 						void persist({ ...currentSettings(), commands_path: next });
 					}}
 				/>
+			),
+		},
+		{
+			id: "webFetch",
+			title: "Web fetch limits",
+			desc: "Timeout and size limits for the web_fetch tool (HTML is converted to text).",
+			cats: ["general"],
+			modified: () =>
+				parsePositiveInt(webFetchTimeout(), 15000) !== 15000 ||
+				parsePositiveInt(webFetchMaxBytes(), 1_000_000) !== 1_000_000 ||
+				parsePositiveInt(webFetchMaxChars(), 50_000) !== 50_000,
+			control: () => (
+				<div class="flex items-center gap-1.5">
+					<TextField class="w-[92px] shrink-0 gap-0" value={webFetchTimeout()} onChange={setWebFetchTimeout}>
+						<TextFieldInput
+							type="number"
+							min={0}
+							variant="compact"
+							title="Timeout (ms)"
+							aria-label="Web fetch timeout (ms)"
+							onBlur={() => {
+								const next = parsePositiveInt(webFetchTimeout(), 15000);
+								const saved = props.settings?.webFetch?.timeoutMs ?? 15000;
+								if (next === saved) return;
+								void persist({
+									...currentSettings(),
+									webFetch: { timeoutMs: next, maxBytes: parsePositiveInt(webFetchMaxBytes(), 1_000_000), maxChars: parsePositiveInt(webFetchMaxChars(), 50_000) },
+								});
+							}}
+							onKeyDown={(e) => {
+								if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
+							}}
+						/>
+					</TextField>
+					<TextField class="w-[120px] shrink-0 gap-0" value={webFetchMaxBytes()} onChange={setWebFetchMaxBytes}>
+						<TextFieldInput
+							type="number"
+							min={0}
+							variant="compact"
+							title="Max bytes"
+							aria-label="Web fetch max bytes"
+							onBlur={() => {
+								const next = parsePositiveInt(webFetchMaxBytes(), 1_000_000);
+								const saved = props.settings?.webFetch?.maxBytes ?? 1_000_000;
+								if (next === saved) return;
+								void persist({
+									...currentSettings(),
+									webFetch: { timeoutMs: parsePositiveInt(webFetchTimeout(), 15000), maxBytes: next, maxChars: parsePositiveInt(webFetchMaxChars(), 50_000) },
+								});
+							}}
+							onKeyDown={(e) => {
+								if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
+							}}
+						/>
+					</TextField>
+					<TextField class="w-[92px] shrink-0 gap-0" value={webFetchMaxChars()} onChange={setWebFetchMaxChars}>
+						<TextFieldInput
+							type="number"
+							min={0}
+							variant="compact"
+							title="Max chars"
+							aria-label="Web fetch max chars"
+							onBlur={() => {
+								const next = parsePositiveInt(webFetchMaxChars(), 50_000);
+								const saved = props.settings?.webFetch?.maxChars ?? 50_000;
+								if (next === saved) return;
+								void persist({
+									...currentSettings(),
+									webFetch: { timeoutMs: parsePositiveInt(webFetchTimeout(), 15000), maxBytes: parsePositiveInt(webFetchMaxBytes(), 1_000_000), maxChars: next },
+								});
+							}}
+							onKeyDown={(e) => {
+								if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
+							}}
+						/>
+					</TextField>
+				</div>
 			),
 		},
 		{

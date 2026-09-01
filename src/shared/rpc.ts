@@ -394,6 +394,7 @@ export type AppRPCSchema = __schema<{
 						sendMessageIntervalSec?: number | null;
 						commands_path?: string;
 						retry?: { maxRetries?: number; baseDelayMs?: number };
+						webFetch?: { timeoutMs?: number; maxBytes?: number; maxChars?: number; userAgent?: string };
 					};
 					runtime: {
 						providers: { id: string; configured: boolean; baseUrl?: string; modelCount: number }[];
@@ -421,6 +422,7 @@ export type AppRPCSchema = __schema<{
 						sendMessageIntervalSec?: number | null;
 						commands_path?: string;
 						retry?: { maxRetries?: number; baseDelayMs?: number };
+						webFetch?: { timeoutMs?: number; maxBytes?: number; maxChars?: number; userAgent?: string };
 					};
 
 					credentials?: Record<string, string>;
