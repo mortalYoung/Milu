@@ -128,7 +128,17 @@ export function createSession(rpc: RPC, opts: { onSessionLoaded: () => void; onE
 				pending.push(entry);
 			}
 			const tBuild = performance.now();
-			if (replacements.size > 0 || pending.length > 0) {
+			if (items.length === 0) {
+				// Session rotated (e.g. /clear): the new storage file is empty — the UI must drop
+				// everything instead of the usual append/replace merge.
+				if (entries().length > 0) {
+					renderedIds.clear();
+					lastMsgDay = "";
+					setEntries([]);
+					bump();
+					opts.onEntriesChanged?.();
+				}
+			} else if (replacements.size > 0 || pending.length > 0) {
 				setEntries((prev) => {
 					let next = prev;
 					if (replacements.size > 0) {
