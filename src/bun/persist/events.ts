@@ -1,36 +1,8 @@
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
+import { EVENTS } from "../../shared/events";
 import type { SandboxMode } from "../../shared/rpc";
 
-export const EVENTS = {
-	turnStart: "turn/start",
-	turnEnd: "turn/end",
-	stepStart: "step/start",
-	stepEnd: "step/end",
-	toolCall: "tool/call",
-	toolResult: "tool/result",
-	requestHeader: "request/header",
-	sendMessage: "send_message",
-	systemPrompt: "system_prompt",
-	followUp: "message/follow_up",
-	escalationRequest: "escalation/request",
-	escalationDecision: "escalation/decision",
-	surfaceOp: "surface_op",
-	compactionSummary: "compaction_summary",
-	compactionStart: "compaction/start",
-	compactionEnd: "compaction/end",
-	compactionPrune: "compaction/prune",
-	modelChange: "model_change",
-	thinkingLevelChange: "thinking_level_change",
-	commandRun: "command/run",
-	commandDone: "command/done",
-	contextChanged: "context/changed",
-	skillRun: "skill/run",
-	skillDone: "skill/done",
-	shellRun: "shell/run",
-	shellDone: "shell/done",
-	retryScheduled: "retry/scheduled",
-	retryStarted: "retry/started",
-} as const;
+export { EVENTS };
 
 export type TurnEndReason = "completed" | "error" | "aborted" | "interrupted";
 

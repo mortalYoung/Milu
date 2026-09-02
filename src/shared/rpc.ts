@@ -1,3 +1,4 @@
+import type { Entry } from "@earendil-works/pi-agent-core";
 import type { ElectrobunRPCSchema } from "electrobun/main";
 import type { CustomModel, CustomProvider, ThemeMode, ToastPlacement } from "../bun/lib/settings";
 import type { SandboxMode } from "../bun/permission/types";
@@ -37,6 +38,25 @@ export interface CommandHistoryItem {
 
 	status: "running" | "success" | "error" | "interrupted";
 	text?: string;
+}
+
+/** One row of the user-facing chat view (the View projection of Origin). */
+export interface ViewItem {
+	id: string;
+	kind: "user" | "send_message" | "escalation" | "error" | "aborted" | "command" | "skill" | "shell";
+	text: string;
+	time: number;
+	skillName?: string;
+	escalation?: {
+		id: string;
+		command: string;
+		from: SandboxMode;
+		to: SandboxMode;
+		justification: string;
+		status: EscalationStatus;
+	};
+	command?: CommandHistoryItem;
+	skill?: CommandHistoryItem;
 }
 
 export interface SkillDescriptor {
@@ -275,26 +295,21 @@ export type AppRPCSchema = __schema<{
 				response: { accepted: boolean };
 			};
 
+			session_origin: {
+				params: { before?: number; limit?: number };
+				response: {
+					signature: string;
+					entries: Entry[];
+					total: number;
+					loadedCount: number;
+					hasMore: boolean;
+				};
+			};
+
 			history: {
 				params: {};
 				response: {
-					items: {
-						id: string;
-						kind: "user" | "send_message" | "escalation" | "error" | "aborted" | "command" | "skill" | "shell";
-						text: string;
-						time: number;
-						skillName?: string;
-						escalation?: {
-							id: string;
-							command: string;
-							from: SandboxMode;
-							to: SandboxMode;
-							justification: string;
-							status: EscalationStatus;
-						};
-						command?: CommandHistoryItem;
-						skill?: CommandHistoryItem;
-					}[];
+					items: ViewItem[];
 				};
 			};
 

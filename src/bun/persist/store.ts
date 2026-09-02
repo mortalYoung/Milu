@@ -2,7 +2,10 @@ import { cp } from "node:fs/promises";
 import type { AgentMessage, CustomEntry, Entry } from "@earendil-works/pi-agent-core";
 import { buildSessionContext, JsonlSessionRepo, Session } from "@earendil-works/pi-agent-core";
 import { type AssistantMessage, type ToolResultMessage, type Usage, uuidv7 } from "@earendil-works/pi-ai";
-import type { CommandHistoryItem, EscalationStatus, RequestTool, SandboxMode, ThinkingLevel } from "../../shared/rpc";
+import type { RequestTool, SandboxMode, ThinkingLevel, ViewItem } from "../../shared/rpc";
+
+export type { ViewItem } from "../../shared/rpc";
+
 import type { Surface, SurfaceOpRecord } from "../../shared/surface";
 import { buildResumeTurn, contextChangedText, deriveMessages as deriveSurfaceMessages, dropDanglingTurn, foldSurface, pairToolResults } from "../core/surface";
 import { createExecutionEnv } from "../tools/execution-env";
@@ -62,24 +65,6 @@ export interface AssistantMeta {
 	stopReason?: AssistantMessage["stopReason"];
 }
 
-export interface VisibleItem {
-	id: string;
-	kind: "user" | "send_message" | "escalation" | "error" | "aborted" | "command" | "skill" | "shell";
-	text: string;
-	time: number;
-	skillName?: string;
-	escalation?: {
-		id: string;
-		command: string;
-		from: SandboxMode;
-		to: SandboxMode;
-		justification: string;
-		status: EscalationStatus;
-	};
-	command?: CommandHistoryItem;
-	skill?: CommandHistoryItem;
-}
-
 export interface SessionScope {
 	appendUser(content: string, timestamp: number, meta?: { skill?: string }): Promise<void>;
 	appendAssistant(meta: AssistantMeta, timestamp: number): Promise<void>;
@@ -114,8 +99,8 @@ export interface SessionScope {
 export interface SessionStore {
 	scope(dir: string): SessionScope;
 	/** Project the Origin (raw log) into the user View (chat transcript rows). */
-	visibleHistory(dir: string): Promise<VisibleItem[]>;
-	lastMessage(dir: string): Promise<VisibleItem | null>;
+	visibleHistory(dir: string): Promise<ViewItem[]>;
+	lastMessage(dir: string): Promise<ViewItem | null>;
 	restoreMessages(dir: string): Promise<AgentMessage[]>;
 	surface(dir: string): Promise<Surface>;
 	deriveMessages(dir: string): Promise<AgentMessage[]>;
@@ -400,7 +385,7 @@ export function createSessionStore(): SessionStore {
 		},
 		async lastMessage(dir) {
 			const state = await stateFor(dir);
-			let last: VisibleItem | null = null;
+			let last: ViewItem | null = null;
 			for (const entry of state.entries) {
 				if (entry.type === "message" && entry.message.role === "user") {
 					const content = entry.message.content;

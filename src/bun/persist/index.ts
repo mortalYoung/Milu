@@ -4,4 +4,4 @@
  * here; core/ derives views from the log (surface) and never writes it.
  */
 export { EVENTS, type ToolResultEventData, type TurnEndReason } from "./events";
-export { type AssistantMeta, createSessionStore, type SessionScope, type SessionStore, type VisibleItem } from "./store";
+export { type AssistantMeta, createSessionStore, type SessionScope, type SessionStore, type ViewItem } from "./store";

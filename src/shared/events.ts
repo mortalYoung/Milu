@@ -1,0 +1,35 @@
+/**
+ * The session log's event vocabulary — every custom event that can be persisted.
+ * Lives in `shared` because it is a cross-boundary contract: server writers,
+ * projection registries (entry-meta) and the renderer all refer to the same names.
+ */
+export const EVENTS = {
+	turnStart: "turn/start",
+	turnEnd: "turn/end",
+	stepStart: "step/start",
+	stepEnd: "step/end",
+	toolCall: "tool/call",
+	toolResult: "tool/result",
+	requestHeader: "request/header",
+	sendMessage: "send_message",
+	systemPrompt: "system_prompt",
+	followUp: "message/follow_up",
+	escalationRequest: "escalation/request",
+	escalationDecision: "escalation/decision",
+	surfaceOp: "surface_op",
+	compactionSummary: "compaction_summary",
+	compactionStart: "compaction/start",
+	compactionEnd: "compaction/end",
+	compactionPrune: "compaction/prune",
+	modelChange: "model_change",
+	thinkingLevelChange: "thinking_level_change",
+	commandRun: "command/run",
+	commandDone: "command/done",
+	contextChanged: "context/changed",
+	skillRun: "skill/run",
+	skillDone: "skill/done",
+	shellRun: "shell/run",
+	shellDone: "shell/done",
+	retryScheduled: "retry/scheduled",
+	retryStarted: "retry/started",
+} as const;

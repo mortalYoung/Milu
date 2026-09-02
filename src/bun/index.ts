@@ -6,6 +6,7 @@ import { join, sep } from "node:path";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import { getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
 import { ApplicationMenu, BrowserView, BrowserWindow, Utils } from "electrobun/main";
+import { cleanOrigin } from "../shared/origin";
 import type { AppRPCSchema, TrajectoryRecord } from "../shared/rpc";
 import { loadCustomCommands, mergeCommandDefinitions } from "./commands/custom";
 import { defaultCommands } from "./commands/defaults";
@@ -600,6 +601,24 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 			reset: () => {
 				void agents.get(viewPartner?.name ?? "")?.then((e) => e.agent.reset());
 				return { accepted: true };
+			},
+
+			session_origin: async ({ before = 0, limit = 200 }) => {
+				const target = viewPartner;
+				if (!target) return { signature: "", entries: [], total: 0, loadedCount: 0, hasMore: false };
+				const origin = cleanOrigin(await session.rawEntries(target.dir));
+				const total = origin.length;
+				const loaded = Math.min(before, total);
+				const end = total - loaded;
+				const start = Math.max(0, end - limit);
+				const lastId = origin.length > 0 ? origin[origin.length - 1].id : "";
+				return {
+					signature: `${total}:${lastId}`,
+					entries: origin.slice(start, end),
+					total,
+					loadedCount: loaded + Math.min(limit, end - start),
+					hasMore: start > 0,
+				};
 			},
 
 			history: async () => {
