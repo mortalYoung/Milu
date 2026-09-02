@@ -485,6 +485,7 @@ export function createSessionStore(): SessionStore {
 								name,
 								...(typeof data.args === "string" ? { args: data.args } : {}),
 								status: done ? done.kind : "running",
+								...(done?.text ? { text: done.text } : {}),
 							},
 						},
 					];

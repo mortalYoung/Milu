@@ -391,6 +391,7 @@ export function Transcript(props: {
 											class={
 												"msg-command" +
 												(info.status === "success" ? " ok" : "") +
+												(info.status === "error" ? " is-error" : "") +
 												(expandable ? " has-args" : "") +
 												(expanded ? " expanded" : "") +
 												(e.kind === "skill" ? " is-skill" : "") +
@@ -406,7 +407,13 @@ export function Transcript(props: {
 											aria-expanded={e.kind === "skill" ? undefined : e.kind === "command" && expandable ? expanded : undefined}
 										>
 											<div class="msg-command-head">
-												{e.kind === "skill" ? <span class="msg-command-badge">skill</span> : e.kind === "shell" ? <span class="msg-command-badge">shell</span> : null}
+												{e.kind === "skill" ? (
+													<span class="msg-command-badge">skill</span>
+												) : e.kind === "shell" ? (
+													<span class="msg-command-badge">shell</span>
+												) : e.kind === "command" ? (
+													<span class="msg-command-badge">command</span>
+												) : null}
 												<span class="msg-command-name">{info.name}</span>
 												<span class={"msg-command-status " + info.status}>
 													{info.status === "success" ? <Check size={12} /> : null}
@@ -429,6 +436,8 @@ export function Transcript(props: {
 												output ? (
 													<div class="msg-command-args is-shell-out">{output}</div>
 												) : null
+											) : info.status === "error" && output ? (
+												<div class="msg-command-args is-command-error">{output}</div>
 											) : expanded && args ? (
 												<div class="msg-command-args">{args}</div>
 											) : null}

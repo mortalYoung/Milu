@@ -713,6 +713,12 @@ body::before {
 	.msg-command:hover {
 		@apply border-ink-soft/40 bg-paper;
 	}
+	.msg-command.is-error {
+		@apply border-seal/45 bg-seal-soft/40;
+	}
+	.msg-command.is-error:hover {
+		@apply border-seal/60 bg-seal-soft/50;
+	}
 	.msg-command-head {
 		@apply flex items-center justify-between gap-3;
 	}
@@ -744,6 +750,9 @@ body::before {
 	}
 	.msg-command-args {
 		@apply mt-1.5 whitespace-pre-wrap break-all border-t border-hairline pt-1.5 text-[11px] leading-[1.5] text-body-muted;
+	}
+	.msg-command-args.is-command-error {
+		color: var(--color-ink-soft);
 	}
 	.msg-command-running {
 		@apply flex items-center gap-1.5;
