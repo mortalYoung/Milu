@@ -2,7 +2,7 @@ import type { ElectrobunConfig } from "electrobun";
 
 export default {
 	app: {
-		name: "letters",
+		name: "Letters",
 		identifier: "letters.local",
 		version: "0.1.0",
 	},
