@@ -1,7 +1,7 @@
 import { createEffect, createSignal } from "solid-js";
 import { projectVisibleHistory } from "../../shared/entry-meta";
 import type { TrajectoryRecord } from "../../shared/rpc";
-import { foldSurface } from "../../shared/slice";
+import { surfaceNodeIds } from "../../shared/slice";
 import { fold } from "../../shared/timeline";
 import type { createOriginSession } from "./origin-session";
 import type { RPC } from "./rpc";
@@ -33,7 +33,9 @@ export function createTrajectory(rpc: RPC, getSelectedName: () => string | null,
 		const all = fold(entries);
 		let next = all;
 		if (mode() === "slice") {
-			const sliceIds = new Set(foldSurface(entries).nodes.map((n) => n.id));
+			// surfaceNodeIds is window-safe: foldSurface would throw on a partial Origin whose
+			// surface_op range refers to not-yet-loaded nodes (compaction of the whole log).
+			const sliceIds = surfaceNodeIds(entries);
 			next = all.filter((r) => sliceIds.has(r.entryId));
 		} else if (mode() === "view") {
 			const viewIds = new Set(projectVisibleHistory(entries).map((v) => v.id));

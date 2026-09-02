@@ -10,10 +10,10 @@
 import type { AgentMessage, Entry } from "@earendil-works/pi-agent-core";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import type { RequestTool } from "../../shared/rpc";
-import { applyReplace, foldSurface, isSurfaceEntry, SurfaceError } from "../../shared/slice";
+import { applyReplace, foldSurface, isSurfaceEntry, SurfaceError, surfaceNodeIds } from "../../shared/slice";
 import type { Surface } from "../../shared/surface";
 
-export { applyReplace, foldSurface, isSurfaceEntry, SurfaceError };
+export { applyReplace, foldSurface, isSurfaceEntry, SurfaceError, surfaceNodeIds };
 
 import { type ContextChangedEventData, EVENTS } from "../persist/events";
 

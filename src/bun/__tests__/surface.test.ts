@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { foldSurface, reconstructRequestHeader, SurfaceError } from "../core/surface";
+import { foldSurface, reconstructRequestHeader, SurfaceError, surfaceNodeIds } from "../core/surface";
 import { createSessionStore } from "../persist";
 
 let dirs: string[] = [];
@@ -108,6 +108,28 @@ describe("session surface (log → surface → dialogue)", () => {
 		expect(derived.map((m) => m.role)).toEqual(restored.map((m) => m.role));
 		expect(derived[0]).toMatchObject({ role: "user", content: "hello" });
 		expect(derived[derived.length - 1]).toMatchObject({ role: "custom", customType: "send_message", content: "done" });
+	});
+
+	it("surfaceNodeIds is window-safe when a replace shadows unloaded nodes", async () => {
+		const dir = await tempDir();
+		const session = createSessionStore();
+		const scope = session.scope(dir);
+		for (let i = 0; i < 5; i++) await scope.appendUser(`q${i}`, i + 1);
+		const { nodes } = await session.surface(dir);
+		const shadowed = nodes.slice(0, 3);
+		const summaryId = await scope.appendCompactionSummary("compacted", 10);
+		await scope.appendSurfaceOp({ op: "replace", start: 0, end: 2, sourceEventSeqs: shadowed.map((n) => n.id), replaceGeneration: 1, checkpointId: summaryId }, 11);
+		await scope.appendUser("after", 12);
+
+		const all = await session.rawEntries(dir);
+		const fullIds = foldSurface(all).nodes.map((n) => n.id);
+		const afterId = all.find((e) => e.type === "message" && (e.message as { content?: unknown }).content === "after")!.id;
+		// A newest-page window that holds the op but not the whole shadowed prefix cannot be
+		// positionally replayed, but membership can still be derived from sourceEventSeqs.
+		const suffix = all.slice(-3); // compaction_summary + surface_op + the user after
+		expect(() => foldSurface(suffix)).toThrow(SurfaceError);
+		expect(surfaceNodeIds(suffix)).toEqual(new Set([summaryId, afterId]));
+		expect(surfaceNodeIds(all)).toEqual(new Set(fullIds));
 	});
 
 	it("surface_op records never leak into the human transcript", async () => {

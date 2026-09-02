@@ -45,6 +45,46 @@ function nodeFor(entry: Entry, seq: number): SurfaceNode | null {
 	return null;
 }
 
+/**
+ * Slice entry ids for a (possibly partial / windowed) Origin.
+ *
+ * `foldSurface` replays positional `surface_op` ranges and therefore needs the full
+ * Origin prefix before the newest window. The Trajectory drawer loads the Origin from the
+ * newest entry backwards, so a 200-entry window can contain a `surface_op` whose range
+ * refers to surface nodes that are not loaded yet (e.g. a compaction of the whole log).
+ * Membership in the Slice for the rows we already hold only depends on shadowing, not on
+ * replaying those positions: an op shadows exactly the entries in `sourceEventSeqs`, and a
+ * checkpoint inserts its `compaction_summary` id. This returns the same id set as
+ * `foldSurface(...).nodes` for a complete Origin, but never throws on a truncated one.
+ */
+export function surfaceNodeIds(entries: Entry[]): Set<string> {
+	const shadowed = new Set<string>();
+	const summaries = new Map<string, Entry>();
+	const checkpoints = new Set<string>();
+	for (const entry of entries) {
+		if (entry.type !== "custom") continue;
+		if (entry.customType === EVENTS.compactionSummary) {
+			summaries.set(entry.id, entry);
+			continue;
+		}
+		if (entry.customType !== EVENTS.surfaceOp) continue;
+		const d = (entry.data ?? {}) as SurfaceOpRecord;
+		for (const id of d.sourceEventSeqs ?? []) shadowed.add(id);
+		if (typeof d.checkpointId === "string") checkpoints.add(d.checkpointId);
+	}
+	const ids = new Set<string>();
+	for (const entry of entries) {
+		if (entry.type === "custom" && (entry.customType === EVENTS.surfaceOp || entry.customType === EVENTS.compactionSummary)) continue;
+		const node = nodeFor(entry, 0);
+		if (!node || shadowed.has(entry.id)) continue;
+		ids.add(entry.id);
+	}
+	for (const id of checkpoints) {
+		if (summaries.has(id)) ids.add(id);
+	}
+	return ids;
+}
+
 export function foldSurface(entries: Entry[]): Surface {
 	const nodes: SurfaceNode[] = [];
 	let replaceGeneration = 0;
