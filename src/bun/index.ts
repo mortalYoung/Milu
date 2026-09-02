@@ -34,6 +34,7 @@ import { applyToolResultPrunes, planToolResultPrunes } from "./core/tool-result-
 import { aggregateUsage, dedupeRequestHeaders, fold, lastUsage } from "./core/trajectory";
 import { deleteApiKey, getApiKey, loadCredentials, setApiKey } from "./lib/credentials";
 import { ensureModel, ensureSandboxMode, ensureStoragePath, ensureWorkspace, isThinkingLevel } from "./lib/ensure";
+import { listInstalledEditors, openInCodeEditor } from "./lib/open-in-editor";
 import {
 	partnerDirFor,
 	persistModel,
@@ -806,6 +807,15 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					pendingShellIds.delete(shellId);
 				}
 			},
+
+			open_path: async ({ path, editorId }) => {
+				const opened = await openInCodeEditor(path, editorId);
+				return opened ? { ok: true } : { ok: false, error: "No supported code editor found" };
+			},
+
+			list_editors: async () => ({
+				editors: listInstalledEditors().map((e) => ({ id: e.id, name: e.name })),
+			}),
 
 			skill_get: async ({ name }) => {
 				const target = viewPartner;

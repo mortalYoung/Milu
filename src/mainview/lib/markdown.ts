@@ -163,13 +163,13 @@ export function warmUpMarkdown(): void {
  * plain markdown-it fallback (the async highlighter build never blocks rendering).
  */
 export function renderMarkdown(src: string): string {
-	return (mdShiki ?? mdPlain).render(src);
+	return withCopyButtons((mdShiki ?? mdPlain).render(src));
 }
 
 /** Plain markdown (no shiki code highlighting) — fast synchronous first paint. Callers upgrade
  * to `renderMarkdown` asynchronously when the browser is idle for the highlighted version. */
 export function renderMarkdownPlain(src: string): string {
-	return mdPlain.render(src);
+	return withCopyButtons(mdPlain.render(src));
 }
 
 /**
@@ -178,5 +178,18 @@ export function renderMarkdownPlain(src: string): string {
  */
 export async function renderMarkdownReady(src: string): Promise<string> {
 	const md = await getShikiMd();
-	return md.render(src);
+	return withCopyButtons(md.render(src));
+}
+
+/** Inline lucide icons for the code-copy button (innerHTML-safe). */
+export const COPY_ICON_SVG =
+	'<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>';
+export const COPIED_ICON_SVG =
+	'<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+
+/** Wrap every fenced code block with a hover copy button (`.md-code` + `.md-copy`). */
+function withCopyButtons(html: string): string {
+	return html.replace(/<pre([^>]*)>([\s\S]*?)<\/pre>/g, (_match, attrs: string, body: string) => {
+		return `<div class="md-code"><button type="button" class="md-copy" aria-label="Copy code">${COPY_ICON_SVG}</button><pre${attrs}>${body}</pre></div>`;
+	});
 }

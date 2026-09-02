@@ -423,6 +423,32 @@ body::before {
 	.md pre {
 		@apply bg-print-tint border border-print-line rounded-[4px] px-3 py-2.5 overflow-x-auto my-2;
 	}
+	.md-code {
+		position: relative;
+	}
+	.md-code .md-copy {
+		@apply absolute right-1.5 top-[10px] z-10 flex items-center justify-center rounded-[4px] border border-hairline bg-letter p-1 text-body-muted opacity-0 transition-opacity;
+	}
+	.md-code .md-copy svg {
+		display: block;
+	}
+	.md-code .md-copy:hover {
+		@apply border-ink-soft/40 text-ink;
+	}
+	.md-code .md-copy:focus-visible {
+		outline: 2px solid var(--color-seal);
+		outline-offset: 1px;
+	}
+	@media (hover: hover) and (pointer: fine) {
+		.md-code:hover .md-copy {
+			opacity: 1;
+		}
+	}
+	@media (hover: none) {
+		.md-code .md-copy {
+			opacity: 1;
+		}
+	}
 	.md pre code {
 		@apply bg-transparent border-0 p-0;
 	}
@@ -1614,6 +1640,25 @@ body::before {
 	}
 	.composer-path-label {
 		@apply text-muted;
+	}
+	.composer-path-open {
+		@apply inline-flex select-none items-baseline gap-1 rounded-[4px] -mx-1 px-1 cursor-pointer transition-colors;
+	}
+	.composer-path-external {
+		opacity: 0.55;
+		transform: translateY(1px);
+	}
+	.composer-path-open:hover .composer-path-external {
+		opacity: 1;
+	}
+	.composer-path-open:hover {
+		@apply text-seal;
+		text-decoration: underline;
+		text-underline-offset: 2px;
+	}
+	.composer-path-open:focus-visible {
+		outline: 2px solid var(--color-seal);
+		outline-offset: 1px;
 	}
 	.composer-path-sep {
 		@apply mx-1 text-hairline;

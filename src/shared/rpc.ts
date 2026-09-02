@@ -303,6 +303,16 @@ export type AppRPCSchema = __schema<{
 				response: { ok: boolean; error?: string; shellId?: string };
 			};
 
+			open_path: {
+				params: { path: string; editorId?: string };
+				response: { ok: boolean; error?: string };
+			};
+
+			list_editors: {
+				params: {};
+				response: { editors: { id: string; name: string }[] };
+			};
+
 			get_status: {
 				params: {};
 				response: {

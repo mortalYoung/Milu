@@ -17,33 +17,40 @@ const ContextMenu: Component<ContextMenuPrimitive.ContextMenuRootProps> = (props
 
 type ContextMenuContentProps<T extends ValidComponent = "div"> = ContextMenuPrimitive.ContextMenuContentProps<T> & {
 	class?: string | undefined;
+	size?: "sm" | "md";
+	/** When false, render inline (inside the caller's DOM) instead of a body portal. */
+	portal?: boolean;
 };
 
 const ContextMenuContent = <T extends ValidComponent = "div">(props: PolymorphicProps<T, ContextMenuContentProps<T>>) => {
-	const [local, others] = splitProps(props as ContextMenuContentProps, ["class"]);
-	return (
-		<ContextMenuPrimitive.Portal>
-			<ContextMenuPrimitive.Content
-				class={cn(
-					"z-50 min-w-32 origin-[var(--kb-menu-content-transform-origin)] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-none animate-in",
-					local.class,
-				)}
-				{...others}
-			/>
-		</ContextMenuPrimitive.Portal>
+	const [local, others] = splitProps(props as ContextMenuContentProps, ["class", "size", "portal"]);
+	const size = () => local.size ?? "md";
+	const content = () => (
+		<ContextMenuPrimitive.Content
+			class={cn(
+				"z-50 origin-[var(--kb-menu-content-transform-origin)] overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-none animate-in",
+				size() === "sm" ? "min-w-28 p-0.5" : "min-w-32 p-1",
+				local.class,
+			)}
+			{...others}
+		/>
 	);
+	return local.portal === false ? content() : <ContextMenuPrimitive.Portal>{content()}</ContextMenuPrimitive.Portal>;
 };
 
 type ContextMenuItemProps<T extends ValidComponent = "div"> = ContextMenuPrimitive.ContextMenuItemProps<T> & {
 	class?: string | undefined;
+	size?: "sm" | "md";
 };
 
 const ContextMenuItem = <T extends ValidComponent = "div">(props: PolymorphicProps<T, ContextMenuItemProps<T>>) => {
-	const [local, others] = splitProps(props as ContextMenuItemProps, ["class"]);
+	const [local, others] = splitProps(props as ContextMenuItemProps, ["class", "size"]);
+	const size = () => local.size ?? "md";
 	return (
 		<ContextMenuPrimitive.Item
 			class={cn(
-				"relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+				"relative flex cursor-default select-none items-center rounded-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+				size() === "sm" ? "gap-1.5 px-1.5 py-1 text-[10px]" : "gap-2 px-2 py-1.5 text-sm",
 				local.class,
 			)}
 			{...others}

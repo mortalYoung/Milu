@@ -68,6 +68,8 @@ export function ConversationPage(props: {
 	onSkill?: (name: string, hint?: string) => Promise<{ ok: boolean; error?: string }>;
 	onShell?: (command: string) => Promise<{ ok: boolean; error?: string; shellId?: string }>;
 	onSkillInspect?: (name: string) => Promise<string | null>;
+	onOpenPath?: (path: string, editorId?: string) => void;
+	editors?: { id: string; name: string }[];
 }) {
 	const [outlineOpen, setOutlineOpen] = createSignal(false);
 
@@ -192,6 +194,8 @@ export function ConversationPage(props: {
 							skills={props.skills}
 							onSkill={props.onSkill}
 							onShell={props.onShell}
+							onOpenPath={props.onOpenPath}
+							editors={props.editors}
 						/>
 					</>
 				) : (

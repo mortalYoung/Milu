@@ -3,7 +3,7 @@
  * a bordered field with a seal focus ring; Enter sends (IME-safe: composition Enter confirms
  * the IME candidate, it must not send), Shift+Enter inserts a newline; the send button appears
  * only when there is something to send (text or a run to stop); it becomes a stop button while
- * running. Context occupancy ring sits inside the field. Run settings — workspace/storage path,
+ * running. Context occupancy ring sits inside the field. Runtime context — workspace/storage path,
  * model, sandbox mode, session metrics — live behind a quiet toggle left of the field: the
  * static composer shows only the pill, and the panel opens on demand (click / outside / Esc
  * to dismiss; sending closes it too).
@@ -12,7 +12,7 @@
  * Tab selects the highlighted command (unknown "/…" lines are blocked, never sent to the
  * model), and leadingInput commands (/workspace) claim the line until the argument is typed.
  */
-import { ArrowUp, SlidersHorizontal, Square } from "lucide-solid";
+import { ArrowUp, ExternalLink, SlidersHorizontal, Square } from "lucide-solid";
 import { createEffect, createMemo, createSignal, For, type JSX, onCleanup, Show } from "solid-js";
 import type { CommandDescriptor, CommandExecution, ContextUsage, SandboxMode, SessionStats, SkillDescriptor, ThinkingLevel } from "../../shared/rpc";
 import { filterCommands } from "../lib/commands";
@@ -21,6 +21,7 @@ import { detectTrigger, parseCommand } from "../lib/trigger";
 import { Button } from "./Button";
 import { CommandMenu } from "./CommandMenu";
 import { ContextMeter } from "./ContextMeter";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "./ui/context-menu";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -78,6 +79,9 @@ export function Composer(props: {
 	skills?: SkillDescriptor[];
 	onSkill?: (name: string, hint?: string) => Promise<{ ok: boolean; error?: string }>;
 	onShell?: (command: string) => Promise<{ ok: boolean; error?: string; shellId?: string }>;
+	onOpenPath?: (path: string, editorId?: string) => void;
+	/** Detected code editors (right-click menu on ws/st paths). */
+	editors?: { id: string; name: string }[];
 }) {
 	const [text, setText] = createSignal(props.draft);
 	// The draft is per-chat: switching chats swaps the prop, loading the other chat's saved text
@@ -128,7 +132,7 @@ export function Composer(props: {
 		return [...commands, ...skillItems];
 	});
 
-	// Run-settings panel: closed by default; the toggle icon left of the field opens it on demand.
+	// Runtime-context panel: closed by default; the toggle icon left of the field opens it on demand.
 	const [panelOpen, setPanelOpen] = createSignal(false);
 	let rootRef: HTMLFormElement | undefined;
 	// Outside click / Escape close the panel; clicks inside the composer (typing, changing a
@@ -137,6 +141,8 @@ export function Composer(props: {
 		if (!panelOpen()) return;
 		const onPointerDown = (e: PointerEvent) => {
 			if (e.target instanceof Node && rootRef?.contains(e.target)) return;
+			// Clicking a floating menu (e.g. the ws/st path context menu) is not "outside the panel".
+			if (e.target instanceof Element && e.target.closest('[role="menu"], [data-kb-menu-content]')) return;
 			setPanelOpen(false);
 		};
 		const onKeyDown = (e: KeyboardEvent) => {
@@ -368,23 +374,34 @@ export function Composer(props: {
 	// Send appears only when there is something to send (or a run to stop)
 	const showSend = () => text().trim() !== "" || props.busy();
 
-	// Path line: both paths as plain text — workspace/storage are read-only display, so there is
-	// no select; the full untruncated paths live in the tooltip.
+	// Path line: workspace/storage are clickable to open in the user's code editor; right-click
+	// offers every installed editor, left-click uses the default (VS Code when present).
+	const openPath = (path: string, editorId?: string) => props.onOpenPath?.(path, editorId);
+	const pathButton = (label: string, path: string) => (
+		<ContextMenu>
+			<ContextMenuTrigger as="button" type="button" class="composer-path-open" title="Open folder in code editor" onClick={() => openPath(path)}>
+				<span class="composer-path-label">{label}</span> {formatWorkspacePath(path, 36)}
+				<ExternalLink size={10} class="composer-path-external" />
+			</ContextMenuTrigger>
+			<ContextMenuContent size="sm" portal={false}>
+				<For each={props.editors ?? []}>
+					{(editor) => (
+						<ContextMenuItem size="sm" onSelect={() => openPath(path, editor.id)}>
+							Open in {editor.name}
+						</ContextMenuItem>
+					)}
+				</For>
+				<ContextMenuItem size="sm" onSelect={() => openPath(path)}>
+					Open with default
+				</ContextMenuItem>
+			</ContextMenuContent>
+		</ContextMenu>
+	);
 	const pathLine = () => {
 		const parts: JSX.Element[] = [];
-		if (props.workspace)
-			parts.push(
-				<>
-					<span class="composer-path-label">ws</span> {formatWorkspacePath(props.workspace, 36)}
-				</>,
-			);
+		if (props.workspace) parts.push(pathButton("ws", props.workspace));
 		if (props.workspace && props.storage) parts.push(<span class="composer-path-sep">·</span>);
-		if (props.storage)
-			parts.push(
-				<>
-					<span class="composer-path-label">st</span> {formatWorkspacePath(props.storage, 36)}
-				</>,
-			);
+		if (props.storage) parts.push(pathButton("st", props.storage));
 		return parts;
 	};
 	const pathTitle = () => [props.workspace && `workspace: ${props.workspace}`, props.storage && `storage: ${props.storage}`].filter(Boolean).join("\n");
@@ -417,14 +434,14 @@ export function Composer(props: {
 			<Show when={menuOpen()}>
 				<CommandMenu items={menuItems()} selectedIndex={selectedIndex()} onPick={pickCommand} onHover={setSelectedIndex} />
 			</Show>
-			{/* The pill, with the run-settings toggle on its left (the send button stays alone on the right) */}
+			{/* The pill, with the runtime-context toggle on its left (the send button stays alone on the right) */}
 			<div class="composer-row">
 				<Button
 					variant="ghost"
 					size="icon"
 					class="composer-toggle"
-					title={panelOpen() ? "Hide run settings" : "Run settings"}
-					aria-label="Run settings"
+					title={panelOpen() ? "Hide runtime context" : "Runtime context"}
+					aria-label="Runtime context"
 					aria-expanded={panelOpen()}
 					aria-controls="composer-panel"
 					icon={<SlidersHorizontal size={15} />}
@@ -485,10 +502,10 @@ export function Composer(props: {
 					)}
 				</div>
 			</div>
-			{/* Run-settings panel: path line (read-only), model / sandbox controls, then status +
+			{/* Runtime-context panel: path line (read-only), model / sandbox controls, then status +
 			   session metrics as a quiet footnote; on-demand only — closed by outside click, Esc or sending */}
 			<Show when={panelOpen()}>
-				<div id="composer-panel" class="composer-panel" role="group" aria-label="Run settings">
+				<div id="composer-panel" class="composer-panel" role="group" aria-label="Runtime context">
 					{(props.workspace || props.storage) && (
 						<div class="composer-panel-path">
 							<span class="composer-path" title={pathTitle()}>

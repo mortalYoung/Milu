@@ -4,7 +4,7 @@
  * settings views. Partners are created via a modal and saved as folders (see src/bun/partners.ts).
  */
 
-import { createEffect, onMount } from "solid-js";
+import { createEffect, createSignal, onMount } from "solid-js";
 import { AppRail } from "./components/AppRail";
 import { PartnerDetailsDialog } from "./components/PartnerDetailsDialog";
 import { PartnerModal } from "./components/PartnerModal";
@@ -15,7 +15,7 @@ import { makeSysEntry } from "./layouts/Transcript";
 import { createAgentStatus } from "./lib/agent-status";
 import { createCommandDirectory } from "./lib/commands";
 import { createComposer } from "./lib/composer";
-import { warmUpMarkdown } from "./lib/markdown";
+import { COPIED_ICON_SVG, COPY_ICON_SVG, warmUpMarkdown } from "./lib/markdown";
 import { createMetrics } from "./lib/metrics";
 import type { PartnerFormData } from "./lib/partner-form";
 import { rpc } from "./lib/rpc";
@@ -55,6 +55,8 @@ export function App() {
 	const skills = createSkills(rpc);
 	const toast = createToast(() => settings.settings()?.toastDurationMs ?? DEFAULT_TOAST_DURATION_MS);
 	const selectPartner = (p: Parameters<typeof session.select>[0]) => {
+		// Clicking the already-selected partner must not re-request history.
+		if (p?.name === session.selected()) return;
 		// Switching chats invalidates all current notifications.
 		toast.dismissAll();
 		session.select(p);
@@ -72,6 +74,7 @@ export function App() {
 		() => session.partners(),
 	);
 
+	const [editors, setEditors] = createSignal<{ id: string; name: string }[]>([]);
 	// ————— RPC events —————
 	rpc.addMessageListener("agent_turn", ({ turn: t, partner }) => {
 		const drained = status.beginTurn(partner);
@@ -237,11 +240,34 @@ export function App() {
 	void session.refreshPartners();
 	void settings.refresh();
 	void commands.refresh();
+	void rpc.request.list_editors({}).then((res) => setEditors(res.editors));
 	status.calibrate();
 	void metrics.refresh();
 	// Highlighter warm-up: deferred past first paint so cold start doesn't compete with the lazy
 	// shiki chunk; once built, `renderMarkdown` highlights synchronously for every later render.
-	onMount(() => warmUpMarkdown());
+	onMount(() => {
+		warmUpMarkdown();
+		// Copy buttons injected into rendered markdown (`.md-copy` inside `.md-code`).
+		document.addEventListener("click", (event) => {
+			const target = event.target as HTMLElement | null;
+			const button = target?.closest?.(".md-copy");
+			if (!button) return;
+			const pre = button.closest(".md-code")?.querySelector("pre");
+			if (!pre) return;
+			const text = (pre.querySelector("code")?.textContent ?? pre.textContent ?? "").trim();
+			void navigator.clipboard
+				?.writeText(text)
+				.then(() => {
+					button.innerHTML = COPIED_ICON_SVG;
+					button.setAttribute("aria-label", "Copied");
+					window.setTimeout(() => {
+						button.innerHTML = COPY_ICON_SVG;
+						button.setAttribute("aria-label", "Copy code");
+					}, 1200);
+				})
+				.catch(() => {});
+		});
+	});
 
 	// ————— shell —————
 	return (
@@ -304,6 +330,12 @@ export function App() {
 							onSkill={(name, hint) => rpc.request.skill_execute({ name, ...(hint ? { hint } : {}) })}
 							onSkillInspect={(name) => rpc.request.skill_get({ name }).then((r) => (r.ok ? (r.content ?? null) : null))}
 							onShell={(command) => rpc.request.shell_execute({ command })}
+							onOpenPath={(path, editorId) =>
+								void rpc.request.open_path({ path, editorId }).then((res) => {
+									if (!res.ok) toast.push({ title: "Couldn't open folder", body: res.error ?? "No supported editor found" }, "error");
+								})
+							}
+							editors={editors()}
 						/>
 					</TranscriptProvider>
 				)}
