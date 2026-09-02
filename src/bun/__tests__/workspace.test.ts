@@ -1,5 +1,6 @@
 /**
- * set_workspace validation tests: the workspace must be absolute, set once, outside storage, and exist.
+ * set_workspace validation tests: the workspace must be absolute, outside storage, and exist.
+ * (The per-turn limit is enforced by the agent, not by validateWorkspace.)
  */
 
 import { describe, expect, test } from "bun:test";
@@ -8,11 +9,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { validateWorkspace } from "../permission";
 
-const NONE = { current: null, storagePath: null };
+const NONE = { storagePath: null };
 
 describe("validateWorkspace", () => {
-	test("rejects when a workspace is already set", () => {
-		expect(validateWorkspace("/tmp/ws", { current: "/tmp/ws", storagePath: null })).toBe("Workspace can only be set once per conversation");
+	test("allows another path when a workspace is already set (limit lives at the agent per-turn guard)", () => {
+		const root = mkdtempSync(join(tmpdir(), "letters-ws-"));
+		expect(validateWorkspace(root, { storagePath: null })).toBeNull();
 	});
 
 	test("rejects relative paths", () => {
@@ -21,7 +23,7 @@ describe("validateWorkspace", () => {
 
 	test("rejects a path inside the storage path", () => {
 		const storage = mkdtempSync(join(tmpdir(), "letters-store-"));
-		expect(validateWorkspace(join(storage, "sub"), { current: null, storagePath: storage })).toBe("Workspace cannot be inside the storage path");
+		expect(validateWorkspace(join(storage, "sub"), { storagePath: storage })).toBe("Workspace cannot be inside the storage path");
 	});
 
 	test("rejects a nonexistent directory", () => {

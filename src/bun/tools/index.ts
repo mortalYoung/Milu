@@ -27,7 +27,7 @@ function setWorkspaceTool(deps: ToolDeps): AgentHarnessTool<ExecutionToolContext
 		name: "set_workspace",
 		label: "Set Workspace",
 		description:
-			"Set the working directory of this conversation to an absolute path — the project root of the current task. Only needed when the task actually touches files or paths (read/write/edit, or shell commands that reference the project); conversation-only turns can skip it. When needed, call it first, before other tools. Can only be called once per conversation; afterwards, relative paths resolve against it. Also reads the workspace's instructions file (AGENTS.md by default, configurable via settings) if present and returns its content — follow the guidance it gives.",
+			"Set the working directory of this conversation to an absolute path — the project root of the current task. Only needed when the task actually touches files or paths (read/write/edit, or shell commands that reference the project); conversation-only turns can skip it. When needed, call it first, before other tools. Can only be called once per turn; afterwards, relative paths resolve against it. Also reads the workspace's instructions file (AGENTS.md by default, configurable via settings) if present and returns its content — follow the guidance it gives.",
 		parameters: workspaceSchema,
 		executionMode: "sequential",
 		async execute(_toolCallId, { workspace }, signal, _onUpdate, context) {

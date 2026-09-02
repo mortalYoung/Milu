@@ -77,7 +77,7 @@ export class Permission {
 
 	/** set_workspace policy-change resolution: validate + resolve (applying stays with the caller). */
 	setWorkspace(path: string): { allowed: true; resolved: string } | { allowed: false; code: "workspace_validation"; reason: string } {
-		const error = validateWorkspace(path, { current: this.policy().workspace, storagePath: this.policy().storage });
+		const error = validateWorkspace(path, { storagePath: this.policy().storage });
 		if (error) return { allowed: false, code: "workspace_validation", reason: error };
 		return { allowed: true, resolved: resolve(path) };
 	}

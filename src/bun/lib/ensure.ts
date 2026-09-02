@@ -28,7 +28,7 @@ export async function ensureWorkspace(dir: string): Promise<string | null> {
 	try {
 		const raw = await readFile(workspaceFilePath(dir), "utf8");
 		const saved = JSON.parse(raw) as { path?: unknown };
-		if (typeof saved.path === "string" && validateWorkspace(saved.path, { current: null, storagePath }) === null) {
+		if (typeof saved.path === "string" && validateWorkspace(saved.path, { storagePath }) === null) {
 			return saved.path;
 		}
 	} catch {

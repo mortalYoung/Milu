@@ -184,8 +184,10 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		permission,
 		...(skills ? { skills } : {}),
 		onSetWorkspace: (workspace: string): { ok: true; path: string } | { ok: false; error: string } => {
+			if (ctx.workspaceSetThisTurn) return { ok: false, error: "Workspace can only be set once per turn" };
 			const decision = permission.setWorkspace(workspace);
 			if (!decision.allowed) return { ok: false, error: decision.reason };
+			ctx.workspaceSetThisTurn = true;
 			ctx.workspace_path = decision.resolved;
 			invalidateSkillCatalog();
 			bridge.onWorkspaceUpdate();

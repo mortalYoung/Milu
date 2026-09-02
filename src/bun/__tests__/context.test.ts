@@ -29,6 +29,16 @@ describe("Context lifecycle", () => {
 		expect(ctx.visibleElapsedMs()).toBeLessThan(1_000);
 	});
 
+	test("workspaceSetThisTurn resets on each beginTurn and on reset", () => {
+		const ctx = new Context();
+		ctx.workspaceSetThisTurn = true;
+		ctx.beginTurn();
+		expect(ctx.workspaceSetThisTurn).toBe(false);
+		ctx.workspaceSetThisTurn = true;
+		ctx.reset();
+		expect(ctx.workspaceSetThisTurn).toBe(false);
+	});
+
 	test("reset clears counters and restarts the clock", () => {
 		const ctx = new Context();
 		ctx.beginTurn();

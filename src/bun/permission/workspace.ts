@@ -10,9 +10,8 @@ import { isInside } from "./roots";
 export const workspaceFilePath = (dir: string) => join(dir, "workspace.json");
 export const sandboxFilePath = (dir: string) => join(dir, "sandbox.json");
 
-/** set_workspace boundary validation: once per conversation, absolute, exists, outside storage. */
-export function validateWorkspace(workspace: string, state: { current: string | null; storagePath: string | null }): string | null {
-	if (state.current) return "Workspace can only be set once per conversation";
+/** set_workspace boundary validation: absolute, exists, outside storage. (Per-turn limit is enforced by the agent.) */
+export function validateWorkspace(workspace: string, state: { storagePath: string | null }): string | null {
 	if (!isAbsolute(workspace)) return "Workspace must be an absolute path";
 	const abs = resolve(workspace);
 	if (state.storagePath && isInside(abs, state.storagePath)) return "Workspace cannot be inside the storage path";
