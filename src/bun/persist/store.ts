@@ -6,6 +6,7 @@ import type { CommandHistoryItem, EscalationStatus, RequestTool, SandboxMode, Th
 import type { Surface, SurfaceOpRecord } from "../../shared/surface";
 import { buildResumeTurn, contextChangedText, deriveMessages as deriveSurfaceMessages, dropDanglingTurn, foldSurface, pairToolResults } from "../core/surface";
 import { createExecutionEnv } from "../tools/execution-env";
+import { projectVisibleHistory } from "./entry-meta";
 import {
 	type CommandDoneEventData,
 	type CommandRunEventData,
@@ -66,6 +67,7 @@ export interface VisibleItem {
 	kind: "user" | "send_message" | "escalation" | "error" | "aborted" | "command" | "skill" | "shell";
 	text: string;
 	time: number;
+	skillName?: string;
 	escalation?: {
 		id: string;
 		command: string;
@@ -111,6 +113,7 @@ export interface SessionScope {
 
 export interface SessionStore {
 	scope(dir: string): SessionScope;
+	/** Project the Origin (raw log) into the user View (chat transcript rows). */
 	visibleHistory(dir: string): Promise<VisibleItem[]>;
 	lastMessage(dir: string): Promise<VisibleItem | null>;
 	restoreMessages(dir: string): Promise<AgentMessage[]>;
@@ -390,148 +393,10 @@ export function createSessionStore(): SessionStore {
 			await refreshEntries(state);
 			return (await session.getMetadata()).id;
 		},
+		// View: fold Origin entries through EVENT_META into the human chat transcript.
 		async visibleHistory(dir) {
 			const state = await stateFor(dir);
-			const decisions = new Map<string, { approved: boolean; reason?: string }>();
-			for (const entry of state.entries) {
-				if (entry.type !== "custom" || entry.customType !== EVENTS.escalationDecision) continue;
-				const data = entry.data as { escalationId?: unknown; approved?: unknown } | undefined;
-				if (data?.escalationId == null) continue;
-				decisions.set(String(data.escalationId), { approved: data.approved === true });
-			}
-			const commandDones = new Map<string, { kind: "success" | "error"; text?: string }>();
-			for (const entry of state.entries) {
-				if (entry.type !== "custom" || entry.customType !== EVENTS.commandDone) continue;
-				const data = entry.data as Partial<CommandDoneEventData> | undefined;
-				if (data?.commandId == null) continue;
-				commandDones.set(String(data.commandId), { kind: data.kind === "error" ? "error" : "success", ...(typeof data.text === "string" ? { text: data.text } : {}) });
-			}
-			const skillDones = new Map<string, { kind: "success" | "error"; text?: string }>();
-			for (const entry of state.entries) {
-				if (entry.type !== "custom" || entry.customType !== EVENTS.skillDone) continue;
-				const data = entry.data as Partial<SkillDoneEventData> | undefined;
-				if (data?.skillId == null) continue;
-				skillDones.set(String(data.skillId), { kind: data.kind === "error" ? "error" : "success", ...(typeof data.text === "string" ? { text: data.text } : {}) });
-			}
-			const shellDones = new Map<string, { kind: "success" | "error"; text?: string }>();
-			for (const entry of state.entries) {
-				if (entry.type !== "custom" || entry.customType !== EVENTS.shellDone) continue;
-				const data = entry.data as Partial<ShellDoneEventData> | undefined;
-				if (data?.shellId == null) continue;
-				shellDones.set(String(data.shellId), { kind: data.kind === "error" ? "error" : "success", ...(typeof data.text === "string" ? { text: data.text } : {}) });
-			}
-			return state.entries.flatMap((entry): VisibleItem[] => {
-				if (entry.type === "message" && entry.message.role === "user") {
-					const content = entry.message.content;
-					const skill = (entry.message as { skill?: unknown }).skill;
-					return [
-						{
-							id: entry.id,
-							kind: "user",
-							text: typeof content === "string" ? content : "",
-							time: entry.message.timestamp ?? 0,
-							...(typeof skill === "string" ? { skillName: skill } : {}),
-						},
-					];
-				}
-				if (entry.type === "custom" && entry.customType === EVENTS.sendMessage) {
-					const data = entry.data as { text: string; timestamp: number; toolCallId?: unknown } | undefined;
-					if (!data) return [];
-					if (typeof data.toolCallId === "string" && data.toolCallId.startsWith("shell:")) return [];
-					return [{ id: entry.id, kind: "send_message", text: data.text, time: data.timestamp }];
-				}
-				if (entry.type === "custom" && entry.customType === EVENTS.turnEnd) {
-					const data = entry.data as { reason?: unknown; error?: unknown; timestamp?: unknown } | undefined;
-					if (data?.reason === "aborted") {
-						return [{ id: entry.id, kind: "aborted", text: "stopped", time: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0) }];
-					}
-					if (data?.reason !== "error" || typeof data.error !== "string") return [];
-					return [{ id: entry.id, kind: "error", text: data.error, time: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0) }];
-				}
-				if (entry.type === "custom" && entry.customType === EVENTS.escalationRequest) {
-					const data = entry.data as { escalationId?: unknown; command?: unknown; from?: unknown; to?: unknown; justification?: unknown; timestamp?: unknown } | undefined;
-					if (data?.escalationId == null) return [];
-					const decision = decisions.get(String(data.escalationId));
-					return [
-						{
-							id: entry.id,
-							kind: "escalation",
-							text: String(data.command ?? ""),
-							time: typeof data.timestamp === "number" ? data.timestamp : 0,
-							escalation: {
-								id: String(data.escalationId),
-								command: String(data.command ?? ""),
-								from: data.from as SandboxMode,
-								to: data.to as SandboxMode,
-								justification: String(data.justification ?? ""),
-								status: decision ? (decision.approved ? "approved" : "rejected") : "pending",
-							},
-						},
-					];
-				}
-				if (entry.type === "custom" && entry.customType === EVENTS.commandRun) {
-					const data = entry.data as (Partial<CommandRunEventData> & { timestamp?: unknown }) | undefined;
-					if (data?.commandId == null) return [];
-					const done = commandDones.get(String(data.commandId));
-					const name = String(data.name ?? "");
-					return [
-						{
-							id: entry.id,
-							kind: "command",
-							text: name,
-							time: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
-							command: {
-								commandId: String(data.commandId),
-								name,
-								...(typeof data.args === "string" ? { args: data.args } : {}),
-								status: done ? done.kind : "running",
-								...(done?.text ? { text: done.text } : {}),
-							},
-						},
-					];
-				}
-				if (entry.type === "custom" && entry.customType === EVENTS.skillRun) {
-					const data = entry.data as (Partial<SkillRunEventData> & { timestamp?: unknown }) | undefined;
-					if (data?.skillId == null) return [];
-					const done = skillDones.get(String(data.skillId));
-					const name = String(data.name ?? "");
-					return [
-						{
-							id: entry.id,
-							kind: "skill",
-							text: name,
-							time: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
-							skill: {
-								commandId: String(data.skillId),
-								name,
-								...(typeof data.hint === "string" && data.hint ? { args: data.hint } : {}),
-								status: done ? done.kind : "running",
-							},
-						},
-					];
-				}
-				if (entry.type === "custom" && entry.customType === EVENTS.shellRun) {
-					const data = entry.data as (Partial<ShellRunEventData> & { timestamp?: unknown }) | undefined;
-					if (data?.shellId == null) return [];
-					const done = shellDones.get(String(data.shellId));
-					const command = String(data.command ?? "");
-					return [
-						{
-							id: entry.id,
-							kind: "shell",
-							text: command,
-							time: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
-							command: {
-								commandId: String(data.shellId),
-								name: command,
-								status: done ? done.kind : "running",
-								...(done?.text ? { text: done.text } : {}),
-							},
-						},
-					];
-				}
-				return [];
-			});
+			return projectVisibleHistory(state.entries);
 		},
 		async lastMessage(dir) {
 			const state = await stateFor(dir);
