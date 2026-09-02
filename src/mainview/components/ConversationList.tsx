@@ -6,6 +6,7 @@
 import { Info, MoreVertical, Plus, Trash2 } from "lucide-solid";
 import { createSignal, Show } from "solid-js";
 import { Button } from "./Button";
+import { Avatar } from "./ui/avatar";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
@@ -53,13 +54,7 @@ function previewFor(partner: PartnerItem): string {
 
 function PartnerAvatar(props: { partner: PartnerItem; selected: boolean }) {
 	// Selected row = warm-ink solid initial; others = paper-outlined initial.
-	// Inline the conditional into the class binding: `props.selected` is a getter prop, so hoisting
-	// it into a const would snapshot the initial value once and never react to selection changes.
-	return (
-		<span class={`conv-avatar ${props.selected ? "avatar-ink" : "avatar-paper"}`}>
-			<span class="avatar-initial">{props.partner.name.charAt(0)}</span>
-		</span>
-	);
+	return <Avatar name={props.partner.name} variant={props.selected ? "ink" : "paper"} />;
 }
 
 function DeleteMenuItem(props: { onSelect: () => void }) {

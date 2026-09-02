@@ -62,7 +62,7 @@ export function createSession(rpc: RPC, opts: { onSessionLoaded: () => void; onE
 				if (item.kind === "aborted") {
 					if (renderedIds.has(item.id)) continue;
 					renderedIds.add(item.id);
-					const entry = makeSysEntry("stopped");
+					const entry = makeSysEntry("stopped", false, true);
 					entry.key = item.id;
 					pending.push(entry);
 					continue;

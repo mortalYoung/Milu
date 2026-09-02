@@ -8,11 +8,13 @@ export interface ToastItem {
 	body: string;
 	variant: ToastVariant;
 	onClick?: () => void;
+	/** Partner initial shown in the notification avatar (identity anchor). */
+	avatar?: string;
 	/** Set while the toast is playing its exit animation; removed after it finishes. */
 	leaving?: boolean;
 }
 
-export type ToastMessage = string | { title?: string; body: string; onClick?: () => void };
+export type ToastMessage = string | { title?: string; body: string; onClick?: () => void; avatar?: string };
 
 export const DEFAULT_TOAST_DURATION_MS = 4000;
 export const TOAST_EXIT_MS = 160;
@@ -67,5 +69,14 @@ export function createToast(getDurationMs: () => number = () => DEFAULT_TOAST_DU
 		);
 	}
 
-	return { toasts, push, dismiss };
+	function dismissAll() {
+		for (const id of timers.keys()) {
+			clearTimeout(timers.get(id));
+			timers.delete(id);
+		}
+		leavingIds.clear();
+		setToasts([]);
+	}
+
+	return { toasts, push, dismiss, dismissAll };
 }

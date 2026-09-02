@@ -337,6 +337,9 @@ body::before {
 	.conv-avatar.avatar-paper {
 		@apply bg-letter text-ink border border-hairline;
 	}
+	.conv-avatar.avatar-sm {
+		@apply size-5 text-[11px];
+	}
 	.conv-main {
 		@apply flex flex-col min-w-0 flex-1 leading-tight pointer-events-none;
 	}
@@ -365,6 +368,10 @@ body::before {
 
 	.md {
 		@apply font-serif text-[15px] leading-[1.6] text-ink break-words;
+		overflow-wrap: anywhere;
+		word-break: break-all;
+		hyphens: auto;
+		-webkit-hyphens: auto;
 	}
 	.md h1 {
 		@apply text-[18px] font-semibold mt-1 mb-2;
@@ -398,6 +405,7 @@ body::before {
 	}
 	.md table {
 		@apply my-2 w-full border-collapse text-[14px];
+		table-layout: fixed;
 	}
 	.md th {
 		@apply font-semibold text-left bg-paper-hover border-b border-hairline px-2 py-1.5;
@@ -903,7 +911,32 @@ body::before {
 		@apply text-letter;
 	}
 	.toast--notification {
-		@apply flex items-center gap-3 rounded-[8px] border border-hairline bg-paper px-3.5 py-3 text-ink shadow-md;
+		@apply flex items-center gap-2 rounded-[8px] border border-ink-soft/40 bg-letter px-3 py-2 text-ink shadow-lg;
+		position: relative;
+		overflow: hidden;
+		max-width: min(360px, 80vw);
+	}
+	.toast--notification:not(.toast-error)::before {
+		content: "";
+		position: absolute;
+		left: 0;
+		top: 0;
+		bottom: 0;
+		width: 3px;
+		background: var(--color-seal);
+	}
+	.toast--notification .toast-title {
+		@apply text-[12.5px] font-medium leading-tight;
+	}
+	.toast--notification .toast-body {
+		@apply text-[11.5px] leading-snug text-muted;
+		display: -webkit-box;
+		-webkit-line-clamp: 1;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
+	}
+	.toast--notification .toast-close {
+		@apply size-6;
 	}
 	.toast-content {
 		@apply flex min-w-0 flex-1 flex-col gap-0.5;
@@ -919,6 +952,10 @@ body::before {
 	}
 	.toast-error {
 		@apply bg-seal text-paper;
+	}
+	.toast-error .conv-avatar {
+		background: color-mix(in srgb, var(--color-paper) 22%, transparent);
+		color: var(--color-paper);
 	}
 	.toast-error .toast-title,
 	.toast-error .toast-body {
@@ -1457,6 +1494,10 @@ body::before {
 		.traj-run-enter {
 			animation: none;
 		}
+	}
+
+	.sys-stopped {
+		@apply flex items-center justify-center gap-1.5 mt-6 font-sans text-[10px] uppercase tracking-[0.14em] text-body-muted select-none;
 	}
 
 	.sys-error {

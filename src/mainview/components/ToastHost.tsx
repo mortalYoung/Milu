@@ -2,6 +2,7 @@ import { X } from "lucide-solid";
 import { For, Show } from "solid-js";
 import type { ToastPlacement } from "../../shared/rpc";
 import type { ToastItem } from "../lib/toast";
+import { Avatar } from "./ui/avatar";
 
 const PLACEMENT: Record<ToastPlacement, { host: string; anim: string; out: string }> = {
 	topcenter: { host: "toast-host-topcenter", anim: "toast-in-top", out: "toast-out-top" },
@@ -30,6 +31,9 @@ export function ToastHost(props: { toasts: () => ToastItem[]; placement: ToastPl
 							<span class="toast-body">{t.body}</span>
 						) : (
 							<>
+								<Show when={t.avatar}>
+									<Avatar name={t.avatar ?? ""} size="sm" variant="ink" />
+								</Show>
 								<div class={"toast-content" + (t.onClick ? " toast-content--actionable" : "")} onClick={() => t.onClick?.()}>
 									<Show when={t.title}>
 										<h2 class="toast-title">{t.title}</h2>

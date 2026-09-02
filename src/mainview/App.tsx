@@ -54,11 +54,16 @@ export function App() {
 	const settings = createSettings(rpc);
 	const skills = createSkills(rpc);
 	const toast = createToast(() => settings.settings()?.toastDurationMs ?? DEFAULT_TOAST_DURATION_MS);
+	const selectPartner = (p: Parameters<typeof session.select>[0]) => {
+		// Switching chats invalidates all current notifications.
+		toast.dismissAll();
+		session.select(p);
+	};
 	const openPartner = (name: string) => {
 		const p = session.partners().find((x) => x.name === name);
 		if (p) {
 			transcript.reset();
-			session.select(p);
+			selectPartner(p);
 		}
 	};
 	const unread = createUnread(
@@ -74,24 +79,30 @@ export function App() {
 		session.bump();
 	});
 
-	rpc.addMessageListener("agent_end", ({ error: err, partner }) => {
+	rpc.addMessageListener("agent_end", async ({ error: err, partner }) => {
 		const errForSelected = err && partner === session.selected();
 		status.endTurn(partner);
 		// Errors render from the persisted turn/end entry (visibleHistory), so they survive
 		// restarts — the entry is already on disk before this event lands.
 		if (errForSelected) void session.refreshHistory();
 		if (partner !== session.selected()) {
+			// Refresh first so the notification can quote the partner's latest message.
+			await session.refreshPartners();
+			const p = session.partners().find((x) => x.name === partner);
+			const last = p?.lastMessageKind === "send_message" ? p.lastMessage : undefined;
 			toast.push(
 				err
 					? {
 							title: `${partner} ended with an error`,
-							body: "Click to open this chat and review",
+							body: err || last || "Click to open this chat and review",
 							onClick: () => openPartner(partner),
+							avatar: partner.charAt(0),
 						}
 					: {
 							title: `${partner} finished`,
-							body: "Click to view the conversation",
+							body: last || "Click to view the conversation",
 							onClick: () => openPartner(partner),
+							avatar: partner.charAt(0),
 						},
 				err ? "error" : "default",
 			);
@@ -179,7 +190,7 @@ export function App() {
 		// If the deleted Partner was selected: close it immediately (reset selection and prompt)
 		if (session.selected() === name) {
 			transcript.reset();
-			session.select(null);
+			selectPartner(null);
 		}
 		void session.refreshPartners();
 	}
@@ -192,7 +203,7 @@ export function App() {
 			void session.refreshPartners();
 			if (res.profile) {
 				transcript.reset();
-				session.select(res.profile);
+				selectPartner(res.profile);
 			}
 			return null;
 		}
@@ -253,7 +264,7 @@ export function App() {
 							selected={session.selected()}
 							onSelect={(name) => {
 								transcript.reset();
-								session.select(session.partners().find((p) => p.name === name) ?? null);
+								selectPartner(session.partners().find((p) => p.name === name) ?? null);
 							}}
 							unread={unread.unread}
 							onAddPartner={() => shell.setShowModal(true)}

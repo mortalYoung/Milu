@@ -1,4 +1,4 @@
-import { Check } from "lucide-solid";
+import { Check, CircleStop } from "lucide-solid";
 import { type Accessor, createEffect, createSignal, For, onCleanup, Show } from "solid-js";
 import { AnimatePresence, Motion, MotionConfigProvider } from "solid-motion";
 import type { EscalationStatus, SandboxMode } from "../../shared/rpc";
@@ -29,6 +29,7 @@ export interface Entry {
 	text: string;
 	time?: string;
 	error?: boolean;
+	aborted?: boolean;
 	escalation?: EscalationInfo;
 	command?: CommandInfo;
 	skill?: CommandInfo;
@@ -65,8 +66,8 @@ export function makeSkillEntry(item: { text: string; time: number; skill: Comman
 	return { id: nextId++, kind: "skill", text: item.text, time: fmtDateTime(new Date(item.time)), skill: { ...item.skill } };
 }
 
-export function makeSysEntry(text: string, error = false): Entry {
-	return { id: nextId++, kind: "sys", text, error };
+export function makeSysEntry(text: string, error = false, aborted = false): Entry {
+	return { id: nextId++, kind: "sys", text, error, ...(aborted ? { aborted: true } : {}) };
 }
 
 export function makeSepEntry(text: string): Entry {
@@ -371,6 +372,14 @@ export function Transcript(props: {
 											<div class="sys-error" data-chat-anchor-key={key} data-chat-flow-key={key}>
 												<span class="sys-error-tag">ERR</span>
 												<span class="sys-error-text">{e.text}</span>
+											</div>
+										);
+									}
+									if (e.aborted) {
+										return (
+											<div class="sys-stopped" data-chat-anchor-key={key} data-chat-flow-key={key}>
+												<CircleStop size={12} />
+												<span>{e.text}</span>
 											</div>
 										);
 									}
