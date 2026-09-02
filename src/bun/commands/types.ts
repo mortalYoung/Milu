@@ -45,6 +45,8 @@ export interface CommandContext {
 	runManualCompact(): Promise<{ ok: boolean; error?: string; compacted?: number }>;
 	onCommandRun(commandId: string): void;
 	onCommandDone(commandId: string): void;
+	/** Rotate to a fresh session file (archives the current one) and reset agent memory. */
+	resetSession(): Promise<{ ok: boolean; error?: string }>;
 }
 
 export interface CommandInvocation {

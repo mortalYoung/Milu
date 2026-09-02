@@ -131,6 +131,8 @@ export interface SessionStore {
 	forkTo(sourceDir: string, targetDir: string): Promise<void>;
 	evictRoot(dir: string): void;
 	rawEntries(dir: string): Promise<Entry[]>;
+	/** Start a fresh session file for the root, archiving the current one as its parent. Returns the new session id. */
+	rotateSession(dir: string): Promise<string>;
 }
 
 const SEND_MESSAGE_PROJECTOR = (entry: CustomEntry): AgentMessage[] | undefined => {
@@ -204,7 +206,7 @@ export function createSessionStore(): SessionStore {
 	async function openRootUncached(newRoot: string): Promise<RootState> {
 		const repo = new JsonlSessionRepo({ fs: createExecutionEnv(newRoot), sessionsRoot: newRoot });
 		const sessions = await repo.list();
-		const session = sessions.length > 0 ? await repo.open(sessions[sessions.length - 1]) : await repo.create({ cwd: newRoot });
+		const session = sessions.length > 0 ? await repo.open(sessions[0]) : await repo.create({ cwd: newRoot });
 		const state: RootState = { repo, session, entries: [] };
 		roots.set(newRoot, Promise.resolve(state));
 		await refreshEntries(state);
@@ -379,6 +381,15 @@ export function createSessionStore(): SessionStore {
 
 	return {
 		scope,
+		async rotateSession(dir) {
+			const state = await stateFor(dir);
+			const oldId = (await state.session.getMetadata()).id;
+			const session = await state.repo.create({ cwd: dir, parentSessionId: oldId });
+			state.session = session;
+			state.entries = [];
+			await refreshEntries(state);
+			return (await session.getMetadata()).id;
+		},
 		async visibleHistory(dir) {
 			const state = await stateFor(dir);
 			const decisions = new Map<string, { approved: boolean; reason?: string }>();

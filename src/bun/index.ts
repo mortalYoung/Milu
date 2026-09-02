@@ -467,6 +467,18 @@ function commandContextFor(entry: PartnerAgent): CommandContext {
 		},
 		persistWorkspace: (path) => persistWorkspace(entry.dir, path),
 		runManualCompact: () => runManualCompact(entry),
+		resetSession: async () => {
+			if (entry.agent.isStreaming) return { ok: false, error: "agent is running" };
+			try {
+				await session.rotateSession(entry.dir);
+				entry.agent.reset();
+				pendingShellIds.clear();
+				rpc.send.shell_update({});
+				return { ok: true };
+			} catch (error) {
+				return { ok: false, error: error instanceof Error ? error.message : String(error) };
+			}
+		},
 		onCommandRun: (commandId) => {
 			pendingCommandIds.add(commandId);
 			runningCommandPartners.add(entry.profile.name);

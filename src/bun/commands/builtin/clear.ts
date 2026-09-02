@@ -2,10 +2,11 @@ import type { CommandDefinition } from "../types";
 
 export const command: CommandDefinition = {
 	name: "clear",
-	description: "Clear the agent's context",
+	description: "Clear the conversation and start a fresh session (previous log is archived)",
 	kind: "execute",
 	async handler({ ctx }) {
-		ctx.agent.reset();
+		const res = await ctx.resetSession();
+		if (!res.ok) return { kind: "error", text: res.error ?? "clear failed" };
 		return { kind: "success" };
 	},
 };

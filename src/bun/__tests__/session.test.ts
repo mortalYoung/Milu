@@ -185,4 +185,25 @@ describe("session store (pi JSONL backend)", () => {
 		expect((await session.visibleHistory(fork)).map((m) => m.text)).toEqual(["q1", "a1", "q2", "a2"]);
 		expect((await session.deriveMessages(fork)).map((m) => m.role)).toEqual((await session.deriveMessages(source)).map((m) => m.role));
 	});
+
+	it("rotateSession archives the current log and starts a fresh one", async () => {
+		const dir = await tempDir();
+		const session = createSessionStore();
+		await session.scope(dir).appendUser("old", 1);
+		await session.scope(dir).appendSendMessage("old reply", {}, 2);
+		expect((await session.visibleHistory(dir)).map((m) => m.text)).toEqual(["old", "old reply"]);
+
+		const newId = await session.rotateSession(dir);
+		expect(newId).toBeTruthy();
+		expect(await session.visibleHistory(dir)).toEqual([]);
+		expect(await session.rawEntries(dir)).toEqual([]);
+
+		// new writes land in the fresh file
+		await session.scope(dir).appendUser("new", 3);
+		expect((await session.visibleHistory(dir)).map((m) => m.text)).toEqual(["new"]);
+
+		// reopening on the same root resumes the fresh (newest) session, old log stays archived
+		const reopened = createSessionStore();
+		expect((await reopened.visibleHistory(dir)).map((m) => m.text)).toEqual(["new"]);
+	});
 });
