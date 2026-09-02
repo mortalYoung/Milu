@@ -29,7 +29,7 @@ import { SkillsView } from "./pages/SkillsView";
 export function App() {
 	const metrics = createMetrics(rpc);
 	const session = createSession(rpc, {
-		onSessionLoaded: () => void metrics.refresh(),
+		onSessionLoaded: () => void metrics.mutate(session.selected()),
 	});
 	const status = createAgentStatus(rpc, () => session.selected());
 	const origin = createOriginSession(rpc, () => session.selected());
@@ -102,7 +102,7 @@ export function App() {
 		}
 		session.bump();
 		status.calibrate();
-		void metrics.refresh();
+		void metrics.mutate(session.selected());
 	});
 
 	rpc.addMessageListener("agent_message", () => {
@@ -115,7 +115,7 @@ export function App() {
 	rpc.addMessageListener("trajectory_update", () => {
 		trajectory.invalidate();
 
-		void metrics.refresh();
+		void metrics.mutate(session.selected());
 	});
 
 	rpc.addMessageListener("workspace_update", () => {
@@ -140,7 +140,7 @@ export function App() {
 		void session.refreshHistory();
 		void commands.refresh();
 		status.calibrate();
-		void metrics.refresh();
+		void metrics.mutate(session.selected());
 	});
 
 	rpc.addMessageListener("skill_update", () => {
@@ -215,7 +215,7 @@ export function App() {
 	void commands.refresh();
 	void rpc.request.list_editors({}).then((res) => setEditors(res.editors));
 	status.calibrate();
-	void metrics.refresh();
+	void metrics.mutate(session.selected());
 
 	onMount(() => {
 		warmUpMarkdown();
@@ -291,8 +291,8 @@ export function App() {
 							thinkingLevels={status.thinkingLevels()}
 							onSetThinkingLevel={(level) => void status.onSetThinkingLevel(level)}
 							onEscalationRespond={(id, approved) => void rpc.request.sandbox_respond({ id, approved })}
-							contextUsage={metrics.contextUsage()}
-							stats={metrics.stats()}
+							contextUsage={metrics.data.contextUsage}
+							stats={metrics.data.stats}
 							workingFor={status.workingFor}
 							draft={session.selected() ? (composer.drafts()[session.selected()!] ?? "") : ""}
 							onDraftChange={composer.change}

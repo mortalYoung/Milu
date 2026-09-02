@@ -366,12 +366,12 @@ export type AppRPCSchema = __schema<{
 			};
 
 			context_usage: {
-				params: {};
+				params: { name: string };
 				response: ContextSnapshot;
 			};
 
 			stats: {
-				params: {};
+				params: { name: string };
 				response: SessionStats;
 			};
 

@@ -982,12 +982,14 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				return { ok: true };
 			},
 
-			context_usage: async () => {
-				const target = viewPartner;
-				const entry = target ? await agents.get(target.name) : undefined;
+			context_usage: async ({ name }) => {
+				const settings = await loadSettings();
+				const profile = (await listPartners(settings)).find((p) => p.name === name);
+				const dir = profile ? getPartnerDir(settings, name) : null;
+				const entry = profile ? await agents.get(name) : undefined;
 				return projectSnapshot(entry?.agent.context ?? new Context(), {
 					session,
-					dir: target?.dir ?? null,
+					dir,
 					systemPrompt: entry?.agent.systemPrompt,
 					tools: entry?.agent.tools,
 				});
@@ -1048,10 +1050,12 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				if (!profile) return { days: [] };
 				return { days: dailyActivity(await session.rawEntries(getPartnerDir(settings, name)), weeks) };
 			},
-			stats: async () => {
-				const target = viewPartner;
-				const entry = target ? await agents.get(target.name) : undefined;
-				const usage = target ? aggregateUsage(await session.rawEntries(target.dir)) : null;
+			stats: async ({ name }) => {
+				const settings = await loadSettings();
+				const profile = (await listPartners(settings)).find((p) => p.name === name);
+				const dir = profile ? getPartnerDir(settings, name) : null;
+				const entry = profile ? await agents.get(name) : undefined;
+				const usage = dir ? aggregateUsage(await session.rawEntries(dir)) : null;
 				return { usage, runtime: entry?.agent.runtimeStats ?? { runs: 0, avgTtftMs: null, avgTps: null, lastTtftMs: null } };
 			},
 			get_settings: async () => {
