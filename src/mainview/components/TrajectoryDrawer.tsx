@@ -2,6 +2,7 @@ import { createVirtualizer } from "@tanstack/solid-virtual";
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import type { TrajectoryBlock, TrajectoryRecord, TrajectoryUsage } from "../../shared/rpc";
 import { stringifyArgs, type TimelineNode, timelineNodes } from "../../shared/trajectory";
+import type { TrajectoryMode } from "../lib/trajectory";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const fmtDateTime = (ts: number) => {
@@ -216,8 +217,8 @@ export function TrajectoryDrawer(props: {
 	onOpenChange: (open: boolean) => void;
 	records: TrajectoryRecord[];
 	total: number;
-	surfaceOnly: boolean;
-	onToggleSurface: () => void;
+	mode: TrajectoryMode;
+	onModeChange: (mode: TrajectoryMode) => void;
 	loading: boolean;
 	hasMore: boolean;
 	loadingOlder: boolean;
@@ -228,8 +229,8 @@ export function TrajectoryDrawer(props: {
 			<DrawerContent
 				records={props.records}
 				total={props.total}
-				surfaceOnly={props.surfaceOnly}
-				onToggleSurface={props.onToggleSurface}
+				mode={props.mode}
+				onModeChange={props.onModeChange}
 				loading={props.loading}
 				hasMore={props.hasMore}
 				loadingOlder={props.loadingOlder}
@@ -243,8 +244,8 @@ export function TrajectoryDrawer(props: {
 function DrawerContent(props: {
 	records: TrajectoryRecord[];
 	total: number;
-	surfaceOnly: boolean;
-	onToggleSurface: () => void;
+	mode: TrajectoryMode;
+	onModeChange: (mode: TrajectoryMode) => void;
 	loading: boolean;
 	hasMore: boolean;
 	loadingOlder: boolean;
@@ -356,7 +357,10 @@ function DrawerContent(props: {
 				}
 				continue;
 			}
-			if (r.kind === "custom" && r.customType === "send_message" && (r.data as { toolCallId?: unknown } | null)?.toolCallId === "harness-delivery") {
+			// harness-delivery send_messages duplicate the assistant text already shown by the
+			// assistant row in origin/slice modes. In view mode that assistant row is filtered
+			// out, so the heartbeat IS the only chat-visible reply and must stay.
+			if (props.mode !== "view" && r.kind === "custom" && r.customType === "send_message" && (r.data as { toolCallId?: unknown } | null)?.toolCallId === "harness-delivery") {
 				continue;
 			}
 			if (r.kind === "custom" && r.customType === "tool/call") {
@@ -818,14 +822,18 @@ function DrawerContent(props: {
 				<div class="traj-head">
 					<span class="traj-title">Trajectory</span>
 					<span class="traj-count">{props.loading ? "…" : `all ${props.total} entries · ${turns().length} turns`}</span>
-					<button
-						type="button"
-						class={"traj-surface-toggle" + (props.surfaceOnly ? " on" : "")}
-						onClick={props.onToggleSurface}
-						title={props.surfaceOnly ? "Show the whole log" : "Show surface entries only"}
-					>
-						surface
-					</button>
+					<div class="traj-mode-toggle">
+						{(["origin", "slice", "view"] as const).map((m) => (
+							<button
+								type="button"
+								class={"traj-mode" + (props.mode === m ? " on" : "")}
+								onClick={() => props.onModeChange(m)}
+								title={m === "origin" ? "Whole log" : m === "slice" ? "Model context (slice)" : "Chat view"}
+							>
+								{m}
+							</button>
+						))}
+					</div>
 					<button class="traj-close" title="Close" onClick={props.onClose}>
 						×
 					</button>

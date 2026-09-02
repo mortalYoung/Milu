@@ -1116,14 +1116,17 @@ body::before {
 	.traj-count {
 		@apply ml-auto font-mono text-[10px] text-seal;
 	}
-	.traj-surface-toggle {
-		@apply flex-none font-mono text-[9px] uppercase tracking-[0.12em] text-body-muted border border-hairline rounded-[4px] px-1.5 py-[2px] cursor-pointer bg-transparent transition-colors;
+	.traj-mode-toggle {
+		@apply flex-none flex items-center gap-0.5 rounded-[4px] border border-hairline p-[1px];
 	}
-	.traj-surface-toggle:hover {
-		@apply text-ink border-ink-soft;
+	.traj-mode {
+		@apply font-mono text-[9px] uppercase tracking-[0.12em] text-body-muted rounded-[3px] px-1.5 py-[1px] cursor-pointer bg-transparent transition-colors;
 	}
-	.traj-surface-toggle.on {
-		@apply text-seal border-seal/40;
+	.traj-mode:hover {
+		@apply text-ink;
+	}
+	.traj-mode.on {
+		@apply text-paper bg-ink;
 	}
 	.traj-close {
 		@apply font-sans text-[15px] leading-none text-body-muted hover:text-ink cursor-pointer bg-transparent border-0 p-0 ml-2;

@@ -17,6 +17,7 @@ import { createCommandDirectory } from "./lib/commands";
 import { createComposer } from "./lib/composer";
 import { COPIED_ICON_SVG, COPY_ICON_SVG, warmUpMarkdown } from "./lib/markdown";
 import { createMetrics } from "./lib/metrics";
+import { createOriginSession } from "./lib/origin-session";
 import type { PartnerFormData } from "./lib/partner-form";
 import { rpc } from "./lib/rpc";
 import { createSession } from "./lib/session";
@@ -42,7 +43,8 @@ export function App() {
 		onEntriesChanged: () => notifyEntriesChanged?.(),
 	});
 	const status = createAgentStatus(rpc, () => session.selected());
-	const trajectory = createTrajectory(rpc, () => session.selected());
+	const origin = createOriginSession(rpc, () => session.selected());
+	const trajectory = createTrajectory(rpc, () => session.selected(), origin);
 	const transcript = createTranscriptController({
 		entries: session.entries,
 		onFlash: trajectory.flash,
@@ -365,8 +367,8 @@ export function App() {
 				onOpenChange={trajectory.setOpen}
 				records={trajectory.records()}
 				total={trajectory.total()}
-				surfaceOnly={trajectory.surfaceOnly()}
-				onToggleSurface={trajectory.toggleSurface}
+				mode={trajectory.mode()}
+				onModeChange={trajectory.changeMode}
 				loading={trajectory.loading()}
 				hasMore={trajectory.hasMore()}
 				loadingOlder={trajectory.loadingOlder()}
