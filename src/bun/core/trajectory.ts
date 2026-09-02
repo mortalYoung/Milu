@@ -1,3 +1,10 @@
+/**
+ * Timeline folding — a fourth derived view over the Origin (the JSONL log), used by the
+ * Trajectory drawer. It is NOT part of the Origin/Slice/View trio (see
+ * docs/2026-09-02-origin-slice-view-naming.md): Slice is the model-visible projection,
+ * View is the human chat transcript, and Timeline is the debug/trace view that shows every
+ * Origin entry (optionally filtered to the Slice via surfaceOnly).
+ */
 import type { Entry } from "@earendil-works/pi-agent-core";
 import type { TrajectoryBlock, TrajectoryRecord, TrajectoryUsage, UsageTotals } from "../../shared/rpc";
 

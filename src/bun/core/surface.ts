@@ -1,3 +1,12 @@
+/**
+ * Slice folding — Origin (the JSONL log) → Slice (the model-visible projection).
+ *
+ * Concept naming (see docs/2026-09-02-origin-slice-view-naming.md): Origin is the immutable
+ * log; Slice is the set of Origin entries the model sees (surface.nodes). This module folds the
+ * Origin and applies logged `surface_op` records (slice rewrites: compaction checkpoints and
+ * tool-result pruning). The derived prompt chain (deriveMessages) is a further projection of
+ * the Slice — it is not the Slice itself.
+ */
 import type { AgentMessage, Entry } from "@earendil-works/pi-agent-core";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import type { RequestTool } from "../../shared/rpc";
