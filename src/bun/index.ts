@@ -6,7 +6,7 @@ import { join, sep } from "node:path";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import { getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
 import { ApplicationMenu, BrowserView, BrowserWindow, Utils } from "electrobun/main";
-import type { AppRPCSchema } from "../shared/rpc";
+import type { AppRPCSchema, TrajectoryRecord } from "../shared/rpc";
 import { loadCustomCommands, mergeCommandDefinitions } from "./commands/custom";
 import { defaultCommands } from "./commands/defaults";
 import { createCommandRegistry } from "./commands/registry";
@@ -52,6 +52,7 @@ import { createPartner, deletePartner, listPartners, PartnerError, type PartnerI
 import type { EscalationDecision, EscalationRequest, SandboxMode } from "./permission";
 import { isSandboxMode, SandboxManager } from "./permission";
 import { createSessionStore, type SessionScope } from "./persist";
+import { EVENTS } from "./persist/events";
 import { scanSkillsRoot } from "./skills/filesystem";
 import { SKILL_NAME_RE } from "./skills/frontmatter";
 import { getSkill, listSkills } from "./skills/registry";
@@ -172,6 +173,33 @@ const agents = new Map<string, Promise<PartnerAgent>>();
 
 let skillSeq = 0;
 let shellSeq = 0;
+
+/** Trajectory view cache: fold+dedupe(+surface filter) is expensive, paging should not redo it. */
+interface TrajectoryViewCache {
+	signature: string;
+	records: TrajectoryRecord[];
+	total: number;
+}
+const trajectoryViewCache = new Map<string, TrajectoryViewCache>();
+const TRAJECTORY_CACHE_MAX = 64;
+
+type HistoryView = Awaited<ReturnType<typeof session.visibleHistory>>;
+interface HistoryViewCache {
+	signature: string;
+	items: HistoryView;
+}
+const historyViewCache = new Map<string, HistoryViewCache>();
+const HISTORY_CACHE_MAX = 64;
+function firstSeqAtOrAfter(records: TrajectoryRecord[], before: number): number {
+	let lo = 0;
+	let hi = records.length;
+	while (lo < hi) {
+		const mid = (lo + hi) >>> 1;
+		if (records[mid].seq < before) lo = mid + 1;
+		else hi = mid;
+	}
+	return lo;
+}
 
 function pendingEscalationCount(partner: string): number {
 	let n = 0;
@@ -331,6 +359,9 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 		await recordPrompt(dir, agent.systemPrompt);
 	}
 
+	// Close orphan rows (crash / hard stop leftovers) so visibleHistory is a pure log projection.
+	await reconcileTerminalStates(dir);
+
 	const surf = await session.surface(dir);
 	agent.restore(surf.replaceGeneration > 0 ? await session.deriveMessages(dir) : await session.restoreMessages(dir));
 	return { profile, dir, scope, agent };
@@ -442,6 +473,61 @@ async function maybeAutoCompact(entry: PartnerAgent): Promise<void> {
 	}
 }
 
+/**
+ * Persist terminal states for rows the log never closed (crash / hard stop): commands and
+ * shells without a Done become `interrupted`, escalations without a decision that are not
+ * resumable become `dropped`. Run once per partner at startup, before the agent does anything,
+ * so visibleHistory is a pure log projection and needs no runtime overlay.
+ */
+async function reconcileTerminalStates(dir: string): Promise<{ commands: number; shells: number; escalations: number }> {
+	const entries = await session.rawEntries(dir);
+	const commandDones = new Set<string>();
+	const shellDones = new Set<string>();
+	const escalationDecisions = new Set<string>();
+	for (const entry of entries) {
+		if (entry.type !== "custom") continue;
+		const custom = entry as { customType?: string; data?: { commandId?: unknown; shellId?: unknown; escalationId?: unknown } };
+		if (custom.customType === EVENTS.commandDone && custom.data?.commandId != null) commandDones.add(String(custom.data.commandId));
+		else if (custom.customType === EVENTS.shellDone && custom.data?.shellId != null) shellDones.add(String(custom.data.shellId));
+		else if (custom.customType === EVENTS.escalationDecision && custom.data?.escalationId != null) escalationDecisions.add(String(custom.data.escalationId));
+	}
+	const scope = session.scope(dir);
+	const ts = Date.now();
+	let commands = 0;
+	let shells = 0;
+	let escalations = 0;
+	for (const entry of entries) {
+		if (entry.type !== "custom") continue;
+		const custom = entry as { customType?: string; data?: { commandId?: unknown; shellId?: unknown; command?: unknown; escalationId?: unknown } };
+		if (custom.customType === EVENTS.commandRun) {
+			const id = custom.data?.commandId != null ? String(custom.data.commandId) : null;
+			if (id && !commandDones.has(id)) {
+				await scope.appendCommandDone({ commandId: id, kind: "interrupted" }, ts);
+				commands++;
+			}
+		} else if (custom.customType === EVENTS.shellRun) {
+			const id = custom.data?.shellId != null ? String(custom.data.shellId) : null;
+			if (id && !shellDones.has(id)) {
+				const command = String(custom.data?.command ?? "");
+				await scope.appendShellDone({ shellId: id, command, kind: "interrupted" }, ts);
+				shells++;
+			}
+		} else if (custom.customType === EVENTS.escalationRequest) {
+			const id = custom.data?.escalationId != null ? String(custom.data.escalationId) : null;
+			if (id && !escalationDecisions.has(id)) {
+				const request = await session.escalationRequest(dir, id);
+				const resumable = request?.toolCallId ? (await session.resumeTurn(dir, request.toolCallId)) !== null : false;
+				if (!resumable) {
+					await scope.appendEscalationRecord("escalation/decision", { escalationId: id, approved: false, dropped: true }, ts);
+					escalations++;
+				}
+			}
+		}
+	}
+	if (commands + shells + escalations > 0) console.log(`reconcile ${dir}: ${commands} commands, ${shells} shells, ${escalations} escalations`);
+	return { commands, shells, escalations };
+}
+
 function commandContextFor(entry: PartnerAgent): CommandContext {
 	return {
 		partner: entry.profile.name,
@@ -519,32 +605,22 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 			history: async () => {
 				const target = viewPartner;
 				if (!target) return { items: [] };
-				const tRead = performance.now();
-				const items = await session.visibleHistory(target.dir);
-
-				for (const item of items) {
-					if (item.kind !== "command" || !item.command || item.command.status !== "running") continue;
-					if (!pendingCommandIds.has(item.command.commandId)) item.command.status = "interrupted";
+				// Terminal states (interrupted/dropped) are persisted by startup reconciliation, so
+				// this is a pure log projection — cache by log signature, no runtime overlay needed.
+				const entries = await session.rawEntries(target.dir);
+				const lastId = entries.length > 0 ? entries[entries.length - 1].id : "";
+				const signature = `${entries.length}:${lastId}`;
+				const key = `history:${target.dir}`;
+				let cached = historyViewCache.get(key);
+				if (!cached || cached.signature !== signature) {
+					cached = { signature, items: await session.visibleHistory(target.dir) };
+					historyViewCache.set(key, cached);
+					if (historyViewCache.size > HISTORY_CACHE_MAX) {
+						const oldest = historyViewCache.keys().next().value;
+						if (oldest !== undefined) historyViewCache.delete(oldest);
+					}
 				}
-				for (const item of items) {
-					if (item.kind !== "shell" || !item.command || item.command.status !== "running") continue;
-					if (!pendingShellIds.has(item.command.commandId)) item.command.status = "interrupted";
-				}
-				const tResolve = performance.now();
-
-				for (const item of items) {
-					if (item.kind !== "escalation" || !item.escalation || item.escalation.status !== "pending") continue;
-					if (pendingSandboxConfirms.has(item.escalation.id)) continue;
-					const request = await session.escalationRequest(target.dir, item.escalation.id);
-					const resumable = request?.toolCallId ? (await session.resumeTurn(target.dir, request.toolCallId)) !== null : false;
-					if (!resumable) item.escalation.status = "dropped";
-				}
-				const tEnd = performance.now();
-
-				console.log(
-					`[timing] bun history: read=${(tResolve - tRead).toFixed(1)}ms escalate=${(tEnd - tResolve).toFixed(1)}ms total=${(tEnd - tRead).toFixed(1)}ms items=${items.length} partner=${target.name}`,
-				);
-				return { items };
+				return { items: cached.items };
 			},
 
 			get_status: async () => {
@@ -902,25 +978,43 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				const profile = (await listPartners(settings)).find((p) => p.name === name);
 				if (!profile) return { records: [], hasMore: false, total: 0 };
 				const dir = getPartnerDir(settings, name);
-				const allRecords = fold(await session.rawEntries(dir));
-				const total = allRecords.length;
-				// Header dedup is a display rule (tool-set content repeats across steps); it lives
-				// server-side so paging cannot resurrect a header that was already deduplicated.
-				let records = dedupeRequestHeaders(allRecords);
+				const entries = await session.rawEntries(dir);
+
+				// Surface folding is another full log replay; snapshot its ids once per request and
+				// include replaceGeneration in the cache signature so compaction invalidates the view.
+				let surfaceGen = 0;
+				let surfaceIds: Set<string> | undefined;
 				if (surfaceOnly) {
 					try {
 						const surface = await session.surface(dir);
-						const ids = new Set(surface.nodes.map((n) => n.id));
-						records = records.filter((r) => ids.has(r.entryId));
+						surfaceGen = surface.replaceGeneration;
+						surfaceIds = new Set(surface.nodes.map((n) => n.id));
 					} catch {
 						// Surface fold can fail mid-compaction; fall back to the whole log instead of an empty view.
+						surfaceOnly = false;
 					}
 				}
-				let end = records.length;
-				if (before != null) {
-					const i = records.findIndex((r) => r.seq >= before);
-					if (i !== -1) end = i;
+
+				const lastId = entries.length > 0 ? entries[entries.length - 1].id : "";
+				const signature = `${entries.length}:${lastId}:${surfaceOnly ? surfaceGen : "all"}`;
+				const cacheKey = `${dir}:${surfaceOnly ? "s" : "a"}`;
+				let cached = trajectoryViewCache.get(cacheKey);
+				if (!cached || cached.signature !== signature) {
+					const allRecords = fold(entries);
+					// Header dedup is a display rule (tool-set content repeats across steps); it lives
+					// server-side so paging cannot resurrect a header that was already deduplicated.
+					let records = dedupeRequestHeaders(allRecords);
+					if (surfaceOnly && surfaceIds) records = records.filter((r) => surfaceIds.has(r.entryId));
+					cached = { signature, records, total: allRecords.length };
+					trajectoryViewCache.set(cacheKey, cached);
+					if (trajectoryViewCache.size > TRAJECTORY_CACHE_MAX) {
+						const oldest = trajectoryViewCache.keys().next().value;
+						if (oldest !== undefined) trajectoryViewCache.delete(oldest);
+					}
 				}
+
+				const { records, total } = cached;
+				const end = before == null ? records.length : firstSeqAtOrAfter(records, before);
 				let start = Math.max(0, end - limit);
 				// Align the page start to a natural boundary (a user question or an assistant reply),
 				// so the top of the loaded window isn't a mid-turn marker like request/header.
@@ -1047,6 +1141,9 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 
 					session.evictRoot(getPartnerDir(settings, name));
 					agents.delete(name);
+					// Drop cached views for the deleted partner's dir.
+					for (const key of [...historyViewCache.keys()]) if (key === `history:${getPartnerDir(settings, name)}`) historyViewCache.delete(key);
+					for (const key of [...trajectoryViewCache.keys()]) if (key.startsWith(`${getPartnerDir(settings, name)}:`)) trajectoryViewCache.delete(key);
 					if (viewPartner?.name === name) viewPartner = null;
 					return { ok: true };
 				} catch (error) {

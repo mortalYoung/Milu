@@ -93,7 +93,7 @@ export interface CommandRunEventData {
 
 export interface CommandDoneEventData {
 	commandId: string;
-	kind: "success" | "error";
+	kind: "success" | "error" | "interrupted";
 	text?: string;
 }
 
@@ -105,7 +105,7 @@ export interface ShellRunEventData {
 export interface ShellDoneEventData {
 	shellId: string;
 	command: string;
-	kind: "success" | "error";
+	kind: "success" | "error" | "interrupted";
 	text?: string;
 	exitCode?: number;
 }
