@@ -1,9 +1,3 @@
-/**
- * App — the composition root (controller). Composes the state primitives from
- * lib/, wires RPC events into them, and renders the shell: icon rail + chat /
- * settings views. Partners are created via a modal and saved as folders (see src/bun/partners.ts).
- */
-
 import { createEffect, createSignal, onMount } from "solid-js";
 import { AppRail } from "./components/AppRail";
 import { PartnerDetailsDialog } from "./components/PartnerDetailsDialog";
@@ -33,23 +27,20 @@ import { type SettingsData, SettingsView } from "./pages/SettingsView";
 import { SkillsView } from "./pages/SkillsView";
 
 export function App() {
-	// ————— state primitives —————
 	const metrics = createMetrics(rpc);
-	let notifyEntriesChanged: (() => void) | null = null;
 	const session = createSession(rpc, {
-		// The session is loaded now (entries restored from JSONL): refresh the context meter too,
-		// so persisted usage survives restart instead of sitting at 0% until the next turn.
 		onSessionLoaded: () => void metrics.refresh(),
-		onEntriesChanged: () => notifyEntriesChanged?.(),
 	});
 	const status = createAgentStatus(rpc, () => session.selected());
 	const origin = createOriginSession(rpc, () => session.selected());
+	session.attachOrigin(origin);
 	const trajectory = createTrajectory(rpc, () => session.selected(), origin);
 	const transcript = createTranscriptController({
 		entries: session.entries,
+		sourceHasMore: () => origin.hasMore(),
+		onLoadSourcePage: () => session.loadOlderHistory(),
 		onFlash: trajectory.flash,
 	});
-	notifyEntriesChanged = () => transcript.syncToBottom();
 	const composer = createComposer(() => session.selected());
 	const commands = createCommandDirectory(rpc);
 	const shell = createShell();
@@ -57,9 +48,8 @@ export function App() {
 	const skills = createSkills(rpc);
 	const toast = createToast(() => settings.settings()?.toastDurationMs ?? DEFAULT_TOAST_DURATION_MS);
 	const selectPartner = (p: Parameters<typeof session.select>[0]) => {
-		// Clicking the already-selected partner must not re-request history.
 		if (p?.name === session.selected()) return;
-		// Switching chats invalidates all current notifications.
+
 		toast.dismissAll();
 		session.select(p);
 	};
@@ -77,7 +67,7 @@ export function App() {
 	);
 
 	const [editors, setEditors] = createSignal<{ id: string; name: string }[]>([]);
-	// ————— RPC events —————
+
 	rpc.addMessageListener("agent_turn", ({ turn: t, partner }) => {
 		const drained = status.beginTurn(partner);
 		if (drained) session.push(makeSysEntry(`✳ follow-up · turn ${t}`));
@@ -87,11 +77,9 @@ export function App() {
 	rpc.addMessageListener("agent_end", async ({ error: err, partner }) => {
 		const errForSelected = err && partner === session.selected();
 		status.endTurn(partner);
-		// Errors render from the persisted turn/end entry (visibleHistory), so they survive
-		// restarts — the entry is already on disk before this event lands.
+
 		if (errForSelected) void session.refreshHistory();
 		if (partner !== session.selected()) {
-			// Refresh first so the notification can quote the partner's latest message.
 			await session.refreshPartners();
 			const p = session.partners().find((x) => x.name === partner);
 			const last = p?.lastMessageKind === "send_message" ? p.lastMessage : undefined;
@@ -118,27 +106,23 @@ export function App() {
 	});
 
 	rpc.addMessageListener("agent_message", () => {
-		// send_message is persisted; both chat and trajectory may have new content
 		trajectory.invalidate();
 		void session.refreshHistory();
-		// …and the chat-list row preview (last message) may have changed
+
 		void session.refreshPartners();
 	});
 
 	rpc.addMessageListener("trajectory_update", () => {
-		// A turn has been persisted; invalidate the trajectory cache (next click fetches the latest)
 		trajectory.invalidate();
-		// …and refresh the context meter (usage is persisted per turn)
+
 		void metrics.refresh();
 	});
 
 	rpc.addMessageListener("workspace_update", () => {
-		// The workspace was set via set_workspace; refetch status to show it near the input
 		status.calibrate();
 	});
 
 	rpc.addMessageListener("sandbox_mode_update", () => {
-		// The mode changed (composer select / partner switch); refetch status to stay in sync
 		status.calibrate();
 	});
 
@@ -148,13 +132,11 @@ export function App() {
 
 	rpc.addMessageListener("escalation_update", () => {
 		void session.refreshHistory();
-		// Recalibrate busy: a request pauses the run (idle until the human clicks), a decision
-		// resumes it (writing returns) — get_status reports the view-facing streaming value.
+
 		status.calibrate();
 	});
 
 	rpc.addMessageListener("command_update", () => {
-		// command/run + command/done are persisted; the command row flips running → success/error.
 		void session.refreshHistory();
 		void commands.refresh();
 		status.calibrate();
@@ -162,7 +144,6 @@ export function App() {
 	});
 
 	rpc.addMessageListener("skill_update", () => {
-		// skill/run + skill/done are persisted; the skill row appears and flips running → success/error.
 		void session.refreshHistory();
 	});
 
@@ -174,7 +155,6 @@ export function App() {
 		void skills.refresh(session.selected());
 	});
 
-	// ————— user input —————
 	function onSend(text: string) {
 		if (status.isBusyForSelected()) {
 			session.push(makeSysEntry("✳ follow-up queued"));
@@ -182,17 +162,14 @@ export function App() {
 		}
 		transcript.scrollToBottom(true);
 		void rpc.request.chat({ text }).then((res) => {
-			// Each partner runs its own agent: a message to the selected chat is that agent's fresh
-			// run or its own follow-up (queued by the outer loop when busy) — never cross-partner.
 			if (res.accepted) composer.clear(session.selected()!);
 			void session.refreshHistory();
 		});
 	}
 
-	// ————— Partner deletion —————
 	async function onDeletePartner(name: string) {
 		await rpc.request.delete_partner({ name });
-		// If the deleted Partner was selected: close it immediately (reset selection and prompt)
+
 		if (session.selected() === name) {
 			transcript.reset();
 			selectPartner(null);
@@ -200,7 +177,6 @@ export function App() {
 		void session.refreshPartners();
 	}
 
-	// ————— Partner creation —————
 	async function onCreatePartner(data: PartnerFormData): Promise<string | null> {
 		const res = await rpc.request.create_partner(data);
 		if (res.ok) {
@@ -215,10 +191,6 @@ export function App() {
 		return res.error ?? "Failed to create partner";
 	}
 
-	// ————— theme —————
-	// Apply the settings theme to <html> as color-scheme (the light-dark() tokens resolve against
-	// it). The first apply on boot is silent; later switches cross-fade via the .theme-flip class
-	// (200ms, see style.css) so the swap reads as one quiet change instead of a hard cut.
 	let flipTimer: ReturnType<typeof setTimeout> | undefined;
 	createEffect(() => {
 		const theme = settings.settings()?.theme ?? "system";
@@ -237,7 +209,6 @@ export function App() {
 		void skills.refresh(session.selected());
 	});
 
-	// ————— mount —————
 	void session.refreshHistory();
 	void session.refreshPartners();
 	void settings.refresh();
@@ -245,11 +216,10 @@ export function App() {
 	void rpc.request.list_editors({}).then((res) => setEditors(res.editors));
 	status.calibrate();
 	void metrics.refresh();
-	// Highlighter warm-up: deferred past first paint so cold start doesn't compete with the lazy
-	// shiki chunk; once built, `renderMarkdown` highlights synchronously for every later render.
+
 	onMount(() => {
 		warmUpMarkdown();
-		// Copy buttons injected into rendered markdown (`.md-copy` inside `.md-code`).
+
 		document.addEventListener("click", (event) => {
 			const target = event.target as HTMLElement | null;
 			const button = target?.closest?.(".md-copy");
@@ -271,7 +241,6 @@ export function App() {
 		});
 	});
 
-	// ————— shell —————
 	return (
 		<div class="relative flex flex-1 min-h-0">
 			<AppRail
@@ -343,7 +312,6 @@ export function App() {
 				)}
 			</main>
 
-			{/* Settings: dialog */}
 			<Dialog open={shell.settingsOpen()} onOpenChange={shell.setSettingsOpen}>
 				<DialogContent class="w-[820px] max-w-none h-[640px] grid-rows-[auto_1fr] overflow-hidden bg-letter border-print-line p-0">
 					<DialogHeader class="px-4 pt-4">

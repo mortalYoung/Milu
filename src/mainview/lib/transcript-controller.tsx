@@ -1,4 +1,4 @@
-import { type Accessor, createContext, createMemo, createSignal, type JSX, useContext } from "solid-js";
+import { type Accessor, createContext, createEffect, createMemo, createSignal, type JSX, useContext } from "solid-js";
 import type { Entry } from "../layouts/Transcript";
 import { classifyReader, compensatedTop, distanceToBottom, floorTop, flowTop, isAtBottom, type ScrollAnchor } from "./scroll-anchor";
 
@@ -12,13 +12,19 @@ export interface TranscriptController {
 	scrollToBottom: (force?: boolean) => void;
 	locate: (id: number) => void;
 	loadEarlier: () => void;
-	syncToBottom: () => void;
 	reset: () => void;
 	attach: (container: HTMLElement, inner: HTMLElement) => void;
 	detach: () => void;
 }
 
-export function createTranscriptController(props: { entries: Accessor<Entry[]>; onFlash?: (id: number) => void }): TranscriptController {
+export function createTranscriptController(props: {
+	entries: Accessor<Entry[]>;
+	onFlash?: (id: number) => void;
+
+	sourceHasMore?: Accessor<boolean>;
+
+	onLoadSourcePage?: () => Promise<boolean>;
+}): TranscriptController {
 	const [pageStart, setPageStart] = createSignal(0);
 	const [loadEarlierPending, setLoadEarlierPending] = createSignal(false);
 	const [showBackToBottom, setShowBackToBottom] = createSignal(false);
@@ -78,7 +84,12 @@ export function createTranscriptController(props: { entries: Accessor<Entry[]>; 
 		if (!pageInitialized) return all.slice(Math.max(0, all.length - PAGE_SIZE));
 		return start > 0 ? all.slice(start) : all;
 	});
-	const hasMoreOlder = () => (pageInitialized ? pageStart() > 0 : blocks().length > PAGE_SIZE);
+	const hasMoreOlder = () => {
+		if (blocks().length === 0) return false;
+		if (pageStart() > 0) return true;
+		if (!pageInitialized && blocks().length > PAGE_SIZE) return true;
+		return props.sourceHasMore?.() ?? false;
+	};
 
 	const writeScrollTop = (el: HTMLElement, top: number) => {
 		el.scrollTop = top;
@@ -126,20 +137,38 @@ export function createTranscriptController(props: { entries: Accessor<Entry[]>; 
 
 	const loadEarlier = async (): Promise<void> => {
 		if (pendingLoad) return;
-		if (!pageInitialized) {
+		if (!pageInitialized && blocks().length > 0) {
 			setPageStart(Math.max(0, blocks().length - PAGE_SIZE));
 			pageInitialized = true;
 		}
-		if (pageStart() <= 0) return;
+		if (pageStart() > 0) {
+			pendingLoad = true;
+			setLoadEarlierPending(true);
+			try {
+				await Promise.resolve();
+				setPageStart((start) => Math.max(0, start - PAGE_SIZE));
+				queueMicrotask(compensateAnchor);
+			} finally {
+				pendingLoad = false;
+				setLoadEarlierPending(false);
+			}
+			return;
+		}
+		if (!props.sourceHasMore?.() || !props.onLoadSourcePage) return;
 		pendingLoad = true;
 		setLoadEarlierPending(true);
 		try {
-			await Promise.resolve();
-			setPageStart((start) => Math.max(0, start - PAGE_SIZE));
-			queueMicrotask(compensateAnchor);
+			const oldLen = blocks().length;
+			const loaded = await props.onLoadSourcePage();
+			if (!loaded) return;
+			const added = blocks().length - oldLen;
+			if (added > 0) {
+				setPageStart(Math.max(0, added - PAGE_SIZE));
+			}
 		} finally {
 			pendingLoad = false;
 			setLoadEarlierPending(false);
+			queueMicrotask(compensateAnchor);
 		}
 	};
 
@@ -192,19 +221,22 @@ export function createTranscriptController(props: { entries: Accessor<Entry[]>; 
 		cleanup = null;
 	};
 
+	createEffect(() => {
+		const all = blocks();
+		if (all.length === 0) return;
+		if (!pageInitialized) {
+			setPageStart(Math.max(0, all.length - PAGE_SIZE));
+			pageInitialized = true;
+		}
+		if (atBottom) pinToBottom(false);
+	});
+
 	return {
 		visibleBlocks,
 		hasMoreOlder,
 		loadEarlierPending,
 		showBackToBottom,
 		scrollToBottom: pinToBottom,
-		syncToBottom: () => {
-			if (!pageInitialized && blocks().length > 0) {
-				setPageStart(Math.max(0, blocks().length - PAGE_SIZE));
-				pageInitialized = true;
-			}
-			if (atBottom) pinToBottom(false);
-		},
 		reset: () => {
 			stackCache.clear();
 			pageInitialized = false;
@@ -218,7 +250,16 @@ export function createTranscriptController(props: { entries: Accessor<Entry[]>; 
 		locate: (id: number) => {
 			const seq = ++lastLocateSeq;
 			void (async () => {
-				const idx = findBlockIndex(id);
+				let idx = findBlockIndex(id);
+				while (idx < 0 && props.sourceHasMore?.() && props.onLoadSourcePage) {
+					const before = blocks().length;
+					const loaded = await props.onLoadSourcePage();
+					if (!loaded) break;
+
+					const added = blocks().length - before;
+					if (pageStart() > 0 && added > 0) setPageStart((start) => start + added);
+					idx = findBlockIndex(id);
+				}
 				if (idx < 0) return;
 				if (idx < pageStart()) await loadUntil(idx);
 				await nextFrame();

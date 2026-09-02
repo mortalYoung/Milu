@@ -1,4 +1,7 @@
-import { createSignal } from "solid-js";
+import { createMemo } from "solid-js";
+import { createStore } from "solid-js/store";
+import { projectVisibleHistory } from "../../shared/entry-meta";
+import type { ViewItem } from "../../shared/rpc";
 import type { PartnerItem } from "../components/ConversationList";
 import {
 	type Entry,
@@ -12,152 +15,123 @@ import {
 	makeUserEntry,
 } from "../layouts/Transcript";
 import { createInFlightBoolean } from "./inflight";
+import type { createOriginSession } from "./origin-session";
 import type { RPC } from "./rpc";
 
-export function createSession(rpc: RPC, opts: { onSessionLoaded: () => void; onEntriesChanged?: () => void }) {
-	const [selected, setSelected] = createSignal<string | null>(null);
-	const [partners, setPartners] = createSignal<PartnerItem[]>([]);
-	const [entries, setEntries] = createSignal<Entry[]>([]);
-	const [tick, setTick] = createSignal(0);
+type OriginSession = ReturnType<typeof createOriginSession>;
+
+const WEEKDAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+
+const dayOf = (ts: number) => {
+	const d = new Date(ts);
+	return `${WEEKDAYS[d.getDay()]} · ${MONTHS[d.getMonth()]} ${d.getDate()}`;
+};
+
+function buildViewEntries(items: ViewItem[]): Entry[] {
+	const out: Entry[] = [];
+	let lastDay = "";
+	const sep = (ts: number) => {
+		const day = dayOf(ts);
+		if (lastDay && day !== lastDay) out.push(makeSepEntry(day));
+		lastDay = day;
+	};
+	const pushItem = (entry: Entry, id: string) => {
+		entry.key = id;
+		out.push(entry);
+	};
+	for (const item of items) {
+		if (item.kind === "error") {
+			const entry = makeSysEntry(`ERR § ${item.text}`, true);
+			pushItem(entry, item.id);
+			continue;
+		}
+		if (item.kind === "aborted") {
+			const entry = makeSysEntry("stopped", false, true);
+			pushItem(entry, item.id);
+			continue;
+		}
+		if (item.kind === "user" && item.skillName) continue;
+		sep(item.time);
+		if (item.kind === "escalation" && item.escalation) {
+			const entry = makeEscalationEntry({ text: item.text, time: item.time, escalation: item.escalation });
+			pushItem(entry, item.id);
+		} else if (item.kind === "command" && item.command) {
+			const entry = makeCommandEntry({ text: item.text, time: item.time, command: item.command });
+			pushItem(entry, item.id);
+		} else if (item.kind === "skill" && item.skill) {
+			const entry = makeSkillEntry({ text: item.text, time: item.time, skill: item.skill });
+			pushItem(entry, item.id);
+		} else if (item.kind === "shell" && item.command) {
+			const entry = makeShellEntry({ text: item.text, time: item.time, command: item.command });
+			pushItem(entry, item.id);
+		} else {
+			const entry = item.kind === "user" ? makeUserEntry(item.text, item.time) : makeAgentEntry(item.text, item.time);
+			pushItem(entry, item.id);
+		}
+	}
+	return out;
+}
+
+interface SessionState {
+	selected: string | null;
+	partners: PartnerItem[];
+	origin: OriginSession | null;
+	overlay: Entry[];
+	tick: number;
+}
+
+export function createSession(rpc: RPC, opts: { onSessionLoaded: () => void }) {
+	const [state, setState] = createStore<SessionState>({
+		selected: null,
+		partners: [],
+		origin: null,
+		overlay: [],
+		tick: 0,
+	});
 
 	const historyLoading = createInFlightBoolean();
 
-	const renderedIds = new Set<string>();
+	const selected = () => state.selected;
+	const partners = () => state.partners;
 
-	let lastMsgDay = "";
-	const WEEKDAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
-	const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+	const entries = createMemo<Entry[]>(() => {
+		const o = state.origin;
+		const base = o ? buildViewEntries(projectVisibleHistory(o.entries())) : [];
+		const extra = state.overlay;
+		return extra.length > 0 ? [...base, ...extra] : base;
+	});
 
-	const bump = () => setTick((t) => t + 1);
+	const attachOrigin = (o: OriginSession) => setState("origin", o);
+
+	const bump = () => setState("tick", (t) => t + 1);
 	const push = (entry: Entry) => {
-		setEntries((prev) => [...prev, entry]);
+		setState("overlay", (prev) => [...prev, entry]);
 		bump();
-		opts.onEntriesChanged?.();
 	};
-
-	function maybeTimeSeparator(d: Date, buffer: Entry[]) {
-		const day = `${WEEKDAYS[d.getDay()]} · ${MONTHS[d.getMonth()]} ${d.getDate()}`;
-		if (lastMsgDay && day !== lastMsgDay) buffer.push(makeSepEntry(day));
-		lastMsgDay = day;
-	}
 
 	async function refreshHistory() {
 		historyLoading.begin();
-		const t0 = performance.now();
 		try {
-			const { items } = await rpc.request.history({});
-			const t1 = performance.now();
+			const o = state.origin;
+			if (!o) return;
+			await o.refresh();
+			if (o.entries().length === 0) setState("overlay", []);
+		} finally {
+			historyLoading.end();
+		}
+	}
 
-			const pending: Entry[] = [];
-			const replacements = new Map<string, Entry>();
-			for (const item of items) {
-				if (item.kind === "error") {
-					if (renderedIds.has(item.id)) continue;
-					renderedIds.add(item.id);
-					const entry = makeSysEntry(`ERR § ${item.text}`, true);
-					entry.key = item.id;
-					pending.push(entry);
-					continue;
-				}
-				if (item.kind === "aborted") {
-					if (renderedIds.has(item.id)) continue;
-					renderedIds.add(item.id);
-					const entry = makeSysEntry("stopped", false, true);
-					entry.key = item.id;
-					pending.push(entry);
-					continue;
-				}
-				if (item.kind === "escalation" && item.escalation) {
-					const entry = makeEscalationEntry({ text: item.text, time: item.time, escalation: item.escalation });
-					entry.key = item.id;
-					const existing = entries().find((e) => e.kind === "escalation" && e.escalation?.id === item.escalation!.id);
-					if (existing) {
-						replacements.set(item.escalation.id, entry);
-					} else {
-						maybeTimeSeparator(new Date(item.time), pending);
-						pending.push(entry);
-					}
-					continue;
-				}
-				if (item.kind === "command" && item.command) {
-					const entry = makeCommandEntry({ text: item.text, time: item.time, command: item.command });
-					entry.key = item.id;
-					const existing = entries().find((e) => e.kind === "command" && e.command?.commandId === item.command!.commandId);
-					if (existing) {
-						replacements.set(item.command.commandId, entry);
-					} else {
-						maybeTimeSeparator(new Date(item.time), pending);
-						pending.push(entry);
-					}
-					continue;
-				}
-				if (item.kind === "skill" && item.skill) {
-					const entry = makeSkillEntry({ text: item.text, time: item.time, skill: item.skill });
-					entry.key = item.id;
-					const existing = entries().find((e) => e.kind === "skill" && e.skill?.commandId === item.skill!.commandId);
-					if (existing) {
-						replacements.set(item.skill.commandId, entry);
-					} else {
-						maybeTimeSeparator(new Date(item.time), pending);
-						pending.push(entry);
-					}
-					continue;
-				}
-				if (item.kind === "shell" && item.command) {
-					const entry = makeShellEntry({ text: item.text, time: item.time, command: item.command });
-					entry.key = item.id;
-					const existing = entries().find((e) => e.kind === "shell" && e.command?.commandId === item.command!.commandId);
-					if (existing) {
-						replacements.set(item.command.commandId, entry);
-					} else {
-						maybeTimeSeparator(new Date(item.time), pending);
-						pending.push(entry);
-					}
-					continue;
-				}
-				if (item.kind === "user" && item.skillName) {
-					if (renderedIds.has(item.id)) continue;
-					renderedIds.add(item.id);
-					continue;
-				}
-				if (renderedIds.has(item.id)) continue;
-				renderedIds.add(item.id);
-				maybeTimeSeparator(new Date(item.time), pending);
-				const entry = item.kind === "user" ? makeUserEntry(item.text, item.time) : makeAgentEntry(item.text, item.time);
-				entry.key = item.id;
-				pending.push(entry);
-			}
-			const tBuild = performance.now();
-			if (items.length === 0) {
-				// Session rotated (e.g. /clear): the new storage file is empty — the UI must drop
-				// everything instead of the usual append/replace merge.
-				if (entries().length > 0) {
-					renderedIds.clear();
-					lastMsgDay = "";
-					setEntries([]);
-					bump();
-					opts.onEntriesChanged?.();
-				}
-			} else if (replacements.size > 0 || pending.length > 0) {
-				setEntries((prev) => {
-					let next = prev;
-					if (replacements.size > 0) {
-						next = next.map((e) => {
-							if (e.kind === "escalation" && e.escalation && replacements.has(e.escalation.id)) return replacements.get(e.escalation.id)!;
-							if (e.kind === "command" && e.command && replacements.has(e.command.commandId)) return replacements.get(e.command.commandId)!;
-							if (e.kind === "skill" && e.skill && replacements.has(e.skill.commandId)) return replacements.get(e.skill.commandId)!;
-							if (e.kind === "shell" && e.command && replacements.has(e.command.commandId)) return replacements.get(e.command.commandId)!;
-							return e;
-						});
-					}
-					return pending.length > 0 ? [...next, ...pending] : next;
-				});
-				bump();
-				opts.onEntriesChanged?.();
-			}
-			const t2 = performance.now();
-
-			rpc.send.history_timing({ partner: selected() ?? "?", rpcMs: t1 - t0, buildMs: tBuild - t1, renderMs: t2 - tBuild, items: items.length });
+	async function loadOlderHistory(): Promise<boolean> {
+		const o = state.origin;
+		if (!o || !o.hasMore()) return false;
+		const name = selected();
+		historyLoading.begin();
+		try {
+			const before = o.entries().length;
+			await o.loadMore();
+			if (selected() !== name) return false;
+			return o.entries().length !== before;
 		} finally {
 			historyLoading.end();
 		}
@@ -165,32 +139,52 @@ export function createSession(rpc: RPC, opts: { onSessionLoaded: () => void; onE
 
 	async function refreshPartners() {
 		const { partners: list } = await rpc.request.list_partners({});
-		setPartners(list);
+		setState("partners", list);
 
 		if (selected() != null && !list.some((p) => p.name === selected())) select(null);
 	}
 
 	function select(partner: PartnerItem | null) {
-		setSelected(partner?.name ?? null);
-		setEntries([]);
+		setState("selected", partner?.name ?? null);
+		setState("overlay", []);
 
 		historyLoading.begin();
-		renderedIds.clear();
-		lastMsgDay = "";
 		void rpc.request
 			.set_partner({
 				profile: partner ? { name: partner.name, responsibilities: partner.responsibilities, tones: partner.tones } : null,
 			})
 			.then(() => {
-				historyLoading.end();
-				refreshHistory();
-
-				opts.onSessionLoaded();
+				const o = state.origin;
+				if (!o) {
+					historyLoading.end();
+					opts.onSessionLoaded();
+					return;
+				}
+				void o
+					.refresh()
+					.catch(() => {})
+					.finally(() => {
+						historyLoading.end();
+						opts.onSessionLoaded();
+					});
 			})
 			.catch(() => {
 				historyLoading.end();
 			});
 	}
 
-	return { selected, partners, entries, tick, push, bump, refreshHistory, refreshPartners, select, historyLoading: historyLoading.loading };
+	return {
+		selected,
+		partners,
+		entries,
+		tick: () => state.tick,
+		push,
+		bump,
+		attachOrigin,
+		refreshHistory,
+		loadOlderHistory,
+		refreshPartners,
+		select,
+		historyLoading: historyLoading.loading,
+	};
 }

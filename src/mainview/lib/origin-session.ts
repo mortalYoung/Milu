@@ -1,88 +1,126 @@
 import type { Entry } from "@earendil-works/pi-agent-core";
-import { createEffect, createSignal } from "solid-js";
+import { createEffect } from "solid-js";
+import { createStore } from "solid-js/store";
 import type { RPC } from "./rpc";
 
-const PAGE_SIZE = 200;
+const PAGE_SIZE = 500;
 
-/**
- * Frontend Origin session — the single loaded copy of the clean log (see
- * docs/2026-09-02-origin-slice-view-naming.md). View and Timeline are projected locally from
- * `entries` via the shared pure functions; there is exactly one load-more action.
- *
- * Paging contract: session_origin returns slices from the END (newest) backwards, each page in
- * chronological order. `entries` accumulates older pages in front (oldest → newest).
- */
+interface OriginState {
+	entries: Entry[];
+	signature: string;
+	hasMore: boolean;
+	total: number;
+	loading: boolean;
+}
+
 export function createOriginSession(rpc: RPC, getSelectedName: () => string | null) {
-	const [entries, setEntries] = createSignal<Entry[]>([]);
-	const [signature, setSignature] = createSignal("");
-	const [hasMore, setHasMore] = createSignal(false);
-	const [total, setTotal] = createSignal(0);
-	const [loading, setLoading] = createSignal(false);
+	const [state, setState] = createStore<OriginState>({
+		entries: [],
+		signature: "",
+		hasMore: false,
+		total: 0,
+		loading: false,
+	});
+
+	const entries = () => state.entries;
+	const signature = () => state.signature;
+	const hasMore = () => state.hasMore;
+	const total = () => state.total;
+	const loading = () => state.loading;
 
 	let lastLoaded = 0;
 
+	let refreshPromise: { name: string | null; promise: Promise<void> } | null = null;
+
 	function reset() {
 		lastLoaded = 0;
-		setEntries([]);
-		setSignature("");
-		setHasMore(false);
-		setTotal(0);
+		setState({
+			entries: [],
+			signature: "",
+			hasMore: false,
+			total: 0,
+			loading: false,
+		});
 	}
 
-	function apply(res: Awaited<ReturnType<typeof rpc.request.session_origin>>, name: string) {
-		if (getSelectedName() !== name) return;
-		setEntries(res.entries);
-		setSignature(res.signature);
-		setHasMore(res.hasMore);
-		setTotal(res.total);
-		lastLoaded = res.loadedCount;
+	function refresh(): Promise<void> {
+		const name = getSelectedName();
+
+		if (refreshPromise && refreshPromise.name === name) return refreshPromise.promise;
+		const promise = performRefresh();
+		refreshPromise = { name, promise };
+		return promise;
 	}
 
-	async function refresh() {
+	async function performRefresh() {
 		const name = getSelectedName();
 		if (!name) {
 			reset();
+			refreshPromise = null;
 			return;
 		}
-		setLoading(true);
+		setState("loading", true);
 		try {
 			const res = await rpc.request.session_origin({ before: 0, limit: PAGE_SIZE });
-			apply(res, name);
+			if (getSelectedName() !== name) return;
+
+			const prev = state.entries;
+			const newIds = new Set(res.entries.map((e) => e.id));
+			const overlap = prev.some((e) => newIds.has(e.id));
+			let next = res.entries;
+			let loaded = res.loadedCount;
+			if (prev.length > 0 && res.total > 0 && (overlap || res.total >= prev.length)) {
+				const older = prev.filter((e) => !newIds.has(e.id));
+				next = [...older, ...res.entries];
+				loaded = Math.min(res.total, older.length + res.loadedCount);
+			}
+			setState({
+				entries: next,
+				signature: res.signature,
+				hasMore: loaded < res.total,
+				total: res.total,
+			});
+			lastLoaded = loaded;
 		} catch (error) {
 			console.error("session_origin refresh failed:", error);
 			throw error;
 		} finally {
-			setLoading(false);
+			setState("loading", false);
+
+			if (refreshPromise?.name === name) refreshPromise = null;
 		}
 	}
 
 	async function loadMore() {
 		const name = getSelectedName();
 		if (!name || loading() || !hasMore()) return;
-		setLoading(true);
+		setState("loading", true);
 		try {
 			const res = await rpc.request.session_origin({ before: lastLoaded, limit: PAGE_SIZE });
 			if (getSelectedName() !== name) return;
 			if (res.signature !== signature()) {
-				// Origin changed underneath (new writes / rotation): restart from the newest page.
-				setEntries(res.entries);
-				setSignature(res.signature);
-				setHasMore(res.hasMore);
-				setTotal(res.total);
+				setState({
+					entries: res.entries,
+					signature: res.signature,
+					hasMore: res.hasMore,
+					total: res.total,
+				});
 				lastLoaded = res.loadedCount;
 				return;
 			}
-			const known = new Set(entries().map((e) => e.id));
-			setEntries((prev) => [...res.entries.filter((e) => !known.has(e.id)), ...prev]);
-			setHasMore(res.hasMore);
-			setTotal(res.total);
+			const known = new Set(state.entries.map((e) => e.id));
+			const next = [...res.entries.filter((e) => !known.has(e.id)), ...state.entries];
+			setState({
+				entries: next,
+				hasMore: res.hasMore,
+				total: res.total,
+			});
 			lastLoaded = res.loadedCount;
 		} finally {
-			setLoading(false);
+			setState("loading", false);
 		}
 	}
 
-	// Switching chats resets the shared Origin cache; re-open will refetch.
 	let lastSeenName: string | null = null;
 	createEffect(() => {
 		const name = getSelectedName();

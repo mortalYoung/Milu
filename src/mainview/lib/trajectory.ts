@@ -9,10 +9,8 @@ import type { RPC } from "./rpc";
 const PAGE_SIZE = 200;
 type OriginSession = ReturnType<typeof createOriginSession>;
 
-/** Trajectory drawer viewer modes: show the whole Origin, or only Slice / View entries. */
 export type TrajectoryMode = "origin" | "slice" | "view";
 
-/** Trajectory drawer (density strip): paged whole-log view, opened from the header. */
 export function createTrajectory(rpc: RPC, getSelectedName: () => string | null, origin?: OriginSession) {
 	const [open, setOpen] = createSignal(false);
 	const [records, setRecords] = createSignal<TrajectoryRecord[]>([]);
@@ -24,17 +22,15 @@ export function createTrajectory(rpc: RPC, getSelectedName: () => string | null,
 	const [flashId, setFlashId] = createSignal<number | null>(null);
 
 	let cache: { name: string | null; mode: TrajectoryMode; records: TrajectoryRecord[]; hasMore: boolean; total: number } | null = null;
+	let originStale = false;
 	let flashTimer: ReturnType<typeof setTimeout> | undefined;
 
-	/** Local projection path: Timeline = fold(loadedOrigin), filtered by mode with zero requests. */
 	function rebuildFromOrigin() {
 		if (!origin) return;
 		const entries = origin.entries();
 		const all = fold(entries);
 		let next = all;
 		if (mode() === "slice") {
-			// surfaceNodeIds is window-safe: foldSurface would throw on a partial Origin whose
-			// surface_op range refers to not-yet-loaded nodes (compaction of the whole log).
 			const sliceIds = surfaceNodeIds(entries);
 			next = all.filter((r) => sliceIds.has(r.entryId));
 		} else if (mode() === "view") {
@@ -54,7 +50,10 @@ export function createTrajectory(rpc: RPC, getSelectedName: () => string | null,
 		try {
 			if (origin) {
 				try {
-					if (origin.entries().length === 0) await origin.refresh();
+					if (origin.entries().length === 0 || originStale) {
+						await origin.refresh();
+						originStale = false;
+					}
 					if (getSelectedName() !== name) return;
 					rebuildFromOrigin();
 					ready = true;
@@ -78,7 +77,6 @@ export function createTrajectory(rpc: RPC, getSelectedName: () => string | null,
 				}
 			}
 		} catch {
-			// Keep whatever rows are already visible; a failed toggle/fetch must not blank the list.
 		} finally {
 			setLoading(false);
 		}
@@ -114,7 +112,6 @@ export function createTrajectory(rpc: RPC, getSelectedName: () => string | null,
 		}
 	}
 
-	/** Switch viewer mode; with origin this is a pure local refilter (no request). */
 	function changeMode(next: TrajectoryMode) {
 		if (next === mode()) return;
 		setMode(next);
@@ -128,6 +125,7 @@ export function createTrajectory(rpc: RPC, getSelectedName: () => string | null,
 		if (name === lastSeenName) return;
 		lastSeenName = name;
 		cache = null;
+		originStale = false;
 		setOpen(false);
 	});
 
@@ -137,9 +135,9 @@ export function createTrajectory(rpc: RPC, getSelectedName: () => string | null,
 		flashTimer = setTimeout(() => setFlashId(null), 1200);
 	}
 
-	/** A turn has been persisted (agent_message / trajectory_update): refresh now if the drawer is open, otherwise on next open. */
 	function invalidate() {
 		cache = null;
+		originStale = true;
 		if (open()) void view();
 	}
 
