@@ -5,6 +5,7 @@
  */
 import { Info, MoreVertical, Plus, Trash2 } from "lucide-solid";
 import { createSignal, Show } from "solid-js";
+import { useAgentStatus } from "../lib/agent-status-context";
 import { Button } from "./Button";
 import { Avatar } from "./ui/avatar";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
@@ -24,6 +25,7 @@ export interface PartnerItem {
 	lastMessageKind?: "user" | "send_message";
 	/** Per-partner read watermark (persisted): messages after this timestamp are unread. */
 	readAt?: number;
+	writing?: boolean;
 }
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
@@ -69,8 +71,6 @@ function DeleteMenuItem(props: { onSelect: () => void }) {
 export function ConversationList(props: {
 	partners: PartnerItem[];
 	selected: string | null;
-	/** Whether the given partner's run is in progress (its row's preview slot shows the working indicator). */
-	working: (name: string) => boolean;
 	/** Whether the given partner has messages newer than its read watermark. */
 	unread: (name: string) => boolean;
 	onSelect: (name: string) => void;
@@ -78,6 +78,7 @@ export function ConversationList(props: {
 	onDelete: (name: string) => void;
 	onViewDetails: (name: string) => void;
 }) {
+	const status = useAgentStatus();
 	const [confirmDelete, setConfirmDelete] = createSignal<string | null>(null);
 	// The row whose menu is currently open: the ellipsis stays visible while the menu is open
 	const [openMenu, setOpenMenu] = createSignal<string | null>(null);
@@ -128,7 +129,7 @@ export function ConversationList(props: {
 							</span>
 							<span class="conv-preview">
 								<span class="conv-preview-main">
-									{props.working(partner.name) ? (
+									{status.workingFor(partner.name) ? (
 										<span class="conv-preview-dots" title="Working…">
 											<span class="work-dot" />
 											<span class="work-dot" />

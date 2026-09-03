@@ -328,7 +328,7 @@ export type AppRPCSchema = __schema<{
 			};
 
 			get_status: {
-				params: {};
+				params: { name: string };
 				response: {
 					workspace_path: string | null;
 
@@ -340,8 +340,6 @@ export type AppRPCSchema = __schema<{
 					thinking_levels: ThinkingLevel[];
 
 					models: { provider: string; models: { id: string; name: string }[] }[];
-
-					partners: { name: string; streaming: boolean; writing: boolean }[];
 				};
 			};
 
@@ -488,6 +486,7 @@ export type AppRPCSchema = __schema<{
 						lastMessageKind?: "user" | "send_message";
 
 						readAt?: number;
+						writing: boolean;
 					}[];
 				};
 			};

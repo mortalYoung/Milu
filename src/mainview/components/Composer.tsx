@@ -14,7 +14,8 @@
  */
 import { ArrowUp, ExternalLink, SlidersHorizontal, Square } from "lucide-solid";
 import { createEffect, createMemo, createSignal, For, type JSX, onCleanup, Show } from "solid-js";
-import type { CommandDescriptor, CommandExecution, SandboxMode, SkillDescriptor, ThinkingLevel } from "../../shared/rpc";
+import type { CommandDescriptor, CommandExecution, SandboxMode, SkillDescriptor } from "../../shared/rpc";
+import { useAgentStatus } from "../lib/agent-status-context";
 import { filterCommands } from "../lib/commands";
 import { formatWorkspacePath, shouldSendOnEnter } from "../lib/composer-input";
 import { useMetrics } from "../lib/metrics-context";
@@ -47,30 +48,12 @@ function formatTokens(n: number): string {
 }
 
 export function Composer(props: {
-	busy: () => boolean;
 	onSend: (text: string) => void;
 	onStop: () => void;
 	/** Slash command directory (handler-free descriptors for the menu). */
 	commands: CommandDescriptor[];
 	/** Execute a slash command line; resolves after command/run + command/done are persisted. */
 	onCommand: (line: string) => Promise<CommandExecution>;
-	/** The workspace set via set_workspace; hidden until then (unset = not needed / not yet set). */
-	workspace?: string | null;
-	/** The storage path (the agent's own directory; shown alongside the workspace, read-only). */
-	storage?: string | null;
-	/** The per-partner sandbox mode (select; human-owned). */
-	sandboxMode: SandboxMode;
-	/** Persist a new per-partner sandbox mode. */
-	onSetSandboxMode: (mode: SandboxMode) => void;
-	/** The per-partner model selection (null → deepseek default). */
-	model: { provider: string; modelId?: string } | null;
-	/** Catalog models of every added provider, grouped for the select. */
-	models: { provider: string; models: { id: string; name: string }[] }[];
-	/** Persist a new per-partner model selection. */
-	onSetModel: (model: { provider: string; modelId?: string }) => void;
-	thinkingLevel: ThinkingLevel;
-	thinkingLevels: ThinkingLevel[];
-	onSetThinkingLevel: (level: ThinkingLevel) => void;
 	/** The selected chat's saved draft (cleared + restored across chat switches, owned by the App). */
 	draft: string;
 	onDraftChange: (text: string) => void;
@@ -82,6 +65,7 @@ export function Composer(props: {
 	editors?: { id: string; name: string }[];
 }) {
 	const metrics = useMetrics();
+	const agent = useAgentStatus();
 	const [text, setText] = createSignal(props.draft);
 	// The draft is per-chat: switching chats swaps the prop, loading the other chat's saved text
 	createEffect(() => {
@@ -371,7 +355,7 @@ export function Composer(props: {
 	};
 
 	// Send appears only when there is something to send (or a run to stop)
-	const showSend = () => text().trim() !== "" || props.busy();
+	const showSend = () => text().trim() !== "" || agent.isBusyForSelected();
 
 	// Path line: workspace/storage are clickable to open in the user's code editor; right-click
 	// offers every installed editor, left-click uses the default (VS Code when present).
@@ -398,12 +382,18 @@ export function Composer(props: {
 	);
 	const pathLine = () => {
 		const parts: JSX.Element[] = [];
-		if (props.workspace) parts.push(pathButton("ws", props.workspace));
-		if (props.workspace && props.storage) parts.push(<span class="composer-path-sep">·</span>);
-		if (props.storage) parts.push(pathButton("st", props.storage));
+		const ws = agent.data().workspace_path;
+		const storage = agent.data().storage_path;
+		if (ws) parts.push(pathButton("ws", ws));
+		if (ws && storage) parts.push(<span class="composer-path-sep">·</span>);
+		if (storage) parts.push(pathButton("st", storage));
 		return parts;
 	};
-	const pathTitle = () => [props.workspace && `workspace: ${props.workspace}`, props.storage && `storage: ${props.storage}`].filter(Boolean).join("\n");
+	const pathTitle = () => {
+		const ws = agent.data().workspace_path;
+		const storage = agent.data().storage_path;
+		return [ws && `workspace: ${ws}`, storage && `storage: ${storage}`].filter(Boolean).join("\n");
+	};
 
 	const statsLine = () => {
 		const s = metrics()?.stats ?? null;
@@ -418,10 +408,10 @@ export function Composer(props: {
 		return parts.join(" · ");
 	};
 
-	const status = () => (props.busy() ? "writing…" : null);
+	const status = () => (agent.isBusyForSelected() ? "writing…" : null);
 
 	const modelLabel = () => {
-		const m = props.model;
+		const m = agent.data().model;
 		if (!m?.modelId) return "default model";
 		return m.modelId;
 	};
@@ -491,11 +481,11 @@ export function Composer(props: {
 					{metrics()?.contextUsage ? <ContextMeter usage={metrics()!.contextUsage!} /> : null}
 					{showSend() && (
 						<Button
-							variant={props.busy() ? "outline" : "seal"}
-							class={`size-[34px] p-0 rounded-full shrink-0 ${props.busy() ? "composer-stop" : ""}`}
-							title={props.busy() ? "Stop" : "Send"}
-							icon={props.busy() ? <Square size={14} /> : <ArrowUp size={14} />}
-							onClick={() => (props.busy() ? props.onStop() : void submit())}
+							variant={agent.isBusyForSelected() ? "outline" : "seal"}
+							class={`size-[34px] p-0 rounded-full shrink-0 ${agent.isBusyForSelected() ? "composer-stop" : ""}`}
+							title={agent.isBusyForSelected() ? "Stop" : "Send"}
+							icon={agent.isBusyForSelected() ? <Square size={14} /> : <ArrowUp size={14} />}
+							onClick={() => (agent.isBusyForSelected() ? props.onStop() : void submit())}
 						/>
 					)}
 				</div>
@@ -504,7 +494,7 @@ export function Composer(props: {
 			   session metrics as a quiet footnote; on-demand only — closed by outside click, Esc or sending */}
 			<Show when={panelOpen()}>
 				<div id="composer-panel" class="composer-panel" role="group" aria-label="Runtime context">
-					{(props.workspace || props.storage) && (
+					{(agent.data().workspace_path || agent.data().storage_path) && (
 						<div class="composer-panel-path">
 							<span class="composer-path" title={pathTitle()}>
 								{pathLine()}
@@ -512,14 +502,14 @@ export function Composer(props: {
 						</div>
 					)}
 					<div class="composer-panel-row">
-						{props.models.length > 0 && (
+						{agent.data().models.length > 0 && (
 							<DropdownMenu>
 								<DropdownMenuTrigger
 									class="shrink-0 min-w-0 max-w-[200px] inline-flex h-[30px] items-center justify-between gap-2 rounded-[8px] border border-hairline bg-transparent px-2.5 font-mono text-[10px] text-ink-soft outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-letter data-[expanded]:border-seal"
 									title="Model / Effort (per partner)"
 								>
 									<span class="truncate">
-										{modelLabel()}·{props.thinkingLevel}
+										{modelLabel()}·{agent.data().thinking_level}
 									</span>
 									<svg
 										xmlns="http://www.w3.org/2000/svg"
@@ -538,13 +528,13 @@ export function Composer(props: {
 									<DropdownMenuSub>
 										<DropdownMenuSubTrigger class="font-mono text-[10px]">Models</DropdownMenuSubTrigger>
 										<DropdownMenuSubContent portalMount={rootRef}>
-											<For each={props.models}>
+											<For each={agent.data().models}>
 												{(g) => (
 													<DropdownMenuGroup>
 														<DropdownMenuGroupLabel class="font-mono text-[10px]">{g.provider}</DropdownMenuGroupLabel>
 														<For each={g.models}>
 															{(m) => (
-																<DropdownMenuItem class="font-mono text-[10px] text-ink-soft" onSelect={() => props.onSetModel({ provider: g.provider, modelId: m.id })}>
+																<DropdownMenuItem class="font-mono text-[10px] text-ink-soft" onSelect={() => agent.mutateModel({ provider: g.provider, modelId: m.id })}>
 																	{m.name}
 																</DropdownMenuItem>
 															)}
@@ -557,11 +547,11 @@ export function Composer(props: {
 									<DropdownMenuSub>
 										<DropdownMenuSubTrigger class="font-mono text-[10px]">Effort</DropdownMenuSubTrigger>
 										<DropdownMenuSubContent portalMount={rootRef}>
-											<For each={props.thinkingLevels}>
+											<For each={agent.data().thinking_levels}>
 												{(level) => (
-													<DropdownMenuItem class="font-mono text-[10px] text-ink-soft" onSelect={() => props.onSetThinkingLevel(level)}>
+													<DropdownMenuItem class="font-mono text-[10px] text-ink-soft" onSelect={() => agent.mutateThinkingLevel(level)}>
 														<span>{level}</span>
-														{level === props.thinkingLevel && <span class="ml-auto text-seal">✓</span>}
+														{level === agent.data().thinking_level && <span class="ml-auto text-seal">✓</span>}
 													</DropdownMenuItem>
 												)}
 											</For>
@@ -574,9 +564,9 @@ export function Composer(props: {
 							class="shrink-0"
 							title="Sandbox mode (file writes)"
 							ariaLabel="Sandbox mode"
-							value={props.sandboxMode}
+							value={agent.data().sandbox_mode}
 							portalMount={rootRef}
-							onChange={(value) => props.onSetSandboxMode(value as SandboxMode)}
+							onChange={(value) => agent.mutateSandboxMode(value as SandboxMode)}
 							options={[
 								{ value: "read-only", label: "read-only" },
 								{ value: "workspace-write", label: "workspace-write" },

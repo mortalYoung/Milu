@@ -202,14 +202,6 @@ function firstSeqAtOrAfter(records: TrajectoryRecord[], before: number): number 
 	return lo;
 }
 
-function pendingEscalationCount(partner: string): number {
-	let n = 0;
-	for (const pending of pendingSandboxConfirms.values()) {
-		if (pending.partner === partner) n += 1;
-	}
-	return n;
-}
-
 function rejectPendingEscalations(partner: string, reason: string) {
 	const timestamp = Date.now();
 	for (const [id, pending] of pendingSandboxConfirms) {
@@ -659,24 +651,20 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				return { items: cached.items };
 			},
 
-			get_status: async () => {
-				const selected = viewPartner ? await agents.get(viewPartner.name) : undefined;
-				const partners = await Promise.all(
-					[...agents.entries()].map(async ([name, pe]) => {
-						const entry = await pe;
-						return { name, streaming: entry.agent.isStreaming && pendingEscalationCount(name) === 0, writing: entry.agent.isStreaming || runningCommandPartners.has(name) };
-					}),
-				);
-				const addedProviders = (await loadSettings()).providers ?? [];
+			get_status: async ({ name }) => {
+				const settings = await loadSettings();
+				const partnersList = await listPartners(settings);
+				const profile = partnersList.find((p) => p.name === name);
+				const entry = profile ? await agents.get(name) : undefined;
+				const addedProviders = settings.providers ?? [];
 				return {
-					workspace_path: selected?.agent.workspacePath ? tildify(selected.agent.workspacePath) : null,
-					storage_path: selected?.agent.storagePath ? tildify(selected.agent.storagePath) : null,
-					sandbox_mode: selected?.agent.sandboxMode ?? "workspace-write",
-					model: selected?.agent.model ?? null,
-					thinking_level: selected?.agent.thinkingLevel ?? "high",
-					thinking_levels: selected ? supportedThinkingLevels(selected.agent.model ?? undefined) : [],
+					workspace_path: entry?.agent.workspacePath ? tildify(entry.agent.workspacePath) : null,
+					storage_path: entry?.agent.storagePath ? tildify(entry.agent.storagePath) : null,
+					sandbox_mode: entry?.agent.sandboxMode ?? "workspace-write",
+					model: entry?.agent.model ?? null,
+					thinking_level: entry?.agent.thinkingLevel ?? "high",
+					thinking_levels: entry ? supportedThinkingLevels(entry.agent.model ?? undefined) : [],
 					models: addedProviders.map((p) => ({ provider: p, models: providerModels(p) })),
-					partners,
 				};
 			},
 			set_partner_model: async ({ model }) => {
@@ -1134,7 +1122,14 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 						const last = await session.lastMessage(getPartnerDir(settings, profile.name));
 						const lastMessageKind: "user" | "send_message" = last?.kind === "user" ? "user" : "send_message";
 						const readAt = await readPartnerReadAt(getPartnerDir(settings, profile.name));
-						return last ? { ...profile, lastMessage: last.text, lastMessageAt: last.time, lastMessageKind, readAt } : { ...profile, readAt };
+						const agentEntry = await agents.get(profile.name);
+						const writing = agentEntry?.agent.isStreaming === true || runningCommandPartners.has(profile.name);
+						return {
+							...profile,
+							readAt,
+							writing,
+							...(last ? { lastMessage: last.text, lastMessageAt: last.time, lastMessageKind } : {}),
+						};
 					}),
 				);
 				return { partners };

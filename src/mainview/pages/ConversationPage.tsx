@@ -1,12 +1,13 @@
 import { Activity, ListTree, PanelLeftClose, PanelLeftOpen } from "lucide-solid";
 import { type Accessor, createEffect, createSignal, type JSX, onCleanup } from "solid-js";
 import { AnimatePresence, Motion } from "solid-motion";
-import type { CommandDescriptor, CommandExecution, SandboxMode, SkillDescriptor, ThinkingLevel } from "../../shared/rpc";
+import type { CommandDescriptor, CommandExecution, SkillDescriptor } from "../../shared/rpc";
 import { Button } from "../components/Button";
 import { Composer } from "../components/Composer";
 import { ConversationList, type PartnerItem } from "../components/ConversationList";
 import { RepliesPane } from "../components/RepliesPane";
 import { type Entry, Transcript } from "../layouts/Transcript";
+import { useAgentStatus } from "../lib/agent-status-context";
 
 export function ConversationPage(props: {
 	partners: PartnerItem[];
@@ -18,10 +19,8 @@ export function ConversationPage(props: {
 	listCollapsed: boolean;
 	onToggleList: () => void;
 	entries: Accessor<Entry[]>;
-	working: Accessor<boolean>;
 
 	historyLoading: Accessor<boolean>;
-	busy: Accessor<boolean>;
 	onSend: (text: string) => void;
 	onStop: () => void;
 
@@ -36,25 +35,6 @@ export function ConversationPage(props: {
 
 	onEscalationRespond: (id: string, approved: boolean) => void;
 
-	workspacePath: string | null;
-
-	storagePath: string | null;
-
-	sandboxMode: SandboxMode;
-
-	onSetSandboxMode: (mode: SandboxMode) => void;
-
-	model: { provider: string; modelId?: string } | null;
-
-	models: { provider: string; models: { id: string; name: string }[] }[];
-
-	onSetModel: (model: { provider: string; modelId?: string }) => void;
-	thinkingLevel: ThinkingLevel;
-	thinkingLevels: ThinkingLevel[];
-	onSetThinkingLevel: (level: ThinkingLevel) => void;
-
-	workingFor: (name: string) => boolean;
-
 	unread: (name: string) => boolean;
 
 	draft: string;
@@ -67,6 +47,7 @@ export function ConversationPage(props: {
 	onOpenPath?: (path: string, editorId?: string) => void;
 	editors?: { id: string; name: string }[];
 }) {
+	const status = useAgentStatus();
 	const [outlineOpen, setOutlineOpen] = createSignal(false);
 
 	const hasConversation = () => props.selected != null && props.entries().length > 0;
@@ -93,7 +74,6 @@ export function ConversationPage(props: {
 						<ConversationList
 							partners={props.partners}
 							selected={props.selected}
-							working={props.workingFor}
 							unread={props.unread}
 							onSelect={props.onSelect}
 							onAddPartner={props.onAddPartner}
@@ -116,7 +96,7 @@ export function ConversationPage(props: {
 					/>
 					<div class="chat-worker electrobun-webkit-app-region-no-drag cursor-pointer" title="View details" onClick={() => props.selected && props.onViewDetails(props.selected)}>
 						<span>{props.selected ?? "Chat"}</span>
-						{props.busy() && (
+						{status.isBusyForSelected() && (
 							<span class="chat-worker-status" title="Working…">
 								<span class="work-dot" />
 								<span class="work-dot" />
@@ -160,7 +140,7 @@ export function ConversationPage(props: {
 					<>
 						<Transcript
 							entries={props.entries}
-							working={props.working}
+							working={status.isBusyForSelected}
 							historyLoading={props.historyLoading}
 							worker={props.selected}
 							locateFlashId={props.flashId}
@@ -168,21 +148,10 @@ export function ConversationPage(props: {
 							onSkillInspect={props.onSkillInspect}
 						/>
 						<Composer
-							busy={props.busy}
 							onSend={props.onSend}
 							onStop={props.onStop}
 							commands={props.commands}
 							onCommand={props.onCommand}
-							workspace={props.workspacePath}
-							storage={props.storagePath}
-							sandboxMode={props.sandboxMode}
-							onSetSandboxMode={props.onSetSandboxMode}
-							model={props.model}
-							models={props.models}
-							onSetModel={props.onSetModel}
-							thinkingLevel={props.thinkingLevel}
-							thinkingLevels={props.thinkingLevels}
-							onSetThinkingLevel={props.onSetThinkingLevel}
 							draft={props.draft}
 							onDraftChange={props.onDraftChange}
 							skills={props.skills}

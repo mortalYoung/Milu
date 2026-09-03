@@ -6,6 +6,7 @@ import { ToastHost } from "./components/ToastHost";
 import { TrajectoryDrawer } from "./components/TrajectoryDrawer";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./components/ui/dialog";
 import { createAgentStatus } from "./lib/agent-status";
+import { AgentStatusProvider } from "./lib/agent-status-context";
 import { createCommandDirectory } from "./lib/commands";
 import { createComposer } from "./lib/composer";
 import { COPIED_ICON_SVG, COPY_ICON_SVG, warmUpMarkdown } from "./lib/markdown";
@@ -71,6 +72,7 @@ function WorkspaceControllers() {
 
 	rpc.addMessageListener("agent_turn", ({ partner }) => {
 		status.beginTurn(partner);
+		void session.mutate.refreshPartners();
 	});
 
 	rpc.addMessageListener("agent_end", async ({ error: err, partner }) => {
@@ -98,6 +100,8 @@ function WorkspaceControllers() {
 						},
 				err ? "error" : "default",
 			);
+		} else {
+			void session.mutate.refreshPartners();
 		}
 		status.calibrate();
 	});
@@ -113,18 +117,6 @@ function WorkspaceControllers() {
 		trajectory.invalidate();
 	});
 
-	rpc.addMessageListener("workspace_update", () => {
-		status.calibrate();
-	});
-
-	rpc.addMessageListener("sandbox_mode_update", () => {
-		status.calibrate();
-	});
-
-	rpc.addMessageListener("thinking_level_update", () => {
-		status.calibrate();
-	});
-
 	rpc.addMessageListener("escalation_update", () => {
 		void session.mutate.refreshHistory();
 
@@ -133,6 +125,7 @@ function WorkspaceControllers() {
 
 	rpc.addMessageListener("command_update", () => {
 		void session.mutate.refreshHistory();
+		void session.mutate.refreshPartners();
 		void commands.refresh();
 		status.calibrate();
 	});
@@ -150,9 +143,6 @@ function WorkspaceControllers() {
 	});
 
 	function onSend(text: string) {
-		if (status.isBusyForSelected()) {
-			status.queueFollowUp();
-		}
 		transcript.scrollToBottom(true);
 		void rpc.request.chat({ text }).then((res) => {
 			if (res.accepted) composer.clear(session.data.selected!);
@@ -244,64 +234,53 @@ function WorkspaceControllers() {
 			/>
 
 			<main class="flex-1 flex flex-col min-w-0 bg-qw-bg">
-				<MetricsProvider value={metrics.data}>
-					{shell.view() === "skills" ? (
-						<SkillsView />
-					) : (
-						<TranscriptProvider controller={transcript}>
-							<ConversationPage
-								partners={session.data.partners}
-								selected={session.data.selected}
-								onSelect={(name) => {
-									transcript.reset();
-									selectPartner(session.data.partners.find((p) => p.name === name) ?? null);
-								}}
-								unread={unread.unread}
-								onAddPartner={() => shell.setShowModal(true)}
-								onDelete={onDeletePartner}
-								onViewDetails={(name) => shell.setDetailsPartner(session.data.partners.find((p) => p.name === name) ?? null)}
-								listCollapsed={shell.listCollapsed()}
-								onToggleList={shell.toggleList}
-								entries={session.entries}
-								working={status.isBusyForSelected}
-								historyLoading={session.historyLoading}
-								busy={status.isBusyForSelected}
-								onSend={onSend}
-								onStop={() => void rpc.request.stop({})}
-								commands={commands.commands()}
-								onCommand={(line) => commands.execute(line)}
-								onViewTrajectory={trajectory.view}
-								onCloseTrajectory={() => trajectory.setOpen(false)}
-								flashId={trajectory.flashId}
-								workspacePath={status.workspacePath()}
-								storagePath={status.storagePath()}
-								sandboxMode={status.sandboxMode()}
-								onSetSandboxMode={(mode) => void status.onSetSandboxMode(mode)}
-								model={status.model()}
-								models={status.models()}
-								onSetModel={(model) => void status.onSetModel(model)}
-								thinkingLevel={status.thinkingLevel()}
-								thinkingLevels={status.thinkingLevels()}
-								onSetThinkingLevel={(level) => void status.onSetThinkingLevel(level)}
-								onEscalationRespond={(id, approved) => void rpc.request.sandbox_respond({ id, approved })}
-								workingFor={status.workingFor}
-								draft={session.data.selected ? (composer.drafts()[session.data.selected!] ?? "") : ""}
-								onDraftChange={composer.change}
-								toastHost={<ToastHost toasts={toast.toasts} placement={settings.settings()?.toastPlacement ?? "bottomcenter"} onDismiss={toast.dismiss} />}
-								skills={skills.skills()}
-								onSkill={(name, hint) => rpc.request.skill_execute({ name, ...(hint ? { hint } : {}) })}
-								onSkillInspect={(name) => rpc.request.skill_get({ name }).then((r) => (r.ok ? (r.content ?? null) : null))}
-								onShell={(command) => rpc.request.shell_execute({ command })}
-								onOpenPath={(path, editorId) =>
-									void rpc.request.open_path({ path, editorId }).then((res) => {
-										if (!res.ok) toast.push({ title: "Couldn't open folder", body: res.error ?? "No supported editor found" }, "error");
-									})
-								}
-								editors={editors()}
-							/>
-						</TranscriptProvider>
-					)}
-				</MetricsProvider>
+				<AgentStatusProvider value={status}>
+					<MetricsProvider value={metrics.data}>
+						{shell.view() === "skills" ? (
+							<SkillsView />
+						) : (
+							<TranscriptProvider controller={transcript}>
+								<ConversationPage
+									partners={session.data.partners}
+									selected={session.data.selected}
+									onSelect={(name) => {
+										transcript.reset();
+										selectPartner(session.data.partners.find((p) => p.name === name) ?? null);
+									}}
+									unread={unread.unread}
+									onAddPartner={() => shell.setShowModal(true)}
+									onDelete={onDeletePartner}
+									onViewDetails={(name) => shell.setDetailsPartner(session.data.partners.find((p) => p.name === name) ?? null)}
+									listCollapsed={shell.listCollapsed()}
+									onToggleList={shell.toggleList}
+									entries={session.entries}
+									historyLoading={session.historyLoading}
+									onSend={onSend}
+									onStop={() => void rpc.request.stop({})}
+									commands={commands.commands()}
+									onCommand={(line) => commands.execute(line)}
+									onViewTrajectory={trajectory.view}
+									onCloseTrajectory={() => trajectory.setOpen(false)}
+									flashId={trajectory.flashId}
+									onEscalationRespond={(id, approved) => void rpc.request.sandbox_respond({ id, approved })}
+									draft={session.data.selected ? (composer.drafts()[session.data.selected!] ?? "") : ""}
+									onDraftChange={composer.change}
+									toastHost={<ToastHost toasts={toast.toasts} placement={settings.settings()?.toastPlacement ?? "bottomcenter"} onDismiss={toast.dismiss} />}
+									skills={skills.skills()}
+									onSkill={(name, hint) => rpc.request.skill_execute({ name, ...(hint ? { hint } : {}) })}
+									onSkillInspect={(name) => rpc.request.skill_get({ name }).then((r) => (r.ok ? (r.content ?? null) : null))}
+									onShell={(command) => rpc.request.shell_execute({ command })}
+									onOpenPath={(path, editorId) =>
+										void rpc.request.open_path({ path, editorId }).then((res) => {
+											if (!res.ok) toast.push({ title: "Couldn't open folder", body: res.error ?? "No supported editor found" }, "error");
+										})
+									}
+									editors={editors()}
+								/>
+							</TranscriptProvider>
+						)}
+					</MetricsProvider>
+				</AgentStatusProvider>
 			</main>
 
 			<Dialog open={shell.settingsOpen()} onOpenChange={shell.setSettingsOpen}>
