@@ -88,10 +88,37 @@ export function Composer(props: {
 	// renders; clearing is deferred one tick because Safari delivers the closing keydown
 	// AFTER compositionend.
 	let composing = false;
+	let pendingImeFix: { data: string; fixed: string; cursor: number } | null = null;
 	const onCompositionStart = () => {
 		composing = true;
 	};
-	const onCompositionEnd = () => {
+	const onCompositionEnd = (e: CompositionEvent) => {
+		const data = e.data ?? "";
+		// WKWebView commits pinyin-mode English as the display string with syllable spaces
+		// ("hap p"); when no CJK was selected, restore the raw letters by dropping spaces.
+		if (/^[A-Za-z\s]+$/.test(data) && data !== data.replace(/\s/g, "")) {
+			const el = textareaRef;
+			if (el) {
+				pendingImeFix = { data, fixed: data.replace(/\s/g, ""), cursor: el.selectionStart ?? el.value.length };
+			}
+			setTimeout(() => {
+				const fix = pendingImeFix;
+				const target = textareaRef;
+				if (!fix || !target) return;
+				const value = target.value;
+				const start = Math.max(0, fix.cursor - fix.data.length);
+				if (value.slice(start, start + fix.data.length) !== fix.data) return;
+				const next = value.slice(0, start) + fix.fixed + value.slice(start + fix.data.length);
+				pendingImeFix = null;
+				setText(next);
+				composer.change(next);
+				target.value = next;
+				const pos = start + fix.fixed.length;
+				target.setSelectionRange(pos, pos);
+				setCaret(pos);
+				resize();
+			}, 0);
+		}
 		setTimeout(() => {
 			composing = false;
 		}, 10);
