@@ -1,20 +1,7 @@
 import type { Entry as OriginEntry } from "@earendil-works/pi-agent-core";
-import { createEffect, createMemo } from "solid-js";
+import { createEffect } from "solid-js";
 import { createStore } from "solid-js/store";
-import { projectVisibleHistory } from "../../shared/entry-meta";
-import type { ViewItem } from "../../shared/rpc";
 import type { PartnerItem } from "../components/ConversationList";
-import {
-	type Entry,
-	makeAgentEntry,
-	makeCommandEntry,
-	makeEscalationEntry,
-	makeSepEntry,
-	makeShellEntry,
-	makeSkillEntry,
-	makeSysEntry,
-	makeUserEntry,
-} from "../layouts/Transcript";
 import { createInFlightBoolean } from "./inflight";
 import type { RPC } from "./rpc";
 
@@ -31,59 +18,6 @@ interface SessionData {
 	selected: string | null;
 	partners: PartnerItem[];
 	origin: OriginData;
-}
-
-const WEEKDAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
-const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-
-const dayOf = (ts: number) => {
-	const d = new Date(ts);
-	return `${WEEKDAYS[d.getDay()]} · ${MONTHS[d.getMonth()]} ${d.getDate()}`;
-};
-
-function buildViewEntries(items: ViewItem[]): Entry[] {
-	const out: Entry[] = [];
-	let lastDay = "";
-	const sep = (ts: number) => {
-		const day = dayOf(ts);
-		if (lastDay && day !== lastDay) out.push(makeSepEntry(day));
-		lastDay = day;
-	};
-	const pushItem = (entry: Entry, id: string) => {
-		entry.key = id;
-		out.push(entry);
-	};
-	for (const item of items) {
-		if (item.kind === "error") {
-			const entry = makeSysEntry(`ERR § ${item.text}`, true);
-			pushItem(entry, item.id);
-			continue;
-		}
-		if (item.kind === "aborted") {
-			const entry = makeSysEntry("stopped", false, true);
-			pushItem(entry, item.id);
-			continue;
-		}
-		if (item.kind === "user" && item.skillName) continue;
-		sep(item.time);
-		if (item.kind === "escalation" && item.escalation) {
-			const entry = makeEscalationEntry({ text: item.text, time: item.time, escalation: item.escalation });
-			pushItem(entry, item.id);
-		} else if (item.kind === "command" && item.command) {
-			const entry = makeCommandEntry({ text: item.text, time: item.time, command: item.command });
-			pushItem(entry, item.id);
-		} else if (item.kind === "skill" && item.skill) {
-			const entry = makeSkillEntry({ text: item.text, time: item.time, skill: item.skill });
-			pushItem(entry, item.id);
-		} else if (item.kind === "shell" && item.command) {
-			const entry = makeShellEntry({ text: item.text, time: item.time, command: item.command });
-			pushItem(entry, item.id);
-		} else {
-			const entry = item.kind === "user" ? makeUserEntry(item.text, item.time) : makeAgentEntry(item.text, item.time);
-			pushItem(entry, item.id);
-		}
-	}
-	return out;
 }
 
 export function createSession(rpc: RPC) {
@@ -196,8 +130,6 @@ export function createSession(rpc: RPC) {
 		resetOrigin();
 	});
 
-	const entries = createMemo<Entry[]>(() => buildViewEntries(projectVisibleHistory(data.origin.entries)));
-
 	async function refreshHistory() {
 		historyLoading.begin();
 		try {
@@ -253,5 +185,5 @@ export function createSession(rpc: RPC) {
 		originLoadMore: loadMore,
 	};
 
-	return { data, entries, historyLoading: historyLoading.loading, mutate };
+	return { data, historyLoading: historyLoading.loading, mutate };
 }

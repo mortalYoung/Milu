@@ -1,6 +1,6 @@
-import { type Accessor, createEffect, createMemo, createSignal, For } from "solid-js";
+import { createEffect, createMemo, createSignal, For } from "solid-js";
 import type { Entry } from "../layouts/Transcript";
-import { useTranscript } from "../lib/transcript-controller";
+import { useTranscript } from "../lib/transcript-context";
 
 interface ReplyRow {
 	question: string;
@@ -16,7 +16,7 @@ const outlineLabel = (text: string) => {
 	return first.length > 42 ? first.slice(0, 42) + "…" : first;
 };
 
-export function RepliesPane(props: { open: boolean; entries: Accessor<Entry[]> }) {
+export function RepliesPane(props: { open: boolean }) {
 	const transcript = useTranscript();
 	const rows = createMemo<ReplyRow[]>(() => {
 		const out: ReplyRow[] = [];
@@ -29,7 +29,7 @@ export function RepliesPane(props: { open: boolean; entries: Accessor<Entry[]> }
 				current = null;
 			}
 		};
-		for (const e of props.entries()) {
+		for (const e of transcript.view()) {
 			if (e.kind === "user") {
 				close();
 				lastQuestion = e.text;

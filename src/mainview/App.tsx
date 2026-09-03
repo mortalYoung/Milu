@@ -22,7 +22,8 @@ import { createSkills } from "./lib/skills";
 import { createToast, DEFAULT_TOAST_DURATION_MS } from "./lib/toast";
 import { createTrajectory } from "./lib/trajectory";
 import { TrajectoryProvider } from "./lib/trajectory-context";
-import { createTranscriptController, TranscriptProvider } from "./lib/transcript-controller";
+import { createTranscript } from "./lib/transcript";
+import { TranscriptProvider } from "./lib/transcript-context";
 import { createUnread } from "./lib/unread";
 import { ConversationPage } from "./pages/ConversationPage";
 import { type SettingsData, SettingsView } from "./pages/SettingsView";
@@ -42,10 +43,7 @@ function WorkspaceControllers() {
 	const status = createAgentStatus(rpc);
 	const metrics = createMetrics(rpc);
 	const trajectory = createTrajectory();
-	const transcript = createTranscriptController({
-		entries: session.entries,
-		sourceHasMore: () => session.data.origin.hasMore,
-		onLoadSourcePage: () => session.mutate.loadOlderHistory(),
+	const transcript = createTranscript({
 		onFlash: trajectory.mutate.flash,
 	});
 	const composer = createComposer();
@@ -239,7 +237,7 @@ function WorkspaceControllers() {
 							{shell.view() === "skills" ? (
 								<SkillsView />
 							) : (
-								<TranscriptProvider controller={transcript}>
+								<TranscriptProvider value={transcript}>
 									<ConversationPage
 										partners={session.data.partners}
 										selected={session.data.selected}
@@ -253,7 +251,6 @@ function WorkspaceControllers() {
 										onViewDetails={(name) => shell.setDetailsPartner(session.data.partners.find((p) => p.name === name) ?? null)}
 										listCollapsed={shell.listCollapsed()}
 										onToggleList={shell.toggleList}
-										entries={session.entries}
 										historyLoading={session.historyLoading}
 										onSend={onSend}
 										onStop={() => void rpc.request.stop({})}

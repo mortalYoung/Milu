@@ -6,9 +6,10 @@ import { Button } from "../components/Button";
 import { Composer } from "../components/Composer";
 import { ConversationList, type PartnerItem } from "../components/ConversationList";
 import { RepliesPane } from "../components/RepliesPane";
-import { type Entry, Transcript } from "../layouts/Transcript";
+import { Transcript } from "../layouts/Transcript";
 import { useAgentStatus } from "../lib/agent-status-context";
 import { useTrajectory } from "../lib/trajectory-context";
+import { useTranscript } from "../lib/transcript-context";
 
 export function ConversationPage(props: {
 	partners: PartnerItem[];
@@ -19,7 +20,6 @@ export function ConversationPage(props: {
 	onViewDetails: (name: string) => void;
 	listCollapsed: boolean;
 	onToggleList: () => void;
-	entries: Accessor<Entry[]>;
 
 	historyLoading: Accessor<boolean>;
 	onSend: (text: string) => void;
@@ -44,9 +44,10 @@ export function ConversationPage(props: {
 }) {
 	const status = useAgentStatus();
 	const trajectory = useTrajectory();
+	const transcript = useTranscript();
 	const [outlineOpen, setOutlineOpen] = createSignal(false);
 
-	const hasConversation = () => props.selected != null && props.entries().length > 0;
+	const hasConversation = () => props.selected != null && transcript.view().length > 0;
 	createEffect(() => {
 		if (!hasConversation()) {
 			setOutlineOpen(false);
@@ -135,7 +136,6 @@ export function ConversationPage(props: {
 				{props.selected ? (
 					<>
 						<Transcript
-							entries={props.entries}
 							working={status.isBusyForSelected}
 							historyLoading={props.historyLoading}
 							worker={props.selected}
@@ -166,7 +166,7 @@ export function ConversationPage(props: {
 				{props.toastHost}
 			</div>
 
-			<RepliesPane open={outlineOpen()} entries={props.entries} />
+			<RepliesPane open={outlineOpen()} />
 		</div>
 	);
 }

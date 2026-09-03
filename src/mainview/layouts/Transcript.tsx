@@ -4,7 +4,8 @@ import { AnimatePresence, Motion, MotionConfigProvider } from "solid-motion";
 import type { EscalationStatus, SandboxMode } from "../../shared/rpc";
 import { Dialog, DialogContent, DialogTitle } from "../components/ui/dialog";
 import { renderMarkdown, renderMarkdownPlain } from "../lib/markdown";
-import { useTranscript } from "../lib/transcript-controller";
+import { useSession } from "../lib/session-context";
+import { useTranscript } from "../lib/transcript-context";
 
 export interface EscalationInfo {
 	id: string;
@@ -258,7 +259,6 @@ function MessageStack(props: {
 const blockKey = (b: Entry | Entry[]) => (Array.isArray(b) ? b[0] : b).key ?? String(Array.isArray(b) ? b[0].id : b.id);
 
 export function Transcript(props: {
-	entries: Accessor<Entry[]>;
 	working: Accessor<boolean>;
 	historyLoading: Accessor<boolean>;
 	worker?: string;
@@ -267,8 +267,8 @@ export function Transcript(props: {
 	onSkillInspect?: (name: string) => Promise<string | null>;
 }) {
 	const controller = useTranscript();
-	let container: HTMLElement | undefined;
-	let inner: HTMLDivElement | undefined;
+	const session = useSession();
+	onCleanup(() => controller.detach());
 	const [expandedCommand, setExpandedCommand] = createSignal<number | null>(null);
 	const [skillDialog, setSkillDialog] = createSignal<{ name: string; content: string } | null>(null);
 	async function inspectSkill(name: string) {
@@ -276,22 +276,12 @@ export function Transcript(props: {
 		if (content != null) setSkillDialog({ name, content });
 	}
 
-	const setContainer = (el: HTMLElement) => {
-		container = el;
-		if (el && inner) controller.attach(el, inner);
-	};
-	const setInner = (el: HTMLDivElement) => {
-		inner = el;
-		if (el && container) controller.attach(container, el);
-	};
-	onCleanup(() => controller.detach());
-
 	return (
 		<MotionConfigProvider reducedMotion="user">
 			<div class="relative flex-1 min-h-0 flex flex-col">
-				<section class="transcript flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3" id="transcript" aria-live="polite" ref={setContainer}>
-					<div class="transcript-inner" ref={setInner}>
-						{props.entries().length === 0 && !props.working() && (
+				<section class="transcript flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3" id="transcript" aria-live="polite" ref={controller.setContainer}>
+					<div class="transcript-inner">
+						{controller.view().length === 0 && !props.working() && (
 							<div class="text-center pt-16">
 								{props.historyLoading() ? (
 									<>
@@ -307,14 +297,20 @@ export function Transcript(props: {
 							</div>
 						)}
 
-						<Show when={controller.hasMoreOlder()}>
+						<Show when={session.data.origin.hasMore}>
 							<div class="load-earlier-wrap">
-								<button class="load-earlier" onClick={() => controller.loadEarlier()} disabled={controller.loadEarlierPending()}>
-									{controller.loadEarlierPending() ? "loading…" : "↑ load earlier"}
+								<button
+									class="load-earlier"
+									onClick={() => {
+										void session.mutate.loadOlderHistory().then(() => controller.persistAnchor());
+									}}
+									disabled={session.data.origin.loading}
+								>
+									{session.data.origin.loading ? "loading…" : "↑ load earlier"}
 								</button>
 							</div>
 						</Show>
-						<For each={controller.visibleBlocks()}>
+						<For each={controller.blocks()}>
 							{(block) => {
 								if (Array.isArray(block)) {
 									const card = block[0];
