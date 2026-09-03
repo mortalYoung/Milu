@@ -8,6 +8,7 @@ import { ConversationList, type PartnerItem } from "../components/ConversationLi
 import { RepliesPane } from "../components/RepliesPane";
 import { type Entry, Transcript } from "../layouts/Transcript";
 import { useAgentStatus } from "../lib/agent-status-context";
+import { useTrajectory } from "../lib/trajectory-context";
 
 export function ConversationPage(props: {
 	partners: PartnerItem[];
@@ -27,12 +28,6 @@ export function ConversationPage(props: {
 	commands: CommandDescriptor[];
 	onCommand: (line: string) => Promise<CommandExecution>;
 
-	onViewTrajectory?: () => void;
-
-	onCloseTrajectory?: () => void;
-
-	flashId: Accessor<number | null>;
-
 	onEscalationRespond: (id: string, approved: boolean) => void;
 
 	unread: (name: string) => boolean;
@@ -48,13 +43,14 @@ export function ConversationPage(props: {
 	editors?: { id: string; name: string }[];
 }) {
 	const status = useAgentStatus();
+	const trajectory = useTrajectory();
 	const [outlineOpen, setOutlineOpen] = createSignal(false);
 
 	const hasConversation = () => props.selected != null && props.entries().length > 0;
 	createEffect(() => {
 		if (!hasConversation()) {
 			setOutlineOpen(false);
-			props.onCloseTrajectory?.();
+			trajectory.mutate.setOpen(false);
 		}
 	});
 
@@ -114,7 +110,7 @@ export function ConversationPage(props: {
 							aria-label="Toggle replies"
 							disabled={!hasConversation()}
 							onClick={() => {
-								if (!outlineOpen()) props.onCloseTrajectory?.();
+								if (!outlineOpen()) trajectory.mutate.setOpen(false);
 								setOutlineOpen((v) => !v);
 							}}
 						>
@@ -129,7 +125,7 @@ export function ConversationPage(props: {
 							disabled={!hasConversation()}
 							onClick={() => {
 								setOutlineOpen(false);
-								props.onViewTrajectory?.();
+								trajectory.mutate.view();
 							}}
 						>
 							<Activity size={16} />
@@ -143,7 +139,7 @@ export function ConversationPage(props: {
 							working={status.isBusyForSelected}
 							historyLoading={props.historyLoading}
 							worker={props.selected}
-							locateFlashId={props.flashId}
+							locateFlashId={trajectory.data.flashId}
 							onEscalationRespond={props.onEscalationRespond}
 							onSkillInspect={props.onSkillInspect}
 						/>

@@ -21,6 +21,7 @@ import { createShell } from "./lib/shell";
 import { createSkills } from "./lib/skills";
 import { createToast, DEFAULT_TOAST_DURATION_MS } from "./lib/toast";
 import { createTrajectory } from "./lib/trajectory";
+import { TrajectoryProvider } from "./lib/trajectory-context";
 import { createTranscriptController, TranscriptProvider } from "./lib/transcript-controller";
 import { createUnread } from "./lib/unread";
 import { ConversationPage } from "./pages/ConversationPage";
@@ -40,12 +41,12 @@ function WorkspaceControllers() {
 	const session = useSession();
 	const status = createAgentStatus(rpc);
 	const metrics = createMetrics(rpc);
-	const trajectory = createTrajectory(rpc);
+	const trajectory = createTrajectory();
 	const transcript = createTranscriptController({
 		entries: session.entries,
 		sourceHasMore: () => session.data.origin.hasMore,
 		onLoadSourcePage: () => session.mutate.loadOlderHistory(),
-		onFlash: trajectory.flash,
+		onFlash: trajectory.mutate.flash,
 	});
 	const composer = createComposer();
 	const commands = createCommandDirectory(rpc);
@@ -76,11 +77,12 @@ function WorkspaceControllers() {
 	});
 
 	rpc.addMessageListener("agent_end", async ({ error: err, partner }) => {
-		const errForSelected = err && partner === session.data.selected;
 		status.endTurn(partner);
 
-		if (errForSelected) void session.mutate.refreshHistory();
-		if (partner !== session.data.selected) {
+		if (partner === session.data.selected) {
+			void session.mutate.refreshHistory();
+			void session.mutate.refreshPartners();
+		} else {
 			await session.mutate.refreshPartners();
 			const p = session.data.partners.find((x) => x.name === partner);
 			const last = p?.lastMessageKind === "send_message" ? p.lastMessage : undefined;
@@ -100,21 +102,18 @@ function WorkspaceControllers() {
 						},
 				err ? "error" : "default",
 			);
-		} else {
-			void session.mutate.refreshPartners();
 		}
 		status.calibrate();
 	});
 
 	rpc.addMessageListener("agent_message", () => {
-		trajectory.invalidate();
 		void session.mutate.refreshHistory();
 
 		void session.mutate.refreshPartners();
 	});
 
-	rpc.addMessageListener("trajectory_update", () => {
-		trajectory.invalidate();
+	rpc.addMessageListener("origin_update", ({ partner }) => {
+		if (partner === session.data.selected) void session.mutate.refreshHistory();
 	});
 
 	rpc.addMessageListener("escalation_update", () => {
@@ -224,95 +223,83 @@ function WorkspaceControllers() {
 	});
 
 	return (
-		<div class="relative flex flex-1 min-h-0">
-			<AppRail
-				active={shell.view()}
-				onSelect={(tab) => {
-					if (tab === "settings") shell.setSettingsOpen(true);
-					else shell.setView(tab);
-				}}
-			/>
+		<TrajectoryProvider value={trajectory}>
+			<div class="relative flex flex-1 min-h-0">
+				<AppRail
+					active={shell.view()}
+					onSelect={(tab) => {
+						if (tab === "settings") shell.setSettingsOpen(true);
+						else shell.setView(tab);
+					}}
+				/>
 
-			<main class="flex-1 flex flex-col min-w-0 bg-qw-bg">
-				<AgentStatusProvider value={status}>
-					<MetricsProvider value={metrics.data}>
-						{shell.view() === "skills" ? (
-							<SkillsView />
-						) : (
-							<TranscriptProvider controller={transcript}>
-								<ConversationPage
-									partners={session.data.partners}
-									selected={session.data.selected}
-									onSelect={(name) => {
-										transcript.reset();
-										selectPartner(session.data.partners.find((p) => p.name === name) ?? null);
-									}}
-									unread={unread.unread}
-									onAddPartner={() => shell.setShowModal(true)}
-									onDelete={onDeletePartner}
-									onViewDetails={(name) => shell.setDetailsPartner(session.data.partners.find((p) => p.name === name) ?? null)}
-									listCollapsed={shell.listCollapsed()}
-									onToggleList={shell.toggleList}
-									entries={session.entries}
-									historyLoading={session.historyLoading}
-									onSend={onSend}
-									onStop={() => void rpc.request.stop({})}
-									commands={commands.commands()}
-									onCommand={(line) => commands.execute(line)}
-									onViewTrajectory={trajectory.view}
-									onCloseTrajectory={() => trajectory.setOpen(false)}
-									flashId={trajectory.flashId}
-									onEscalationRespond={(id, approved) => void rpc.request.sandbox_respond({ id, approved })}
-									draft={session.data.selected ? (composer.drafts()[session.data.selected!] ?? "") : ""}
-									onDraftChange={composer.change}
-									toastHost={<ToastHost toasts={toast.toasts} placement={settings.settings()?.toastPlacement ?? "bottomcenter"} onDismiss={toast.dismiss} />}
-									skills={skills.skills()}
-									onSkill={(name, hint) => rpc.request.skill_execute({ name, ...(hint ? { hint } : {}) })}
-									onSkillInspect={(name) => rpc.request.skill_get({ name }).then((r) => (r.ok ? (r.content ?? null) : null))}
-									onShell={(command) => rpc.request.shell_execute({ command })}
-									onOpenPath={(path, editorId) =>
-										void rpc.request.open_path({ path, editorId }).then((res) => {
-											if (!res.ok) toast.push({ title: "Couldn't open folder", body: res.error ?? "No supported editor found" }, "error");
-										})
-									}
-									editors={editors()}
-								/>
-							</TranscriptProvider>
-						)}
-					</MetricsProvider>
-				</AgentStatusProvider>
-			</main>
+				<main class="flex-1 flex flex-col min-w-0 bg-qw-bg">
+					<AgentStatusProvider value={status}>
+						<MetricsProvider value={metrics.data}>
+							{shell.view() === "skills" ? (
+								<SkillsView />
+							) : (
+								<TranscriptProvider controller={transcript}>
+									<ConversationPage
+										partners={session.data.partners}
+										selected={session.data.selected}
+										onSelect={(name) => {
+											transcript.reset();
+											selectPartner(session.data.partners.find((p) => p.name === name) ?? null);
+										}}
+										unread={unread.unread}
+										onAddPartner={() => shell.setShowModal(true)}
+										onDelete={onDeletePartner}
+										onViewDetails={(name) => shell.setDetailsPartner(session.data.partners.find((p) => p.name === name) ?? null)}
+										listCollapsed={shell.listCollapsed()}
+										onToggleList={shell.toggleList}
+										entries={session.entries}
+										historyLoading={session.historyLoading}
+										onSend={onSend}
+										onStop={() => void rpc.request.stop({})}
+										commands={commands.commands()}
+										onCommand={(line) => commands.execute(line)}
+										onEscalationRespond={(id, approved) => void rpc.request.sandbox_respond({ id, approved })}
+										draft={session.data.selected ? (composer.drafts()[session.data.selected!] ?? "") : ""}
+										onDraftChange={composer.change}
+										toastHost={<ToastHost toasts={toast.toasts} placement={settings.settings()?.toastPlacement ?? "bottomcenter"} onDismiss={toast.dismiss} />}
+										skills={skills.skills()}
+										onSkill={(name, hint) => rpc.request.skill_execute({ name, ...(hint ? { hint } : {}) })}
+										onSkillInspect={(name) => rpc.request.skill_get({ name }).then((r) => (r.ok ? (r.content ?? null) : null))}
+										onShell={(command) => rpc.request.shell_execute({ command })}
+										onOpenPath={(path, editorId) =>
+											void rpc.request.open_path({ path, editorId }).then((res) => {
+												if (!res.ok) toast.push({ title: "Couldn't open folder", body: res.error ?? "No supported editor found" }, "error");
+											})
+										}
+										editors={editors()}
+									/>
+								</TranscriptProvider>
+							)}
+						</MetricsProvider>
+					</AgentStatusProvider>
+				</main>
 
-			<Dialog open={shell.settingsOpen()} onOpenChange={shell.setSettingsOpen}>
-				<DialogContent class="w-[820px] max-w-none h-[640px] grid-rows-[auto_1fr] overflow-hidden bg-letter border-print-line p-0">
-					<DialogHeader class="px-4 pt-4">
-						<DialogTitle class="font-serif text-[15px]">Settings</DialogTitle>
-					</DialogHeader>
-					<SettingsView
-						settings={settings.settings()}
-						runtime={settings.runtime()}
-						onLoad={() => void settings.refresh()}
-						onSave={(s: SettingsData, credentials) => settings.save(s, credentials)}
-					/>
-				</DialogContent>
-			</Dialog>
+				<Dialog open={shell.settingsOpen()} onOpenChange={shell.setSettingsOpen}>
+					<DialogContent class="w-[820px] max-w-none h-[640px] grid-rows-[auto_1fr] overflow-hidden bg-letter border-print-line p-0">
+						<DialogHeader class="px-4 pt-4">
+							<DialogTitle class="font-serif text-[15px]">Settings</DialogTitle>
+						</DialogHeader>
+						<SettingsView
+							settings={settings.settings()}
+							runtime={settings.runtime()}
+							onLoad={() => void settings.refresh()}
+							onSave={(s: SettingsData, credentials) => settings.save(s, credentials)}
+						/>
+					</DialogContent>
+				</Dialog>
 
-			<PartnerModal open={shell.showModal()} onOpenChange={shell.setShowModal} onConfirm={onCreatePartner} existingNames={session.data.partners.map((p) => p.name)} />
+				<PartnerModal open={shell.showModal()} onOpenChange={shell.setShowModal} onConfirm={onCreatePartner} existingNames={session.data.partners.map((p) => p.name)} />
 
-			<PartnerDetailsDialog partner={shell.detailsPartner()} onOpenChange={(open) => !open && shell.setDetailsPartner(null)} />
+				<PartnerDetailsDialog partner={shell.detailsPartner()} onOpenChange={(open) => !open && shell.setDetailsPartner(null)} />
 
-			<TrajectoryDrawer
-				open={trajectory.open()}
-				onOpenChange={trajectory.setOpen}
-				records={trajectory.records()}
-				total={trajectory.total()}
-				mode={trajectory.mode()}
-				onModeChange={trajectory.changeMode}
-				loading={trajectory.loading()}
-				hasMore={trajectory.hasMore()}
-				loadingOlder={trajectory.loadingOlder()}
-				onLoadOlder={() => trajectory.loadOlder()}
-			/>
-		</div>
+				<TrajectoryDrawer />
+			</div>
+		</TrajectoryProvider>
 	);
 }

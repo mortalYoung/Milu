@@ -20,8 +20,12 @@ export function createMetrics(rpc: RPC) {
 		},
 	);
 
-	rpc.addMessageListener("agent_end", () => refetch());
-	rpc.addMessageListener("trajectory_update", () => refetch());
+	rpc.addMessageListener("agent_end", ({ partner }) => {
+		if (partner === sessionData.selected) refetch();
+	});
+	rpc.addMessageListener("origin_update", ({ partner }) => {
+		if (partner === sessionData.selected) refetch();
+	});
 	rpc.addMessageListener("command_update", () => refetch());
 
 	return { data };

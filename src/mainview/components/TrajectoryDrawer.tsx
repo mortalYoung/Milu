@@ -2,7 +2,9 @@ import { createVirtualizer } from "@tanstack/solid-virtual";
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import type { TrajectoryBlock, TrajectoryRecord, TrajectoryUsage } from "../../shared/rpc";
 import { stringifyArgs, type TimelineNode, timelineNodes } from "../../shared/trajectory";
+import { useSession } from "../lib/session-context";
 import type { TrajectoryMode } from "../lib/trajectory";
+import { useTrajectory } from "../lib/trajectory-context";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const fmtDateTime = (ts: number) => {
@@ -212,30 +214,21 @@ type FlatRow = DisplayRow & { runStart: boolean };
 
 const ROW_H = 28;
 
-export function TrajectoryDrawer(props: {
-	open: boolean;
-	onOpenChange: (open: boolean) => void;
-	records: TrajectoryRecord[];
-	total: number;
-	mode: TrajectoryMode;
-	onModeChange: (mode: TrajectoryMode) => void;
-	loading: boolean;
-	hasMore: boolean;
-	loadingOlder: boolean;
-	onLoadOlder: () => Promise<void>;
-}) {
+export function TrajectoryDrawer() {
+	const trajectory = useTrajectory();
+	const session = useSession();
 	return (
-		<Show when={props.open}>
+		<Show when={trajectory.data.open()}>
 			<DrawerContent
-				records={props.records}
-				total={props.total}
-				mode={props.mode}
-				onModeChange={props.onModeChange}
-				loading={props.loading}
-				hasMore={props.hasMore}
-				loadingOlder={props.loadingOlder}
-				onLoadOlder={props.onLoadOlder}
-				onClose={() => props.onOpenChange(false)}
+				records={trajectory.data.records()}
+				total={session.data.origin.total}
+				mode={trajectory.data.mode()}
+				onModeChange={trajectory.mutate.changeMode}
+				loading={session.data.origin.loading}
+				hasMore={session.data.origin.hasMore}
+				loadingOlder={session.data.origin.loading}
+				onLoadOlder={() => session.mutate.originLoadMore()}
+				onClose={() => trajectory.mutate.setOpen(false)}
 			/>
 		</Show>
 	);

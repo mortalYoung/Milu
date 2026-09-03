@@ -21,7 +21,6 @@ import { contextChangedText } from "./surface";
 export interface AgentBridge {
 	onTurnStart: (turn: number) => void;
 	onMessage: (text: string) => void;
-	onTrajectoryUpdate: () => void;
 	onWorkspaceUpdate: () => void;
 	onWorkspaceSet?: (path: string) => void;
 	onEnd: (error?: string) => void;
@@ -350,7 +349,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 				persistRuntime();
 				{
 					const persisted = step > 0 ? deps.session.appendStepEnd(runTurn, step, Date.now()).catch(logError) : Promise.resolve();
-					return persisted.then(() => bridge.onTrajectoryUpdate());
+					return persisted;
 				}
 			case "agent_end":
 				let lastAssistant: AssistantMessage | undefined;
@@ -372,7 +371,6 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 					.appendTurnEnd(runTurn, aborted ? "aborted" : agent.state.errorMessage ? "error" : "completed", Date.now(), agent.state.errorMessage ?? undefined)
 					.catch(logError)
 					.then(() => {
-						bridge.onTrajectoryUpdate();
 						bridge.onEnd(agent.state.errorMessage);
 					});
 			default:
@@ -438,7 +436,6 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		const error = message.stopReason === "error" ? message.errorMessage : undefined;
 		enforceDelivery({ type: "agent_end", messages: agent.state.messages } as Extract<AgentEvent, { type: "agent_end" }>);
 		await deps.session.appendTurnEnd(turn, aborted ? "aborted" : error ? "error" : "completed", Date.now(), error).catch(logError);
-		bridge.onTrajectoryUpdate();
 		bridge.onEnd(error);
 	}
 

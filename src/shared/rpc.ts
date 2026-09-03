@@ -548,7 +548,7 @@ export type AppRPCSchema = __schema<{
 
 			agent_message: {};
 
-			trajectory_update: {};
+			origin_update: { partner: string };
 
 			workspace_update: {};
 

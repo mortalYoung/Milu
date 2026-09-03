@@ -276,7 +276,6 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 		{
 			onTurnStart: (turn) => rpc.send.agent_turn({ turn, partner: profile.name }),
 			onMessage: () => rpc.send.agent_message({}),
-			onTrajectoryUpdate: () => rpc.send.trajectory_update({}),
 			onWorkspaceUpdate: () => {
 				rpc.send.workspace_update({});
 				void armSkillsWatchers();
@@ -406,7 +405,7 @@ async function compactionInput(entry: PartnerAgent) {
 async function runCompaction(entry: PartnerAgent, plan: CompactionPlan): Promise<void> {
 	await applyCompaction(session, entry.dir, plan);
 	entry.agent.restore(await session.deriveMessages(entry.dir));
-	rpc.send.trajectory_update({});
+	rpc.send.origin_update({ partner: entry.profile.name });
 }
 
 async function compactionFailure(entry: PartnerAgent, error: unknown): Promise<void> {
@@ -678,7 +677,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				}
 				await persistModel(entry.dir, { ...normalized, thinkingLevel: entry.agent.thinkingLevel });
 				await entry.scope.appendModelChange(normalized, Date.now()).catch((error) => console.error("model_change append failed:", error));
-				rpc.send.trajectory_update({});
+				rpc.send.origin_update({ partner: entry.profile.name });
 				return { ok: true };
 			},
 			set_thinking_level: async ({ level }) => {
@@ -693,7 +692,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				});
 				await entry.scope.appendThinkingLevelChange(level, Date.now()).catch((error) => console.error("thinking_level_change append failed:", error));
 				rpc.send.thinking_level_update({});
-				rpc.send.trajectory_update({});
+				rpc.send.origin_update({ partner: entry.profile.name });
 				return { ok: true };
 			},
 			set_sandbox_mode: async ({ mode }) => {
