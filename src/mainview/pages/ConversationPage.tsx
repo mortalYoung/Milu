@@ -1,7 +1,6 @@
 import { Activity, ListTree, PanelLeftClose, PanelLeftOpen } from "lucide-solid";
 import { type Accessor, createEffect, createSignal, type JSX, onCleanup } from "solid-js";
 import { AnimatePresence, Motion } from "solid-motion";
-import type { SkillDescriptor } from "../../shared/rpc";
 import { Button } from "../components/Button";
 import { Composer } from "../components/Composer";
 import { ConversationList, type PartnerItem } from "../components/ConversationList";
@@ -30,10 +29,7 @@ export function ConversationPage(props: {
 	unread: (name: string) => boolean;
 
 	toastHost?: JSX.Element;
-	skills?: SkillDescriptor[];
-	onSkill?: (name: string, hint?: string) => Promise<{ ok: boolean; error?: string }>;
 	onShell?: (command: string) => Promise<{ ok: boolean; error?: string; shellId?: string }>;
-	onSkillInspect?: (name: string) => Promise<string | null>;
 	onOpenPath?: (path: string, editorId?: string) => void;
 	editors?: { id: string; name: string }[];
 }) {
@@ -130,22 +126,8 @@ export function ConversationPage(props: {
 				</div>
 				{props.selected ? (
 					<>
-						<Transcript
-							working={status.isBusyForSelected}
-							historyLoading={props.historyLoading}
-							worker={props.selected}
-							onEscalationRespond={props.onEscalationRespond}
-							onSkillInspect={props.onSkillInspect}
-						/>
-						<Composer
-							onSend={props.onSend}
-							onStop={props.onStop}
-							skills={props.skills}
-							onSkill={props.onSkill}
-							onShell={props.onShell}
-							onOpenPath={props.onOpenPath}
-							editors={props.editors}
-						/>
+						<Transcript working={status.isBusyForSelected} historyLoading={props.historyLoading} worker={props.selected} onEscalationRespond={props.onEscalationRespond} />
+						<Composer onSend={props.onSend} onStop={props.onStop} onShell={props.onShell} onOpenPath={props.onOpenPath} editors={props.editors} />
 					</>
 				) : (
 					<div class="flex-1 flex flex-col items-center justify-center gap-3 text-center">

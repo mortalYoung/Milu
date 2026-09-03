@@ -4,6 +4,7 @@ import { AnimatePresence, Motion, MotionConfigProvider } from "solid-motion";
 import type { EscalationStatus, SandboxMode } from "../../shared/rpc";
 import { Dialog, DialogContent, DialogTitle } from "../components/ui/dialog";
 import { useSession } from "../lib/contexts/session-context";
+import { useSkills } from "../lib/contexts/skills-context";
 import { useTranscript } from "../lib/contexts/transcript-context";
 import { renderMarkdown, renderMarkdownPlain } from "../lib/markdown";
 
@@ -263,16 +264,16 @@ export function Transcript(props: {
 	historyLoading: Accessor<boolean>;
 	worker?: string;
 	onEscalationRespond?: (id: string, approved: boolean) => void;
-	onSkillInspect?: (name: string) => Promise<string | null>;
 }) {
 	const controller = useTranscript();
 	const session = useSession();
+	const skillDirectory = useSkills();
 	onCleanup(() => controller.detach());
 	const [expandedCommand, setExpandedCommand] = createSignal<number | null>(null);
 	const [skillDialog, setSkillDialog] = createSignal<{ name: string; content: string } | null>(null);
 	async function inspectSkill(name: string) {
-		const content = await props.onSkillInspect?.(name);
-		if (content != null) setSkillDialog({ name, content });
+		const res = await skillDirectory.mutate.inspect(name);
+		if (res.ok && res.content != null) setSkillDialog({ name, content: res.content });
 	}
 
 	return (

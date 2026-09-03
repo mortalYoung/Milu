@@ -14,7 +14,7 @@
  */
 import { ArrowUp, ExternalLink, SlidersHorizontal, Square } from "lucide-solid";
 import { createEffect, createMemo, createSignal, For, type JSX, onCleanup, Show, untrack } from "solid-js";
-import type { CommandDescriptor, SandboxMode, SkillDescriptor } from "../../shared/rpc";
+import type { CommandDescriptor, SandboxMode } from "../../shared/rpc";
 import { filterCommands } from "../lib/commands";
 import { formatWorkspacePath, shouldSendOnEnter } from "../lib/composer-input";
 import { useAgentStatus } from "../lib/contexts/agent-status-context";
@@ -22,6 +22,7 @@ import { useCommandDirectory } from "../lib/contexts/commands-context";
 import { useComposer } from "../lib/contexts/composer-context";
 import { useMetrics } from "../lib/contexts/metrics-context";
 import { useSession } from "../lib/contexts/session-context";
+import { useSkills } from "../lib/contexts/skills-context";
 import { detectTrigger, parseCommand } from "../lib/trigger";
 import { Button } from "./Button";
 import { CommandMenu } from "./CommandMenu";
@@ -53,8 +54,6 @@ function formatTokens(n: number): string {
 export function Composer(props: {
 	onSend: (text: string) => void;
 	onStop: () => void;
-	skills?: SkillDescriptor[];
-	onSkill?: (name: string, hint?: string) => Promise<{ ok: boolean; error?: string }>;
 	onShell?: (command: string) => Promise<{ ok: boolean; error?: string; shellId?: string }>;
 	onOpenPath?: (path: string, editorId?: string) => void;
 	/** Detected code editors (right-click menu on ws/st paths). */
@@ -65,6 +64,7 @@ export function Composer(props: {
 	const composer = useComposer();
 	const session = useSession();
 	const commandDirectory = useCommandDirectory();
+	const skillDirectory = useSkills();
 	const [text, setText] = createSignal("");
 	// The draft is per-chat: switching chats loads the other chat's saved text and resets the box height.
 	createEffect(() => {
@@ -135,7 +135,7 @@ export function Composer(props: {
 	const menuItems = createMemo(() => {
 		const q = menuQuery();
 		const commands = filterCommands(commandDirectory.commands(), q);
-		const skillItems = (props.skills ?? [])
+		const skillItems = (skillDirectory.data() ?? [])
 			.filter((s) => s.userInvocable)
 			.map(
 				(s): CommandDescriptor => ({
@@ -244,7 +244,7 @@ export function Composer(props: {
 		setClaimed(null);
 		clearText();
 		try {
-			await props.onSkill?.(name, hint);
+			await skillDirectory.mutate.execute(name, hint);
 		} finally {
 			setSubmitting(false);
 		}
