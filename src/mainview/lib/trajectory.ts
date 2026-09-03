@@ -11,7 +11,6 @@ export function createTrajectory() {
 	const { data: session, mutate: sessionMutate } = useSession();
 	const [open, setOpen] = createSignal(false);
 	const [mode, setMode] = createSignal<TrajectoryMode>("origin");
-	const [flashId, setFlashId] = createSignal<number | null>(null);
 
 	const records = createMemo<TrajectoryRecord[]>(() => {
 		const entries = session.origin.entries;
@@ -39,23 +38,13 @@ export function createTrajectory() {
 		setMode(next);
 	}
 
-	let lastSeenName: string | null = null;
 	createEffect(() => {
-		const name = session.selected;
-		if (name === lastSeenName) return;
-		lastSeenName = name;
+		void session.selected;
 		setOpen(false);
 	});
 
-	let flashTimer: ReturnType<typeof setTimeout> | undefined;
-	function flash(id: number) {
-		setFlashId(id);
-		clearTimeout(flashTimer);
-		flashTimer = setTimeout(() => setFlashId(null), 1200);
-	}
-
 	return {
-		data: { open, records, mode, flashId },
-		mutate: { setOpen, changeMode, view, flash },
+		data: { open, records, mode },
+		mutate: { setOpen, changeMode, view },
 	};
 }

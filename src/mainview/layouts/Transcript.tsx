@@ -262,7 +262,6 @@ export function Transcript(props: {
 	working: Accessor<boolean>;
 	historyLoading: Accessor<boolean>;
 	worker?: string;
-	locateFlashId?: Accessor<number | null>;
 	onEscalationRespond?: (id: string, approved: boolean) => void;
 	onSkillInspect?: (name: string) => Promise<string | null>;
 }) {
@@ -327,7 +326,7 @@ export function Transcript(props: {
 										return (
 											<Motion
 												as="div"
-												class={"msg-letter" + (props.locateFlashId?.() === card.id ? " locate-flash" : "")}
+												class={"msg-letter" + (controller.locateFlashId() === card.id ? " locate-flash" : "")}
 												id={"entry-" + card.id}
 												data-chat-anchor-key={key}
 												data-chat-flow-key={key}
@@ -339,7 +338,9 @@ export function Transcript(props: {
 											</Motion>
 										);
 									}
-									return <MessageStack cards={block} anchorKey={key} worker={props.worker} locateFlashId={props.locateFlashId} onEscalationRespond={props.onEscalationRespond} />;
+									return (
+										<MessageStack cards={block} anchorKey={key} worker={props.worker} locateFlashId={controller.locateFlashId} onEscalationRespond={props.onEscalationRespond} />
+									);
 								}
 								const e = block;
 								const key = blockKey(block);
@@ -348,7 +349,7 @@ export function Transcript(props: {
 										<>
 											<Motion
 												as="div"
-												class={"msg-user" + (props.locateFlashId?.() === e.id ? " locate-flash" : "")}
+												class={"msg-user" + (controller.locateFlashId() === e.id ? " locate-flash" : "")}
 												id={"entry-" + e.id}
 												data-chat-anchor-key={key}
 												data-chat-flow-key={key}

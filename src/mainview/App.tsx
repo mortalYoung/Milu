@@ -43,9 +43,7 @@ function WorkspaceControllers() {
 	const status = createAgentStatus(rpc);
 	const metrics = createMetrics(rpc);
 	const trajectory = createTrajectory();
-	const transcript = createTranscript({
-		onFlash: trajectory.mutate.flash,
-	});
+	const transcript = createTranscript();
 	const composer = createComposer();
 	const commands = createCommandDirectory(rpc);
 	const shell = createShell();

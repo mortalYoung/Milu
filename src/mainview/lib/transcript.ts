@@ -19,6 +19,7 @@ export interface TranscriptController {
 	view: Accessor<Entry[]>;
 	blocks: Accessor<(Entry | Entry[])[]>;
 	showBackToBottom: Accessor<boolean>;
+	locateFlashId: Accessor<number | null>;
 	scrollToBottom: (force?: boolean) => void;
 	locate: (id: number) => void;
 	persistAnchor: () => void;
@@ -169,16 +170,17 @@ function reconcileBlocks(prev: ChatBlock[], fresh: ChatBlock[]): ChatBlock[] {
 	});
 }
 
-export function createTranscript(opts?: { onFlash?: (id: number) => void }): TranscriptController {
+export function createTranscript(): TranscriptController {
 	const { data } = useSession();
-	const onFlash = opts?.onFlash;
 	const [showBackToBottom, setShowBackToBottom] = createSignal(false);
+	const [locateFlashId, setLocateFlashId] = createSignal<number | null>(null);
 	const [container, setContainer] = createSignal<HTMLElement | null>(null);
 
 	let observedTop = 0;
 	let atBottom = true;
 	let anchor: ScrollAnchor | null = null;
 	let pinRaf: number | null = null;
+	let flashTimer: ReturnType<typeof setTimeout> | undefined;
 
 	const view = createMemo<Entry[]>((prev) => {
 		const next = buildView(projectVisibleHistory(data.origin.entries));
@@ -285,6 +287,7 @@ export function createTranscript(opts?: { onFlash?: (id: number) => void }): Tra
 		view,
 		blocks,
 		showBackToBottom,
+		locateFlashId,
 		scrollToBottom: pinToBottom,
 		reset: () => {
 			setShowBackToBottom(false);
@@ -295,7 +298,9 @@ export function createTranscript(opts?: { onFlash?: (id: number) => void }): Tra
 			const ele = document.getElementById("entry-" + id);
 			if (!ele) return;
 			ele.scrollIntoView({ behavior: "smooth", block: "center" });
-			onFlash?.(id);
+			setLocateFlashId(id);
+			clearTimeout(flashTimer);
+			flashTimer = setTimeout(() => setLocateFlashId(null), 1200);
 		},
 		persistAnchor,
 		setContainer: setContainer,

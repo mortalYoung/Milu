@@ -139,7 +139,6 @@ export function ConversationPage(props: {
 							working={status.isBusyForSelected}
 							historyLoading={props.historyLoading}
 							worker={props.selected}
-							locateFlashId={trajectory.data.flashId}
 							onEscalationRespond={props.onEscalationRespond}
 							onSkillInspect={props.onSkillInspect}
 						/>
