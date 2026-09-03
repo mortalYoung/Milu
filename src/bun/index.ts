@@ -603,21 +603,38 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				return { accepted: true };
 			},
 
-			session_origin: async ({ before = 0, limit = 200 }) => {
-				const target = viewPartner;
-				if (!target) return { signature: "", entries: [], total: 0, loadedCount: 0, hasMore: false };
-				const origin = cleanOrigin(await session.rawEntries(target.dir));
+			session_origin: async ({ name, mode, cursor, limit = 200 }) => {
+				const settings = await loadSettings();
+				const profile = (await listPartners(settings)).find((p) => p.name === name);
+				if (!profile) return { entries: [], total: 0, hasMore: false, reset: false };
+				const dir = getPartnerDir(settings, name);
+				const origin = cleanOrigin(await session.rawEntries(dir));
 				const total = origin.length;
-				const loaded = Math.min(before, total);
-				const end = total - loaded;
-				const start = Math.max(0, end - limit);
-				const lastId = origin.length > 0 ? origin[origin.length - 1].id : "";
+				let start: number;
+				let end: number;
+				let reset = false;
+				if (!mode || !cursor) {
+					end = total;
+					start = Math.max(0, end - limit);
+				} else {
+					const idx = origin.findIndex((e) => e.id === cursor);
+					if (idx < 0) {
+						reset = true;
+						end = total;
+						start = Math.max(0, end - limit);
+					} else if (mode === "older") {
+						end = idx;
+						start = Math.max(0, end - limit);
+					} else {
+						start = idx + 1;
+						end = Math.min(total, start + limit);
+					}
+				}
 				return {
-					signature: `${total}:${lastId}`,
 					entries: origin.slice(start, end),
 					total,
-					loadedCount: loaded + Math.min(limit, end - start),
 					hasMore: start > 0,
+					reset,
 				};
 			},
 

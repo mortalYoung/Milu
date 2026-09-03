@@ -296,13 +296,12 @@ export type AppRPCSchema = __schema<{
 			};
 
 			session_origin: {
-				params: { before?: number; limit?: number };
+				params: { name: string; mode?: "older" | "newer"; cursor?: string; limit?: number };
 				response: {
-					signature: string;
 					entries: Entry[];
 					total: number;
-					loadedCount: number;
 					hasMore: boolean;
+					reset: boolean;
 				};
 			};
 

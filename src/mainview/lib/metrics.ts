@@ -1,6 +1,7 @@
-import { createStore } from "solid-js/store";
+import { createResource } from "solid-js";
 import type { ContextSnapshot, SessionStats } from "../../shared/rpc";
 import type { RPC } from "./rpc";
+import { useSession } from "./session-context";
 
 export interface MetricsData {
 	contextUsage: ContextSnapshot | null;
@@ -8,19 +9,20 @@ export interface MetricsData {
 }
 
 export function createMetrics(rpc: RPC) {
-	const [data, setData] = createStore<MetricsData>({
-		contextUsage: null,
-		stats: null,
-	});
+	const { data: sessionData } = useSession();
+	const [data, { refetch }] = createResource(
+		() => [sessionData.selected, sessionData.origin.total] as const,
+		async () => {
+			const name = sessionData.selected;
+			if (!name) return { contextUsage: null, stats: null };
+			const [contextUsage, stats] = await Promise.all([rpc.request.context_usage({ name }), rpc.request.stats({ name })]);
+			return { contextUsage, stats };
+		},
+	);
 
-	const mutate = async (name: string | null) => {
-		if (!name) {
-			setData({ contextUsage: null, stats: null });
-			return;
-		}
-		const [contextUsage, stats] = await Promise.all([rpc.request.context_usage({ name }), rpc.request.stats({ name })]);
-		setData({ contextUsage, stats });
-	};
+	rpc.addMessageListener("agent_end", () => refetch());
+	rpc.addMessageListener("trajectory_update", () => refetch());
+	rpc.addMessageListener("command_update", () => refetch());
 
-	return { data, mutate };
+	return { data };
 }

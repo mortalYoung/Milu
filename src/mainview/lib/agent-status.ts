@@ -1,9 +1,10 @@
 import { createSignal } from "solid-js";
 import type { SandboxMode, ThinkingLevel } from "../../shared/rpc";
 import type { RPC } from "./rpc";
+import { useSession } from "./session-context";
 
-/** Per-partner agent runtime status: who is writing (agent streaming or command running; each partner runs its own agent), plus the selected chat's workspace/sandbox/model. */
-export function createAgentStatus(rpc: RPC, getSelectedName: () => string | null) {
+export function createAgentStatus(rpc: RPC) {
+	const { data } = useSession();
 	const [writing, setWriting] = createSignal<Record<string, boolean>>({});
 	const [workspacePath, setWorkspacePath] = createSignal<string | null>(null);
 	const [storagePath, setStoragePath] = createSignal<string | null>(null);
@@ -16,7 +17,7 @@ export function createAgentStatus(rpc: RPC, getSelectedName: () => string | null
 	const [queued, setQueued] = createSignal(0);
 
 	// The selected chat is busy when its own partner is writing
-	const isBusyForSelected = () => (getSelectedName() ? (writing()[getSelectedName()!] ?? false) : false);
+	const isBusyForSelected = () => (data.selected ? (writing()[data.selected] ?? false) : false);
 	// Per-partner writing state for the list rows: the run's owner shows dots even when not selected
 	const workingFor = (name: string) => writing()[name] ?? false;
 
@@ -55,7 +56,7 @@ export function createAgentStatus(rpc: RPC, getSelectedName: () => string | null
 	/** A turn started for `partner`: it is writing now, and one queued follow-up drains when the run owns the selected chat. Returns whether a follow-up drained. */
 	function beginTurn(partner: string): boolean {
 		setWriting((m) => ({ ...m, [partner]: true }));
-		const drained = queued() > 0 && partner === getSelectedName();
+		const drained = queued() > 0 && partner === data.selected;
 		if (drained) setQueued((q) => q - 1);
 		return drained;
 	}

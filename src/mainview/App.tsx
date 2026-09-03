@@ -5,16 +5,16 @@ import { PartnerModal } from "./components/PartnerModal";
 import { ToastHost } from "./components/ToastHost";
 import { TrajectoryDrawer } from "./components/TrajectoryDrawer";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./components/ui/dialog";
-import { makeSysEntry } from "./layouts/Transcript";
 import { createAgentStatus } from "./lib/agent-status";
 import { createCommandDirectory } from "./lib/commands";
 import { createComposer } from "./lib/composer";
 import { COPIED_ICON_SVG, COPY_ICON_SVG, warmUpMarkdown } from "./lib/markdown";
 import { createMetrics } from "./lib/metrics";
-import { createOriginSession } from "./lib/origin-session";
+import { MetricsProvider } from "./lib/metrics-context";
 import type { PartnerFormData } from "./lib/partner-form";
 import { rpc } from "./lib/rpc";
 import { createSession } from "./lib/session";
+import { SessionProvider, useSession } from "./lib/session-context";
 import { createSettings } from "./lib/settings";
 import { createShell } from "./lib/shell";
 import { createSkills } from "./lib/skills";
@@ -27,61 +27,60 @@ import { type SettingsData, SettingsView } from "./pages/SettingsView";
 import { SkillsView } from "./pages/SkillsView";
 
 export function App() {
+	const session = createSession(rpc);
+	return (
+		<SessionProvider value={session}>
+			<WorkspaceControllers />
+		</SessionProvider>
+	);
+}
+
+function WorkspaceControllers() {
+	const session = useSession();
+	const status = createAgentStatus(rpc);
 	const metrics = createMetrics(rpc);
-	const session = createSession(rpc, {
-		onSessionLoaded: () => void metrics.mutate(session.selected()),
-	});
-	const status = createAgentStatus(rpc, () => session.selected());
-	const origin = createOriginSession(rpc, () => session.selected());
-	session.attachOrigin(origin);
-	const trajectory = createTrajectory(rpc, () => session.selected(), origin);
+	const trajectory = createTrajectory(rpc);
 	const transcript = createTranscriptController({
 		entries: session.entries,
-		sourceHasMore: () => origin.hasMore(),
-		onLoadSourcePage: () => session.loadOlderHistory(),
+		sourceHasMore: () => session.data.origin.hasMore,
+		onLoadSourcePage: () => session.mutate.loadOlderHistory(),
 		onFlash: trajectory.flash,
 	});
-	const composer = createComposer(() => session.selected());
+	const composer = createComposer();
 	const commands = createCommandDirectory(rpc);
 	const shell = createShell();
 	const settings = createSettings(rpc);
 	const skills = createSkills(rpc);
 	const toast = createToast(() => settings.settings()?.toastDurationMs ?? DEFAULT_TOAST_DURATION_MS);
-	const selectPartner = (p: Parameters<typeof session.select>[0]) => {
-		if (p?.name === session.selected()) return;
+	const selectPartner = (p: Parameters<typeof session.mutate.select>[0]) => {
+		if (p?.name === session.data.selected) return;
 
 		toast.dismissAll();
-		session.select(p);
+		session.mutate.select(p);
 	};
 	const openPartner = (name: string) => {
-		const p = session.partners().find((x) => x.name === name);
+		const p = session.data.partners.find((x) => x.name === name);
 		if (p) {
 			transcript.reset();
 			selectPartner(p);
 		}
 	};
-	const unread = createUnread(
-		rpc,
-		() => session.selected(),
-		() => session.partners(),
-	);
+	const unread = createUnread(rpc);
 
 	const [editors, setEditors] = createSignal<{ id: string; name: string }[]>([]);
 
-	rpc.addMessageListener("agent_turn", ({ turn: t, partner }) => {
-		const drained = status.beginTurn(partner);
-		if (drained) session.push(makeSysEntry(`✳ follow-up · turn ${t}`));
-		session.bump();
+	rpc.addMessageListener("agent_turn", ({ partner }) => {
+		status.beginTurn(partner);
 	});
 
 	rpc.addMessageListener("agent_end", async ({ error: err, partner }) => {
-		const errForSelected = err && partner === session.selected();
+		const errForSelected = err && partner === session.data.selected;
 		status.endTurn(partner);
 
-		if (errForSelected) void session.refreshHistory();
-		if (partner !== session.selected()) {
-			await session.refreshPartners();
-			const p = session.partners().find((x) => x.name === partner);
+		if (errForSelected) void session.mutate.refreshHistory();
+		if (partner !== session.data.selected) {
+			await session.mutate.refreshPartners();
+			const p = session.data.partners.find((x) => x.name === partner);
 			const last = p?.lastMessageKind === "send_message" ? p.lastMessage : undefined;
 			toast.push(
 				err
@@ -100,22 +99,18 @@ export function App() {
 				err ? "error" : "default",
 			);
 		}
-		session.bump();
 		status.calibrate();
-		void metrics.mutate(session.selected());
 	});
 
 	rpc.addMessageListener("agent_message", () => {
 		trajectory.invalidate();
-		void session.refreshHistory();
+		void session.mutate.refreshHistory();
 
-		void session.refreshPartners();
+		void session.mutate.refreshPartners();
 	});
 
 	rpc.addMessageListener("trajectory_update", () => {
 		trajectory.invalidate();
-
-		void metrics.mutate(session.selected());
 	});
 
 	rpc.addMessageListener("workspace_update", () => {
@@ -131,57 +126,55 @@ export function App() {
 	});
 
 	rpc.addMessageListener("escalation_update", () => {
-		void session.refreshHistory();
+		void session.mutate.refreshHistory();
 
 		status.calibrate();
 	});
 
 	rpc.addMessageListener("command_update", () => {
-		void session.refreshHistory();
+		void session.mutate.refreshHistory();
 		void commands.refresh();
 		status.calibrate();
-		void metrics.mutate(session.selected());
 	});
 
 	rpc.addMessageListener("skill_update", () => {
-		void session.refreshHistory();
+		void session.mutate.refreshHistory();
 	});
 
 	rpc.addMessageListener("shell_update", () => {
-		void session.refreshHistory();
+		void session.mutate.refreshHistory();
 	});
 
 	rpc.addMessageListener("skills_change", () => {
-		void skills.refresh(session.selected());
+		void skills.refresh(session.data.selected);
 	});
 
 	function onSend(text: string) {
 		if (status.isBusyForSelected()) {
-			session.push(makeSysEntry("✳ follow-up queued"));
 			status.queueFollowUp();
 		}
 		transcript.scrollToBottom(true);
 		void rpc.request.chat({ text }).then((res) => {
-			if (res.accepted) composer.clear(session.selected()!);
-			void session.refreshHistory();
+			if (res.accepted) composer.clear(session.data.selected!);
+			void session.mutate.refreshHistory();
 		});
 	}
 
 	async function onDeletePartner(name: string) {
 		await rpc.request.delete_partner({ name });
 
-		if (session.selected() === name) {
+		if (session.data.selected === name) {
 			transcript.reset();
 			selectPartner(null);
 		}
-		void session.refreshPartners();
+		void session.mutate.refreshPartners();
 	}
 
 	async function onCreatePartner(data: PartnerFormData): Promise<string | null> {
 		const res = await rpc.request.create_partner(data);
 		if (res.ok) {
 			shell.setShowModal(false);
-			void session.refreshPartners();
+			void session.mutate.refreshPartners();
 			if (res.profile) {
 				transcript.reset();
 				selectPartner(res.profile);
@@ -206,16 +199,15 @@ export function App() {
 	});
 
 	createEffect(() => {
-		void skills.refresh(session.selected());
+		void skills.refresh(session.data.selected);
 	});
 
-	void session.refreshHistory();
-	void session.refreshPartners();
+	void session.mutate.refreshHistory();
+	void session.mutate.refreshPartners();
 	void settings.refresh();
 	void commands.refresh();
 	void rpc.request.list_editors({}).then((res) => setEditors(res.editors));
 	status.calibrate();
-	void metrics.mutate(session.selected());
 
 	onMount(() => {
 		warmUpMarkdown();
@@ -252,64 +244,64 @@ export function App() {
 			/>
 
 			<main class="flex-1 flex flex-col min-w-0 bg-qw-bg">
-				{shell.view() === "skills" ? (
-					<SkillsView />
-				) : (
-					<TranscriptProvider controller={transcript}>
-						<ConversationPage
-							partners={session.partners()}
-							selected={session.selected()}
-							onSelect={(name) => {
-								transcript.reset();
-								selectPartner(session.partners().find((p) => p.name === name) ?? null);
-							}}
-							unread={unread.unread}
-							onAddPartner={() => shell.setShowModal(true)}
-							onDelete={onDeletePartner}
-							onViewDetails={(name) => shell.setDetailsPartner(session.partners().find((p) => p.name === name) ?? null)}
-							listCollapsed={shell.listCollapsed()}
-							onToggleList={shell.toggleList}
-							entries={session.entries}
-							working={status.isBusyForSelected}
-							historyLoading={session.historyLoading}
-							busy={status.isBusyForSelected}
-							onSend={onSend}
-							onStop={() => void rpc.request.stop({})}
-							commands={commands.commands()}
-							onCommand={(line) => commands.execute(line)}
-							onViewTrajectory={trajectory.view}
-							onCloseTrajectory={() => trajectory.setOpen(false)}
-							flashId={trajectory.flashId}
-							workspacePath={status.workspacePath()}
-							storagePath={status.storagePath()}
-							sandboxMode={status.sandboxMode()}
-							onSetSandboxMode={(mode) => void status.onSetSandboxMode(mode)}
-							model={status.model()}
-							models={status.models()}
-							onSetModel={(model) => void status.onSetModel(model)}
-							thinkingLevel={status.thinkingLevel()}
-							thinkingLevels={status.thinkingLevels()}
-							onSetThinkingLevel={(level) => void status.onSetThinkingLevel(level)}
-							onEscalationRespond={(id, approved) => void rpc.request.sandbox_respond({ id, approved })}
-							contextUsage={metrics.data.contextUsage}
-							stats={metrics.data.stats}
-							workingFor={status.workingFor}
-							draft={session.selected() ? (composer.drafts()[session.selected()!] ?? "") : ""}
-							onDraftChange={composer.change}
-							toastHost={<ToastHost toasts={toast.toasts} placement={settings.settings()?.toastPlacement ?? "bottomcenter"} onDismiss={toast.dismiss} />}
-							skills={skills.skills()}
-							onSkill={(name, hint) => rpc.request.skill_execute({ name, ...(hint ? { hint } : {}) })}
-							onSkillInspect={(name) => rpc.request.skill_get({ name }).then((r) => (r.ok ? (r.content ?? null) : null))}
-							onShell={(command) => rpc.request.shell_execute({ command })}
-							onOpenPath={(path, editorId) =>
-								void rpc.request.open_path({ path, editorId }).then((res) => {
-									if (!res.ok) toast.push({ title: "Couldn't open folder", body: res.error ?? "No supported editor found" }, "error");
-								})
-							}
-							editors={editors()}
-						/>
-					</TranscriptProvider>
-				)}
+				<MetricsProvider value={metrics.data}>
+					{shell.view() === "skills" ? (
+						<SkillsView />
+					) : (
+						<TranscriptProvider controller={transcript}>
+							<ConversationPage
+								partners={session.data.partners}
+								selected={session.data.selected}
+								onSelect={(name) => {
+									transcript.reset();
+									selectPartner(session.data.partners.find((p) => p.name === name) ?? null);
+								}}
+								unread={unread.unread}
+								onAddPartner={() => shell.setShowModal(true)}
+								onDelete={onDeletePartner}
+								onViewDetails={(name) => shell.setDetailsPartner(session.data.partners.find((p) => p.name === name) ?? null)}
+								listCollapsed={shell.listCollapsed()}
+								onToggleList={shell.toggleList}
+								entries={session.entries}
+								working={status.isBusyForSelected}
+								historyLoading={session.historyLoading}
+								busy={status.isBusyForSelected}
+								onSend={onSend}
+								onStop={() => void rpc.request.stop({})}
+								commands={commands.commands()}
+								onCommand={(line) => commands.execute(line)}
+								onViewTrajectory={trajectory.view}
+								onCloseTrajectory={() => trajectory.setOpen(false)}
+								flashId={trajectory.flashId}
+								workspacePath={status.workspacePath()}
+								storagePath={status.storagePath()}
+								sandboxMode={status.sandboxMode()}
+								onSetSandboxMode={(mode) => void status.onSetSandboxMode(mode)}
+								model={status.model()}
+								models={status.models()}
+								onSetModel={(model) => void status.onSetModel(model)}
+								thinkingLevel={status.thinkingLevel()}
+								thinkingLevels={status.thinkingLevels()}
+								onSetThinkingLevel={(level) => void status.onSetThinkingLevel(level)}
+								onEscalationRespond={(id, approved) => void rpc.request.sandbox_respond({ id, approved })}
+								workingFor={status.workingFor}
+								draft={session.data.selected ? (composer.drafts()[session.data.selected!] ?? "") : ""}
+								onDraftChange={composer.change}
+								toastHost={<ToastHost toasts={toast.toasts} placement={settings.settings()?.toastPlacement ?? "bottomcenter"} onDismiss={toast.dismiss} />}
+								skills={skills.skills()}
+								onSkill={(name, hint) => rpc.request.skill_execute({ name, ...(hint ? { hint } : {}) })}
+								onSkillInspect={(name) => rpc.request.skill_get({ name }).then((r) => (r.ok ? (r.content ?? null) : null))}
+								onShell={(command) => rpc.request.shell_execute({ command })}
+								onOpenPath={(path, editorId) =>
+									void rpc.request.open_path({ path, editorId }).then((res) => {
+										if (!res.ok) toast.push({ title: "Couldn't open folder", body: res.error ?? "No supported editor found" }, "error");
+									})
+								}
+								editors={editors()}
+							/>
+						</TranscriptProvider>
+					)}
+				</MetricsProvider>
 			</main>
 
 			<Dialog open={shell.settingsOpen()} onOpenChange={shell.setSettingsOpen}>
@@ -326,7 +318,7 @@ export function App() {
 				</DialogContent>
 			</Dialog>
 
-			<PartnerModal open={shell.showModal()} onOpenChange={shell.setShowModal} onConfirm={onCreatePartner} existingNames={session.partners().map((p) => p.name)} />
+			<PartnerModal open={shell.showModal()} onOpenChange={shell.setShowModal} onConfirm={onCreatePartner} existingNames={session.data.partners.map((p) => p.name)} />
 
 			<PartnerDetailsDialog partner={shell.detailsPartner()} onOpenChange={(open) => !open && shell.setDetailsPartner(null)} />
 

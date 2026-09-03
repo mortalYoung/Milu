@@ -14,9 +14,10 @@
  */
 import { ArrowUp, ExternalLink, SlidersHorizontal, Square } from "lucide-solid";
 import { createEffect, createMemo, createSignal, For, type JSX, onCleanup, Show } from "solid-js";
-import type { CommandDescriptor, CommandExecution, ContextUsage, SandboxMode, SessionStats, SkillDescriptor, ThinkingLevel } from "../../shared/rpc";
+import type { CommandDescriptor, CommandExecution, SandboxMode, SkillDescriptor, ThinkingLevel } from "../../shared/rpc";
 import { filterCommands } from "../lib/commands";
 import { formatWorkspacePath, shouldSendOnEnter } from "../lib/composer-input";
+import { useMetrics } from "../lib/metrics-context";
 import { detectTrigger, parseCommand } from "../lib/trigger";
 import { Button } from "./Button";
 import { CommandMenu } from "./CommandMenu";
@@ -70,9 +71,6 @@ export function Composer(props: {
 	thinkingLevel: ThinkingLevel;
 	thinkingLevels: ThinkingLevel[];
 	onSetThinkingLevel: (level: ThinkingLevel) => void;
-	contextUsage?: ContextUsage | null;
-	/** Session-wide metrics: whole-chat usage totals + averaged TTFT / tok/s. */
-	stats?: SessionStats | null;
 	/** The selected chat's saved draft (cleared + restored across chat switches, owned by the App). */
 	draft: string;
 	onDraftChange: (text: string) => void;
@@ -83,6 +81,7 @@ export function Composer(props: {
 	/** Detected code editors (right-click menu on ws/st paths). */
 	editors?: { id: string; name: string }[];
 }) {
+	const metrics = useMetrics();
 	const [text, setText] = createSignal(props.draft);
 	// The draft is per-chat: switching chats swaps the prop, loading the other chat's saved text
 	createEffect(() => {
@@ -406,9 +405,8 @@ export function Composer(props: {
 	};
 	const pathTitle = () => [props.workspace && `workspace: ${props.workspace}`, props.storage && `storage: ${props.storage}`].filter(Boolean).join("\n");
 
-	// Session metrics line: whole-chat token totals + averaged timing (the trajectory panel still shows per-turn usage)
 	const statsLine = () => {
-		const s = props.stats;
+		const s = metrics()?.stats ?? null;
 		if (!s || !s.usage) return null;
 		const u = s.usage;
 		const billed = u.input + u.cacheRead + u.cacheWrite;
@@ -490,7 +488,7 @@ export function Composer(props: {
 						spellcheck={false}
 						aria-label="Message"
 					/>
-					{props.contextUsage ? <ContextMeter usage={props.contextUsage} /> : null}
+					{metrics()?.contextUsage ? <ContextMeter usage={metrics()!.contextUsage!} /> : null}
 					{showSend() && (
 						<Button
 							variant={props.busy() ? "outline" : "seal"}

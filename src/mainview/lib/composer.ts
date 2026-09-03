@@ -1,11 +1,12 @@
 import { createSignal } from "solid-js";
+import { useSession } from "./session-context";
 
-/** Per-chat composer drafts: written on every keystroke, restored when the chat is re-selected. */
-export function createComposer(getSelectedName: () => string | null) {
+export function createComposer() {
+	const { data } = useSession();
 	const [drafts, setDrafts] = createSignal<Record<string, string>>({});
 
 	function change(text: string) {
-		const name = getSelectedName();
+		const name = data.selected;
 		if (!name) return;
 		setDrafts((d) => ({ ...d, [name]: text }));
 	}

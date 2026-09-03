@@ -1,7 +1,7 @@
 import { Activity, ListTree, PanelLeftClose, PanelLeftOpen } from "lucide-solid";
 import { type Accessor, createEffect, createSignal, type JSX, onCleanup } from "solid-js";
 import { AnimatePresence, Motion } from "solid-motion";
-import type { CommandDescriptor, CommandExecution, ContextUsage, SandboxMode, SessionStats, SkillDescriptor, ThinkingLevel } from "../../shared/rpc";
+import type { CommandDescriptor, CommandExecution, SandboxMode, SkillDescriptor, ThinkingLevel } from "../../shared/rpc";
 import { Button } from "../components/Button";
 import { Composer } from "../components/Composer";
 import { ConversationList, type PartnerItem } from "../components/ConversationList";
@@ -52,10 +52,6 @@ export function ConversationPage(props: {
 	thinkingLevel: ThinkingLevel;
 	thinkingLevels: ThinkingLevel[];
 	onSetThinkingLevel: (level: ThinkingLevel) => void;
-
-	contextUsage: ContextUsage | null;
-
-	stats: SessionStats | null;
 
 	workingFor: (name: string) => boolean;
 
@@ -187,8 +183,6 @@ export function ConversationPage(props: {
 							thinkingLevel={props.thinkingLevel}
 							thinkingLevels={props.thinkingLevels}
 							onSetThinkingLevel={props.onSetThinkingLevel}
-							contextUsage={props.contextUsage}
-							stats={props.stats}
 							draft={props.draft}
 							onDraftChange={props.onDraftChange}
 							skills={props.skills}

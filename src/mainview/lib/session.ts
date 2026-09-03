@@ -1,4 +1,5 @@
-import { createMemo } from "solid-js";
+import type { Entry as OriginEntry } from "@earendil-works/pi-agent-core";
+import { createEffect, createMemo } from "solid-js";
 import { createStore } from "solid-js/store";
 import { projectVisibleHistory } from "../../shared/entry-meta";
 import type { ViewItem } from "../../shared/rpc";
@@ -15,10 +16,22 @@ import {
 	makeUserEntry,
 } from "../layouts/Transcript";
 import { createInFlightBoolean } from "./inflight";
-import type { createOriginSession } from "./origin-session";
 import type { RPC } from "./rpc";
 
-type OriginSession = ReturnType<typeof createOriginSession>;
+const PAGE_SIZE = 500;
+
+interface OriginData {
+	entries: OriginEntry[];
+	hasMore: boolean;
+	total: number;
+	loading: boolean;
+}
+
+interface SessionData {
+	selected: string | null;
+	partners: PartnerItem[];
+	origin: OriginData;
+}
 
 const WEEKDAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
@@ -73,65 +86,136 @@ function buildViewEntries(items: ViewItem[]): Entry[] {
 	return out;
 }
 
-interface SessionState {
-	selected: string | null;
-	partners: PartnerItem[];
-	origin: OriginSession | null;
-	overlay: Entry[];
-	tick: number;
-}
-
-export function createSession(rpc: RPC, opts: { onSessionLoaded: () => void }) {
-	const [state, setState] = createStore<SessionState>({
+export function createSession(rpc: RPC) {
+	const [data, setData] = createStore<SessionData>({
 		selected: null,
 		partners: [],
-		origin: null,
-		overlay: [],
-		tick: 0,
+		origin: {
+			entries: [],
+			hasMore: false,
+			total: 0,
+			loading: false,
+		},
 	});
 
 	const historyLoading = createInFlightBoolean();
 
-	const selected = () => state.selected;
-	const partners = () => state.partners;
+	let refreshPromise: { name: string | null; promise: Promise<void> } | null = null;
 
-	const entries = createMemo<Entry[]>(() => {
-		const o = state.origin;
-		const base = o ? buildViewEntries(projectVisibleHistory(o.entries())) : [];
-		const extra = state.overlay;
-		return extra.length > 0 ? [...base, ...extra] : base;
+	function resetOrigin() {
+		setData("origin", {
+			entries: [],
+			hasMore: false,
+			total: 0,
+			loading: false,
+		});
+	}
+
+	function refresh(nameArg?: string | null): Promise<void> {
+		const name = nameArg ?? data.selected;
+
+		if (refreshPromise && refreshPromise.name === name) return refreshPromise.promise;
+		const promise = performRefresh(name);
+		refreshPromise = { name, promise };
+		return promise;
+	}
+
+	async function performRefresh(name: string | null) {
+		if (!name) {
+			resetOrigin();
+			refreshPromise = null;
+			return;
+		}
+		setData("origin", "loading", true);
+		try {
+			if (data.selected !== name) return;
+			const existing = data.origin.entries;
+			const res =
+				existing.length === 0
+					? await rpc.request.session_origin({ name, limit: PAGE_SIZE })
+					: await rpc.request.session_origin({ name, mode: "newer", cursor: existing.at(-1)!.id, limit: PAGE_SIZE });
+			if (res.reset || existing.length === 0) {
+				setData("origin", {
+					entries: res.entries,
+					hasMore: res.hasMore,
+					total: res.total,
+				});
+				return;
+			}
+			const newIds = new Set(res.entries.map((e) => e.id));
+			const older = existing.filter((e) => !newIds.has(e.id));
+			setData("origin", {
+				entries: [...older, ...res.entries],
+				hasMore: data.origin.hasMore,
+				total: res.total,
+			});
+		} catch (error) {
+			console.error("session_origin refresh failed:", error);
+			throw error;
+		} finally {
+			setData("origin", "loading", false);
+
+			if (refreshPromise?.name === name) refreshPromise = null;
+		}
+	}
+
+	async function loadMore() {
+		const name = data.selected;
+		if (!name || data.origin.loading || !data.origin.hasMore) return;
+		const oldest = data.origin.entries[0]?.id;
+		if (!oldest) return;
+		setData("origin", "loading", true);
+		try {
+			const res = await rpc.request.session_origin({ name, mode: "older", cursor: oldest, limit: PAGE_SIZE });
+			if (data.selected !== name) return;
+			if (res.reset) {
+				setData("origin", {
+					entries: res.entries,
+					hasMore: res.hasMore,
+					total: res.total,
+				});
+				return;
+			}
+			const known = new Set(data.origin.entries.map((e) => e.id));
+			const next = [...res.entries.filter((e) => !known.has(e.id)), ...data.origin.entries];
+			setData("origin", {
+				entries: next,
+				hasMore: res.hasMore,
+				total: res.total,
+			});
+		} finally {
+			setData("origin", "loading", false);
+		}
+	}
+
+	let lastSeenName: string | null = null;
+	createEffect(() => {
+		const name = data.selected;
+		if (name === lastSeenName) return;
+		lastSeenName = name;
+		resetOrigin();
 	});
 
-	const attachOrigin = (o: OriginSession) => setState("origin", o);
-
-	const bump = () => setState("tick", (t) => t + 1);
-	const push = (entry: Entry) => {
-		setState("overlay", (prev) => [...prev, entry]);
-		bump();
-	};
+	const entries = createMemo<Entry[]>(() => buildViewEntries(projectVisibleHistory(data.origin.entries)));
 
 	async function refreshHistory() {
 		historyLoading.begin();
 		try {
-			const o = state.origin;
-			if (!o) return;
-			await o.refresh();
-			if (o.entries().length === 0) setState("overlay", []);
+			await refresh();
 		} finally {
 			historyLoading.end();
 		}
 	}
 
 	async function loadOlderHistory(): Promise<boolean> {
-		const o = state.origin;
-		if (!o || !o.hasMore()) return false;
-		const name = selected();
+		if (!data.origin.hasMore) return false;
+		const name = data.selected;
 		historyLoading.begin();
 		try {
-			const before = o.entries().length;
-			await o.loadMore();
-			if (selected() !== name) return false;
-			return o.entries().length !== before;
+			const before = data.origin.entries.length;
+			await loadMore();
+			if (data.selected !== name) return false;
+			return data.origin.entries.length !== before;
 		} finally {
 			historyLoading.end();
 		}
@@ -139,52 +223,35 @@ export function createSession(rpc: RPC, opts: { onSessionLoaded: () => void }) {
 
 	async function refreshPartners() {
 		const { partners: list } = await rpc.request.list_partners({});
-		setState("partners", list);
+		setData("partners", list);
 
-		if (selected() != null && !list.some((p) => p.name === selected())) select(null);
+		if (data.selected != null && !list.some((p) => p.name === data.selected)) select(null);
 	}
 
 	function select(partner: PartnerItem | null) {
-		setState("selected", partner?.name ?? null);
-		setState("overlay", []);
+		setData("selected", partner?.name ?? null);
 
+		const profile = partner ? { name: partner.name, responsibilities: partner.responsibilities, tones: partner.tones } : null;
 		historyLoading.begin();
-		void rpc.request
-			.set_partner({
-				profile: partner ? { name: partner.name, responsibilities: partner.responsibilities, tones: partner.tones } : null,
-			})
-			.then(() => {
-				const o = state.origin;
-				if (!o) {
-					historyLoading.end();
-					opts.onSessionLoaded();
-					return;
-				}
-				void o
-					.refresh()
-					.catch(() => {})
-					.finally(() => {
-						historyLoading.end();
-						opts.onSessionLoaded();
-					});
-			})
-			.catch(() => {
+		void Promise.all([
+			// TODO: remove set_partner once every RPC is parameterized by partner name
+			rpc.request.set_partner({ profile }),
+			partner ? refresh(partner.name) : Promise.resolve(),
+		])
+			.catch(() => {})
+			.finally(() => {
 				historyLoading.end();
 			});
 	}
 
-	return {
-		selected,
-		partners,
-		entries,
-		tick: () => state.tick,
-		push,
-		bump,
-		attachOrigin,
+	const mutate = {
 		refreshHistory,
 		loadOlderHistory,
 		refreshPartners,
 		select,
-		historyLoading: historyLoading.loading,
+		originRefresh: refresh,
+		originLoadMore: loadMore,
 	};
+
+	return { data, entries, historyLoading: historyLoading.loading, mutate };
 }
