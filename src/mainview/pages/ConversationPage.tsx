@@ -32,8 +32,6 @@ export function ConversationPage(props: {
 
 	unread: (name: string) => boolean;
 
-	draft: string;
-	onDraftChange: (text: string) => void;
 	toastHost?: JSX.Element;
 	skills?: SkillDescriptor[];
 	onSkill?: (name: string, hint?: string) => Promise<{ ok: boolean; error?: string }>;
@@ -147,8 +145,6 @@ export function ConversationPage(props: {
 							onStop={props.onStop}
 							commands={props.commands}
 							onCommand={props.onCommand}
-							draft={props.draft}
-							onDraftChange={props.onDraftChange}
 							skills={props.skills}
 							onSkill={props.onSkill}
 							onShell={props.onShell}

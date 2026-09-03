@@ -13,12 +13,14 @@
  * model), and leadingInput commands (/workspace) claim the line until the argument is typed.
  */
 import { ArrowUp, ExternalLink, SlidersHorizontal, Square } from "lucide-solid";
-import { createEffect, createMemo, createSignal, For, type JSX, onCleanup, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, type JSX, onCleanup, Show, untrack } from "solid-js";
 import type { CommandDescriptor, CommandExecution, SandboxMode, SkillDescriptor } from "../../shared/rpc";
 import { useAgentStatus } from "../lib/agent-status-context";
 import { filterCommands } from "../lib/commands";
+import { useComposer } from "../lib/composer-context";
 import { formatWorkspacePath, shouldSendOnEnter } from "../lib/composer-input";
 import { useMetrics } from "../lib/metrics-context";
+import { useSession } from "../lib/session-context";
 import { detectTrigger, parseCommand } from "../lib/trigger";
 import { Button } from "./Button";
 import { CommandMenu } from "./CommandMenu";
@@ -54,9 +56,6 @@ export function Composer(props: {
 	commands: CommandDescriptor[];
 	/** Execute a slash command line; resolves after command/run + command/done are persisted. */
 	onCommand: (line: string) => Promise<CommandExecution>;
-	/** The selected chat's saved draft (cleared + restored across chat switches, owned by the App). */
-	draft: string;
-	onDraftChange: (text: string) => void;
 	skills?: SkillDescriptor[];
 	onSkill?: (name: string, hint?: string) => Promise<{ ok: boolean; error?: string }>;
 	onShell?: (command: string) => Promise<{ ok: boolean; error?: string; shellId?: string }>;
@@ -66,12 +65,23 @@ export function Composer(props: {
 }) {
 	const metrics = useMetrics();
 	const agent = useAgentStatus();
-	const [text, setText] = createSignal(props.draft);
-	// The draft is per-chat: switching chats swaps the prop, loading the other chat's saved text
+	const composer = useComposer();
+	const session = useSession();
+	const [text, setText] = createSignal("");
+	// The draft is per-chat: switching chats loads the other chat's saved text and resets the box height.
 	createEffect(() => {
-		setText(props.draft);
+		const name = session.data.selected;
+		void name;
+		const value = untrack(() => (name ? (composer.drafts()[name] ?? "") : ""));
+		setText(value);
 		setMenuOpen(false);
 		setClaimed(null);
+		requestAnimationFrame(() => {
+			if (!textareaRef) return;
+			textareaRef.style.height = "";
+			resize();
+			focusEnd();
+		});
 	});
 	let textareaRef: HTMLTextAreaElement | undefined;
 	// IME guard: composition Enter picks a candidate, it must not send. The flag outlives
@@ -156,7 +166,7 @@ export function Composer(props: {
 
 	const clearText = () => {
 		setText("");
-		props.onDraftChange("");
+		composer.change("");
 		if (textareaRef) textareaRef.style.height = "";
 	};
 
@@ -196,7 +206,7 @@ export function Composer(props: {
 
 	function claimLeading(cmd: CommandDescriptor) {
 		setText(`/${cmd.name} `);
-		props.onDraftChange(`/${cmd.name} `);
+		composer.change(`/${cmd.name} `);
 		setClaimed(cmd);
 		setMenuOpen(false);
 		queueMicrotask(focusEnd);
@@ -228,7 +238,7 @@ export function Composer(props: {
 			const res = await props.onShell?.(trimmed);
 			if (res && !res.ok) {
 				setText(trimmed);
-				props.onDraftChange(trimmed);
+				composer.change(trimmed);
 			}
 		} finally {
 			setSubmitting(false);
@@ -450,7 +460,7 @@ export function Composer(props: {
 							const el = e.currentTarget;
 							const value = el.value;
 							setText(value);
-							props.onDraftChange(value);
+							composer.change(value);
 							setCaret(el.selectionStart ?? value.length);
 							suppressNextSync = false;
 							syncCommandState(value, caret());
