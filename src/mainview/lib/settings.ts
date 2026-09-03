@@ -6,6 +6,7 @@ import type { RPC } from "./rpc";
 export function createSettings(rpc: RPC) {
 	const [settings, setSettings] = createSignal<SettingsData | null>(null);
 	const [runtime, setRuntime] = createSignal<RuntimeInfo | null>(null);
+	const [settingsOpen, setSettingsOpen] = createSignal(false);
 
 	async function refresh() {
 		const { settings: s, runtime: r } = await rpc.request.get_settings({});
@@ -19,5 +20,5 @@ export function createSettings(rpc: RPC) {
 		return res;
 	}
 
-	return { settings, runtime, refresh, save };
+	return { settings, settingsOpen, setSettingsOpen, runtime, refresh, save };
 }

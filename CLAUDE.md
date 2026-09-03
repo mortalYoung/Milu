@@ -20,4 +20,6 @@ Less is more — an application of Restraint to prompts. Write the shortest prom
 
 ## Comment philosophy
 
-No comments unless the user explicitly asks for one. Code should speak for itself — prefer clear names and structure over explanatory comments. If a comment seems necessary, the code likely isn't clear enough; improve the code instead.
+No explanatory comments unless the user explicitly asks for one. Code should speak for itself — prefer clear names and structure over explanatory comments. If a comment seems necessary, the code likely isn't clear enough; improve the code instead.
+
+The one allowed exception is **region-marker comments**: a short banner that labels a section inside a long composition function or controller (for example `// ——— feature controllers ———`). Region markers are structural, not explanatory, and should be the only comments added freely.

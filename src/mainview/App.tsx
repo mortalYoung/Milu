@@ -1,5 +1,6 @@
 import { createEffect, createSignal, onMount } from "solid-js";
 import { AppRail } from "./components/AppRail";
+import type { PartnerItem } from "./components/ConversationList";
 import { PartnerDetailsDialog } from "./components/PartnerDetailsDialog";
 import { PartnerModal } from "./components/PartnerModal";
 import { ToastHost } from "./components/ToastHost";
@@ -21,7 +22,6 @@ import type { PartnerFormData } from "./lib/partner-form";
 import { rpc } from "./lib/rpc";
 import { createSession } from "./lib/session";
 import { createSettings } from "./lib/settings";
-import { createShell } from "./lib/shell";
 import { createSkills } from "./lib/skills";
 import { createToast, DEFAULT_TOAST_DURATION_MS } from "./lib/toast";
 import { createTrajectory } from "./lib/trajectory";
@@ -42,16 +42,30 @@ export function App() {
 
 function WorkspaceControllers() {
 	const session = useSession();
+
+	// ——— UI chrome / local window state ———
+	const [view, setView] = createSignal<"chat" | "skills">("chat");
+	const [showModal, setShowModal] = createSignal(false);
+	const [detailsPartner, setDetailsPartner] = createSignal<PartnerItem | null>(null);
+	const [listCollapsed, setListCollapsed] = createSignal(localStorage.getItem("chatlist.collapsed") === "1");
+	const toggleList = () => {
+		const next = !listCollapsed();
+		setListCollapsed(next);
+		localStorage.setItem("chatlist.collapsed", next ? "1" : "0");
+	};
+
+	// ——— feature controllers ———
 	const status = createAgentStatus(rpc);
 	const metrics = createMetrics(rpc);
 	const trajectory = createTrajectory();
 	const transcript = createTranscript();
 	const composer = createComposer();
 	const commands = createCommandDirectory(rpc);
-	const shell = createShell();
 	const settings = createSettings(rpc);
 	const skills = createSkills(rpc);
 	const toast = createToast(() => settings.settings()?.toastDurationMs ?? DEFAULT_TOAST_DURATION_MS);
+
+	// ——— partner navigation helpers ———
 	const selectPartner = (p: Parameters<typeof session.mutate.select>[0]) => {
 		if (p?.name === session.data.selected) return;
 
@@ -69,6 +83,7 @@ function WorkspaceControllers() {
 
 	const [editors, setEditors] = createSignal<{ id: string; name: string }[]>([]);
 
+	// ——— RPC event listeners ———
 	rpc.addMessageListener("agent_turn", ({ partner }) => {
 		status.beginTurn(partner);
 		void session.mutate.refreshPartners();
@@ -139,6 +154,7 @@ function WorkspaceControllers() {
 		void skills.refresh(session.data.selected);
 	});
 
+	// ——— actions ———
 	function onSend(text: string) {
 		transcript.scrollToBottom(true);
 		void rpc.request.chat({ text }).then((res) => {
@@ -160,7 +176,7 @@ function WorkspaceControllers() {
 	async function onCreatePartner(data: PartnerFormData): Promise<string | null> {
 		const res = await rpc.request.create_partner(data);
 		if (res.ok) {
-			shell.setShowModal(false);
+			setShowModal(false);
 			void session.mutate.refreshPartners();
 			if (res.profile) {
 				transcript.reset();
@@ -171,6 +187,7 @@ function WorkspaceControllers() {
 		return res.error ?? "Failed to create partner";
 	}
 
+	// ——— theme + startup effects ———
 	let flipTimer: ReturnType<typeof setTimeout> | undefined;
 	createEffect(() => {
 		const theme = settings.settings()?.theme ?? "system";
@@ -225,17 +242,17 @@ function WorkspaceControllers() {
 				<CommandDirectoryProvider value={commands}>
 					<div class="relative flex flex-1 min-h-0">
 						<AppRail
-							active={shell.view()}
+							active={view()}
 							onSelect={(tab) => {
-								if (tab === "settings") shell.setSettingsOpen(true);
-								else shell.setView(tab);
+								if (tab === "settings") settings.setSettingsOpen(true);
+								else setView(tab);
 							}}
 						/>
 
 						<main class="flex-1 flex flex-col min-w-0 bg-qw-bg">
 							<AgentStatusProvider value={status}>
 								<MetricsProvider value={metrics.data}>
-									{shell.view() === "skills" ? (
+									{view() === "skills" ? (
 										<SkillsView />
 									) : (
 										<TranscriptProvider value={transcript}>
@@ -247,11 +264,11 @@ function WorkspaceControllers() {
 													selectPartner(session.data.partners.find((p) => p.name === name) ?? null);
 												}}
 												unread={unread.unread}
-												onAddPartner={() => shell.setShowModal(true)}
+												onAddPartner={() => setShowModal(true)}
 												onDelete={onDeletePartner}
-												onViewDetails={(name) => shell.setDetailsPartner(session.data.partners.find((p) => p.name === name) ?? null)}
-												listCollapsed={shell.listCollapsed()}
-												onToggleList={shell.toggleList}
+												onViewDetails={(name) => setDetailsPartner(session.data.partners.find((p) => p.name === name) ?? null)}
+												listCollapsed={listCollapsed()}
+												onToggleList={toggleList}
 												historyLoading={session.historyLoading}
 												onSend={onSend}
 												onStop={() => void rpc.request.stop({})}
@@ -274,7 +291,7 @@ function WorkspaceControllers() {
 							</AgentStatusProvider>
 						</main>
 
-						<Dialog open={shell.settingsOpen()} onOpenChange={shell.setSettingsOpen}>
+						<Dialog open={settings.settingsOpen()} onOpenChange={settings.setSettingsOpen}>
 							<DialogContent class="w-[820px] max-w-none h-[640px] grid-rows-[auto_1fr] overflow-hidden bg-letter border-print-line p-0">
 								<DialogHeader class="px-4 pt-4">
 									<DialogTitle class="font-serif text-[15px]">Settings</DialogTitle>
@@ -288,9 +305,9 @@ function WorkspaceControllers() {
 							</DialogContent>
 						</Dialog>
 
-						<PartnerModal open={shell.showModal()} onOpenChange={shell.setShowModal} onConfirm={onCreatePartner} existingNames={session.data.partners.map((p) => p.name)} />
+						<PartnerModal open={showModal()} onOpenChange={setShowModal} onConfirm={onCreatePartner} existingNames={session.data.partners.map((p) => p.name)} />
 
-						<PartnerDetailsDialog partner={shell.detailsPartner()} onOpenChange={(open) => !open && shell.setDetailsPartner(null)} />
+						<PartnerDetailsDialog partner={detailsPartner()} onOpenChange={(open) => !open && setDetailsPartner(null)} />
 
 						<TrajectoryDrawer />
 					</div>
