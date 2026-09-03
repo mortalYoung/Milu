@@ -5,6 +5,7 @@ import { PickFile } from "../components/PickFile";
 import { Select } from "../components/ui/select";
 import { Switch as SwitchToggle } from "../components/ui/switch";
 import { TextField, TextFieldInput } from "../components/ui/text-field";
+import { useSettings } from "../lib/contexts/settings-context";
 import { cn } from "../lib/utils";
 
 export interface SettingsData {
@@ -180,12 +181,11 @@ function Field(props: { label: string; children: JSX.Element }) {
 	);
 }
 
-export function SettingsView(props: {
-	settings: SettingsData | null;
-	runtime: RuntimeInfo | null;
-	onSave: (settings: SettingsData, credentials: Record<string, string>) => Promise<SaveResult>;
-	onLoad: () => void;
-}) {
+export function SettingsView() {
+	const settingsView = useSettings();
+	const settingsData = () => settingsView.data()?.settings ?? null;
+	const runtime = () => settingsView.data()?.runtime ?? null;
+	const initial = settingsData();
 	const [tab, setTab] = createSignal<CatId>("general");
 	const [query, setQuery] = createSignal("");
 	const [path, setPath] = createSignal("");
@@ -206,9 +206,9 @@ export function SettingsView(props: {
 	const [theme, setTheme] = createSignal<ThemeMode>("system");
 	const [toastPlacement, setToastPlacement] = createSignal<ToastPlacement>("bottomcenter");
 	const [toastDurationMs, setToastDurationMs] = createSignal("4000");
-	const [skillsDirs, setSkillsDirs] = createSignal<string[]>(props.settings?.skills_dirs?.length ? props.settings.skills_dirs : [".agents/skills"]);
-	const [skillsWatch, setSkillsWatch] = createSignal(props.settings?.skills_watch ?? true);
-	const [skillsWatchDelay, setSkillsWatchDelay] = createSignal(String(props.settings?.skills_watch_delay_ms ?? 300));
+	const [skillsDirs, setSkillsDirs] = createSignal<string[]>(initial?.skills_dirs?.length ? initial.skills_dirs : [".agents/skills"]);
+	const [skillsWatch, setSkillsWatch] = createSignal(initial?.skills_watch ?? true);
+	const [skillsWatchDelay, setSkillsWatchDelay] = createSignal(String(initial?.skills_watch_delay_ms ?? 300));
 
 	function persistSkillsDirs() {
 		const dirs = skillsDirs()
@@ -219,7 +219,7 @@ export function SettingsView(props: {
 	}
 
 	createEffect(() => {
-		const s = props.settings;
+		const s = settingsData();
 		if (!s) return;
 		if (s.webFetch?.timeoutMs !== undefined) setWebFetchTimeout(String(s.webFetch.timeoutMs));
 		if (s.webFetch?.maxBytes !== undefined) setWebFetchMaxBytes(String(s.webFetch.maxBytes));
@@ -262,81 +262,80 @@ export function SettingsView(props: {
 	const [keyDraft, setKeyDraft] = createSignal("");
 	const [cp, setCp] = createSignal({ ...EMPTY_CP });
 
-	if (props.settings && path() === "" && props.settings.partner_profile_path !== path()) {
-		setPath(props.settings.partner_profile_path);
+	if (initial && path() === "" && initial.partner_profile_path !== path()) {
+		setPath(initial.partner_profile_path);
 	}
-	if (props.settings && instructionsFile() === "" && props.settings.detect_instructions_file !== instructionsFile()) {
-		setInstructionsFile(props.settings.detect_instructions_file);
+	if (initial && instructionsFile() === "" && initial.detect_instructions_file !== instructionsFile()) {
+		setInstructionsFile(initial.detect_instructions_file);
 	}
-	if (props.settings && commandsPath() === "") {
-		setCommandsPath(props.settings.commands_path?.trim() ? props.settings.commands_path : DEFAULTS.commandsPath);
+	if (initial && commandsPath() === "") {
+		setCommandsPath(initial.commands_path?.trim() ? initial.commands_path : DEFAULTS.commandsPath);
 	}
-	if (props.settings && props.settings.retry?.maxRetries !== undefined && retryMaxRetries() === "2") {
-		setRetryMaxRetries(String(props.settings.retry.maxRetries));
+	if (initial && initial.retry?.maxRetries !== undefined && retryMaxRetries() === "2") {
+		setRetryMaxRetries(String(initial.retry.maxRetries));
 	}
-	if (props.settings && props.settings.retry?.baseDelayMs !== undefined && retryBaseDelayMs() === "500") {
-		setRetryBaseDelayMs(String(props.settings.retry.baseDelayMs));
+	if (initial && initial.retry?.baseDelayMs !== undefined && retryBaseDelayMs() === "500") {
+		setRetryBaseDelayMs(String(initial.retry.baseDelayMs));
 	}
-	if (props.settings && props.settings.webFetch?.timeoutMs !== undefined && webFetchTimeout() === "15000") {
-		setWebFetchTimeout(String(props.settings.webFetch.timeoutMs));
+	if (initial && initial.webFetch?.timeoutMs !== undefined && webFetchTimeout() === "15000") {
+		setWebFetchTimeout(String(initial.webFetch.timeoutMs));
 	}
-	if (props.settings && props.settings.webFetch?.maxBytes !== undefined && webFetchMaxBytes() === "1000000") {
-		setWebFetchMaxBytes(String(props.settings.webFetch.maxBytes));
+	if (initial && initial.webFetch?.maxBytes !== undefined && webFetchMaxBytes() === "1000000") {
+		setWebFetchMaxBytes(String(initial.webFetch.maxBytes));
 	}
-	if (props.settings && props.settings.webFetch?.maxChars !== undefined && webFetchMaxChars() === "50000") {
-		setWebFetchMaxChars(String(props.settings.webFetch.maxChars));
+	if (initial && initial.webFetch?.maxChars !== undefined && webFetchMaxChars() === "50000") {
+		setWebFetchMaxChars(String(initial.webFetch.maxChars));
 	}
-	if (props.settings && props.settings.webFetch?.userAgent !== undefined && webFetchUserAgent() === "Letters-web-fetch/0.1") {
-		setWebFetchUserAgent(props.settings.webFetch.userAgent);
+	if (initial && initial.webFetch?.userAgent !== undefined && webFetchUserAgent() === "Letters-web-fetch/0.1") {
+		setWebFetchUserAgent(initial.webFetch.userAgent);
 	}
-	if (props.settings && props.settings.compaction?.thresholdRatio !== undefined && compactionThreshold() === "0.8") {
-		setCompactionThreshold(String(props.settings.compaction.thresholdRatio));
+	if (initial && initial.compaction?.thresholdRatio !== undefined && compactionThreshold() === "0.8") {
+		setCompactionThreshold(String(initial.compaction.thresholdRatio));
 	}
-	if (props.settings && props.settings.compaction?.tailBudget !== undefined && compactionTailBudget() === "16") {
-		setCompactionTailBudget(String(props.settings.compaction.tailBudget));
+	if (initial && initial.compaction?.tailBudget !== undefined && compactionTailBudget() === "16") {
+		setCompactionTailBudget(String(initial.compaction.tailBudget));
 	}
-	if (props.settings && props.settings.compaction?.summaryCapChars !== undefined && compactionSummaryCap() === "2000") {
-		setCompactionSummaryCap(String(props.settings.compaction.summaryCapChars));
+	if (initial && initial.compaction?.summaryCapChars !== undefined && compactionSummaryCap() === "2000") {
+		setCompactionSummaryCap(String(initial.compaction.summaryCapChars));
 	}
-	if (props.settings && props.settings.compaction?.maxOverflowRetries !== undefined && compactionOverflowRetries() === "1") {
-		setCompactionOverflowRetries(String(props.settings.compaction.maxOverflowRetries));
+	if (initial && initial.compaction?.maxOverflowRetries !== undefined && compactionOverflowRetries() === "1") {
+		setCompactionOverflowRetries(String(initial.compaction.maxOverflowRetries));
 	}
-	if (props.settings && props.settings.compaction?.summarizer !== undefined && compactionSummarizer() === "llm") {
-		setCompactionSummarizer(props.settings.compaction.summarizer);
+	if (initial && initial.compaction?.summarizer !== undefined && compactionSummarizer() === "llm") {
+		setCompactionSummarizer(initial.compaction.summarizer);
 	}
-	if (props.settings && props.settings.defaultSandboxMode && defaultSandboxMode() !== props.settings.defaultSandboxMode) {
-		setDefaultSandboxMode(props.settings.defaultSandboxMode);
+	if (initial && initial.defaultSandboxMode && defaultSandboxMode() !== initial.defaultSandboxMode) {
+		setDefaultSandboxMode(initial.defaultSandboxMode);
 	}
-	if (props.settings && props.settings.theme !== undefined && theme() !== props.settings.theme) {
-		setTheme(props.settings.theme);
+	if (initial && initial.theme !== undefined && theme() !== initial.theme) {
+		setTheme(initial.theme);
 	}
-	if (props.settings && props.settings.toastPlacement !== undefined && toastPlacement() !== props.settings.toastPlacement) {
-		setToastPlacement(props.settings.toastPlacement);
+	if (initial && initial.toastPlacement !== undefined && toastPlacement() !== initial.toastPlacement) {
+		setToastPlacement(initial.toastPlacement);
 	}
-	if (props.settings && props.settings.toastDurationMs !== undefined && toastDurationMs() === "4000") {
-		setToastDurationMs(String(props.settings.toastDurationMs));
+	if (initial && initial.toastDurationMs !== undefined && toastDurationMs() === "4000") {
+		setToastDurationMs(String(initial.toastDurationMs));
 	}
-	if (props.settings && props.settings.skills_dirs !== undefined && JSON.stringify(props.settings.skills_dirs) !== JSON.stringify(skillsDirs())) {
-		setSkillsDirs(props.settings.skills_dirs);
+	if (initial && initial.skills_dirs !== undefined && JSON.stringify(initial.skills_dirs) !== JSON.stringify(skillsDirs())) {
+		setSkillsDirs(initial.skills_dirs);
 	}
-	if (props.settings && typeof props.settings.skills_watch === "boolean" && props.settings.skills_watch !== skillsWatch()) {
-		setSkillsWatch(props.settings.skills_watch);
+	if (initial && typeof initial.skills_watch === "boolean" && initial.skills_watch !== skillsWatch()) {
+		setSkillsWatch(initial.skills_watch);
 	}
-	if (props.settings && typeof props.settings.skills_watch_delay_ms === "number" && String(props.settings.skills_watch_delay_ms) !== skillsWatchDelay()) {
-		setSkillsWatchDelay(String(props.settings.skills_watch_delay_ms));
+	if (initial && typeof initial.skills_watch_delay_ms === "number" && String(initial.skills_watch_delay_ms) !== skillsWatchDelay()) {
+		setSkillsWatchDelay(String(initial.skills_watch_delay_ms));
 	}
 
-	if (props.settings && typeof props.settings.sendMessageIntervalSec === "number" && deliveryMode() === "unlimited") {
+	if (initial && typeof initial.sendMessageIntervalSec === "number" && deliveryMode() === "unlimited") {
 		setDeliveryMode("custom");
-		setDeliverySec(String(props.settings.sendMessageIntervalSec));
+		setDeliverySec(String(initial.sendMessageIntervalSec));
 	}
-	if (props.settings && added().length === 0 && props.settings.providers?.length) {
-		setAdded(props.settings.providers);
+	if (initial && added().length === 0 && initial.providers?.length) {
+		setAdded(initial.providers);
 	}
-	if (props.settings && customProviders() === null && props.settings.customProviders) {
-		setCustomProviders(props.settings.customProviders);
+	if (initial && customProviders() === null && initial.customProviders) {
+		setCustomProviders(initial.customProviders);
 	}
-	if (!props.settings) props.onLoad();
 
 	const parsedDeliverySec = () => {
 		const n = parseInt(deliverySec(), 10);
@@ -347,41 +346,44 @@ export function SettingsView(props: {
 		return Number.isFinite(n) && n >= 0 ? n : fallback;
 	};
 
-	const currentSettings = (): SettingsData => ({
-		partner_profile_path: path().trim() || "~/.partner/",
-		detect_instructions_file: instructionsFile().trim() || "AGENTS.md",
-		defaultSandboxMode: defaultSandboxMode(),
-		providers: added(),
-		customProviders: customProviders() ?? undefined,
-		theme: theme(),
-		toastPlacement: toastPlacement(),
-		toastDurationMs: parsePositiveInt(toastDurationMs(), DEFAULTS.toastDurationMs),
-		skills_dirs: skillsDirs()
-			.map((d) => d.trim())
-			.filter(Boolean),
-		skills_watch: skillsWatch(),
-		skills_watch_delay_ms: parsePositiveInt(skillsWatchDelay(), DEFAULTS.skills_watch_delay_ms),
-		sendMessageIntervalSec: deliveryMode() === "unlimited" ? null : parsedDeliverySec(),
-		commands_path: commandsPath().trim() || undefined,
-		retry: {
-			maxRetries: parsePositiveInt(retryMaxRetries(), DEFAULTS.retryMaxRetries),
-			baseDelayMs: parsePositiveInt(retryBaseDelayMs(), DEFAULTS.retryBaseDelayMs),
-		},
-		webFetch: {
-			timeoutMs: parsePositiveInt(webFetchTimeout(), 15000),
-			maxBytes: parsePositiveInt(webFetchMaxBytes(), 1_000_000),
-			maxChars: parsePositiveInt(webFetchMaxChars(), 50_000),
-			userAgent: webFetchUserAgent().trim() || undefined,
-		},
-		compaction: {
-			thresholdRatio: Number(compactionThreshold()) || 0.8,
-			tailBudget: parsePositiveInt(compactionTailBudget(), 16),
-			summaryCapChars: parsePositiveInt(compactionSummaryCap(), 2000),
-			maxOverflowRetries: parsePositiveInt(compactionOverflowRetries(), 1),
-			summarizer: compactionSummarizer(),
-			...(props.settings?.compaction?.prune ? { prune: props.settings.compaction.prune } : {}),
-		},
-	});
+	const currentSettings = (): SettingsData => {
+		const current = settingsData();
+		return {
+			partner_profile_path: path().trim() || "~/.partner/",
+			detect_instructions_file: instructionsFile().trim() || "AGENTS.md",
+			defaultSandboxMode: defaultSandboxMode(),
+			providers: added(),
+			customProviders: customProviders() ?? undefined,
+			theme: theme(),
+			toastPlacement: toastPlacement(),
+			toastDurationMs: parsePositiveInt(toastDurationMs(), DEFAULTS.toastDurationMs),
+			skills_dirs: skillsDirs()
+				.map((d) => d.trim())
+				.filter(Boolean),
+			skills_watch: skillsWatch(),
+			skills_watch_delay_ms: parsePositiveInt(skillsWatchDelay(), DEFAULTS.skills_watch_delay_ms),
+			sendMessageIntervalSec: deliveryMode() === "unlimited" ? null : parsedDeliverySec(),
+			commands_path: commandsPath().trim() || undefined,
+			retry: {
+				maxRetries: parsePositiveInt(retryMaxRetries(), DEFAULTS.retryMaxRetries),
+				baseDelayMs: parsePositiveInt(retryBaseDelayMs(), DEFAULTS.retryBaseDelayMs),
+			},
+			webFetch: {
+				timeoutMs: parsePositiveInt(webFetchTimeout(), 15000),
+				maxBytes: parsePositiveInt(webFetchMaxBytes(), 1_000_000),
+				maxChars: parsePositiveInt(webFetchMaxChars(), 50_000),
+				userAgent: webFetchUserAgent().trim() || undefined,
+			},
+			compaction: {
+				thresholdRatio: Number(compactionThreshold()) || 0.8,
+				tailBudget: parsePositiveInt(compactionTailBudget(), 16),
+				summaryCapChars: parsePositiveInt(compactionSummaryCap(), 2000),
+				maxOverflowRetries: parsePositiveInt(compactionOverflowRetries(), 1),
+				summarizer: compactionSummarizer(),
+				...(current?.compaction?.prune ? { prune: current.compaction.prune } : {}),
+			},
+		};
+	};
 	const flashError = (message: string) => {
 		setError(message);
 		clearTimeout(errorTimer);
@@ -390,21 +392,20 @@ export function SettingsView(props: {
 	let saveChain: Promise<unknown> = Promise.resolve();
 
 	const persist = async (settings: SettingsData, credentials?: Record<string, string>): Promise<boolean> => {
-		const run = saveChain.then(() => props.onSave(settings, credentials ?? {}));
+		const run = saveChain.then(() => settingsView.mutate.save(settings, credentials ?? {}));
 		saveChain = run.catch(() => {});
 		const res = await run;
 		if (!res.ok) {
 			flashError(res.error ?? "保存失败");
 			return false;
 		}
-		props.onLoad();
 		return true;
 	};
 
-	const configured = (id: string) => props.runtime?.providers.find((p) => p.id === id)?.configured ?? false;
-	const runtimeRow = (id: string) => props.runtime?.providers.find((p) => p.id === id);
+	const configured = (id: string) => runtime()?.providers.find((p) => p.id === id)?.configured ?? false;
+	const runtimeRow = (id: string) => runtime()?.providers.find((p) => p.id === id);
 	const addable = () => {
-		const builtin = (props.runtime?.allProviders ?? []).filter((p) => !added().includes(p));
+		const builtin = (runtime()?.allProviders ?? []).filter((p) => !added().includes(p));
 		const custom = (customProviders() ?? []).map((d) => d.id).filter((id) => !added().includes(id));
 		return [...builtin, ...custom];
 	};
@@ -536,7 +537,7 @@ export function SettingsView(props: {
 	};
 	const toggleCpAdvanced = () => setCpAdvanced(!cpAdvanced());
 
-	const providersConfigured = () => (props.runtime?.providers ?? []).filter((p) => p.configured).length;
+	const providersConfigured = () => (runtime()?.providers ?? []).filter((p) => p.configured).length;
 
 	const rows = (): {
 		id: string;
@@ -627,7 +628,7 @@ export function SettingsView(props: {
 					ariaLabel="Partner profile path"
 					onPick={(next) => {
 						setPath(next);
-						const saved = props.settings?.partner_profile_path ?? DEFAULTS.path;
+						const saved = settingsData()?.partner_profile_path ?? DEFAULTS.path;
 						if (next === saved) return;
 						void persist({ ...currentSettings(), partner_profile_path: next });
 					}}
@@ -651,7 +652,7 @@ export function SettingsView(props: {
 					ariaLabel="Commands directory"
 					onPick={(next) => {
 						setCommandsPath(next);
-						const saved = props.settings?.commands_path?.trim() || DEFAULTS.commandsPath;
+						const saved = settingsData()?.commands_path?.trim() || DEFAULTS.commandsPath;
 						if (next === saved) return;
 						void persist({ ...currentSettings(), commands_path: next });
 					}}
@@ -674,7 +675,7 @@ export function SettingsView(props: {
 						aria-label="Web fetch timeout (ms)"
 						onBlur={() => {
 							const next = parsePositiveInt(webFetchTimeout(), 15000);
-							const saved = props.settings?.webFetch?.timeoutMs ?? 15000;
+							const saved = settingsData()?.webFetch?.timeoutMs ?? 15000;
 							if (next === saved) return;
 							void persist({
 								...currentSettings(),
@@ -709,7 +710,7 @@ export function SettingsView(props: {
 						aria-label="Web fetch max bytes"
 						onBlur={() => {
 							const next = parsePositiveInt(webFetchMaxBytes(), 1_000_000);
-							const saved = props.settings?.webFetch?.maxBytes ?? 1_000_000;
+							const saved = settingsData()?.webFetch?.maxBytes ?? 1_000_000;
 							if (next === saved) return;
 							void persist({
 								...currentSettings(),
@@ -744,7 +745,7 @@ export function SettingsView(props: {
 						aria-label="Web fetch max chars"
 						onBlur={() => {
 							const next = parsePositiveInt(webFetchMaxChars(), 50_000);
-							const saved = props.settings?.webFetch?.maxChars ?? 50_000;
+							const saved = settingsData()?.webFetch?.maxChars ?? 50_000;
 							if (next === saved) return;
 							void persist({
 								...currentSettings(),
@@ -777,7 +778,7 @@ export function SettingsView(props: {
 						aria-label="Web fetch user agent"
 						onBlur={() => {
 							const next = webFetchUserAgent().trim();
-							const saved = props.settings?.webFetch?.userAgent?.trim() ?? "Letters-web-fetch/0.1";
+							const saved = settingsData()?.webFetch?.userAgent?.trim() ?? "Letters-web-fetch/0.1";
 							if (next === saved) return;
 							void persist({
 								...currentSettings(),
@@ -815,7 +816,7 @@ export function SettingsView(props: {
 						aria-label="Compaction threshold ratio"
 						onBlur={() => {
 							const next = Number(compactionThreshold()) || 0.8;
-							const saved = props.settings?.compaction?.thresholdRatio ?? 0.8;
+							const saved = settingsData()?.compaction?.thresholdRatio ?? 0.8;
 							if (next === saved) return;
 							void persist({
 								...currentSettings(),
@@ -851,7 +852,7 @@ export function SettingsView(props: {
 						aria-label="Compaction tail budget"
 						onBlur={() => {
 							const next = parsePositiveInt(compactionTailBudget(), 16);
-							const saved = props.settings?.compaction?.tailBudget ?? 16;
+							const saved = settingsData()?.compaction?.tailBudget ?? 16;
 							if (next === saved) return;
 							void persist({
 								...currentSettings(),
@@ -886,7 +887,7 @@ export function SettingsView(props: {
 						aria-label="Summary cap (chars)"
 						onBlur={() => {
 							const next = parsePositiveInt(compactionSummaryCap(), 2000);
-							const saved = props.settings?.compaction?.summaryCapChars ?? 2000;
+							const saved = settingsData()?.compaction?.summaryCapChars ?? 2000;
 							if (next === saved) return;
 							void persist({
 								...currentSettings(),
@@ -921,7 +922,7 @@ export function SettingsView(props: {
 						aria-label="Overflow retries"
 						onBlur={() => {
 							const next = parsePositiveInt(compactionOverflowRetries(), 1);
-							const saved = props.settings?.compaction?.maxOverflowRetries ?? 1;
+							const saved = settingsData()?.compaction?.maxOverflowRetries ?? 1;
 							if (next === saved) return;
 							void persist({
 								...currentSettings(),
@@ -990,7 +991,7 @@ export function SettingsView(props: {
 						aria-label="Retry max attempts"
 						onBlur={() => {
 							const next = parsePositiveInt(retryMaxRetries(), DEFAULTS.retryMaxRetries);
-							const saved = props.settings?.retry?.maxRetries ?? DEFAULTS.retryMaxRetries;
+							const saved = settingsData()?.retry?.maxRetries ?? DEFAULTS.retryMaxRetries;
 							if (next === saved) return;
 							void persist({ ...currentSettings(), retry: { maxRetries: next, baseDelayMs: parsePositiveInt(retryBaseDelayMs(), DEFAULTS.retryBaseDelayMs) } });
 						}}
@@ -1017,7 +1018,7 @@ export function SettingsView(props: {
 						aria-label="Retry base delay (ms)"
 						onBlur={() => {
 							const next = parsePositiveInt(retryBaseDelayMs(), DEFAULTS.retryBaseDelayMs);
-							const saved = props.settings?.retry?.baseDelayMs ?? DEFAULTS.retryBaseDelayMs;
+							const saved = settingsData()?.retry?.baseDelayMs ?? DEFAULTS.retryBaseDelayMs;
 							if (next === saved) return;
 							void persist({ ...currentSettings(), retry: { maxRetries: parsePositiveInt(retryMaxRetries(), DEFAULTS.retryMaxRetries), baseDelayMs: next } });
 						}}
@@ -1045,7 +1046,7 @@ export function SettingsView(props: {
 						aria-label="Instructions file"
 						onBlur={() => {
 							const next = instructionsFile().trim() || DEFAULTS.instructions;
-							if (next === (props.settings?.detect_instructions_file ?? DEFAULTS.instructions)) return;
+							if (next === (settingsData()?.detect_instructions_file ?? DEFAULTS.instructions)) return;
 							void persist({ ...currentSettings(), detect_instructions_file: next });
 						}}
 						onKeyDown={(e) => {

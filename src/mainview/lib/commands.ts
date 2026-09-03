@@ -1,5 +1,6 @@
 import { createResource } from "solid-js";
 import type { CommandDescriptor, CommandExecution } from "../../shared/rpc";
+import { useToast } from "./contexts/toast-context";
 import type { RPC } from "./rpc";
 
 export function filterCommands(commands: CommandDescriptor[], query: string): CommandDescriptor[] {
@@ -15,13 +16,14 @@ export function filterCommands(commands: CommandDescriptor[], query: string): Co
 }
 
 export function createCommandDirectory(rpc: RPC) {
+	const toast = useToast();
 	const [commands, { refetch }] = createResource(
 		async () => {
 			try {
 				const { commands: list } = await rpc.request.commands_list({});
 				return list;
 			} catch (error) {
-				console.error("commands_list failed:", error);
+				toast.push({ title: "Commands failed to load", body: error instanceof Error ? error.message : String(error) }, "error");
 				return [];
 			}
 		},

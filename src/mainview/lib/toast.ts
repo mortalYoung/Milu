@@ -29,6 +29,11 @@ export function createToast(getDurationMs: () => number = () => DEFAULT_TOAST_DU
 	const [toasts, setToasts] = createSignal<ToastItem[]>([]);
 	const timers = new Map<number, ReturnType<typeof setTimeout>>();
 	const leavingIds = new Set<number>();
+	let durationMs = getDurationMs;
+
+	function setDurationMs(ms: number) {
+		durationMs = () => ms;
+	}
 
 	function push(message: ToastMessage, variant: ToastVariant = "default") {
 		const id = nextToastId++;
@@ -42,7 +47,7 @@ export function createToast(getDurationMs: () => number = () => DEFAULT_TOAST_DU
 			};
 		}
 		setToasts((t) => [...t, item]);
-		const duration = getDurationMs();
+		const duration = durationMs();
 		if (duration > 0) {
 			timers.set(
 				id,
@@ -78,5 +83,5 @@ export function createToast(getDurationMs: () => number = () => DEFAULT_TOAST_DU
 		setToasts([]);
 	}
 
-	return { toasts, push, dismiss, dismissAll };
+	return { toasts, push, dismiss, dismissAll, setDurationMs };
 }

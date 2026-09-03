@@ -14,6 +14,8 @@ import { CommandDirectoryProvider } from "./lib/contexts/commands-context";
 import { ComposerProvider } from "./lib/contexts/composer-context";
 import { MetricsProvider } from "./lib/contexts/metrics-context";
 import { SessionProvider, useSession } from "./lib/contexts/session-context";
+import { SettingsProvider } from "./lib/contexts/settings-context";
+import { ToastProvider, useToast } from "./lib/contexts/toast-context";
 import { TrajectoryProvider } from "./lib/contexts/trajectory-context";
 import { TranscriptProvider } from "./lib/contexts/transcript-context";
 import { COPIED_ICON_SVG, COPY_ICON_SVG, warmUpMarkdown } from "./lib/markdown";
@@ -23,25 +25,30 @@ import { rpc } from "./lib/rpc";
 import { createSession } from "./lib/session";
 import { createSettings } from "./lib/settings";
 import { createSkills } from "./lib/skills";
-import { createToast, DEFAULT_TOAST_DURATION_MS } from "./lib/toast";
+import { createToast } from "./lib/toast";
 import { createTrajectory } from "./lib/trajectory";
 import { createTranscript } from "./lib/transcript";
 import { createUnread } from "./lib/unread";
 import { ConversationPage } from "./pages/ConversationPage";
-import { type SettingsData, SettingsView } from "./pages/SettingsView";
+import { SettingsView } from "./pages/SettingsView";
 import { SkillsView } from "./pages/SkillsView";
 
 export function App() {
 	const session = createSession(rpc);
+	const toast = createToast();
+
 	return (
 		<SessionProvider value={session}>
-			<WorkspaceControllers />
+			<ToastProvider value={toast}>
+				<WorkspaceControllers />
+			</ToastProvider>
 		</SessionProvider>
 	);
 }
 
 function WorkspaceControllers() {
 	const session = useSession();
+	const toast = useToast();
 
 	// ——— UI chrome / local window state ———
 	const [view, setView] = createSignal<"chat" | "skills">("chat");
@@ -63,7 +70,10 @@ function WorkspaceControllers() {
 	const commands = createCommandDirectory(rpc);
 	const settings = createSettings(rpc);
 	const skills = createSkills(rpc);
-	const toast = createToast(() => settings.settings()?.toastDurationMs ?? DEFAULT_TOAST_DURATION_MS);
+	createEffect(() => {
+		const ms = settings.data()?.settings?.toastDurationMs;
+		if (ms != null) toast.setDurationMs(ms);
+	});
 
 	// ——— partner navigation helpers ———
 	const selectPartner = (p: Parameters<typeof session.mutate.select>[0]) => {
@@ -190,7 +200,7 @@ function WorkspaceControllers() {
 	// ——— theme + startup effects ———
 	let flipTimer: ReturnType<typeof setTimeout> | undefined;
 	createEffect(() => {
-		const theme = settings.settings()?.theme ?? "system";
+		const theme = settings.data()?.settings?.theme ?? "system";
 		const root = document.documentElement;
 		if (root.dataset["theme"] === theme) return;
 		const flipping = root.dataset["theme"] !== undefined;
@@ -208,7 +218,7 @@ function WorkspaceControllers() {
 
 	void session.mutate.refreshHistory();
 	void session.mutate.refreshPartners();
-	void settings.refresh();
+
 	void rpc.request.list_editors({}).then((res) => setEditors(res.editors));
 	status.calibrate();
 
@@ -240,77 +250,74 @@ function WorkspaceControllers() {
 		<TrajectoryProvider value={trajectory}>
 			<ComposerProvider value={composer}>
 				<CommandDirectoryProvider value={commands}>
-					<div class="relative flex flex-1 min-h-0">
-						<AppRail
-							active={view()}
-							onSelect={(tab) => {
-								if (tab === "settings") settings.setSettingsOpen(true);
-								else setView(tab);
-							}}
-						/>
+					<SettingsProvider value={settings}>
+						<div class="relative flex flex-1 min-h-0">
+							<AppRail
+								active={view()}
+								onSelect={(tab) => {
+									if (tab === "settings") settings.mutate.setOpen(true);
+									else setView(tab);
+								}}
+							/>
 
-						<main class="flex-1 flex flex-col min-w-0 bg-qw-bg">
-							<AgentStatusProvider value={status}>
-								<MetricsProvider value={metrics.data}>
-									{view() === "skills" ? (
-										<SkillsView />
-									) : (
-										<TranscriptProvider value={transcript}>
-											<ConversationPage
-												partners={session.data.partners}
-												selected={session.data.selected}
-												onSelect={(name) => {
-													transcript.reset();
-													selectPartner(session.data.partners.find((p) => p.name === name) ?? null);
-												}}
-												unread={unread.unread}
-												onAddPartner={() => setShowModal(true)}
-												onDelete={onDeletePartner}
-												onViewDetails={(name) => setDetailsPartner(session.data.partners.find((p) => p.name === name) ?? null)}
-												listCollapsed={listCollapsed()}
-												onToggleList={toggleList}
-												historyLoading={session.historyLoading}
-												onSend={onSend}
-												onStop={() => void rpc.request.stop({})}
-												onEscalationRespond={(id, approved) => void rpc.request.sandbox_respond({ id, approved })}
-												toastHost={<ToastHost toasts={toast.toasts} placement={settings.settings()?.toastPlacement ?? "bottomcenter"} onDismiss={toast.dismiss} />}
-												skills={skills.skills()}
-												onSkill={(name, hint) => rpc.request.skill_execute({ name, ...(hint ? { hint } : {}) })}
-												onSkillInspect={(name) => rpc.request.skill_get({ name }).then((r) => (r.ok ? (r.content ?? null) : null))}
-												onShell={(command) => rpc.request.shell_execute({ command })}
-												onOpenPath={(path, editorId) =>
-													void rpc.request.open_path({ path, editorId }).then((res) => {
-														if (!res.ok) toast.push({ title: "Couldn't open folder", body: res.error ?? "No supported editor found" }, "error");
-													})
-												}
-												editors={editors()}
-											/>
-										</TranscriptProvider>
-									)}
-								</MetricsProvider>
-							</AgentStatusProvider>
-						</main>
+							<main class="flex-1 flex flex-col min-w-0 bg-qw-bg">
+								<AgentStatusProvider value={status}>
+									<MetricsProvider value={metrics.data}>
+										{view() === "skills" ? (
+											<SkillsView />
+										) : (
+											<TranscriptProvider value={transcript}>
+												<ConversationPage
+													partners={session.data.partners}
+													selected={session.data.selected}
+													onSelect={(name) => {
+														transcript.reset();
+														selectPartner(session.data.partners.find((p) => p.name === name) ?? null);
+													}}
+													unread={unread.unread}
+													onAddPartner={() => setShowModal(true)}
+													onDelete={onDeletePartner}
+													onViewDetails={(name) => setDetailsPartner(session.data.partners.find((p) => p.name === name) ?? null)}
+													listCollapsed={listCollapsed()}
+													onToggleList={toggleList}
+													historyLoading={session.historyLoading}
+													onSend={onSend}
+													onStop={() => void rpc.request.stop({})}
+													onEscalationRespond={(id, approved) => void rpc.request.sandbox_respond({ id, approved })}
+													toastHost={<ToastHost toasts={toast.toasts} placement={settings.data()?.settings?.toastPlacement ?? "bottomcenter"} onDismiss={toast.dismiss} />}
+													skills={skills.skills()}
+													onSkill={(name, hint) => rpc.request.skill_execute({ name, ...(hint ? { hint } : {}) })}
+													onSkillInspect={(name) => rpc.request.skill_get({ name }).then((r) => (r.ok ? (r.content ?? null) : null))}
+													onShell={(command) => rpc.request.shell_execute({ command })}
+													onOpenPath={(path, editorId) =>
+														void rpc.request.open_path({ path, editorId }).then((res) => {
+															if (!res.ok) toast.push({ title: "Couldn't open folder", body: res.error ?? "No supported editor found" }, "error");
+														})
+													}
+													editors={editors()}
+												/>
+											</TranscriptProvider>
+										)}
+									</MetricsProvider>
+								</AgentStatusProvider>
+							</main>
 
-						<Dialog open={settings.settingsOpen()} onOpenChange={settings.setSettingsOpen}>
-							<DialogContent class="w-[820px] max-w-none h-[640px] grid-rows-[auto_1fr] overflow-hidden bg-letter border-print-line p-0">
-								<DialogHeader class="px-4 pt-4">
-									<DialogTitle class="font-serif text-[15px]">Settings</DialogTitle>
-								</DialogHeader>
-								<SettingsView
-									settings={settings.settings()}
-									runtime={settings.runtime()}
-									onLoad={() => void settings.refresh()}
-									onSave={(s: SettingsData, credentials) => settings.save(s, credentials)}
-								/>
-							</DialogContent>
-						</Dialog>
+							<Dialog open={settings.open()} onOpenChange={settings.mutate.setOpen}>
+								<DialogContent class="w-[820px] max-w-none h-[640px] grid-rows-[auto_1fr] overflow-hidden bg-letter border-print-line p-0">
+									<DialogHeader class="px-4 pt-4">
+										<DialogTitle class="font-serif text-[15px]">Settings</DialogTitle>
+									</DialogHeader>
+									<SettingsView />
+								</DialogContent>
+							</Dialog>
 
-						<PartnerModal open={showModal()} onOpenChange={setShowModal} onConfirm={onCreatePartner} existingNames={session.data.partners.map((p) => p.name)} />
+							<PartnerModal open={showModal()} onOpenChange={setShowModal} onConfirm={onCreatePartner} existingNames={session.data.partners.map((p) => p.name)} />
 
-						<PartnerDetailsDialog partner={detailsPartner()} onOpenChange={(open) => !open && setDetailsPartner(null)} />
+							<PartnerDetailsDialog partner={detailsPartner()} onOpenChange={(open) => !open && setDetailsPartner(null)} />
 
-						<TrajectoryDrawer />
-					</div>
+							<TrajectoryDrawer />
+						</div>
+					</SettingsProvider>
 				</CommandDirectoryProvider>
 			</ComposerProvider>
 		</TrajectoryProvider>

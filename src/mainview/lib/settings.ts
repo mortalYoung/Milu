@@ -1,24 +1,35 @@
-import { createSignal } from "solid-js";
+import { createResource, createSignal } from "solid-js";
 import { type RuntimeInfo, type SaveResult, type SettingsData } from "../pages/SettingsView";
+import { useToast } from "./contexts/toast-context";
 import type { RPC } from "./rpc";
 
-/** Settings dialog data (partner profile root, detected instructions file) + runtime info (providers). */
-export function createSettings(rpc: RPC) {
-	const [settings, setSettings] = createSignal<SettingsData | null>(null);
-	const [runtime, setRuntime] = createSignal<RuntimeInfo | null>(null);
-	const [settingsOpen, setSettingsOpen] = createSignal(false);
+const EMPTY = { settings: null as SettingsData | null, runtime: null as RuntimeInfo | null };
 
-	async function refresh() {
-		const { settings: s, runtime: r } = await rpc.request.get_settings({});
-		setSettings(s);
-		setRuntime(r);
-	}
+export function createSettings(rpc: RPC) {
+	const toast = useToast();
+	const [snapshot, { refetch }] = createResource(
+		async () => {
+			try {
+				const { settings, runtime } = await rpc.request.get_settings({});
+				return { settings, runtime };
+			} catch (error) {
+				toast.push({ title: "Settings failed to load", body: error instanceof Error ? error.message : String(error) }, "error");
+				return EMPTY;
+			}
+		},
+		{ initialValue: EMPTY },
+	);
+	const [open, setOpen] = createSignal(false);
 
 	async function save(s: SettingsData, credentials: Record<string, string>): Promise<SaveResult> {
 		const res = await rpc.request.update_settings({ settings: s, credentials });
-		if (res.ok) setSettings(s);
+		if (res.ok) void refetch();
 		return res;
 	}
 
-	return { settings, settingsOpen, setSettingsOpen, runtime, refresh, save };
+	return {
+		data: snapshot,
+		open,
+		mutate: { setOpen, save },
+	};
 }
