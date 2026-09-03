@@ -1,7 +1,7 @@
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 import solid from "vite-plugin-solid";
-import { electrobunViteAliases } from "./.hutch/devkit/api/config/electrobun-vite";
+import { electrobunViteAliases } from "./.hutch/devkit/api/config/electrobun-vite.ts";
 
 // The view (src/mainview) is built by Vite into dist/; electrobun copies
 // dist/index.html + dist/assets into the bundle (see electrobun.config.ts).

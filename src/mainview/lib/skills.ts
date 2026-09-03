@@ -1,4 +1,4 @@
-import { createEffect, createResource } from "solid-js";
+import { createResource } from "solid-js";
 import { useSession } from "./contexts/session-context";
 import { useToast } from "./contexts/toast-context";
 import type { RPC } from "./rpc";
@@ -7,8 +7,8 @@ export function createSkills(rpc: RPC) {
 	const { data: session } = useSession();
 	const toast = useToast();
 	const [data, { refetch }] = createResource(
-		async () => {
-			const partner = session.selected;
+		() => session.selected,
+		async (partner) => {
 			if (!partner) return [];
 			try {
 				const { skills } = await rpc.request.skill_list({ partner });
@@ -20,12 +20,6 @@ export function createSkills(rpc: RPC) {
 		},
 		{ initialValue: [] },
 	);
-
-	createEffect(() => {
-		const partner = session.selected;
-		void partner;
-		if (partner) refetch();
-	});
 
 	rpc.addMessageListener("skills_change", () => refetch());
 

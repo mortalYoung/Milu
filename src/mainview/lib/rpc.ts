@@ -4,6 +4,7 @@ import type { AppRPCSchema } from "../../shared/rpc";
 // Singleton RPC bridge — module scope so the Electroview is constructed exactly once
 // (index.tsx → App → this module is the only import path).
 export const rpc = Electroview.defineRPC<AppRPCSchema>({
+	maxRequestTime: 30_000,
 	handlers: { requests: {}, messages: {} },
 });
 new Electroview({ rpc });

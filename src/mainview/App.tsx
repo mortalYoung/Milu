@@ -1,10 +1,7 @@
-import { createEffect, createSignal, onMount } from "solid-js";
+import { createEffect, createSignal, lazy, onCleanup, onMount, Suspense } from "solid-js";
 import { AppRail } from "./components/AppRail";
 import type { PartnerItem } from "./components/ConversationList";
-import { PartnerDetailsDialog } from "./components/PartnerDetailsDialog";
-import { PartnerModal } from "./components/PartnerModal";
 import { ToastHost } from "./components/ToastHost";
-import { TrajectoryDrawer } from "./components/TrajectoryDrawer";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./components/ui/dialog";
 import { createAgentStatus } from "./lib/agent-status";
 import { createCommandDirectory } from "./lib/commands";
@@ -19,6 +16,7 @@ import { SkillsProvider } from "./lib/contexts/skills-context";
 import { ToastProvider, useToast } from "./lib/contexts/toast-context";
 import { TrajectoryProvider } from "./lib/contexts/trajectory-context";
 import { TranscriptProvider } from "./lib/contexts/transcript-context";
+import { useKeybindings } from "./lib/keybindings";
 import { COPIED_ICON_SVG, COPY_ICON_SVG, warmUpMarkdown } from "./lib/markdown";
 import { createMetrics } from "./lib/metrics";
 import type { PartnerFormData } from "./lib/partner-form";
@@ -31,8 +29,13 @@ import { createTrajectory } from "./lib/trajectory";
 import { createTranscript } from "./lib/transcript";
 import { createUnread } from "./lib/unread";
 import { ConversationPage } from "./pages/ConversationPage";
-import { SettingsView } from "./pages/SettingsView";
-import { SkillsView } from "./pages/SkillsView";
+
+// On-demand overlays/views are lazy-loaded so they stay out of the main chat chunk.
+const PartnerDetailsDialog = lazy(() => import("./components/PartnerDetailsDialog").then((m) => ({ default: m.PartnerDetailsDialog })));
+const PartnerModal = lazy(() => import("./components/PartnerModal").then((m) => ({ default: m.PartnerModal })));
+const TrajectoryDrawer = lazy(() => import("./components/TrajectoryDrawer").then((m) => ({ default: m.TrajectoryDrawer })));
+const SettingsView = lazy(() => import("./pages/SettingsView").then((m) => ({ default: m.SettingsView })));
+const SkillsView = lazy(() => import("./pages/SkillsView").then((m) => ({ default: m.SkillsView })));
 
 export function App() {
 	const session = createSession(rpc);
@@ -75,6 +78,12 @@ function WorkspaceControllers() {
 		const ms = settings.data()?.settings?.toastDurationMs;
 		if (ms != null) toast.setDurationMs(ms);
 	});
+
+	// ——— global keybindings ———
+	useKeybindings([
+		{ key: ",", meta: true, handler: () => settings.mutate.setOpen(true) },
+		{ key: "b", meta: true, handler: toggleList },
+	]);
 
 	// ——— partner navigation helpers ———
 	const selectPartner = (p: Parameters<typeof session.mutate.select>[0]) => {
@@ -215,6 +224,23 @@ function WorkspaceControllers() {
 	void rpc.request.list_editors({}).then((res) => setEditors(res.editors));
 	status.calibrate();
 
+	// ——— refresh partners when the app returns to the foreground ———
+	let refreshPartnersTimer: ReturnType<typeof setTimeout> | undefined;
+	const refreshPartnersOnVisible = () => {
+		if (document.visibilityState !== "visible") return;
+		clearTimeout(refreshPartnersTimer);
+		refreshPartnersTimer = setTimeout(() => {
+			void session.mutate.refreshPartners();
+		}, 150);
+	};
+	window.addEventListener("focus", refreshPartnersOnVisible);
+	document.addEventListener("visibilitychange", refreshPartnersOnVisible);
+	onCleanup(() => {
+		clearTimeout(refreshPartnersTimer);
+		window.removeEventListener("focus", refreshPartnersOnVisible);
+		document.removeEventListener("visibilitychange", refreshPartnersOnVisible);
+	});
+
 	onMount(() => {
 		warmUpMarkdown();
 
@@ -258,7 +284,9 @@ function WorkspaceControllers() {
 									<AgentStatusProvider value={status}>
 										<MetricsProvider value={metrics.data}>
 											{view() === "skills" ? (
-												<SkillsView />
+												<Suspense fallback={null}>
+													<SkillsView />
+												</Suspense>
 											) : (
 												<TranscriptProvider value={transcript}>
 													<ConversationPage
@@ -298,15 +326,23 @@ function WorkspaceControllers() {
 										<DialogHeader class="px-4 pt-4">
 											<DialogTitle class="font-serif text-[15px]">Settings</DialogTitle>
 										</DialogHeader>
-										<SettingsView />
+										<Suspense fallback={null}>
+											<SettingsView />
+										</Suspense>
 									</DialogContent>
 								</Dialog>
 
-								<PartnerModal open={showModal()} onOpenChange={setShowModal} onConfirm={onCreatePartner} existingNames={session.data.partners.map((p) => p.name)} />
+								<Suspense fallback={null}>
+									<PartnerModal open={showModal()} onOpenChange={setShowModal} onConfirm={onCreatePartner} existingNames={session.data.partners.map((p) => p.name)} />
+								</Suspense>
 
-								<PartnerDetailsDialog partner={detailsPartner()} onOpenChange={(open) => !open && setDetailsPartner(null)} />
+								<Suspense fallback={null}>
+									<PartnerDetailsDialog partner={detailsPartner()} onOpenChange={(open) => !open && setDetailsPartner(null)} />
+								</Suspense>
 
-								<TrajectoryDrawer />
+								<Suspense fallback={null}>
+									<TrajectoryDrawer />
+								</Suspense>
 							</div>
 						</SkillsProvider>
 					</SettingsProvider>
