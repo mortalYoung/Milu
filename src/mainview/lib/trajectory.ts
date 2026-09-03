@@ -3,7 +3,7 @@ import { projectVisibleHistory } from "../../shared/entry-meta";
 import type { TrajectoryRecord } from "../../shared/rpc";
 import { surfaceNodeIds } from "../../shared/slice";
 import { fold } from "../../shared/timeline";
-import { useSession } from "./session-context";
+import { useSession } from "./contexts/session-context";
 
 export type TrajectoryMode = "origin" | "slice" | "view";
 

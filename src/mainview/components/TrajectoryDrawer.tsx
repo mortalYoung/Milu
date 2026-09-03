@@ -2,9 +2,9 @@ import { createVirtualizer } from "@tanstack/solid-virtual";
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import type { TrajectoryBlock, TrajectoryRecord, TrajectoryUsage } from "../../shared/rpc";
 import { stringifyArgs, type TimelineNode, timelineNodes } from "../../shared/trajectory";
-import { useSession } from "../lib/session-context";
+import { useSession } from "../lib/contexts/session-context";
+import { useTrajectory } from "../lib/contexts/trajectory-context";
 import type { TrajectoryMode } from "../lib/trajectory";
-import { useTrajectory } from "../lib/trajectory-context";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const fmtDateTime = (ts: number) => {

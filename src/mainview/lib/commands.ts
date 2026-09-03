@@ -1,4 +1,4 @@
-import { createSignal } from "solid-js";
+import { createResource } from "solid-js";
 import type { CommandDescriptor, CommandExecution } from "../../shared/rpc";
 import type { RPC } from "./rpc";
 
@@ -15,12 +15,18 @@ export function filterCommands(commands: CommandDescriptor[], query: string): Co
 }
 
 export function createCommandDirectory(rpc: RPC) {
-	const [commands, setCommands] = createSignal<CommandDescriptor[]>([]);
-
-	async function refresh() {
-		const { commands: list } = await rpc.request.commands_list({});
-		setCommands(list);
-	}
+	const [commands, { refetch }] = createResource(
+		async () => {
+			try {
+				const { commands: list } = await rpc.request.commands_list({});
+				return list;
+			} catch (error) {
+				console.error("commands_list failed:", error);
+				return [];
+			}
+		},
+		{ initialValue: [] },
+	);
 
 	function filter(query: string): CommandDescriptor[] {
 		return filterCommands(commands(), query);
@@ -34,5 +40,5 @@ export function createCommandDirectory(rpc: RPC) {
 		return rpc.request.commands_execute({ line });
 	}
 
-	return { commands, refresh, filter, find, execute };
+	return { commands, refresh: refetch, filter, find, execute };
 }

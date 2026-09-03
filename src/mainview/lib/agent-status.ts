@@ -1,8 +1,8 @@
 import { createResource } from "solid-js";
 import { createStore } from "solid-js/store";
 import type { SandboxMode, ThinkingLevel } from "../../shared/rpc";
+import { useSession } from "./contexts/session-context";
 import type { RPC } from "./rpc";
-import { useSession } from "./session-context";
 
 const EMPTY_STATUS = {
 	workspace_path: null,

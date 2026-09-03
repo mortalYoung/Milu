@@ -1,5 +1,5 @@
 import { type Accessor, createContext, type JSX, useContext } from "solid-js";
-import type { MetricsData } from "./metrics";
+import type { MetricsData } from "../metrics";
 
 const MetricsContext = createContext<Accessor<MetricsData | undefined> | undefined>(undefined);
 

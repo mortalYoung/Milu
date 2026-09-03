@@ -1,5 +1,5 @@
 import { createSignal } from "solid-js";
-import { useSession } from "./session-context";
+import { useSession } from "./contexts/session-context";
 
 export function createComposer() {
 	const { data } = useSession();

@@ -12,8 +12,8 @@ import {
 	makeSysEntry,
 	makeUserEntry,
 } from "../layouts/Transcript";
+import { useSession } from "./contexts/session-context";
 import { classifyReader, compensatedTop, distanceToBottom, floorTop, flowTop, isAtBottom, type ScrollAnchor } from "./scroll-anchor";
-import { useSession } from "./session-context";
 
 export interface TranscriptController {
 	view: Accessor<Entry[]>;

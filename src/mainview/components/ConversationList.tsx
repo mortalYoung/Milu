@@ -5,7 +5,7 @@
  */
 import { Info, MoreVertical, Plus, Trash2 } from "lucide-solid";
 import { createSignal, Show } from "solid-js";
-import { useAgentStatus } from "../lib/agent-status-context";
+import { useAgentStatus } from "../lib/contexts/agent-status-context";
 import { Button } from "./Button";
 import { Avatar } from "./ui/avatar";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";

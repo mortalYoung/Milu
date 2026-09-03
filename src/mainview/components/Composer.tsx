@@ -14,13 +14,14 @@
  */
 import { ArrowUp, ExternalLink, SlidersHorizontal, Square } from "lucide-solid";
 import { createEffect, createMemo, createSignal, For, type JSX, onCleanup, Show, untrack } from "solid-js";
-import type { CommandDescriptor, CommandExecution, SandboxMode, SkillDescriptor } from "../../shared/rpc";
-import { useAgentStatus } from "../lib/agent-status-context";
+import type { CommandDescriptor, SandboxMode, SkillDescriptor } from "../../shared/rpc";
 import { filterCommands } from "../lib/commands";
-import { useComposer } from "../lib/composer-context";
 import { formatWorkspacePath, shouldSendOnEnter } from "../lib/composer-input";
-import { useMetrics } from "../lib/metrics-context";
-import { useSession } from "../lib/session-context";
+import { useAgentStatus } from "../lib/contexts/agent-status-context";
+import { useCommandDirectory } from "../lib/contexts/commands-context";
+import { useComposer } from "../lib/contexts/composer-context";
+import { useMetrics } from "../lib/contexts/metrics-context";
+import { useSession } from "../lib/contexts/session-context";
 import { detectTrigger, parseCommand } from "../lib/trigger";
 import { Button } from "./Button";
 import { CommandMenu } from "./CommandMenu";
@@ -52,10 +53,6 @@ function formatTokens(n: number): string {
 export function Composer(props: {
 	onSend: (text: string) => void;
 	onStop: () => void;
-	/** Slash command directory (handler-free descriptors for the menu). */
-	commands: CommandDescriptor[];
-	/** Execute a slash command line; resolves after command/run + command/done are persisted. */
-	onCommand: (line: string) => Promise<CommandExecution>;
 	skills?: SkillDescriptor[];
 	onSkill?: (name: string, hint?: string) => Promise<{ ok: boolean; error?: string }>;
 	onShell?: (command: string) => Promise<{ ok: boolean; error?: string; shellId?: string }>;
@@ -67,6 +64,7 @@ export function Composer(props: {
 	const agent = useAgentStatus();
 	const composer = useComposer();
 	const session = useSession();
+	const commandDirectory = useCommandDirectory();
 	const [text, setText] = createSignal("");
 	// The draft is per-chat: switching chats loads the other chat's saved text and resets the box height.
 	createEffect(() => {
@@ -136,7 +134,7 @@ export function Composer(props: {
 	const [shellMode, setShellMode] = createSignal(false);
 	const menuItems = createMemo(() => {
 		const q = menuQuery();
-		const commands = filterCommands(props.commands, q);
+		const commands = filterCommands(commandDirectory.commands(), q);
 		const skillItems = (props.skills ?? [])
 			.filter((s) => s.userInvocable)
 			.map(
@@ -224,7 +222,7 @@ export function Composer(props: {
 		setMenuOpen(false);
 		setClaimed(null);
 		try {
-			const res = await props.onCommand(line);
+			const res = await commandDirectory.execute(line);
 			if (res.ok) clearText();
 		} finally {
 			setSubmitting(false);
@@ -298,7 +296,7 @@ export function Composer(props: {
 			return;
 		}
 		const parsed = parseCommand(trimmed);
-		const cmd = parsed ? props.commands.find((c) => c.name === parsed.name) : undefined;
+		const cmd = parsed ? commandDirectory.commands().find((c) => c.name === parsed.name) : undefined;
 
 		// Unknown "/…" is never a model message: keep the "no command found" state visible.
 		if (parsed && !cmd) {
@@ -366,7 +364,7 @@ export function Composer(props: {
 		if (e.key === " " && !e.shiftKey) {
 			const parsed = parseCommand(text());
 			if (parsed && !parsed.rawInput.trim()) {
-				const cmd = props.commands.find((c) => c.name === parsed.name && c.kind === "leadingInput");
+				const cmd = commandDirectory.commands().find((c) => c.name === parsed.name && c.kind === "leadingInput");
 				if (cmd) {
 					e.preventDefault();
 					claimLeading(cmd);
@@ -381,7 +379,7 @@ export function Composer(props: {
 				return;
 			}
 			const parsed = parseCommand(text());
-			const exact = parsed ? props.commands.find((c) => c.name === parsed.name) : undefined;
+			const exact = parsed ? commandDirectory.commands().find((c) => c.name === parsed.name) : undefined;
 			const canExecuteLine = exact && (exact.kind === "execute" || (exact.kind === "leadingInput" && parsed!.rawInput.trim()));
 			if (canExecuteLine || !menuOpen() || menuItems().length === 0) {
 				void submit();

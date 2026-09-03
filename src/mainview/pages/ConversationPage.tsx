@@ -1,15 +1,15 @@
 import { Activity, ListTree, PanelLeftClose, PanelLeftOpen } from "lucide-solid";
 import { type Accessor, createEffect, createSignal, type JSX, onCleanup } from "solid-js";
 import { AnimatePresence, Motion } from "solid-motion";
-import type { CommandDescriptor, CommandExecution, SkillDescriptor } from "../../shared/rpc";
+import type { SkillDescriptor } from "../../shared/rpc";
 import { Button } from "../components/Button";
 import { Composer } from "../components/Composer";
 import { ConversationList, type PartnerItem } from "../components/ConversationList";
 import { RepliesPane } from "../components/RepliesPane";
 import { Transcript } from "../layouts/Transcript";
-import { useAgentStatus } from "../lib/agent-status-context";
-import { useTrajectory } from "../lib/trajectory-context";
-import { useTranscript } from "../lib/transcript-context";
+import { useAgentStatus } from "../lib/contexts/agent-status-context";
+import { useTrajectory } from "../lib/contexts/trajectory-context";
+import { useTranscript } from "../lib/contexts/transcript-context";
 
 export function ConversationPage(props: {
 	partners: PartnerItem[];
@@ -24,9 +24,6 @@ export function ConversationPage(props: {
 	historyLoading: Accessor<boolean>;
 	onSend: (text: string) => void;
 	onStop: () => void;
-
-	commands: CommandDescriptor[];
-	onCommand: (line: string) => Promise<CommandExecution>;
 
 	onEscalationRespond: (id: string, approved: boolean) => void;
 
@@ -143,8 +140,6 @@ export function ConversationPage(props: {
 						<Composer
 							onSend={props.onSend}
 							onStop={props.onStop}
-							commands={props.commands}
-							onCommand={props.onCommand}
 							skills={props.skills}
 							onSkill={props.onSkill}
 							onShell={props.onShell}

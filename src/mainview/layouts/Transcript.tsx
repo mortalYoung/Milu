@@ -3,9 +3,9 @@ import { type Accessor, createEffect, createSignal, For, onCleanup, Show } from 
 import { AnimatePresence, Motion, MotionConfigProvider } from "solid-motion";
 import type { EscalationStatus, SandboxMode } from "../../shared/rpc";
 import { Dialog, DialogContent, DialogTitle } from "../components/ui/dialog";
+import { useSession } from "../lib/contexts/session-context";
+import { useTranscript } from "../lib/contexts/transcript-context";
 import { renderMarkdown, renderMarkdownPlain } from "../lib/markdown";
-import { useSession } from "../lib/session-context";
-import { useTranscript } from "../lib/transcript-context";
 
 export interface EscalationInfo {
 	id: string;

@@ -1,5 +1,5 @@
 import { createContext, type JSX, useContext } from "solid-js";
-import type { createSession } from "./session";
+import type { createSession } from "../session";
 
 export type Session = ReturnType<typeof createSession>;
 

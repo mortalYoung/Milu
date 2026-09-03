@@ -1,6 +1,6 @@
 import { createEffect, createSignal } from "solid-js";
+import { useSession } from "./contexts/session-context";
 import type { RPC } from "./rpc";
-import { useSession } from "./session-context";
 
 export function createUnread(rpc: RPC) {
 	const { data } = useSession();

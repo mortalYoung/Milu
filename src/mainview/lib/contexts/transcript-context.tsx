@@ -1,5 +1,5 @@
 import { createContext, type JSX, useContext } from "solid-js";
-import type { createTranscript } from "./transcript";
+import type { createTranscript } from "../transcript";
 
 export type Transcript = ReturnType<typeof createTranscript>;
 

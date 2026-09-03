@@ -1,5 +1,5 @@
 import { createContext, type JSX, useContext } from "solid-js";
-import type { createAgentStatus } from "./agent-status";
+import type { createAgentStatus } from "../agent-status";
 
 export type AgentStatus = ReturnType<typeof createAgentStatus>;
 

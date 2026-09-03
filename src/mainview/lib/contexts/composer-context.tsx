@@ -1,5 +1,5 @@
 import { createContext, type JSX, useContext } from "solid-js";
-import type { createComposer } from "./composer";
+import type { createComposer } from "../composer";
 
 export type Composer = ReturnType<typeof createComposer>;
 

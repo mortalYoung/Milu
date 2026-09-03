@@ -1,7 +1,7 @@
 import { createResource } from "solid-js";
 import type { ContextSnapshot, SessionStats } from "../../shared/rpc";
+import { useSession } from "./contexts/session-context";
 import type { RPC } from "./rpc";
-import { useSession } from "./session-context";
 
 export interface MetricsData {
 	contextUsage: ContextSnapshot | null;

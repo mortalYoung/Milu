@@ -6,25 +6,26 @@ import { ToastHost } from "./components/ToastHost";
 import { TrajectoryDrawer } from "./components/TrajectoryDrawer";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./components/ui/dialog";
 import { createAgentStatus } from "./lib/agent-status";
-import { AgentStatusProvider } from "./lib/agent-status-context";
 import { createCommandDirectory } from "./lib/commands";
 import { createComposer } from "./lib/composer";
-import { ComposerProvider } from "./lib/composer-context";
+import { AgentStatusProvider } from "./lib/contexts/agent-status-context";
+import { CommandDirectoryProvider } from "./lib/contexts/commands-context";
+import { ComposerProvider } from "./lib/contexts/composer-context";
+import { MetricsProvider } from "./lib/contexts/metrics-context";
+import { SessionProvider, useSession } from "./lib/contexts/session-context";
+import { TrajectoryProvider } from "./lib/contexts/trajectory-context";
+import { TranscriptProvider } from "./lib/contexts/transcript-context";
 import { COPIED_ICON_SVG, COPY_ICON_SVG, warmUpMarkdown } from "./lib/markdown";
 import { createMetrics } from "./lib/metrics";
-import { MetricsProvider } from "./lib/metrics-context";
 import type { PartnerFormData } from "./lib/partner-form";
 import { rpc } from "./lib/rpc";
 import { createSession } from "./lib/session";
-import { SessionProvider, useSession } from "./lib/session-context";
 import { createSettings } from "./lib/settings";
 import { createShell } from "./lib/shell";
 import { createSkills } from "./lib/skills";
 import { createToast, DEFAULT_TOAST_DURATION_MS } from "./lib/toast";
 import { createTrajectory } from "./lib/trajectory";
-import { TrajectoryProvider } from "./lib/trajectory-context";
 import { createTranscript } from "./lib/transcript";
-import { TranscriptProvider } from "./lib/transcript-context";
 import { createUnread } from "./lib/unread";
 import { ConversationPage } from "./pages/ConversationPage";
 import { type SettingsData, SettingsView } from "./pages/SettingsView";
@@ -191,7 +192,6 @@ function WorkspaceControllers() {
 	void session.mutate.refreshHistory();
 	void session.mutate.refreshPartners();
 	void settings.refresh();
-	void commands.refresh();
 	void rpc.request.list_editors({}).then((res) => setEditors(res.editors));
 	status.calibrate();
 
@@ -222,79 +222,79 @@ function WorkspaceControllers() {
 	return (
 		<TrajectoryProvider value={trajectory}>
 			<ComposerProvider value={composer}>
-				<div class="relative flex flex-1 min-h-0">
-					<AppRail
-						active={shell.view()}
-						onSelect={(tab) => {
-							if (tab === "settings") shell.setSettingsOpen(true);
-							else shell.setView(tab);
-						}}
-					/>
+				<CommandDirectoryProvider value={commands}>
+					<div class="relative flex flex-1 min-h-0">
+						<AppRail
+							active={shell.view()}
+							onSelect={(tab) => {
+								if (tab === "settings") shell.setSettingsOpen(true);
+								else shell.setView(tab);
+							}}
+						/>
 
-					<main class="flex-1 flex flex-col min-w-0 bg-qw-bg">
-						<AgentStatusProvider value={status}>
-							<MetricsProvider value={metrics.data}>
-								{shell.view() === "skills" ? (
-									<SkillsView />
-								) : (
-									<TranscriptProvider value={transcript}>
-										<ConversationPage
-											partners={session.data.partners}
-											selected={session.data.selected}
-											onSelect={(name) => {
-												transcript.reset();
-												selectPartner(session.data.partners.find((p) => p.name === name) ?? null);
-											}}
-											unread={unread.unread}
-											onAddPartner={() => shell.setShowModal(true)}
-											onDelete={onDeletePartner}
-											onViewDetails={(name) => shell.setDetailsPartner(session.data.partners.find((p) => p.name === name) ?? null)}
-											listCollapsed={shell.listCollapsed()}
-											onToggleList={shell.toggleList}
-											historyLoading={session.historyLoading}
-											onSend={onSend}
-											onStop={() => void rpc.request.stop({})}
-											commands={commands.commands()}
-											onCommand={(line) => commands.execute(line)}
-											onEscalationRespond={(id, approved) => void rpc.request.sandbox_respond({ id, approved })}
-											toastHost={<ToastHost toasts={toast.toasts} placement={settings.settings()?.toastPlacement ?? "bottomcenter"} onDismiss={toast.dismiss} />}
-											skills={skills.skills()}
-											onSkill={(name, hint) => rpc.request.skill_execute({ name, ...(hint ? { hint } : {}) })}
-											onSkillInspect={(name) => rpc.request.skill_get({ name }).then((r) => (r.ok ? (r.content ?? null) : null))}
-											onShell={(command) => rpc.request.shell_execute({ command })}
-											onOpenPath={(path, editorId) =>
-												void rpc.request.open_path({ path, editorId }).then((res) => {
-													if (!res.ok) toast.push({ title: "Couldn't open folder", body: res.error ?? "No supported editor found" }, "error");
-												})
-											}
-											editors={editors()}
-										/>
-									</TranscriptProvider>
-								)}
-							</MetricsProvider>
-						</AgentStatusProvider>
-					</main>
+						<main class="flex-1 flex flex-col min-w-0 bg-qw-bg">
+							<AgentStatusProvider value={status}>
+								<MetricsProvider value={metrics.data}>
+									{shell.view() === "skills" ? (
+										<SkillsView />
+									) : (
+										<TranscriptProvider value={transcript}>
+											<ConversationPage
+												partners={session.data.partners}
+												selected={session.data.selected}
+												onSelect={(name) => {
+													transcript.reset();
+													selectPartner(session.data.partners.find((p) => p.name === name) ?? null);
+												}}
+												unread={unread.unread}
+												onAddPartner={() => shell.setShowModal(true)}
+												onDelete={onDeletePartner}
+												onViewDetails={(name) => shell.setDetailsPartner(session.data.partners.find((p) => p.name === name) ?? null)}
+												listCollapsed={shell.listCollapsed()}
+												onToggleList={shell.toggleList}
+												historyLoading={session.historyLoading}
+												onSend={onSend}
+												onStop={() => void rpc.request.stop({})}
+												onEscalationRespond={(id, approved) => void rpc.request.sandbox_respond({ id, approved })}
+												toastHost={<ToastHost toasts={toast.toasts} placement={settings.settings()?.toastPlacement ?? "bottomcenter"} onDismiss={toast.dismiss} />}
+												skills={skills.skills()}
+												onSkill={(name, hint) => rpc.request.skill_execute({ name, ...(hint ? { hint } : {}) })}
+												onSkillInspect={(name) => rpc.request.skill_get({ name }).then((r) => (r.ok ? (r.content ?? null) : null))}
+												onShell={(command) => rpc.request.shell_execute({ command })}
+												onOpenPath={(path, editorId) =>
+													void rpc.request.open_path({ path, editorId }).then((res) => {
+														if (!res.ok) toast.push({ title: "Couldn't open folder", body: res.error ?? "No supported editor found" }, "error");
+													})
+												}
+												editors={editors()}
+											/>
+										</TranscriptProvider>
+									)}
+								</MetricsProvider>
+							</AgentStatusProvider>
+						</main>
 
-					<Dialog open={shell.settingsOpen()} onOpenChange={shell.setSettingsOpen}>
-						<DialogContent class="w-[820px] max-w-none h-[640px] grid-rows-[auto_1fr] overflow-hidden bg-letter border-print-line p-0">
-							<DialogHeader class="px-4 pt-4">
-								<DialogTitle class="font-serif text-[15px]">Settings</DialogTitle>
-							</DialogHeader>
-							<SettingsView
-								settings={settings.settings()}
-								runtime={settings.runtime()}
-								onLoad={() => void settings.refresh()}
-								onSave={(s: SettingsData, credentials) => settings.save(s, credentials)}
-							/>
-						</DialogContent>
-					</Dialog>
+						<Dialog open={shell.settingsOpen()} onOpenChange={shell.setSettingsOpen}>
+							<DialogContent class="w-[820px] max-w-none h-[640px] grid-rows-[auto_1fr] overflow-hidden bg-letter border-print-line p-0">
+								<DialogHeader class="px-4 pt-4">
+									<DialogTitle class="font-serif text-[15px]">Settings</DialogTitle>
+								</DialogHeader>
+								<SettingsView
+									settings={settings.settings()}
+									runtime={settings.runtime()}
+									onLoad={() => void settings.refresh()}
+									onSave={(s: SettingsData, credentials) => settings.save(s, credentials)}
+								/>
+							</DialogContent>
+						</Dialog>
 
-					<PartnerModal open={shell.showModal()} onOpenChange={shell.setShowModal} onConfirm={onCreatePartner} existingNames={session.data.partners.map((p) => p.name)} />
+						<PartnerModal open={shell.showModal()} onOpenChange={shell.setShowModal} onConfirm={onCreatePartner} existingNames={session.data.partners.map((p) => p.name)} />
 
-					<PartnerDetailsDialog partner={shell.detailsPartner()} onOpenChange={(open) => !open && shell.setDetailsPartner(null)} />
+						<PartnerDetailsDialog partner={shell.detailsPartner()} onOpenChange={(open) => !open && shell.setDetailsPartner(null)} />
 
-					<TrajectoryDrawer />
-				</div>
+						<TrajectoryDrawer />
+					</div>
+				</CommandDirectoryProvider>
 			</ComposerProvider>
 		</TrajectoryProvider>
 	);

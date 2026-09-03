@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, For } from "solid-js";
 import type { Entry } from "../layouts/Transcript";
-import { useTranscript } from "../lib/transcript-context";
+import { useTranscript } from "../lib/contexts/transcript-context";
 
 interface ReplyRow {
 	question: string;

@@ -1,5 +1,5 @@
 import { createContext, type JSX, useContext } from "solid-js";
-import type { createTrajectory } from "./trajectory";
+import type { createTrajectory } from "../trajectory";
 
 export type Trajectory = ReturnType<typeof createTrajectory>;
 
