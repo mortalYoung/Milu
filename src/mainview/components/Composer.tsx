@@ -224,9 +224,9 @@ export function Composer(props: {
 		setSubmitting(true);
 		setMenuOpen(false);
 		setClaimed(null);
+		clearText();
 		try {
-			const res = await commandDirectory.execute(line);
-			if (res.ok) clearText();
+			await commandDirectory.execute(line);
 		} finally {
 			setSubmitting(false);
 		}
@@ -264,10 +264,7 @@ export function Composer(props: {
 		clearText();
 		try {
 			const res = await props.onShell?.(trimmed);
-			if (res && !res.ok) {
-				setText(trimmed);
-				composer.change(trimmed);
-			} else if (res && !shellContinuous()) {
+			if (res && !shellContinuous()) {
 				setShellMode(false);
 			}
 		} finally {
