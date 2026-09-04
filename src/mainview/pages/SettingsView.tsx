@@ -21,6 +21,7 @@ export interface SettingsData {
 	skills_watch?: boolean;
 	skills_watch_delay_ms?: number;
 	sendMessageIntervalSec?: number | null;
+	shellContinuous?: boolean;
 	commands_path?: string;
 	retry?: { maxRetries?: number; baseDelayMs?: number };
 	webFetch?: { timeoutMs?: number; maxBytes?: number; maxChars?: number; userAgent?: string };
@@ -68,6 +69,7 @@ const DEFAULTS = {
 	skills_dirs: [".agents/skills"],
 	skills_watch: true,
 	skills_watch_delay_ms: 300,
+	shellContinuous: true,
 };
 
 const EMPTY_CP = { id: "", name: "", baseUrl: "", models: [{ id: "", window: "" }], window: "", maxTokens: "" };
@@ -209,6 +211,7 @@ export function SettingsView() {
 	const [skillsDirs, setSkillsDirs] = createSignal<string[]>(initial?.skills_dirs?.length ? initial.skills_dirs : [".agents/skills"]);
 	const [skillsWatch, setSkillsWatch] = createSignal(initial?.skills_watch ?? true);
 	const [skillsWatchDelay, setSkillsWatchDelay] = createSignal(String(initial?.skills_watch_delay_ms ?? 300));
+	const [shellContinuous, setShellContinuous] = createSignal(initial?.shellContinuous ?? true);
 
 	function persistSkillsDirs() {
 		const dirs = skillsDirs()
@@ -325,6 +328,9 @@ export function SettingsView() {
 	if (initial && typeof initial.skills_watch_delay_ms === "number" && String(initial.skills_watch_delay_ms) !== skillsWatchDelay()) {
 		setSkillsWatchDelay(String(initial.skills_watch_delay_ms));
 	}
+	if (initial && typeof initial.shellContinuous === "boolean" && initial.shellContinuous !== shellContinuous()) {
+		setShellContinuous(initial.shellContinuous);
+	}
 
 	if (initial && typeof initial.sendMessageIntervalSec === "number" && deliveryMode() === "unlimited") {
 		setDeliveryMode("custom");
@@ -363,6 +369,7 @@ export function SettingsView() {
 			skills_watch: skillsWatch(),
 			skills_watch_delay_ms: parsePositiveInt(skillsWatchDelay(), DEFAULTS.skills_watch_delay_ms),
 			sendMessageIntervalSec: deliveryMode() === "unlimited" ? null : parsedDeliverySec(),
+			shellContinuous: shellContinuous(),
 			commands_path: commandsPath().trim() || undefined,
 			retry: {
 				maxRetries: parsePositiveInt(retryMaxRetries(), DEFAULTS.retryMaxRetries),
@@ -1103,6 +1110,22 @@ export function SettingsView() {
 						</TextField>
 					</Show>
 				</div>
+			),
+		},
+		{
+			id: "shellContinuous",
+			title: "Continuous shell input",
+			desc: "Keep shell mode active after sending; turn off to exit shell mode after each command.",
+			cats: ["general"],
+			modified: () => shellContinuous() !== DEFAULTS.shellContinuous,
+			control: () => (
+				<SwitchToggle
+					checked={shellContinuous()}
+					onChange={(on) => {
+						setShellContinuous(on);
+						void persist({ ...currentSettings(), shellContinuous: on });
+					}}
+				/>
 			),
 		},
 		{

@@ -414,6 +414,7 @@ export type AppRPCSchema = __schema<{
 						skills_watch?: boolean;
 						skills_watch_delay_ms?: number;
 						sendMessageIntervalSec?: number | null;
+						shellContinuous?: boolean;
 						commands_path?: string;
 						retry?: { maxRetries?: number; baseDelayMs?: number };
 						webFetch?: { timeoutMs?: number; maxBytes?: number; maxChars?: number; userAgent?: string };
@@ -451,6 +452,7 @@ export type AppRPCSchema = __schema<{
 						skills_watch?: boolean;
 						skills_watch_delay_ms?: number;
 						sendMessageIntervalSec?: number | null;
+						shellContinuous?: boolean;
 						commands_path?: string;
 						retry?: { maxRetries?: number; baseDelayMs?: number };
 						webFetch?: { timeoutMs?: number; maxBytes?: number; maxChars?: number; userAgent?: string };

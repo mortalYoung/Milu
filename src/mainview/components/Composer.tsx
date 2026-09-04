@@ -22,6 +22,7 @@ import { useCommandDirectory } from "../lib/contexts/commands-context";
 import { useComposer } from "../lib/contexts/composer-context";
 import { useMetrics } from "../lib/contexts/metrics-context";
 import { useSession } from "../lib/contexts/session-context";
+import { useSettings } from "../lib/contexts/settings-context";
 import { useSkills } from "../lib/contexts/skills-context";
 import { detectTrigger, parseCommand } from "../lib/trigger";
 import { Button } from "./Button";
@@ -63,8 +64,10 @@ export function Composer(props: {
 	const agent = useAgentStatus();
 	const composer = useComposer();
 	const session = useSession();
+	const settings = useSettings();
 	const commandDirectory = useCommandDirectory();
 	const skillDirectory = useSkills();
+	const shellContinuous = () => settings.data()?.settings?.shellContinuous ?? true;
 	const [text, setText] = createSignal("");
 	// The draft is per-chat: switching chats loads the other chat's saved text and resets the box height.
 	createEffect(() => {
@@ -264,6 +267,8 @@ export function Composer(props: {
 			if (res && !res.ok) {
 				setText(trimmed);
 				composer.change(trimmed);
+			} else if (res && !shellContinuous()) {
+				setShellMode(false);
 			}
 		} finally {
 			setSubmitting(false);
@@ -435,9 +440,9 @@ export function Composer(props: {
 		if (!s || !s.usage) return null;
 		const u = s.usage;
 		const billed = u.input + u.cacheRead + u.cacheWrite;
-		const hit = billed > 0 ? Math.round((u.cacheRead / billed) * 100) : null;
+		const hit = billed > 0 ? (u.cacheRead / billed) * 100 : null;
 		const parts = [`in ${formatTokens(u.input)} tok`, `out ${formatTokens(u.output)} tok`];
-		if (hit != null) parts.push(`cache ${hit}%`);
+		if (hit != null) parts.push(`cache ${hit.toFixed(2)}%`);
 		if (s.runtime.avgTtftMs != null) parts.push(`ttft ${(s.runtime.avgTtftMs / 1000).toFixed(1)}s`);
 		if (s.runtime.avgTps != null) parts.push(`${Math.round(s.runtime.avgTps)} tok/s`);
 		return parts.join(" · ");

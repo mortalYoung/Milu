@@ -43,6 +43,7 @@ export interface Settings {
 	skills_watch_delay_ms?: number;
 	/** Seconds between visible send_message heartbeats during a run; null/undefined = only first and last. */
 	sendMessageIntervalSec?: number | null;
+	shellContinuous?: boolean;
 	commands_path?: string;
 	retry?: { maxRetries?: number; baseDelayMs?: number };
 	webFetch?: { timeoutMs?: number; maxBytes?: number; maxChars?: number; userAgent?: string };
@@ -68,6 +69,7 @@ const DEFAULT_SETTINGS: Settings = {
 	skills_dirs: [".agents/skills"],
 	skills_watch: true,
 	skills_watch_delay_ms: 300,
+	shellContinuous: true,
 };
 
 const SETTINGS_PATH = join(homedir(), ".config", "letters", "settings.json");
