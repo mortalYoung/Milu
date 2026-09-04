@@ -15,6 +15,8 @@ import {
 	type CommandRunEventData,
 	type ContextChangedEventData,
 	EVENTS,
+	type MemoryRunEndEventData,
+	type MemoryRunStartEventData,
 	type RetryScheduledEventData,
 	type RetryStartedEventData,
 	type ShellDoneEventData,
@@ -81,6 +83,8 @@ export interface SessionScope {
 	appendEscalationRecord(type: "escalation/request" | "escalation/decision", details: Record<string, unknown>, timestamp: number): Promise<void>;
 	appendCommandRun(details: CommandRunEventData, timestamp: number): Promise<void>;
 	appendCommandDone(details: CommandDoneEventData, timestamp: number): Promise<void>;
+	appendMemoryRunStart(details: MemoryRunStartEventData, timestamp: number): Promise<void>;
+	appendMemoryRunEnd(details: MemoryRunEndEventData, timestamp: number): Promise<void>;
 	appendContextChanged(details: ContextChangedEventData, timestamp: number): Promise<void>;
 	lastContextChanged(): Promise<{ data: ContextChangedEventData; timestamp: number } | null>;
 	appendSkillRun(details: SkillRunEventData, timestamp: number): Promise<void>;
@@ -119,6 +123,7 @@ export interface SessionStore {
 	forkTo(sourceDir: string, targetDir: string): Promise<void>;
 	evictRoot(dir: string): void;
 	rawEntries(dir: string): Promise<Entry[]>;
+	currentSessionFile(dir: string): Promise<string>;
 	/** Start a fresh session file for the root, archiving the current one as its parent. Returns the new session id. */
 	rotateSession(dir: string): Promise<string>;
 }
@@ -301,6 +306,12 @@ export function createSessionStore(): SessionStore {
 			async appendCommandDone(details, timestamp) {
 				await appendCustom(dir, EVENTS.commandDone, { ...details, timestamp });
 			},
+			async appendMemoryRunStart(details, timestamp) {
+				await appendCustom(dir, EVENTS.memoryRunStart, { ...details, timestamp });
+			},
+			async appendMemoryRunEnd(details, timestamp) {
+				await appendCustom(dir, EVENTS.memoryRunEnd, { ...details, timestamp });
+			},
 			async appendContextChanged(details, timestamp) {
 				await appendCustom(dir, EVENTS.contextChanged, { ...details, timestamp });
 			},
@@ -451,6 +462,11 @@ export function createSessionStore(): SessionStore {
 		async rawEntries(dir) {
 			const state = await stateFor(dir);
 			return state.entries;
+		},
+		async currentSessionFile(dir) {
+			const state = await stateFor(dir);
+			const meta = (await state.session.getMetadata()) as { path?: string };
+			return meta.path ?? "";
 		},
 	};
 }

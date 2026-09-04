@@ -13,6 +13,7 @@ export interface SummarizeInput {
 	tools: RequestTool[];
 	model?: Model<any>;
 	capChars: number;
+	signal?: AbortSignal;
 }
 
 export interface Summarizer {
@@ -154,16 +155,16 @@ export function buildSummarizationInput(entries: Entry[], shadowed: SurfaceNode[
 
 export function createLlmSummarizer(): Summarizer {
 	return {
-		async summarize({ entries, shadowed, systemPrompt, tools, model, capChars }) {
-			if (!model) return localSummarizer.summarize({ entries, shadowed, systemPrompt, tools, capChars });
+		async summarize({ entries, shadowed, systemPrompt, tools, model, capChars, signal }) {
+			if (!model) return localSummarizer.summarize({ entries, shadowed, systemPrompt, tools, capChars, signal });
 			const messages = convertToLlm(buildSummarizationInput(entries, shadowed).messages);
-			const stream = STREAM_FN(model, { systemPrompt, messages, tools: tools as never }, { maxTokens: 8192 });
+			const stream = STREAM_FN(model, { systemPrompt, messages, tools: tools as never }, { maxTokens: 8192, ...(signal ? { signal } : {}) });
 			const parts: string[] = [];
 			for await (const event of stream) {
 				if (event.type === "text_delta") parts.push(event.delta);
 			}
 			const raw = parts.join("").trim();
-			if (!raw) return localSummarizer.summarize({ entries, shadowed, systemPrompt, tools, capChars });
+			if (!raw) return localSummarizer.summarize({ entries, shadowed, systemPrompt, tools, capChars, signal });
 			return raw.length > capChars ? `${raw.slice(0, capChars)}\n…` : raw;
 		},
 	};

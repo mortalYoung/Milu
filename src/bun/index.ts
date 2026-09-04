@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { join, sep } from "node:path";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import { getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
+import { Cron } from "croner";
 import { ApplicationMenu, BrowserView, BrowserWindow, Utils } from "electrobun/main";
 import { cleanOrigin } from "../shared/origin";
 import type { AppRPCSchema, TrajectoryRecord } from "../shared/rpc";
@@ -28,6 +29,7 @@ import {
 import { applyCompaction, type CompactionPlan, hasOrphanCompactionStart, planCompaction } from "./core/compaction";
 import { Context } from "./core/context";
 import { projectSnapshot } from "./core/context-project";
+import { organizeMemory, type QueryMemoryOptions, queryMemory, readMemoryLines } from "./core/memory";
 import { loadRuntimeStats, saveRuntimeStats } from "./core/runtime-stats";
 import { createLlmSummarizer, localSummarizer } from "./core/summarizer";
 import { reconstructRequestHeader } from "./core/surface";
@@ -53,7 +55,7 @@ import { createPartner, deletePartner, listPartners, PartnerError, type PartnerI
 import type { EscalationDecision, EscalationRequest, SandboxMode } from "./permission";
 import { isSandboxMode, SandboxManager } from "./permission";
 import { createSessionStore, type SessionScope } from "./persist";
-import { EVENTS } from "./persist/events";
+import { EVENTS, type MemoryRunEndEventData, type MemoryRunStartEventData } from "./persist/events";
 import { scanSkillsRoot } from "./skills/filesystem";
 import { SKILL_NAME_RE } from "./skills/frontmatter";
 import { getSkill, listSkills } from "./skills/registry";
@@ -153,6 +155,7 @@ async function armSkillsWatchers() {
 }
 const pendingCommandIds = new Set<string>();
 const runningCommandPartners = new Set<string>();
+const backgroundAborts = new Map<string, AbortController>();
 const pendingShellIds = new Set<string>();
 const pendingSandboxConfirms = new Map<string, { resolve: (decision: EscalationDecision) => void; to: SandboxMode; dir: string; partner: string }>();
 
@@ -270,6 +273,7 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 	const mode = await ensureSandboxMode(dir, defaultMode);
 	const model = await ensureModel(dir);
 	const thinkingLevel = model?.thinkingLevel ?? "high";
+	const readMemory = settings.memoryEnabled === false ? undefined : async (opts: QueryMemoryOptions) => queryMemory(await readMemoryLines(dir), opts);
 
 	const scope = session.scope(dir);
 	const agent = createAgent(
@@ -292,6 +296,7 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 			runtimeStats: await loadRuntimeStats(dir),
 			persistRuntimeStats: (snapshot) => void saveRuntimeStats(dir, snapshot).catch((error) => console.error("saveRuntimeStats failed:", error)),
 			lastMessageTime: async () => (await session.lastMessage(dir))?.time ?? null,
+			readMemory,
 			sandbox,
 			deliverIntervalMs: () => sendMessageIntervalMs(settingsCache ?? settings),
 			partnerDir: dir,
@@ -426,12 +431,12 @@ async function pruneSession(entry: PartnerAgent): Promise<void> {
 	console.log(`pruned ${prunes.length} oversized tool results`);
 }
 
-async function runManualCompact(entry: PartnerAgent): Promise<{ ok: boolean; error?: string; compacted?: number }> {
+async function runManualCompact(entry: PartnerAgent, signal?: AbortSignal): Promise<{ ok: boolean; error?: string; compacted?: number }> {
 	if (entry.agent.isStreaming) return { ok: false, error: "agent is running" };
 	try {
 		await pruneSession(entry);
 		const input = await compactionInput(entry);
-		const plan = await planCompaction(input.entries, input.surface, input.opts);
+		const plan = await planCompaction(input.entries, input.surface, { ...input.opts, signal });
 		if (!plan) return { ok: true, compacted: 0 };
 		await runCompaction(entry, plan);
 		return { ok: true, compacted: plan.range.end - plan.range.start + 1 };
@@ -454,17 +459,114 @@ async function maybeAutoCompact(entry: PartnerAgent): Promise<void> {
 	const window = contextWindow(entry.agent.model ?? undefined);
 	const used = usage.input + usage.cacheRead + usage.cacheWrite;
 	if (used < window * (settings.compaction?.thresholdRatio ?? 0.8)) return;
+	await withBackgroundAbort(entry.profile.name, async (signal) => {
+		try {
+			await pruneSession(entry);
+			const input = await compactionInput(entry);
+			const plan = await planCompaction(input.entries, input.surface, { ...input.opts, signal });
+			if (!plan) return;
+			await runCompaction(entry, plan);
+			console.log(`auto-compacted ${plan.range.end - plan.range.start + 1} surface nodes`);
+		} catch (error) {
+			await compactionFailure(entry, error);
+		}
+	});
+}
+
+async function withBackgroundAbort<T>(partner: string, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+	const controller = new AbortController();
+	backgroundAborts.set(partner, controller);
 	try {
-		await pruneSession(entry);
-		const input = await compactionInput(entry);
-		const plan = await planCompaction(input.entries, input.surface, input.opts);
-		if (!plan) return;
-		await runCompaction(entry, plan);
-		console.log(`auto-compacted ${plan.range.end - plan.range.start + 1} surface nodes`);
-	} catch (error) {
-		await compactionFailure(entry, error);
+		return await run(controller.signal);
+	} finally {
+		if (backgroundAborts.get(partner) === controller) backgroundAborts.delete(partner);
 	}
 }
+
+const memoryOrganizing = new Set<string>();
+
+async function runMemoryOrganize(entry: PartnerAgent, signal?: AbortSignal): Promise<number> {
+	if ((await loadSettings()).memoryEnabled === false) return 0;
+	if (memoryOrganizing.has(entry.profile.name)) return 0;
+	memoryOrganizing.add(entry.profile.name);
+	try {
+		const [sessionFile, entries] = await Promise.all([session.currentSessionFile(entry.dir), session.rawEntries(entry.dir)]);
+		const model = entry.agent.model ? resolveModel(entry.agent.model) : undefined;
+		const logRun = {
+			async start(data: MemoryRunStartEventData) {
+				try {
+					await entry.scope.appendMemoryRunStart(data, data.startedAt);
+				} catch (error) {
+					console.error("memory run start log failed:", error);
+				}
+			},
+			async end(data: MemoryRunEndEventData) {
+				try {
+					await entry.scope.appendMemoryRunEnd(data, data.endedAt);
+				} catch (error) {
+					console.error("memory run end log failed:", error);
+				}
+			},
+		};
+		return await organizeMemory({ dir: entry.dir, sessionFile, entries, model, logRun, signal });
+	} finally {
+		memoryOrganizing.delete(entry.profile.name);
+	}
+}
+
+let memoryCronJob: Cron | null = null;
+let memoryCronPattern = "";
+
+function dailyTimeToCron(time: string): string {
+	const match = /^(\d{2}):(\d{2})$/.exec(time.trim());
+	if (!match) return "0 6 * * *";
+	const hour = Number(match[1]);
+	const minute = Number(match[2]);
+	if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return "0 6 * * *";
+	return `${String(minute).padStart(2, "0")} ${String(hour).padStart(2, "0")} * * *`;
+}
+
+async function runMemoryOrganizeAll(): Promise<void> {
+	for (const promise of agents.values()) {
+		try {
+			const entry = await promise;
+			await withBackgroundAbort(entry.profile.name, (signal) => runMemoryOrganize(entry, signal));
+		} catch {
+			// skip partner
+		}
+	}
+}
+
+async function scheduleMemoryDaily(): Promise<void> {
+	const settings = await loadSettings();
+	if (settings.memoryEnabled === false || settings.memoryCronEnabled === false) {
+		memoryCronJob?.stop();
+		memoryCronJob = null;
+		memoryCronPattern = "";
+		console.log("memory daily scheduler: disabled");
+		return;
+	}
+	const pattern = dailyTimeToCron(settings.memoryDailyTime ?? "06:00");
+	if (memoryCronJob && memoryCronPattern === pattern) return;
+	memoryCronJob?.stop();
+	memoryCronPattern = pattern;
+	memoryCronJob = new Cron(pattern, () => {
+		void runMemoryOrganizeAll();
+	});
+	console.log(`memory daily scheduler: ${pattern}`);
+}
+
+async function runMemoryDailyIfDueNow(): Promise<void> {
+	const settings = await loadSettings();
+	if (settings.memoryEnabled === false || settings.memoryCronEnabled === false) return;
+	const target = settings.memoryDailyTime ?? "06:00";
+	const now = new Date();
+	const current = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+	if (current === target) await runMemoryOrganizeAll();
+}
+
+void scheduleMemoryDaily();
+void runMemoryDailyIfDueNow();
 
 /**
  * Persist terminal states for rows the log never closed (crash / hard stop): commands and
@@ -472,26 +574,32 @@ async function maybeAutoCompact(entry: PartnerAgent): Promise<void> {
  * resumable become `dropped`. Run once per partner at startup, before the agent does anything,
  * so visibleHistory is a pure log projection and needs no runtime overlay.
  */
-async function reconcileTerminalStates(dir: string): Promise<{ commands: number; shells: number; escalations: number }> {
+async function reconcileTerminalStates(dir: string): Promise<{ commands: number; shells: number; escalations: number; memoryRuns: number }> {
 	const entries = await session.rawEntries(dir);
 	const commandDones = new Set<string>();
 	const shellDones = new Set<string>();
 	const escalationDecisions = new Set<string>();
+	const memoryRunEnds = new Set<string>();
 	for (const entry of entries) {
 		if (entry.type !== "custom") continue;
-		const custom = entry as { customType?: string; data?: { commandId?: unknown; shellId?: unknown; escalationId?: unknown } };
+		const custom = entry as { customType?: string; data?: { commandId?: unknown; shellId?: unknown; escalationId?: unknown; runId?: unknown } };
 		if (custom.customType === EVENTS.commandDone && custom.data?.commandId != null) commandDones.add(String(custom.data.commandId));
 		else if (custom.customType === EVENTS.shellDone && custom.data?.shellId != null) shellDones.add(String(custom.data.shellId));
 		else if (custom.customType === EVENTS.escalationDecision && custom.data?.escalationId != null) escalationDecisions.add(String(custom.data.escalationId));
+		else if (custom.customType === EVENTS.memoryRunEnd && custom.data?.runId != null) memoryRunEnds.add(String(custom.data.runId));
 	}
 	const scope = session.scope(dir);
 	const ts = Date.now();
 	let commands = 0;
 	let shells = 0;
 	let escalations = 0;
+	let memoryRuns = 0;
 	for (const entry of entries) {
 		if (entry.type !== "custom") continue;
-		const custom = entry as { customType?: string; data?: { commandId?: unknown; shellId?: unknown; command?: unknown; escalationId?: unknown } };
+		const custom = entry as {
+			customType?: string;
+			data?: { commandId?: unknown; shellId?: unknown; command?: unknown; escalationId?: unknown; runId?: unknown; sessionFile?: unknown; startedAt?: unknown };
+		};
 		if (custom.customType === EVENTS.commandRun) {
 			const id = custom.data?.commandId != null ? String(custom.data.commandId) : null;
 			if (id && !commandDones.has(id)) {
@@ -515,10 +623,32 @@ async function reconcileTerminalStates(dir: string): Promise<{ commands: number;
 					escalations++;
 				}
 			}
+		} else if (custom.customType === EVENTS.memoryRunStart) {
+			const runId = custom.data?.runId != null ? String(custom.data.runId) : null;
+			if (runId && !memoryRunEnds.has(runId)) {
+				const startedAt = typeof custom.data?.startedAt === "number" ? custom.data.startedAt : ts;
+				const sessionFile = typeof custom.data?.sessionFile === "string" ? custom.data.sessionFile : dir;
+				await scope.appendMemoryRunEnd(
+					{
+						runId,
+						sessionFile,
+						startedAt,
+						endedAt: ts,
+						durationMs: Math.max(0, ts - startedAt),
+						reason: "interrupted",
+						attempts: 0,
+						added: 0,
+						error: "previous memory run did not finish",
+					},
+					ts,
+				);
+				memoryRuns++;
+			}
 		}
 	}
-	if (commands + shells + escalations > 0) console.log(`reconcile ${dir}: ${commands} commands, ${shells} shells, ${escalations} escalations`);
-	return { commands, shells, escalations };
+	if (commands + shells + escalations + memoryRuns > 0)
+		console.log(`reconcile ${dir}: ${commands} commands, ${shells} shells, ${escalations} escalations, ${memoryRuns} memory runs`);
+	return { commands, shells, escalations, memoryRuns };
 }
 
 function commandContextFor(entry: PartnerAgent): CommandContext {
@@ -546,10 +676,25 @@ function commandContextFor(entry: PartnerAgent): CommandContext {
 			setThinkingLevel: (level) => entry.agent.setThinkingLevel(level),
 		},
 		persistWorkspace: (path) => persistWorkspace(entry.dir, path),
-		runManualCompact: () => runManualCompact(entry),
-		resetSession: async () => {
+		runManualCompact: async (signal?: AbortSignal) => {
+			const result = await runManualCompact(entry, signal);
+			return signal?.aborted ? { ok: false, error: "aborted" } : result;
+		},
+		organizeMemory: async (signal?: AbortSignal) => {
+			try {
+				if ((await loadSettings()).memoryEnabled === false) return { ok: false, error: "memory is disabled" };
+				const added = await runMemoryOrganize(entry, signal);
+				if (signal?.aborted) return { ok: false, error: "aborted" };
+				return { ok: true, added };
+			} catch (error) {
+				return { ok: false, error: error instanceof Error ? error.message : String(error) };
+			}
+		},
+		resetSession: async (signal?: AbortSignal) => {
 			if (entry.agent.isStreaming) return { ok: false, error: "agent is running" };
 			try {
+				await runMemoryOrganize(entry, signal);
+				if (signal?.aborted) return { ok: false, error: "aborted" };
 				await session.rotateSession(entry.dir);
 				entry.agent.reset();
 				pendingShellIds.clear();
@@ -587,7 +732,9 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				return { accepted: true };
 			},
 			stop: () => {
-				void agents.get(viewPartner?.name ?? "")?.then((e) => e.agent.stop());
+				const name = viewPartner?.name;
+				if (name) backgroundAborts.get(name)?.abort();
+				void agents.get(name ?? "")?.then((e) => e.agent.stop());
 				return { accepted: true };
 			},
 			reset: () => {
@@ -774,7 +921,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				const target = viewPartner;
 				const entry = target ? await agents.get(target.name) : undefined;
 				if (!target || !entry) return { ok: false, error: "no partner selected" };
-				return runManualCompact(entry);
+				return withBackgroundAbort(target.name, (signal) => runManualCompact(entry, signal));
 			},
 			commands_list: async () => ({ commands: commandRegistry.list() }),
 			commands_execute: async ({ line }) => {
@@ -784,12 +931,16 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				if (entry.agent.isStreaming) return { ok: false, error: "agent is running" };
 				if (runningCommandPartners.has(target.name)) return { ok: false, error: "command is running" };
 				const ctx = commandContextFor(entry);
+				const controller = new AbortController();
+				backgroundAborts.set(target.name, controller);
 				try {
-					const execution = await commandRegistry.execute(line, ctx);
+					const execution = await commandRegistry.execute(line, ctx, controller);
 					if (!execution) return { ok: false, error: "unknown command" };
 					return { ok: true, commandId: execution.commandId, result: execution.result };
 				} catch (error) {
 					return { ok: false, error: error instanceof Error ? error.message : String(error) };
+				} finally {
+					if (backgroundAborts.get(target.name) === controller) backgroundAborts.delete(target.name);
 				}
 			},
 
@@ -1107,6 +1258,8 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 						unregisterCustomProvider(gone.id);
 					}
 					await reloadCommands();
+					await scheduleMemoryDaily();
+					await runMemoryDailyIfDueNow();
 					return { ok: true };
 				} catch (error) {
 					console.error("update_settings failed:", error);

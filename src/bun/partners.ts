@@ -1,5 +1,6 @@
 import { access, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { ensureMemoryFile } from "./core/memory";
 import { getPartnerDir, partnerRoot, type Settings } from "./lib/settings";
 
 // ————— Partner profiles —————
@@ -86,6 +87,7 @@ export async function createPartner(settings: Settings, input: PartnerInput): Pr
 	}
 	await mkdir(dir, { recursive: true });
 	await writeFile(profilePath, JSON.stringify(profile, null, 2) + "\n", "utf8");
+	await ensureMemoryFile(dir);
 	return profile;
 }
 

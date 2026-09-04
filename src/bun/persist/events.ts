@@ -95,6 +95,57 @@ export interface ContextChangedEventData {
 	skills: SkillDigestItem[];
 }
 
+export type MemoryRunEndReason = "completed" | "attempts-exhausted" | "error" | "interrupted";
+
+export interface MemoryRunStartEventData {
+	runId: string;
+	sessionFile: string;
+	startedAt: number;
+	entries: number;
+	targetRawId: string;
+	cursorRawId: string | null;
+}
+
+export interface MemoryRunTraceEvent {
+	event: "read_raw" | "read_memory" | "write_memory" | "finish" | "attempt_end" | "checkpoint";
+	at?: number;
+	from?: string;
+	limit?: number;
+	returned?: number;
+	query?: string;
+	regex?: boolean;
+	kind?: string;
+	rawIds?: string[];
+	accepted?: boolean;
+	memoryId?: string;
+	error?: string;
+	attempt?: number;
+	progressRawId?: string | null;
+	lastRawId?: string;
+}
+
+export interface MemoryRunModelMessage {
+	attempt: number;
+	role: "assistant";
+	block: "thinking" | "text";
+	text: string;
+}
+
+export interface MemoryRunEndEventData {
+	runId: string;
+	sessionFile: string;
+	startedAt: number;
+	endedAt: number;
+	durationMs: number;
+	reason: MemoryRunEndReason;
+	attempts: number;
+	added: number;
+	error?: string;
+	checkpoints?: string[];
+	trace?: MemoryRunTraceEvent[];
+	modelMessages?: MemoryRunModelMessage[];
+}
+
 export interface RetryScheduledEventData {
 	retryId: string;
 	turn: number;

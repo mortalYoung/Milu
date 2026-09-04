@@ -24,6 +24,7 @@ export interface CompactionOptions {
 	systemPrompt?: string;
 	tools?: RequestTool[];
 	model?: Model<any>;
+	signal?: AbortSignal;
 }
 
 export function selectCompactableRange(entries: Entry[], nodes: SurfaceNode[], tailBudget: number): CompactRange | null {
@@ -79,6 +80,7 @@ export async function planCompaction(entries: Entry[], surface: Surface, opts: C
 		tools: opts.tools ?? [],
 		model: opts.model,
 		capChars,
+		...(opts.signal ? { signal: opts.signal } : {}),
 	});
 	const baseline = fullTextLength(entries, shadowed);
 	if (summary.length >= baseline) return null;

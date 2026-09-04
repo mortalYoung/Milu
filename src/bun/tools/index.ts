@@ -1,6 +1,7 @@
 import type { AgentHarnessTool, AgentTool, ExecutionEnv, ExecutionToolContext } from "@earendil-works/pi-agent-core";
 import { createEditTool, createReadTool, createWriteTool } from "@earendil-works/pi-agent-core";
 import { type TSchema, Type } from "@earendil-works/pi-ai";
+import { createReadMemoryTool, type MemoryRecord, type QueryMemoryOptions } from "../core/memory";
 import { loadSettings } from "../lib/settings";
 import type { SandboxMode } from "../permission";
 import { Permission } from "../permission";
@@ -14,6 +15,7 @@ export interface ToolDeps {
 	permission?: Permission;
 	onSetWorkspace?: (workspace: string) => { ok: true; path: string } | { ok: false; error: string };
 	skills?: { list(): Promise<SkillSummary[]>; get(name: string): Promise<SkillDefinition | undefined> };
+	readMemory?: (opts: QueryMemoryOptions) => Promise<MemoryRecord[]>;
 }
 
 const workspaceSchema = Type.Object({
@@ -240,6 +242,14 @@ function webFetchTool(): AgentTool<typeof webFetchSchema, WebFetchDetails> {
 	};
 }
 
+function readMemoryTool(deps: ToolDeps) {
+	return createReadMemoryTool({
+		description:
+			"Read durable memories for this partner. Use it when a task depends on prior project facts, decisions, issues, references, or objective user-driven events. Returns memories sorted newest first; superseded entries are hidden unless includeSuperseded is true.",
+		read: deps.readMemory,
+	});
+}
+
 export function createTools(deps: ToolDeps): AgentTool[] {
 	const env = createExecutionEnv("", deps.permission);
 	return [
@@ -250,6 +260,7 @@ export function createTools(deps: ToolDeps): AgentTool[] {
 		bindEnv(setWorkspaceTool(deps), env),
 		skillTool(deps),
 		webFetchTool(),
+		readMemoryTool(deps),
 	];
 }
 

@@ -22,6 +22,9 @@ export interface SettingsData {
 	skills_watch_delay_ms?: number;
 	sendMessageIntervalSec?: number | null;
 	shellContinuous?: boolean;
+	memoryEnabled?: boolean;
+	memoryCronEnabled?: boolean;
+	memoryDailyTime?: string;
 	commands_path?: string;
 	retry?: { maxRetries?: number; baseDelayMs?: number };
 	webFetch?: { timeoutMs?: number; maxBytes?: number; maxChars?: number; userAgent?: string };
@@ -70,6 +73,9 @@ const DEFAULTS = {
 	skills_watch: true,
 	skills_watch_delay_ms: 300,
 	shellContinuous: true,
+	memoryEnabled: true,
+	memoryCronEnabled: true,
+	memoryDailyTime: "06:00",
 };
 
 const EMPTY_CP = { id: "", name: "", baseUrl: "", models: [{ id: "", window: "" }], window: "", maxTokens: "" };
@@ -212,6 +218,9 @@ export function SettingsView() {
 	const [skillsWatch, setSkillsWatch] = createSignal(initial?.skills_watch ?? true);
 	const [skillsWatchDelay, setSkillsWatchDelay] = createSignal(String(initial?.skills_watch_delay_ms ?? 300));
 	const [shellContinuous, setShellContinuous] = createSignal(initial?.shellContinuous ?? true);
+	const [memoryEnabled, setMemoryEnabled] = createSignal(initial?.memoryEnabled ?? true);
+	const [memoryCronEnabled, setMemoryCronEnabled] = createSignal(initial?.memoryCronEnabled ?? true);
+	const [memoryDailyTime, setMemoryDailyTime] = createSignal(initial?.memoryDailyTime ?? "06:00");
 
 	function persistSkillsDirs() {
 		const dirs = skillsDirs()
@@ -331,6 +340,15 @@ export function SettingsView() {
 	if (initial && typeof initial.shellContinuous === "boolean" && initial.shellContinuous !== shellContinuous()) {
 		setShellContinuous(initial.shellContinuous);
 	}
+	if (initial && typeof initial.memoryEnabled === "boolean" && initial.memoryEnabled !== memoryEnabled()) {
+		setMemoryEnabled(initial.memoryEnabled);
+	}
+	if (initial && typeof initial.memoryCronEnabled === "boolean" && initial.memoryCronEnabled !== memoryCronEnabled()) {
+		setMemoryCronEnabled(initial.memoryCronEnabled);
+	}
+	if (initial && typeof initial.memoryDailyTime === "string" && initial.memoryDailyTime !== memoryDailyTime()) {
+		setMemoryDailyTime(initial.memoryDailyTime);
+	}
 
 	if (initial && typeof initial.sendMessageIntervalSec === "number" && deliveryMode() === "unlimited") {
 		setDeliveryMode("custom");
@@ -370,6 +388,9 @@ export function SettingsView() {
 			skills_watch_delay_ms: parsePositiveInt(skillsWatchDelay(), DEFAULTS.skills_watch_delay_ms),
 			sendMessageIntervalSec: deliveryMode() === "unlimited" ? null : parsedDeliverySec(),
 			shellContinuous: shellContinuous(),
+			memoryEnabled: memoryEnabled(),
+			memoryCronEnabled: memoryCronEnabled(),
+			memoryDailyTime: memoryDailyTime(),
 			commands_path: commandsPath().trim() || undefined,
 			retry: {
 				maxRetries: parsePositiveInt(retryMaxRetries(), DEFAULTS.retryMaxRetries),
@@ -1126,6 +1147,62 @@ export function SettingsView() {
 						void persist({ ...currentSettings(), shellContinuous: on });
 					}}
 				/>
+			),
+		},
+		{
+			id: "memoryEnabled",
+			title: "Memory",
+			desc: "Master switch for memory features: read_memory, /memory, and scheduled organization.",
+			cats: ["general"],
+			modified: () => memoryEnabled() !== DEFAULTS.memoryEnabled,
+			control: () => (
+				<SwitchToggle
+					checked={memoryEnabled()}
+					onChange={(on) => {
+						setMemoryEnabled(on);
+						void persist({ ...currentSettings(), memoryEnabled: on });
+					}}
+				/>
+			),
+		},
+		{
+			id: "memoryCronEnabled",
+			title: "Automatic memory",
+			desc: "Enable scheduled automatic memory organization.",
+			cats: ["general"],
+			modified: () => memoryCronEnabled() !== DEFAULTS.memoryCronEnabled,
+			control: () => (
+				<SwitchToggle
+					checked={memoryCronEnabled()}
+					onChange={(on) => {
+						setMemoryCronEnabled(on);
+						void persist({ ...currentSettings(), memoryCronEnabled: on });
+					}}
+				/>
+			),
+		},
+		{
+			id: "memoryDailyTime",
+			title: "Daily memory time",
+			desc: "Time of day (HH:mm) when partner memory is organized automatically.",
+			cats: ["general"],
+			modified: () => memoryDailyTime() !== DEFAULTS.memoryDailyTime,
+			control: () => (
+				<TextField class="h-[32px] w-[110px] shrink-0 gap-0" value={memoryDailyTime()} onChange={setMemoryDailyTime}>
+					<TextFieldInput
+						variant="compact"
+						title="Daily memory time (HH:mm)"
+						aria-label="Daily memory time"
+						onBlur={() => {
+							const next = /^\d{2}:\d{2}$/.test(memoryDailyTime()) ? memoryDailyTime() : DEFAULTS.memoryDailyTime;
+							setMemoryDailyTime(next);
+							void persist({ ...currentSettings(), memoryDailyTime: next });
+						}}
+						onKeyDown={(e) => {
+							if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
+						}}
+					/>
+				</TextField>
 			),
 		},
 		{

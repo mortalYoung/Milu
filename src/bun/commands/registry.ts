@@ -11,7 +11,7 @@ export interface CommandRegistry {
 	register(def: CommandDefinition): void;
 	replace(definitions: CommandDefinition[]): void;
 	list(): CommandDescriptor[];
-	execute(line: string, ctx: CommandContext): Promise<CommandExecution | undefined>;
+	execute(line: string, ctx: CommandContext, abortController?: AbortController): Promise<CommandExecution | undefined>;
 }
 
 let commandSeq = 0;
@@ -30,10 +30,11 @@ export function createCommandRegistry(): CommandRegistry {
 		list() {
 			return [...definitions.values()].map(({ name, description, kind, hint }) => ({ name, description, kind, category: "command" as const, ...(hint ? { hint } : {}) }));
 		},
-		async execute(line, ctx) {
+		async execute(line, ctx, abortController) {
 			const parsed = parseCommand(line);
 			const def = parsed ? definitions.get(parsed.name) : undefined;
 			if (!parsed || !def) return undefined;
+			const controller = abortController ?? new AbortController();
 			const commandId = `cmd-${Date.now().toString(36)}-${++commandSeq}`;
 			await ctx.scope.appendCommandRun({ commandId, name: def.name, ...(def.recordInput !== false && parsed.rawInput.trim() ? { args: parsed.rawInput.trim() } : {}) }, Date.now());
 			ctx.onCommandRun(commandId);
@@ -42,7 +43,7 @@ export function createCommandRegistry(): CommandRegistry {
 					commandId,
 					ctx,
 					rawInput: parsed.rawInput,
-					signal: new AbortController().signal,
+					signal: controller.signal,
 					context: ctx.agent.context,
 					utils: commandUtilsFrom(ctx),
 				});

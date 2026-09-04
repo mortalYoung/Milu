@@ -26,6 +26,8 @@ export const EVENTS = {
 	commandRun: "command/run",
 	commandDone: "command/done",
 	contextChanged: "context/changed",
+	memoryRunStart: "memory/run/start",
+	memoryRunEnd: "memory/run/end",
 	skillRun: "skill/run",
 	skillDone: "skill/done",
 	shellRun: "shell/run",

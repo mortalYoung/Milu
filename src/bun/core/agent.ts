@@ -15,6 +15,7 @@ import type { PartnerModel } from "./agent-config";
 import { convertToLlm, resolveModel, STREAM_FN } from "./agent-config";
 import { Context } from "./context";
 import { projectLoopContext } from "./context-project";
+import type { MemoryRecord, QueryMemoryOptions } from "./memory";
 import type { PartnerPrompt } from "./prompt";
 import { contextChangedText } from "./surface";
 
@@ -62,6 +63,7 @@ export interface AgentDeps {
 	runtimeStats?: RuntimeStatsSnapshot;
 	persistRuntimeStats?: (snapshot: RuntimeStatsSnapshot) => void;
 	lastMessageTime?: () => Promise<number | null>;
+	readMemory?: (opts: QueryMemoryOptions) => Promise<MemoryRecord[]>;
 	sandbox?: SandboxManager;
 	confirmEscalation?: (request: EscalationRequest) => Promise<EscalationDecision>;
 	deliverIntervalMs?: () => number;
@@ -183,6 +185,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		store: deps.session,
 		permission,
 		...(skills ? { skills } : {}),
+		...(deps.readMemory ? { readMemory: deps.readMemory } : {}),
 		onSetWorkspace: (workspace: string): { ok: true; path: string } | { ok: false; error: string } => {
 			if (ctx.workspaceSetThisTurn) return { ok: false, error: "Workspace can only be set once per turn" };
 			const decision = permission.setWorkspace(workspace);

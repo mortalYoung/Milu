@@ -185,6 +185,8 @@ export const EVENT_META: Record<string, EntryMeta> = {
 	[EVENTS.skillDone]: logOnly(),
 	[EVENTS.shellDone]: logOnly(),
 	[EVENTS.escalationDecision]: logOnly(),
+	[EVENTS.memoryRunStart]: logOnly(),
+	[EVENTS.memoryRunEnd]: logOnly(),
 
 	// Log-only machinery.
 	[EVENTS.turnStart]: logOnly(),

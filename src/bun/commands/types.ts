@@ -42,11 +42,12 @@ export interface CommandContext {
 	scope: SessionScope;
 	agent: CommandAgentSurface;
 	persistWorkspace(path: string): Promise<void>;
-	runManualCompact(): Promise<{ ok: boolean; error?: string; compacted?: number }>;
+	runManualCompact(signal?: AbortSignal): Promise<{ ok: boolean; error?: string; compacted?: number }>;
+	organizeMemory(signal?: AbortSignal): Promise<{ ok: boolean; error?: string; added?: number }>;
 	onCommandRun(commandId: string): void;
 	onCommandDone(commandId: string): void;
 	/** Rotate to a fresh session file (archives the current one) and reset agent memory. */
-	resetSession(): Promise<{ ok: boolean; error?: string }>;
+	resetSession(signal?: AbortSignal): Promise<{ ok: boolean; error?: string }>;
 }
 
 export interface CommandInvocation {
