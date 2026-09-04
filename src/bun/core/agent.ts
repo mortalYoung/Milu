@@ -61,6 +61,7 @@ export interface AgentDeps {
 	initialMessages?: AgentMessage[];
 	runtimeStats?: RuntimeStatsSnapshot;
 	persistRuntimeStats?: (snapshot: RuntimeStatsSnapshot) => void;
+	lastMessageTime?: () => Promise<number | null>;
 	sandbox?: SandboxManager;
 	confirmEscalation?: (request: EscalationRequest) => Promise<EscalationDecision>;
 	deliverIntervalMs?: () => number;
@@ -388,6 +389,29 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		}
 	}
 
+	const HOUR_MS = 60 * 60 * 1000;
+
+	function timeGapReminder(lastTime: number, now: number): string | null {
+		if (lastTime <= 0) return null;
+		const last = new Date(lastTime);
+		const current = new Date(now);
+		if (last.toDateString() === current.toDateString()) return null;
+		if (now - lastTime < HOUR_MS) return null;
+		return `<system_reminder>The last message was on ${last.toLocaleString()} and it is now ${current.toLocaleString()}. Time has passed since the previous exchange; take the current date and time into account when responding.</system_reminder>`;
+	}
+
+	async function pushTimeGapReminderIfNeeded(): Promise<void> {
+		if (!deps.lastMessageTime) return;
+		try {
+			const lastTime = await deps.lastMessageTime();
+			if (lastTime == null) return;
+			const reminder = timeGapReminder(lastTime, Date.now());
+			if (reminder) agent.state.messages.push({ role: "user", content: reminder, timestamp: Date.now() });
+		} catch {
+			return;
+		}
+	}
+
 	function queueFollowUp(text: string) {
 		void deps.session.appendFollowUp(Date.now()).catch(logError);
 		agent.followUp({
@@ -510,6 +534,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 
 	async function promptAndWait(text: string, skill?: string): Promise<{ ok: boolean; error?: string }> {
 		if (text.trim() === "") return { ok: false, error: "empty message" };
+		await pushTimeGapReminderIfNeeded();
 		await persistUser(text, skill);
 		ctx.markUserMessage();
 		if (ctx.running) return { ok: false, error: "agent is running" };
@@ -589,6 +614,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		},
 		async chat(text: string) {
 			if (text.trim() === "") return;
+			await pushTimeGapReminderIfNeeded();
 			await persistUser(text);
 			ctx.markUserMessage();
 			if (ctx.running) {

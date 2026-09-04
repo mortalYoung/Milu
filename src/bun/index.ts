@@ -291,6 +291,7 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 			session: scope,
 			runtimeStats: await loadRuntimeStats(dir),
 			persistRuntimeStats: (snapshot) => void saveRuntimeStats(dir, snapshot).catch((error) => console.error("saveRuntimeStats failed:", error)),
+			lastMessageTime: async () => (await session.lastMessage(dir))?.time ?? null,
 			sandbox,
 			deliverIntervalMs: () => sendMessageIntervalMs(settingsCache ?? settings),
 			partnerDir: dir,
