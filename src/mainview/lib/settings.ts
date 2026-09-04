@@ -28,7 +28,7 @@ export function createSettings(rpc: RPC) {
 	}
 
 	return {
-		data: snapshot,
+		data: () => snapshot.latest,
 		open,
 		mutate: { setOpen, save },
 	};
