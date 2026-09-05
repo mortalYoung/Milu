@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
 import { watch } from "node:fs";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, sep } from "node:path";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import { getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
 import { Cron } from "croner";
@@ -26,13 +27,11 @@ import {
 	unregisterCustomProvider,
 	validateCustomProviders,
 } from "./core/agent-config";
-import { applyCompaction, type CompactionPlan, hasOrphanCompactionStart, planCompaction } from "./core/compaction";
+import { applyCompaction, type CompactionPlan, hasOrphanCompactionStart, planMemoryCompaction } from "./core/compaction";
 import { Context } from "./core/context";
 import { projectSnapshot } from "./core/context-project";
-import { organizeMemory, type QueryMemoryOptions, queryMemory, readMemoryLines } from "./core/memory";
+import { type MemoryRecord, organizeMemory, type QueryMemoryOptions, queryMemory, readMemoryLines } from "./core/memory";
 import { loadRuntimeStats, saveRuntimeStats } from "./core/runtime-stats";
-import { createLlmSummarizer, localSummarizer } from "./core/summarizer";
-import { reconstructRequestHeader } from "./core/surface";
 import { applyToolResultPrunes, planToolResultPrunes } from "./core/tool-result-pruner";
 import { aggregateUsage, dedupeRequestHeaders, fold, lastUsage } from "./core/trajectory";
 import { deleteApiKey, getApiKey, loadCredentials, setApiKey } from "./lib/credentials";
@@ -60,7 +59,7 @@ import { scanSkillsRoot } from "./skills/filesystem";
 import { SKILL_NAME_RE } from "./skills/frontmatter";
 import { getSkill, listSkills } from "./skills/registry";
 import type { SkillsService } from "./skills/types";
-import { runEscalatedBash } from "./tools";
+import { runEscalatedBash, workspaceResultText } from "./tools";
 
 await loadCredentials();
 const startupSettings = await loadSettings();
@@ -308,8 +307,11 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 				try {
 					const genBefore = (await session.surface(dir)).replaceGeneration;
 					await pruneSession(target);
+					const flush = await flushMemoryForCompact(target);
+					if (!flush.ok) return false;
 					const input = await compactionInput(target);
-					const plan = await planCompaction(input.entries, input.surface, { ...input.opts, tailBudget: 0 });
+					const events = await sessionMemoryEvents(target);
+					const plan = await planMemoryCompaction(input.entries, input.surface, { ...input.opts, tailBudget: 0, memoryEvents: events });
 					if (!plan) return false;
 					await runCompaction(target, plan);
 					return (await session.surface(dir)).replaceGeneration > genBefore;
@@ -393,24 +395,73 @@ async function compactionInput(entry: PartnerAgent) {
 	const c = settings.compaction ?? {};
 	const entries = await session.rawEntries(entry.dir);
 	const surface = await session.surface(entry.dir);
-	const header = reconstructRequestHeader(entries);
 	return {
 		entries,
 		surface,
 		opts: {
 			tailBudget: c.tailBudget ?? 16,
-			capChars: c.summaryCapChars ?? 2000,
-			summarizer: c.summarizer === "local" ? localSummarizer : createLlmSummarizer(),
-			systemPrompt: header?.systemPrompt ?? "",
-			tools: header?.tools ?? [],
-			model: entry.agent.model ? resolveModel(entry.agent.model) : undefined,
+			eventDigestCount: c.eventDigestCount ?? 5,
 		},
 	};
 }
 
+async function flushMemoryForCompact(entry: PartnerAgent, signal?: AbortSignal): Promise<{ ok: boolean; error?: string; added: number; covered: boolean }> {
+	const settings = await ensureSettings();
+	if (settings.memoryEnabled === false) return { ok: false, error: "memory is disabled", added: 0, covered: false };
+	try {
+		const added = await runMemoryOrganize(entry, signal);
+		const [sessionFile, entries] = await Promise.all([session.currentSessionFile(entry.dir), session.rawEntries(entry.dir)]);
+		const lastDataEntry = [...entries].reverse().find((e) => !(e.type === "custom" && (e.customType === EVENTS.memoryRunStart || e.customType === EVENTS.memoryRunEnd)));
+		const target = lastDataEntry?.id ?? null;
+		const lines = await readMemoryLines(entry.dir);
+		const covered = target != null && lines.some((l) => l.kind === "checkpoint" && l.source.sessionFile === sessionFile && l.source.lastRawId === target);
+		return { ok: covered, error: covered ? undefined : "memory flush did not cover the session tail", added, covered };
+	} catch (error) {
+		return { ok: false, error: error instanceof Error ? error.message : String(error), added: 0, covered: false };
+	}
+}
+
+async function sessionMemoryEvents(entry: PartnerAgent): Promise<MemoryRecord[]> {
+	const sessionFile = await session.currentSessionFile(entry.dir);
+	const lines = await readMemoryLines(entry.dir);
+	return lines.filter((l): l is MemoryRecord => l.kind === "event" && l.source.sessionFile === sessionFile);
+}
+
+async function workspaceContextMessage(entry: PartnerAgent): Promise<AgentMessage | null> {
+	const workspace = entry.agent.workspacePath;
+	if (!workspace) return null;
+	const settings = await ensureSettings();
+	const file = settings.detect_instructions_file || "AGENTS.md";
+	let agentMd: string | null = null;
+	try {
+		agentMd = await readFile(join(workspace, file), "utf8");
+	} catch {
+		agentMd = null;
+	}
+	return { role: "user", content: workspaceResultText(workspace, file, agentMd), timestamp: Date.now() } as AgentMessage;
+}
+
+function messageHasWorkspace(m: { content?: unknown }, workspace: string): boolean {
+	const needle = `Workspace set to ${workspace}`;
+	if (typeof m.content === "string") return m.content.startsWith(needle);
+	if (!Array.isArray(m.content)) return false;
+	return m.content.some((b) => {
+		const block = b as { type?: unknown; text?: unknown };
+		return block?.type === "text" && typeof block.text === "string" && block.text.startsWith(needle);
+	});
+}
+
 async function runCompaction(entry: PartnerAgent, plan: CompactionPlan): Promise<void> {
 	await applyCompaction(session, entry.dir, plan);
-	entry.agent.restore(await session.deriveMessages(entry.dir));
+	const messages = await session.deriveMessages(entry.dir);
+	const workspace = entry.agent.workspacePath;
+	if (workspace) {
+		const workspaceMsg = await workspaceContextMessage(entry);
+		if (workspaceMsg && !messages.some((m) => messageHasWorkspace(m as { content?: unknown }, workspace))) {
+			messages.splice(1, 0, workspaceMsg);
+		}
+	}
+	entry.agent.restore(messages);
 	rpc.send.origin_update({ partner: entry.profile.name });
 }
 
@@ -435,8 +486,11 @@ async function runManualCompact(entry: PartnerAgent, signal?: AbortSignal): Prom
 	if (entry.agent.isStreaming) return { ok: false, error: "agent is running" };
 	try {
 		await pruneSession(entry);
+		const flush = await flushMemoryForCompact(entry, signal);
+		if (!flush.ok) return { ok: false, error: flush.error ?? "memory flush failed" };
 		const input = await compactionInput(entry);
-		const plan = await planCompaction(input.entries, input.surface, { ...input.opts, signal });
+		const events = await sessionMemoryEvents(entry);
+		const plan = await planMemoryCompaction(input.entries, input.surface, { ...input.opts, memoryEvents: events });
 		if (!plan) return { ok: true, compacted: 0 };
 		await runCompaction(entry, plan);
 		return { ok: true, compacted: plan.range.end - plan.range.start + 1 };
@@ -462,8 +516,14 @@ async function maybeAutoCompact(entry: PartnerAgent): Promise<void> {
 	await withBackgroundAbort(entry.profile.name, async (signal) => {
 		try {
 			await pruneSession(entry);
+			const flush = await flushMemoryForCompact(entry, signal);
+			if (!flush.ok) {
+				console.warn("auto-compact skipped:", flush.error ?? "memory flush failed");
+				return;
+			}
 			const input = await compactionInput(entry);
-			const plan = await planCompaction(input.entries, input.surface, { ...input.opts, signal });
+			const events = await sessionMemoryEvents(entry);
+			const plan = await planMemoryCompaction(input.entries, input.surface, { ...input.opts, memoryEvents: events });
 			if (!plan) return;
 			await runCompaction(entry, plan);
 			console.log(`auto-compacted ${plan.range.end - plan.range.start + 1} surface nodes`);

@@ -38,6 +38,12 @@ export interface MemoryCheckpoint {
 
 export type MemoryLine = MemoryRecord | MemoryCheckpoint;
 
+export function formatMemoryRecord(record: MemoryRecord, opts: { withDetail?: boolean } = {}): string {
+	const lines = [`# ${record.id} [${record.kind}]`, record.data.summary];
+	if (opts.withDetail && record.data.detail) lines.push(record.data.detail);
+	return lines.join("\n");
+}
+
 export const memoryFilePath = (dir: string) => join(dir, "memory.jsonl");
 
 /** Create an empty memory file when the partner dir has none yet (new partners, old data). */
@@ -137,6 +143,7 @@ Workflow:
 
 Allowed memory kinds: fact, decision, issue, reference, event.
 Do NOT extract preferences, conventions, or task checklists.
+Ignore set_workspace tool calls/results and workspace instruction files: they are environment setup, not durable memory.
 
 An event is an objective user-driven episode: a coherent thing the user did, asked, or accomplished across one or more messages. State only what happened — never infer preferences, motives, or conventions.
 
@@ -350,6 +357,20 @@ function isMemoryRunEntry(entry: Entry): boolean {
 	return entry.type === "custom" && (entry.customType === EVENTS.memoryRunStart || entry.customType === EVENTS.memoryRunEnd);
 }
 
+function isWorkspaceSetupEntry(entry: Entry): boolean {
+	if (entry.type === "message" && entry.message.role === "assistant" && Array.isArray(entry.message.content)) {
+		return entry.message.content.some((b) => {
+			const block = b as { type?: unknown; name?: unknown };
+			return block?.type === "toolCall" && block.name === "set_workspace";
+		});
+	}
+	if (entry.type === "custom" && entry.customType === EVENTS.toolResult) {
+		const data = entry.data as { toolName?: unknown } | undefined;
+		return data?.toolName === "set_workspace";
+	}
+	return false;
+}
+
 function collectModelMessages(messages: AgentMessage[], attempt: number, out: MemoryRunModelMessage[]): void {
 	for (const message of messages) {
 		if (message.role !== "assistant") continue;
@@ -426,6 +447,7 @@ function createReadRawTool(
 			pushTrace({ event: "read_raw", from: params.from, limit, returned: selected.length });
 			const text = selected
 				.map((e) => {
+					if (isWorkspaceSetupEntry(e)) return `[${e.id}] set_workspace (skipped)`;
 					const msg = deriveEventMessage(e);
 					const m = msg as { role?: unknown; content?: unknown } | null;
 					const content = m ? (typeof m.content === "string" ? m.content : JSON.stringify(m.content ?? "")) : JSON.stringify(e);
@@ -464,7 +486,7 @@ export function createReadMemoryTool(opts: ReadMemoryToolOptions): AgentTool<typ
 			if (memories.length === 0) {
 				return { content: [{ type: "text", text: "No memories found." }], details: { ok: true } };
 			}
-			const text = memories.map((m) => `# ${m.id} [${m.kind}]\n${m.data.summary}${m.data.detail ? `\n${m.data.detail}` : ""}`).join("\n\n");
+			const text = memories.map((m) => formatMemoryRecord(m, { withDetail: true })).join("\n\n");
 			return { content: [{ type: "text", text }], details: { ok: true } };
 		},
 	};

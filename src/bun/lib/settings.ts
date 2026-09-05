@@ -53,6 +53,7 @@ export interface Settings {
 	compaction?: {
 		thresholdRatio?: number;
 		tailBudget?: number;
+		eventDigestCount?: number;
 		summaryCapChars?: number;
 		maxOverflowRetries?: number;
 		summarizer?: "local" | "llm";

@@ -4,6 +4,7 @@ import type { RequestTool } from "../../shared/rpc";
 import type { Surface, SurfaceNode } from "../../shared/surface";
 import type { SessionStore } from "../persist";
 import { EVENTS } from "../persist/events";
+import { formatMemoryRecord, type MemoryRecord } from "./memory";
 import { frameSummary, localSummarizer, previousCheckpointText, type Summarizer } from "./summarizer";
 
 export interface CompactRange {
@@ -13,8 +14,9 @@ export interface CompactRange {
 
 export interface CompactionPlan {
 	range: CompactRange;
-	summary: string;
 	checkpointText: string;
+	/** Legacy summarize path only; memory-backed compactions omit this. */
+	summary?: string;
 }
 
 export interface CompactionOptions {
@@ -25,6 +27,55 @@ export interface CompactionOptions {
 	tools?: RequestTool[];
 	model?: Model<any>;
 	signal?: AbortSignal;
+}
+
+const MEMORY_CHECKPOINT_PREAMBLE = "Earlier messages have been archived to this partner's long-term memory.";
+const MEMORY_CHECKPOINT_EVENTS_HEADER = "Recent events before this checkpoint:";
+const MEMORY_CHECKPOINT_FOOTER = "If you need details from before this checkpoint, call read_memory.";
+
+function memoryCheckpointText(entries: Entry[], shadowed: SurfaceNode[], memoryEvents: MemoryRecord[], eventDigestCount: number): string {
+	const shadowedIds = new Set(shadowed.map((n) => n.id));
+	const indexById = new Map(entries.map((e, i) => [e.id, i]));
+	const relevant = memoryEvents
+		.filter((m) => m.kind === "event" && m.source.rawIds.some((id) => shadowedIds.has(id)))
+		.map((m) => {
+			let first = Number.POSITIVE_INFINITY;
+			for (const id of m.source.rawIds) {
+				const idx = indexById.get(id);
+				if (idx != null && idx < first) first = idx;
+			}
+			return { record: m, first };
+		})
+		.filter((m) => Number.isFinite(m.first))
+		.sort((a, b) => a.first - b.first);
+	const selected = eventDigestCount > 0 ? relevant.slice(-eventDigestCount).sort((a, b) => a.first - b.first) : [];
+	const parts = [MEMORY_CHECKPOINT_PREAMBLE];
+	if (selected.length > 0) {
+		parts.push(MEMORY_CHECKPOINT_EVENTS_HEADER);
+		selected.forEach(({ record }, i) => {
+			if (i > 0) parts.push("");
+			parts.push(formatMemoryRecord(record, { withDetail: false }));
+		});
+	}
+	parts.push(MEMORY_CHECKPOINT_FOOTER);
+	return parts.join("\n");
+}
+
+export interface MemoryCompactionOptions {
+	tailBudget?: number;
+	eventDigestCount?: number;
+	memoryEvents?: MemoryRecord[];
+}
+
+export async function planMemoryCompaction(entries: Entry[], surface: Surface, opts: MemoryCompactionOptions = {}): Promise<CompactionPlan | null> {
+	const tailBudget = opts.tailBudget ?? 16;
+	const range = selectCompactableRange(entries, surface.nodes, tailBudget);
+	if (!range) return null;
+	const shadowed = surface.nodes.slice(range.start, range.end + 1);
+	return {
+		range,
+		checkpointText: memoryCheckpointText(entries, shadowed, opts.memoryEvents ?? [], opts.eventDigestCount ?? 5),
+	};
 }
 
 export function selectCompactableRange(entries: Entry[], nodes: SurfaceNode[], tailBudget: number): CompactRange | null {

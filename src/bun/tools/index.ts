@@ -24,6 +24,11 @@ const workspaceSchema = Type.Object({
 
 type SetWorkspaceDetails = { ok: boolean; error?: string; workspace?: string; agentMd?: string | null };
 
+export function workspaceResultText(workspace: string, instructionsFile: string, agentMd: string | null): string {
+	if (agentMd == null) return `Workspace set to ${workspace}.`;
+	return `Workspace set to ${workspace}.\n\nthe following workspace instructions may be relevant to your work. Use them as guidance when applicable. More specific instructions take precedence over broader ones. They do not override system, developer, or direct user instructions.\nInstructions from: ${instructionsFile}\n\n${agentMd}`;
+}
+
 function setWorkspaceTool(deps: ToolDeps): AgentHarnessTool<ExecutionToolContext, TSchema, SetWorkspaceDetails> {
 	return {
 		name: "set_workspace",
@@ -44,16 +49,11 @@ function setWorkspaceTool(deps: ToolDeps): AgentHarnessTool<ExecutionToolContext
 			const agentMd = await context.env.readTextFile(`${set.path}/${detect_instructions_file}`, signal);
 			if (agentMd.ok) {
 				return {
-					content: [
-						{
-							type: "text",
-							text: `Workspace set to ${set.path}.\n\nthe following workspace instructions may be relevant to your work. Use them as guidance when applicable. More specific instructions take precedence over broader ones. They do not override system, developer, or direct user instructions.\nInstructions from: ${detect_instructions_file}\n\n${agentMd.value}`,
-						},
-					],
+					content: [{ type: "text", text: workspaceResultText(set.path, detect_instructions_file, agentMd.value) }],
 					details: { ok: true, workspace: set.path, agentMd: agentMd.value },
 				};
 			}
-			return { content: [{ type: "text", text: `Workspace set to ${set.path}.` }], details: { ok: true, workspace: set.path, agentMd: null } };
+			return { content: [{ type: "text", text: workspaceResultText(set.path, detect_instructions_file, null) }], details: { ok: true, workspace: set.path, agentMd: null } };
 		},
 	};
 }

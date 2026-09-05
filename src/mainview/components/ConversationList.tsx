@@ -193,7 +193,7 @@ export function ConversationList(props: {
 							<DropdownMenuContent onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
 								<DropdownMenuItem class="text-ink" onSelect={() => copyText(partner.path)}>
 									<Copy size={13} />
-									<span>Copy Absolute Path</span>
+									<span>Copy Path</span>
 								</DropdownMenuItem>
 								<DropdownMenuSeparator />
 								<DropdownMenuItem class="text-ink" onSelect={() => props.onViewDetails(partner.name)}>

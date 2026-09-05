@@ -31,6 +31,7 @@ export interface SettingsData {
 	compaction?: {
 		thresholdRatio?: number;
 		tailBudget?: number;
+		eventDigestCount?: number;
 		summaryCapChars?: number;
 		maxOverflowRetries?: number;
 		summarizer?: "local" | "llm";
@@ -405,6 +406,7 @@ export function SettingsView() {
 			compaction: {
 				thresholdRatio: Number(compactionThreshold()) || 0.8,
 				tailBudget: parsePositiveInt(compactionTailBudget(), 16),
+				eventDigestCount: current?.compaction?.eventDigestCount ?? 5,
 				summaryCapChars: parsePositiveInt(compactionSummaryCap(), 2000),
 				maxOverflowRetries: parsePositiveInt(compactionOverflowRetries(), 1),
 				summarizer: compactionSummarizer(),

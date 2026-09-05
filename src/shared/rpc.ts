@@ -426,6 +426,7 @@ export type AppRPCSchema = __schema<{
 						compaction?: {
 							thresholdRatio?: number;
 							tailBudget?: number;
+							eventDigestCount?: number;
 							summaryCapChars?: number;
 							maxOverflowRetries?: number;
 							summarizer?: "local" | "llm";
@@ -467,6 +468,7 @@ export type AppRPCSchema = __schema<{
 						compaction?: {
 							thresholdRatio?: number;
 							tailBudget?: number;
+							eventDigestCount?: number;
 							summaryCapChars?: number;
 							maxOverflowRetries?: number;
 							summarizer?: "local" | "llm";
