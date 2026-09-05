@@ -252,6 +252,13 @@ function DrawerContent(props: {
 	const rows = () => nodes().filter((n) => !n.positionOnly);
 	const turns = () => summary().turns;
 	const turnOf = (n: TimelineNode) => turns().find((t) => t.turn === n.turn);
+	const countText = () =>
+		props.mode === "slice"
+			? `slice · ${props.records.length} nodes shown · ${turns().length} turns`
+			: props.mode === "view"
+				? `view · ${props.records.length} rows shown`
+				: `origin · all ${props.total} entries · ${turns().length} turns`;
+	const footText = () => (props.mode === "slice" ? "model context (slice)" : props.mode === "view" ? "chat view" : "whole log · paged");
 
 	const sections = createMemo<{ sections: RunSection[]; seqTurn: Map<number, number> }>(() => {
 		const all: RunSection[] = [];
@@ -814,14 +821,15 @@ function DrawerContent(props: {
 			<aside class="traj-drawer traj-enter" ref={drawerRef}>
 				<div class="traj-head">
 					<span class="traj-title">Trajectory</span>
-					<span class="traj-count">{props.loading ? "…" : `all ${props.total} entries · ${turns().length} turns`}</span>
-					<div class="traj-mode-toggle">
-						{(["origin", "slice", "view"] as const).map((m) => (
+					<span class="traj-count">{props.loading ? "…" : countText()}</span>
+					<div class="traj-mode-toggle" role="group" aria-label="Timeline projection">
+						{(["slice", "view"] as const).map((m) => (
 							<button
 								type="button"
 								class={"traj-mode" + (props.mode === m ? " on" : "")}
 								onClick={() => props.onModeChange(m)}
-								title={m === "origin" ? "Whole log" : m === "slice" ? "Model context (slice)" : "Chat view"}
+								aria-pressed={props.mode === m}
+								title={m === "slice" ? "Model context (slice)" : "Chat view"}
 							>
 								{m}
 							</button>
@@ -883,7 +891,7 @@ function DrawerContent(props: {
 					</>
 				)}
 
-				<div class="traj-foot">the whole log · paged</div>
+				<div class="traj-foot">{footText()}</div>
 
 				<Show when={selectedRow() != null}>
 					<div class={"traj-popover" + (popStyle() ? " ready" : "")} ref={popRef} style={{ top: popStyle() ? `${popStyle()!.top}px` : "50%" }}>

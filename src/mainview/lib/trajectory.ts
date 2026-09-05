@@ -29,13 +29,13 @@ export function createTrajectory() {
 	function view() {
 		const name = session.selected;
 		if (!name) return;
+		setMode("origin");
 		setOpen(true);
 		void sessionMutate.originRefresh();
 	}
 
 	function changeMode(next: TrajectoryMode) {
-		if (next === mode()) return;
-		setMode(next);
+		setMode(mode() === next ? "origin" : next);
 	}
 
 	createEffect(() => {
