@@ -8,7 +8,7 @@ import { getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
 import { Cron } from "croner";
 import { ApplicationMenu, BrowserView, BrowserWindow, Utils } from "electrobun/main";
 import { cleanOrigin } from "../shared/origin";
-import type { AppRPCSchema, TrajectoryRecord } from "../shared/rpc";
+import type { AppRPCSchema, ChatPreviewKind, TrajectoryRecord } from "../shared/rpc";
 import { loadCustomCommands, mergeCommandDefinitions } from "./commands/custom";
 import { defaultCommands } from "./commands/defaults";
 import { createCommandRegistry } from "./commands/registry";
@@ -1204,7 +1204,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				const settings = await loadSettings();
 				const profile = (await listPartners(settings)).find((p) => p.name === name);
 				if (!profile) return { days: [] };
-				return { days: dailyActivity(await session.rawEntries(getPartnerDir(settings, name)), weeks) };
+				return { days: dailyActivity(await session.allRawEntries(getPartnerDir(settings, name)), weeks) };
 			},
 			stats: async ({ name }) => {
 				const settings = await loadSettings();
@@ -1273,15 +1273,18 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				const partners = await Promise.all(
 					profiles.map(async (profile) => {
 						const last = await session.lastMessage(getPartnerDir(settings, profile.name));
-						const lastMessageKind: "user" | "send_message" = last?.kind === "user" ? "user" : "send_message";
+						const kind = last?.kind;
+						const lastMessageKind: ChatPreviewKind | undefined =
+							kind === "user" || kind === "send_message" || kind === "command" || kind === "skill" || kind === "shell" ? kind : undefined;
 						const readAt = await readPartnerReadAt(getPartnerDir(settings, profile.name));
 						const agentEntry = await agents.get(profile.name);
 						const writing = agentEntry?.agent.isStreaming === true || runningCommandPartners.has(profile.name);
 						return {
 							...profile,
+							path: getPartnerDir(settings, profile.name),
 							readAt,
 							writing,
-							...(last ? { lastMessage: last.text, lastMessageAt: last.time, lastMessageKind } : {}),
+							...(last && lastMessageKind ? { lastMessage: last.text, lastMessageAt: last.time, lastMessageKind } : {}),
 						};
 					}),
 				);
@@ -1300,7 +1303,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 						entry.agent.setModel(pin);
 						await persistModel(entry.dir, pin);
 					}
-					return { ok: true, profile };
+					return { ok: true, profile: { ...profile, path: getPartnerDir(settings, profile.name) } };
 				} catch (error) {
 					if (error instanceof PartnerError) return { ok: false, error: error.message };
 					console.error("create_partner failed:", error);

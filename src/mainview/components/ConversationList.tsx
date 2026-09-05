@@ -3,13 +3,14 @@
  * Header "Letters" + a round create button; rows = initial-letter avatar + name/time + preview;
  * hover ellipsis opens a DropdownMenu; right-click ContextMenu (delete); delete-confirmation Dialog.
  */
-import { Info, MoreVertical, Plus, Trash2 } from "lucide-solid";
+import { Copy, Info, MoreVertical, Plus, Trash2 } from "lucide-solid";
 import { createSignal, Show } from "solid-js";
+import type { ChatPreviewKind } from "../../shared/rpc";
 import { useAgentStatus } from "../lib/contexts/agent-status-context";
 import { Button } from "./Button";
 import { Avatar } from "./ui/avatar";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 export interface PartnerItem {
@@ -17,12 +18,14 @@ export interface PartnerItem {
 	responsibilities?: string;
 	tones?: string;
 	createdAt: number;
+	/** Absolute path of the partner's storage root. */
+	path: string;
 	/** Last visible message (chat-list preview); undefined when the chat is empty. */
 	lastMessage?: string;
 	/** Timestamp of the last visible message. */
 	lastMessageAt?: number;
-	/** Who sent the last message — "user" (you) or "send_message" (the partner's reply). */
-	lastMessageKind?: "user" | "send_message";
+	/** What the last visible row was — a message, or an activity row (command/skill/shell). */
+	lastMessageKind?: ChatPreviewKind;
 	/** Per-partner read watermark (persisted): messages after this timestamp are unread. */
 	readAt?: number;
 	writing?: boolean;
@@ -45,11 +48,15 @@ function oneLine(text: string): string {
 	return text.replace(/\s+/g, " ").trim();
 }
 
-/** The row's preview: the last message when there is one (You: prefix for your own), else the profile note, else a placeholder. */
+/** The row's preview: the last visible row when there is one, else the profile note, else a placeholder. */
 function previewFor(partner: PartnerItem): string {
 	if (partner.lastMessage) {
 		const text = oneLine(partner.lastMessage);
-		return partner.lastMessageKind === "user" ? `You: ${text}` : text;
+		if (partner.lastMessageKind === "user") return `You: ${text}`;
+		if (partner.lastMessageKind === "command") return `/${text}`;
+		if (partner.lastMessageKind === "skill") return `/skill:${text}`;
+		if (partner.lastMessageKind === "shell") return `$ ${text}`;
+		return text;
 	}
 	return partner.responsibilities?.split("\n").find((l) => l.trim()) ?? "";
 }
@@ -84,6 +91,29 @@ export function ConversationList(props: {
 	const [openMenu, setOpenMenu] = createSignal<string | null>(null);
 	// The instant a menu closes, WebKit can let the click bleed through to the row underneath — a time guard intercepts it
 	let menuClosedAt = 0;
+
+	function copyText(text: string) {
+		const fallback = () => {
+			const ta = document.createElement("textarea");
+			ta.value = text;
+			ta.setAttribute("readonly", "");
+			ta.style.position = "fixed";
+			ta.style.opacity = "0";
+			document.body.appendChild(ta);
+			ta.select();
+			try {
+				document.execCommand("copy");
+			} catch {
+				// execCommand unavailable — nothing else to try
+			}
+			ta.remove();
+		};
+		if (navigator.clipboard?.writeText) {
+			navigator.clipboard.writeText(text).catch(fallback);
+		} else {
+			fallback();
+		}
+	}
 
 	return (
 		<aside class="w-60 shrink-0 h-full bg-paper border-r border-hairline flex flex-col pl-3 pt-4">
@@ -161,6 +191,11 @@ export function ConversationList(props: {
 							</DropdownMenuTrigger>
 							{/* Menu item clicks bubble up to the row as row clicks; stopping pointerdown is not enough, stop the click itself */}
 							<DropdownMenuContent onPointerDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+								<DropdownMenuItem class="text-ink" onSelect={() => copyText(partner.path)}>
+									<Copy size={13} />
+									<span>Copy Absolute Path</span>
+								</DropdownMenuItem>
+								<DropdownMenuSeparator />
 								<DropdownMenuItem class="text-ink" onSelect={() => props.onViewDetails(partner.name)}>
 									<Info size={13} />
 									<span>View details</span>

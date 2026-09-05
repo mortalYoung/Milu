@@ -123,6 +123,8 @@ export interface SessionStore {
 	forkTo(sourceDir: string, targetDir: string): Promise<void>;
 	evictRoot(dir: string): void;
 	rawEntries(dir: string): Promise<Entry[]>;
+	/** Raw entries from every session file (current + rotated/archived parents). */
+	allRawEntries(dir: string): Promise<Entry[]>;
 	currentSessionFile(dir: string): Promise<string>;
 	/** Start a fresh session file for the root, archiving the current one as its parent. Returns the new session id. */
 	rotateSession(dir: string): Promise<string>;
@@ -398,6 +400,7 @@ export function createSessionStore(): SessionStore {
 			const state = await stateFor(dir);
 			let last: ViewItem | null = null;
 			for (const entry of state.entries) {
+				const time = (data: { timestamp?: unknown } | undefined) => (typeof data?.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0));
 				if (entry.type === "message" && entry.message.role === "user") {
 					const content = entry.message.content;
 					last = { id: entry.id, kind: "user", text: typeof content === "string" ? content : "", time: entry.message.timestamp ?? 0 };
@@ -405,6 +408,18 @@ export function createSessionStore(): SessionStore {
 					const data = entry.data as { text: string; timestamp: number } | undefined;
 					if (!data) continue;
 					last = { id: entry.id, kind: "send_message", text: data.text, time: data.timestamp };
+				} else if (entry.type === "custom" && entry.customType === EVENTS.commandRun) {
+					const data = entry.data as { commandId?: unknown; name?: unknown; timestamp?: unknown } | undefined;
+					if (!data || data.commandId == null) continue;
+					last = { id: entry.id, kind: "command", text: String(data.name ?? ""), time: time(data) };
+				} else if (entry.type === "custom" && entry.customType === EVENTS.skillRun) {
+					const data = entry.data as { skillId?: unknown; name?: unknown; timestamp?: unknown } | undefined;
+					if (!data || data.skillId == null) continue;
+					last = { id: entry.id, kind: "skill", text: String(data.name ?? ""), time: time(data) };
+				} else if (entry.type === "custom" && entry.customType === EVENTS.shellRun) {
+					const data = entry.data as { shellId?: unknown; command?: unknown; timestamp?: unknown } | undefined;
+					if (!data || data.shellId == null) continue;
+					last = { id: entry.id, kind: "shell", text: String(data.command ?? ""), time: time(data) };
 				}
 			}
 			return last;
@@ -462,6 +477,21 @@ export function createSessionStore(): SessionStore {
 		async rawEntries(dir) {
 			const state = await stateFor(dir);
 			return state.entries;
+		},
+		async allRawEntries(dir) {
+			const state = await stateFor(dir);
+			const sessions = await state.repo.list();
+			const seen = new Set<string>();
+			const entries: Entry[] = [];
+			for (const meta of sessions) {
+				const session = await state.repo.open(meta);
+				for (const entry of await session.findEntries({})) {
+					if (seen.has(entry.id)) continue;
+					seen.add(entry.id);
+					entries.push(entry);
+				}
+			}
+			return entries.sort((a, b) => a.timestamp - b.timestamp);
 		},
 		async currentSessionFile(dir) {
 			const state = await stateFor(dir);

@@ -10,6 +10,8 @@ export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhi
 
 export type CommandKind = "execute" | "leadingInput" | "popupSelect";
 
+export type ChatPreviewKind = "user" | "send_message" | "command" | "skill" | "shell";
+
 export interface CommandDescriptor {
 	name: string;
 	description: string;
@@ -486,12 +488,13 @@ export type AppRPCSchema = __schema<{
 						responsibilities?: string;
 						tones?: string;
 						createdAt: number;
+						path: string;
 
 						lastMessage?: string;
 
 						lastMessageAt?: number;
 
-						lastMessageKind?: "user" | "send_message";
+						lastMessageKind?: ChatPreviewKind;
 
 						readAt?: number;
 						writing: boolean;
@@ -514,6 +517,7 @@ export type AppRPCSchema = __schema<{
 						responsibilities?: string;
 						tones?: string;
 						createdAt: number;
+						path: string;
 					};
 				};
 			};
