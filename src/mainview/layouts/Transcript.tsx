@@ -83,10 +83,18 @@ function parseStamp(raw: string | undefined): { date: string; time: string } | n
 	return { date: `${MONTHS[Number(m[2]) - 1]} ${Number(m[3])}`, time: `${m[4]}:${m[5]}` };
 }
 
-function timeHM(raw: string | undefined): string {
-	const m = raw?.match(/ (\d{2}):(\d{2}):/);
+export function formatHistoryTime(raw: string | undefined): string {
+	const m = raw?.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/);
 	if (!m) return "";
-	return `${m[1]}:${m[2]}`;
+	const [, year, month, day, hour, minute] = m;
+	const now = new Date();
+	const y = Number(year);
+	const mo = Number(month);
+	const d = Number(day);
+	const time = `${hour}:${minute}`;
+	if (y === now.getFullYear() && mo === now.getMonth() + 1 && d === now.getDate()) return time;
+	const md = `${MONTHS[mo - 1]} ${d}`;
+	return y === now.getFullYear() ? `${md} · ${time}` : `${md} ${y} · ${time}`;
 }
 
 function seededUnit(seed: number): number {
@@ -150,7 +158,7 @@ function letterBody(card: Entry, worker?: string, showPostmark = true, rich = tr
 			{rich ? <Markdown text={card.text} class="md msg-letter-text" /> : <div class="msg-letter-text">{card.text}</div>}
 			{worker && (
 				<div class="msg-sign">
-					— {worker} · {timeHM(card.time)}
+					— {worker} · {formatHistoryTime(card.time)}
 				</div>
 			)}
 		</>
@@ -360,7 +368,7 @@ export function Transcript(props: {
 											>
 												{e.text}
 											</Motion>
-											<span class="msg-user-time">{timeHM(e.time)}</span>
+											<span class="msg-user-time">{formatHistoryTime(e.time)}</span>
 										</>
 									);
 								}

@@ -1,5 +1,5 @@
 import { createEffect, createMemo, createSignal, For } from "solid-js";
-import type { Entry } from "../layouts/Transcript";
+import { type Entry, formatHistoryTime } from "../layouts/Transcript";
 import { useTranscript } from "../lib/contexts/transcript-context";
 
 interface ReplyRow {
@@ -76,7 +76,7 @@ export function RepliesPane(props: { open: boolean }) {
 							<button class={"outline-item" + (activeReply() === r.entry.id ? " active" : "")} onClick={() => locate(r)}>
 								<span class="outline-meta">
 									<span class="outline-q">{r.question ? outlineLabel(r.question) : "—"}</span>
-									<span class="outline-time">{r.entry.time?.slice(11, 16)}</span>
+									<span class="outline-time">{formatHistoryTime(r.entry.time)}</span>
 								</span>
 								<span class="outline-a">{outlineLabel(r.entry.text)}</span>
 								{r.count > 1 && <span class="outline-stack">stack · {r.count}</span>}
