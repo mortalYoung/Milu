@@ -197,6 +197,7 @@ export const EVENT_META: Record<string, EntryMeta> = {
 	[EVENTS.requestHeader]: logOnly(),
 	[EVENTS.systemPrompt]: logOnly(),
 	[EVENTS.followUp]: logOnly(),
+	[EVENTS.timeGapReminder]: logOnly(),
 	[EVENTS.surfaceOp]: logOnly(),
 	[EVENTS.compactionSummary]: logOnly(),
 	[EVENTS.compactionStart]: logOnly(),

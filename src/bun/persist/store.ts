@@ -73,6 +73,7 @@ export interface SessionScope {
 	appendSendMessage(content: string, details: Record<string, unknown>, timestamp: number): Promise<void>;
 	appendSystemPrompt(text: string, timestamp: number): Promise<void>;
 	appendFollowUp(timestamp: number): Promise<void>;
+	appendTimeGapReminder(text: string, timestamp: number): Promise<void>;
 	appendRequestHeader(systemPrompt: string, tools: RequestTool[], timestamp: number): Promise<void>;
 	appendTurnStart(turn: number, timestamp: number): Promise<void>;
 	appendTurnEnd(turn: number, reason: TurnEndReason, timestamp: number, error?: string): Promise<void>;
@@ -142,6 +143,12 @@ const SEND_MESSAGE_PROJECTOR = (entry: CustomEntry): AgentMessage[] | undefined 
 			timestamp: data.timestamp,
 		},
 	];
+};
+
+const TIME_GAP_REMINDER_PROJECTOR = (entry: CustomEntry): AgentMessage[] | undefined => {
+	const data = entry.data as { text?: unknown; timestamp?: unknown } | undefined;
+	if (!data || typeof data.text !== "string") return undefined;
+	return [{ role: "user", content: data.text, timestamp: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0) }];
 };
 
 const CONTEXT_CHANGED_PROJECTOR = (entry: CustomEntry): AgentMessage[] | undefined => {
@@ -273,6 +280,9 @@ export function createSessionStore(): SessionStore {
 			},
 			async appendFollowUp(timestamp) {
 				await appendCustom(dir, EVENTS.followUp, { timestamp });
+			},
+			async appendTimeGapReminder(text, timestamp) {
+				await appendCustom(dir, EVENTS.timeGapReminder, { text, timestamp });
 			},
 			async appendRequestHeader(systemPrompt, tools, timestamp) {
 				await appendCustom(dir, EVENTS.requestHeader, stripUndefined({ systemPrompt, toolNames: tools.map((t) => t.name), tools, timestamp }) as Record<string, unknown>);
@@ -431,6 +441,7 @@ export function createSessionStore(): SessionStore {
 					[EVENTS.sendMessage]: SEND_MESSAGE_PROJECTOR,
 					[EVENTS.toolResult]: TOOL_RESULT_PROJECTOR,
 					[EVENTS.contextChanged]: CONTEXT_CHANGED_PROJECTOR,
+					[EVENTS.timeGapReminder]: TIME_GAP_REMINDER_PROJECTOR,
 				},
 			});
 			return dropDanglingTurn(pairToolResults(context.messages));

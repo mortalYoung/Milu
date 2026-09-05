@@ -447,6 +447,7 @@ function createReadRawTool(
 			pushTrace({ event: "read_raw", from: params.from, limit, returned: selected.length });
 			const text = selected
 				.map((e) => {
+					if (e.type === "custom" && e.customType === EVENTS.timeGapReminder) return `[${e.id}] time_gap_reminder (skipped)`;
 					if (isWorkspaceSetupEntry(e)) return `[${e.id}] set_workspace (skipped)`;
 					const msg = deriveEventMessage(e);
 					const m = msg as { role?: unknown; content?: unknown } | null;

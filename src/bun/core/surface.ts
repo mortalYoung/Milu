@@ -85,6 +85,14 @@ export function deriveEventMessage(entry: Entry): AgentMessage | null {
 			timestamp: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
 		} as AgentMessage;
 	}
+	if (entry.type === "custom" && entry.customType === EVENTS.timeGapReminder) {
+		const data = (entry.data ?? {}) as { text?: unknown; timestamp?: unknown };
+		return {
+			role: "user",
+			content: typeof data.text === "string" ? data.text : "",
+			timestamp: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
+		} as AgentMessage;
+	}
 	if (entry.type === "custom" && entry.customType === EVENTS.contextChanged) {
 		const data = (entry.data ?? {}) as Partial<ContextChangedEventData> & { timestamp?: unknown };
 		return {

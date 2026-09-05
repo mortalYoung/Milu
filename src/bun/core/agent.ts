@@ -409,7 +409,10 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			const lastTime = await deps.lastMessageTime();
 			if (lastTime == null) return;
 			const reminder = timeGapReminder(lastTime, Date.now());
-			if (reminder) agent.state.messages.push({ role: "user", content: reminder, timestamp: Date.now() });
+			if (reminder) {
+				await deps.session.appendTimeGapReminder(reminder, Date.now()).catch(logError);
+				agent.state.messages.push({ role: "user", content: reminder, timestamp: Date.now() });
+			}
 		} catch {
 			return;
 		}

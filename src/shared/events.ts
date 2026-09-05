@@ -14,6 +14,7 @@ export const EVENTS = {
 	sendMessage: "send_message",
 	systemPrompt: "system_prompt",
 	followUp: "message/follow_up",
+	timeGapReminder: "time_gap_reminder",
 	escalationRequest: "escalation/request",
 	escalationDecision: "escalation/decision",
 	surfaceOp: "surface_op",
