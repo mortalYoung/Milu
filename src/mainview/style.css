@@ -365,6 +365,9 @@ body::before {
 	.conv-ellipsis:hover {
 		background: var(--color-letter);
 	}
+	.conv-ellipsis:focus-visible {
+		outline: none;
+	}
 
 	.md {
 		@apply font-serif text-[15px] leading-[1.6] text-ink break-words;

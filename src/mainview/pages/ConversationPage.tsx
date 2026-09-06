@@ -17,6 +17,9 @@ export function ConversationPage(props: {
 	onAddPartner: () => void;
 	onDelete: (name: string) => void;
 	onViewDetails: (name: string) => void;
+	onDuplicate: (name: string) => void;
+	onFork: (name: string) => void;
+	onPromote: (name: string) => void;
 	listCollapsed: boolean;
 	onToggleList: () => void;
 
@@ -67,6 +70,9 @@ export function ConversationPage(props: {
 							onAddPartner={props.onAddPartner}
 							onDelete={props.onDelete}
 							onViewDetails={props.onViewDetails}
+							onDuplicate={props.onDuplicate}
+							onFork={props.onFork}
+							onPromote={props.onPromote}
 						/>
 					</Motion>
 				)}

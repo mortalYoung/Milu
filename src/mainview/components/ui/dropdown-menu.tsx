@@ -26,7 +26,7 @@ const DropdownMenuContent = <T extends ValidComponent = "div">(props: Polymorphi
 		<DropdownMenuPrimitive.Portal mount={props.portalMount}>
 			<DropdownMenuPrimitive.Content
 				class={cn(
-					"z-50 min-w-32 origin-[var(--kb-menu-content-transform-origin)] animate-content-hide rounded-md border bg-popover p-1 text-popover-foreground shadow-none data-[expanded]:animate-content-show",
+					"z-50 min-w-32 origin-[var(--kb-menu-content-transform-origin)] animate-content-hide rounded-md border bg-popover p-1 text-popover-foreground shadow-none outline-none focus:outline-none focus-visible:outline-none data-[expanded]:animate-content-show",
 					props.class,
 				)}
 				{...rest}
@@ -44,7 +44,7 @@ const DropdownMenuItem = <T extends ValidComponent = "div">(props: PolymorphicPr
 	return (
 		<DropdownMenuPrimitive.Item
 			class={cn(
-				"relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+				"relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none focus-visible:outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
 				props.class,
 			)}
 			{...rest}
@@ -80,7 +80,10 @@ const DropdownMenuSubTrigger = <T extends ValidComponent = "div">(props: Polymor
 	const [, rest] = splitProps(props as DropdownMenuSubTriggerProps, ["class", "children"]);
 	return (
 		<DropdownMenuPrimitive.SubTrigger
-			class={cn("flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-accent data-[state=open]:bg-accent", props.class)}
+			class={cn(
+				"flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none focus-visible:outline-none focus:bg-accent data-[state=open]:bg-accent",
+				props.class,
+			)}
 			{...rest}
 		>
 			{props.children}
@@ -111,7 +114,7 @@ const DropdownMenuSubContent = <T extends ValidComponent = "div">(props: Polymor
 		<DropdownMenuPrimitive.Portal mount={props.portalMount}>
 			<DropdownMenuPrimitive.SubContent
 				class={cn(
-					"z-50 min-w-32 origin-[var(--kb-menu-content-transform-origin)] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-none animate-in",
+					"z-50 min-w-32 origin-[var(--kb-menu-content-transform-origin)] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-none outline-none focus:outline-none focus-visible:outline-none animate-in",
 					props.class,
 				)}
 				{...rest}

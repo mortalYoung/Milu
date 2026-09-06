@@ -49,7 +49,7 @@ import {
 	recordPrompt,
 } from "./lib/partner-files";
 import { commandsDir, getPartnerDir, loadSettings, type Settings, saveSettings, sendMessageIntervalMs } from "./lib/settings";
-import { createPartner, deletePartner, listPartners, PartnerError, type PartnerInput } from "./partners";
+import { copyPartner, createPartner, deletePartner, listPartners, PartnerError, type PartnerInput, promotePartner } from "./partners";
 import type { EscalationDecision, EscalationRequest, SandboxMode } from "./permission";
 import { isSandboxMode, SandboxManager, validateWorkspace } from "./permission";
 import { createSessionStore, type SessionScope } from "./persist";
@@ -819,6 +819,37 @@ function commandContextFor(entry: PartnerAgent): CommandContext {
 	};
 }
 
+async function isPartnerBusy(name: string): Promise<boolean> {
+	const entry = await agents.get(name);
+	return Boolean(entry?.agent.isStreaming || runningCommandPartners.has(name) || memoryOrganizing.has(name) || (name === viewPartner?.name && pendingShellIds.size > 0));
+}
+
+async function copyPartnerRpc(name: string, mode: "duplicate" | "fork") {
+	try {
+		const settings = await loadSettings();
+		if (await isPartnerBusy(name)) return { ok: false as const, error: `"${name}" is still running; wait for it to finish` };
+		const profile = await copyPartner(settings, { sourceName: name, mode }, session);
+		return { ok: true as const, profile: { ...profile, path: getPartnerDir(settings, profile.name) } };
+	} catch (error) {
+		if (error instanceof PartnerError) return { ok: false as const, error: error.message };
+		console.error(`${mode}_partner failed:`, error);
+		return { ok: false as const, error: "Failed to copy partner" };
+	}
+}
+
+async function promotePartnerRpc(name: string) {
+	try {
+		const settings = await loadSettings();
+		if (await isPartnerBusy(name)) return { ok: false as const, error: `"${name}" is still running; wait for it to finish` };
+		const profile = await promotePartner(settings, name);
+		return { ok: true as const, profile: { ...profile, path: getPartnerDir(settings, profile.name) } };
+	} catch (error) {
+		if (error instanceof PartnerError) return { ok: false as const, error: error.message };
+		console.error("promote_partner failed:", error);
+		return { ok: false as const, error: "Failed to promote partner" };
+	}
+}
+
 const rpc = BrowserView.defineRPC<AppRPCSchema>({
 	handlers: {
 		requests: {
@@ -1438,17 +1469,25 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				}
 				return { ok: true };
 			},
+			duplicate_partner: async ({ name }) => copyPartnerRpc(name, "duplicate"),
+			fork_partner: async ({ name }) => copyPartnerRpc(name, "fork"),
+			promote_partner: async ({ name }) => promotePartnerRpc(name),
 			delete_partner: async ({ name }) => {
 				try {
 					const settings = await loadSettings();
+					const before = await listPartners(settings);
+					const affected = [name, ...before.filter((p) => p.forkedFrom === name).map((p) => p.name)];
 					await deletePartner(settings, name);
 
-					session.evictRoot(getPartnerDir(settings, name));
-					agents.delete(name);
-					// Drop cached views for the deleted partner's dir.
-					for (const key of [...historyViewCache.keys()]) if (key === `history:${getPartnerDir(settings, name)}`) historyViewCache.delete(key);
-					for (const key of [...trajectoryViewCache.keys()]) if (key.startsWith(`${getPartnerDir(settings, name)}:`)) trajectoryViewCache.delete(key);
-					if (viewPartner?.name === name) viewPartner = null;
+					for (const target of affected) {
+						const dir = getPartnerDir(settings, target);
+						session.evictRoot(dir);
+						agents.delete(target);
+						// Drop cached views for the deleted partner's dir.
+						for (const key of [...historyViewCache.keys()]) if (key === `history:${dir}`) historyViewCache.delete(key);
+						for (const key of [...trajectoryViewCache.keys()]) if (key.startsWith(`${dir}:`)) trajectoryViewCache.delete(key);
+						if (viewPartner?.name === target) viewPartner = null;
+					}
 					return { ok: true };
 				} catch (error) {
 					if (error instanceof PartnerError) return { ok: false, error: error.message };

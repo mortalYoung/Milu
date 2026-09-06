@@ -182,7 +182,9 @@ function WorkspaceControllers() {
 	async function onDeletePartner(name: string) {
 		await rpc.request.delete_partner({ name });
 
-		if (session.data.selected === name) {
+		const selected = session.data.selected;
+		const selectedIsDeleted = selected === name || session.data.partners.find((p) => p.name === selected)?.forkedFrom === name;
+		if (selectedIsDeleted) {
 			transcript.reset();
 			selectPartner(null);
 		}
@@ -201,6 +203,28 @@ function WorkspaceControllers() {
 			return null;
 		}
 		return res.error ?? "Failed to create partner";
+	}
+
+	async function runCopy(kind: "duplicate" | "fork", name: string) {
+		const res = kind === "duplicate" ? await rpc.request.duplicate_partner({ name }) : await rpc.request.fork_partner({ name });
+		if (!res.ok || !res.profile) {
+			toast.push({ title: kind === "duplicate" ? "Duplicate failed" : "Fork failed", body: res.error ?? "Unknown error" }, "error");
+			return;
+		}
+		toast.push({ title: kind === "duplicate" ? "Duplicated" : "Forked", body: `Now working as ${res.profile.name}` });
+		await session.mutate.refreshPartners();
+		transcript.reset();
+		selectPartner(res.profile);
+	}
+
+	async function onPromotePartner(name: string) {
+		const res = await rpc.request.promote_partner({ name });
+		if (!res.ok || !res.profile) {
+			toast.push({ title: "Promote failed", body: res.error ?? "Unknown error" }, "error");
+			return;
+		}
+		toast.push({ title: `Promoted "${name}"`, body: "Now a root chat" });
+		await session.mutate.refreshPartners();
 	}
 
 	// ——— theme + startup effects ———
@@ -300,6 +324,9 @@ function WorkspaceControllers() {
 														onAddPartner={() => setShowModal(true)}
 														onDelete={onDeletePartner}
 														onViewDetails={(name) => setDetailsPartner(session.data.partners.find((p) => p.name === name) ?? null)}
+														onDuplicate={(name) => void runCopy("duplicate", name)}
+														onFork={(name) => void runCopy("fork", name)}
+														onPromote={(name) => void onPromotePartner(name)}
 														listCollapsed={listCollapsed()}
 														onToggleList={toggleList}
 														historyLoading={session.historyLoading}

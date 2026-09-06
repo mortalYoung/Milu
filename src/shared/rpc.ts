@@ -490,6 +490,8 @@ export type AppRPCSchema = __schema<{
 						createdAt: number;
 						path: string;
 
+						forkedFrom?: string;
+
 						lastMessage?: string;
 
 						lastMessageAt?: number;
@@ -526,6 +528,57 @@ export type AppRPCSchema = __schema<{
 					profile: { name: string; persona?: string } | null;
 				};
 				response: { ok: boolean };
+			};
+
+			duplicate_partner: {
+				params: { name: string };
+				response: {
+					ok: boolean;
+					error?: string;
+
+					profile?: {
+						name: string;
+						persona?: string;
+						createdAt: number;
+						path: string;
+
+						forkedFrom?: string;
+					};
+				};
+			};
+
+			fork_partner: {
+				params: { name: string };
+				response: {
+					ok: boolean;
+					error?: string;
+
+					profile?: {
+						name: string;
+						persona?: string;
+						createdAt: number;
+						path: string;
+
+						forkedFrom?: string;
+					};
+				};
+			};
+
+			promote_partner: {
+				params: { name: string };
+				response: {
+					ok: boolean;
+					error?: string;
+
+					profile?: {
+						name: string;
+						persona?: string;
+						createdAt: number;
+						path: string;
+
+						forkedFrom?: string;
+					};
+				};
 			};
 
 			delete_partner: {
