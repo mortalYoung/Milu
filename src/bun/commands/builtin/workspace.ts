@@ -10,17 +10,15 @@ function expandHome(path: string): string {
 
 export const command: CommandDefinition = {
 	name: "workspace",
-	description: "Set the working directory for this conversation",
+	description: "Set or clear the working directory for this conversation (no path clears)",
 	kind: "leadingInput",
 	hint: "[<path>]",
 	async handler({ ctx, rawInput, utils }) {
-		const path = expandHome(rawInput.trim());
-		if (!path) return { kind: "error", text: "usage: /workspace <path>" };
-		const decision = ctx.agent.permission.setWorkspace(path);
-		if (!decision.allowed) return { kind: "error", text: decision.reason };
-		ctx.agent.setWorkspace(decision.resolved);
-		await ctx.persistWorkspace(decision.resolved);
-		await utils.sendMessage(decision.resolved);
-		return { kind: "success" };
+		const trimmed = rawInput.trim();
+		const target = trimmed ? expandHome(trimmed) : null;
+		const res = await ctx.applyWorkspace(target);
+		if (!res.ok) return { kind: "error", text: res.error };
+		if (res.workspace) await utils.sendMessage(res.workspace);
+		return { kind: "success", ...(res.workspace ? { text: res.workspace } : {}) };
 	},
 };

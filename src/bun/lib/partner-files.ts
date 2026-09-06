@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ThinkingLevel } from "../../shared/rpc";
 import type { SandboxMode } from "../permission";
@@ -7,9 +7,13 @@ import { sandboxFilePath, workspaceFilePath } from "../permission";
 import { getPartnerDir, loadSettings } from "./settings";
 
 // Workspace persistence: per-partner file (survives restart; re-validated on restore).
-export async function persistWorkspace(dir: string, path: string) {
+export async function persistWorkspace(dir: string, path: string | null) {
 	try {
-		await writeFile(workspaceFilePath(dir), JSON.stringify({ path }, null, 2), "utf8");
+		if (path == null) {
+			await rm(workspaceFilePath(dir), { force: true });
+		} else {
+			await writeFile(workspaceFilePath(dir), JSON.stringify({ path }, null, 2), "utf8");
+		}
 	} catch (error) {
 		console.error("persistWorkspace failed:", error);
 	}

@@ -4,12 +4,14 @@ export interface PartnerFormData {
 	name: string;
 	responsibilities?: string;
 	tones?: string;
+	workspace?: string;
 }
 
 export function createPartnerForm(opts: { open: () => boolean; existingNames: () => string[]; onConfirm: (data: PartnerFormData) => Promise<string | null> }) {
 	const [name, setName] = createSignal("");
 	const [responsibilities, setResponsibilities] = createSignal("");
 	const [tones, setTones] = createSignal("");
+	const [workspace, setWorkspace] = createSignal("");
 	const [error, setError] = createSignal<string | null>(null);
 	const [saving, setSaving] = createSignal(false);
 
@@ -20,6 +22,7 @@ export function createPartnerForm(opts: { open: () => boolean; existingNames: ()
 			setName("");
 			setResponsibilities("");
 			setTones("");
+			setWorkspace("");
 			setError(null);
 		}
 	});
@@ -40,10 +43,11 @@ export function createPartnerForm(opts: { open: () => boolean; existingNames: ()
 			name: name().trim(),
 			responsibilities: responsibilities().trim() || undefined,
 			tones: tones().trim() || undefined,
+			workspace: workspace().trim() || undefined,
 		});
 		setSaving(false);
 		if (err) setError(err);
 	};
 
-	return { name, setName, responsibilities, setResponsibilities, tones, setTones, error, saving, submit };
+	return { name, setName, responsibilities, setResponsibilities, tones, setTones, workspace, setWorkspace, error, saving, submit };
 }

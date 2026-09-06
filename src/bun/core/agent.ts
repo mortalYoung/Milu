@@ -22,8 +22,6 @@ import { contextChangedText } from "./surface";
 export interface AgentBridge {
 	onTurnStart: (turn: number) => void;
 	onMessage: (text: string) => void;
-	onWorkspaceUpdate: () => void;
-	onWorkspaceSet?: (path: string) => void;
 	onEnd: (error?: string) => void;
 }
 
@@ -55,6 +53,7 @@ export interface AgentHandle {
 	setPartner: (partner: PartnerPrompt | null) => void;
 	setStoragePath: (path: string | null) => void;
 	setWorkspace: (path: string | null) => void;
+	notifyContextChange: () => Promise<boolean>;
 }
 
 export interface AgentDeps {
@@ -186,17 +185,6 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		permission,
 		...(skills ? { skills } : {}),
 		...(deps.readMemory ? { readMemory: deps.readMemory } : {}),
-		onSetWorkspace: (workspace: string): { ok: true; path: string } | { ok: false; error: string } => {
-			if (ctx.workspaceSetThisTurn) return { ok: false, error: "Workspace can only be set once per turn" };
-			const decision = permission.setWorkspace(workspace);
-			if (!decision.allowed) return { ok: false, error: decision.reason };
-			ctx.workspaceSetThisTurn = true;
-			ctx.workspace_path = decision.resolved;
-			invalidateSkillCatalog();
-			bridge.onWorkspaceUpdate();
-			bridge.onWorkspaceSet?.(decision.resolved);
-			return { ok: true, path: decision.resolved };
-		},
 	});
 	agent.state.systemPrompt = ctx.composeSystemPrompt();
 
@@ -666,7 +654,11 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		setWorkspace(path: string | null) {
 			ctx.workspace_path = path;
 			invalidateSkillCatalog();
-			bridge.onWorkspaceUpdate();
+		},
+		async notifyContextChange() {
+			if (!(await syncContextChanged())) return false;
+			agent.state.messages.push({ role: "user", content: contextChangedText(currentContextSnapshot()), timestamp: Date.now() });
+			return true;
 		},
 		invalidateSkillCatalog() {
 			skillCatalogDirty = true;

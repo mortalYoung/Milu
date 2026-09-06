@@ -206,6 +206,7 @@ export const EVENT_META: Record<string, EntryMeta> = {
 	[EVENTS.modelChange]: logOnly(),
 	[EVENTS.thinkingLevelChange]: logOnly(),
 	[EVENTS.contextChanged]: logOnly(),
+	[EVENTS.instructionsChanged]: logOnly(),
 	[EVENTS.retryScheduled]: logOnly(),
 	[EVENTS.retryStarted]: logOnly(),
 };

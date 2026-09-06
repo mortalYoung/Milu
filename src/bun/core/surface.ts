@@ -26,7 +26,9 @@ function escapeXml(text: string): string {
 }
 
 export function contextChangedText(data: ContextChangedEventData): string {
-	const lines = [`Current workspace: ${data.workspace ?? "unset"}.`, `Current storage: ${data.storage ?? "unset"}.`, `Current sandbox mode: ${data.sandbox}.`];
+	const lines: string[] = [];
+	if (data.workspace) lines.push(`Current workspace: ${data.workspace}.`);
+	lines.push(`Current storage: ${data.storage ?? "unset"}.`, `Current sandbox mode: ${data.sandbox}.`);
 	if (data.skills.length > 0) {
 		lines.push(
 			"",
@@ -38,6 +40,11 @@ export function contextChangedText(data: ContextChangedEventData): string {
 		);
 	}
 	return `<system_reminder>${lines.join("\n")}</system_reminder>`;
+}
+
+export function instructionsChangedText(agentMd: string | null): string {
+	if (agentMd) return `<system_reminder>Workspace instructions:\n\n${agentMd}</system_reminder>`;
+	return `<system_reminder>Workspace cleared; file operations now fall back to storage.</system_reminder>`;
 }
 
 export function deriveEventMessage(entry: Entry): AgentMessage | null {
@@ -90,6 +97,14 @@ export function deriveEventMessage(entry: Entry): AgentMessage | null {
 		return {
 			role: "user",
 			content: typeof data.text === "string" ? data.text : "",
+			timestamp: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
+		} as AgentMessage;
+	}
+	if (entry.type === "custom" && entry.customType === EVENTS.instructionsChanged) {
+		const data = (entry.data ?? {}) as { agentMd?: unknown; timestamp?: unknown };
+		return {
+			role: "user",
+			content: instructionsChangedText(typeof data.agentMd === "string" ? data.agentMd : null),
 			timestamp: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
 		} as AgentMessage;
 	}

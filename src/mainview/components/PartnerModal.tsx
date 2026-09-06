@@ -1,5 +1,6 @@
 import { createPartnerForm, type PartnerFormData } from "../lib/partner-form";
 import { Button } from "./Button";
+import { PickFile } from "./PickFile";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 
 export interface PartnerModalProps {
@@ -59,6 +60,14 @@ export function PartnerModal(props: PartnerModalProps) {
 						aria-label="Tones"
 					/>
 					<p class="letter-note">Format rules (inline-code file references) are fixed by the system — only the tone is written here.</p>
+
+					<div class="mt-4 flex flex-col gap-1.5">
+						<span class="letter-ps-label">
+							Workspace <span class="text-muted">(optional)</span>
+						</span>
+						<PickFile value={form.workspace()} placeholder="Choose a project directory…" title="Workspace directory" ariaLabel="Workspace directory" onPick={form.setWorkspace} />
+						<p class="letter-note">Leave empty to default file operations to this partner's storage. Clear later with /workspace.</p>
+					</div>
 
 					<DialogFooter class="letter-footer">
 						<Button type="submit" disabled={form.saving()} class="bg-seal text-on-ink hover:bg-seal/90">

@@ -509,6 +509,7 @@ export type AppRPCSchema = __schema<{
 					name: string;
 					responsibilities?: string;
 					tones?: string;
+					workspace?: string;
 				};
 				response: {
 					ok: boolean;
@@ -564,7 +565,7 @@ export type AppRPCSchema = __schema<{
 
 			origin_update: { partner: string };
 
-			workspace_update: {};
+			context_changed: { partner?: string };
 
 			agent_end: { error?: string; partner: string };
 

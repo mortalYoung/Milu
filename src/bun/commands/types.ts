@@ -41,7 +41,8 @@ export interface CommandContext {
 	dir: string;
 	scope: SessionScope;
 	agent: CommandAgentSurface;
-	persistWorkspace(path: string): Promise<void>;
+	persistWorkspace(path: string | null): Promise<void>;
+	applyWorkspace(path: string | null): Promise<{ ok: true; workspace: string | null } | { ok: false; error: string }>;
 	runManualCompact(signal?: AbortSignal): Promise<{ ok: boolean; error?: string; compacted?: number }>;
 	organizeMemory(signal?: AbortSignal): Promise<{ ok: boolean; error?: string; added?: number }>;
 	onCommandRun(commandId: string): void;

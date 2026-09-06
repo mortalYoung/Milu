@@ -23,7 +23,7 @@ export function createAgentStatus(rpc: RPC) {
 		{ initialValue: EMPTY_STATUS },
 	);
 
-	rpc.addMessageListener("workspace_update", () => void refetch());
+	rpc.addMessageListener("context_changed", () => void refetch());
 	rpc.addMessageListener("sandbox_mode_update", () => void refetch());
 	rpc.addMessageListener("thinking_level_update", () => void refetch());
 

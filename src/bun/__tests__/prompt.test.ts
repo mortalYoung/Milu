@@ -70,9 +70,9 @@ describe("buildSystemPrompt framework", () => {
 		expect(p1).toBe(p2);
 	});
 
-	test("WORKSPACE instructs the model to establish the workspace via set_workspace as the first tool call", () => {
+	test("WORKSPACE section explains workspace as the per-partner working directory", () => {
 		const p = buildSystemPrompt(PARTNER);
-		expect(p).toContain("set_workspace");
-		expect(p).toContain("first tool call");
+		expect(p).toContain("# WORKSPACE");
+		expect(p).not.toContain("set_workspace");
 	});
 });

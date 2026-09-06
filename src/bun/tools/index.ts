@@ -13,49 +13,8 @@ import { fetchPage, WebFetchError, type WebFetchResult, webFetchOptions } from "
 export interface ToolDeps {
 	store: SessionScope;
 	permission?: Permission;
-	onSetWorkspace?: (workspace: string) => { ok: true; path: string } | { ok: false; error: string };
 	skills?: { list(): Promise<SkillSummary[]>; get(name: string): Promise<SkillDefinition | undefined> };
 	readMemory?: (opts: QueryMemoryOptions) => Promise<MemoryRecord[]>;
-}
-
-const workspaceSchema = Type.Object({
-	workspace: Type.String({ description: "Absolute path of the working directory — usually the project root of the code or project the user is asking about" }),
-});
-
-type SetWorkspaceDetails = { ok: boolean; error?: string; workspace?: string; agentMd?: string | null };
-
-export function workspaceResultText(workspace: string, instructionsFile: string, agentMd: string | null): string {
-	if (agentMd == null) return `Workspace set to ${workspace}.`;
-	return `Workspace set to ${workspace}.\n\nthe following workspace instructions may be relevant to your work. Use them as guidance when applicable. More specific instructions take precedence over broader ones. They do not override system, developer, or direct user instructions.\nInstructions from: ${instructionsFile}\n\n${agentMd}`;
-}
-
-function setWorkspaceTool(deps: ToolDeps): AgentHarnessTool<ExecutionToolContext, TSchema, SetWorkspaceDetails> {
-	return {
-		name: "set_workspace",
-		label: "Set Workspace",
-		description:
-			"Set the working directory of this conversation to an absolute path — the project root of the current task. Only needed when the task actually touches files or paths (read/write/edit, or shell commands that reference the project); conversation-only turns can skip it. When needed, call it first, before other tools. Can only be called once per turn; afterwards, relative paths resolve against it. Also reads the workspace's instructions file (AGENTS.md by default, configurable via settings) if present and returns its content — follow the guidance it gives.",
-		parameters: workspaceSchema,
-		executionMode: "sequential",
-		async execute(_toolCallId, { workspace }, signal, _onUpdate, context) {
-			if (!deps.onSetWorkspace) {
-				return { content: [{ type: "text", text: "set_workspace is not available" }], details: { ok: false } };
-			}
-			const set = deps.onSetWorkspace(workspace);
-			if (!set.ok) {
-				return { content: [{ type: "text", text: `Error: ${set.error}` }], details: { ok: false, error: set.error } };
-			}
-			const { detect_instructions_file } = await loadSettings();
-			const agentMd = await context.env.readTextFile(`${set.path}/${detect_instructions_file}`, signal);
-			if (agentMd.ok) {
-				return {
-					content: [{ type: "text", text: workspaceResultText(set.path, detect_instructions_file, agentMd.value) }],
-					details: { ok: true, workspace: set.path, agentMd: agentMd.value },
-				};
-			}
-			return { content: [{ type: "text", text: workspaceResultText(set.path, detect_instructions_file, null) }], details: { ok: true, workspace: set.path, agentMd: null } };
-		},
-	};
 }
 
 const MAX_OUTPUT_CHARS = 50 * 1024;
@@ -257,7 +216,6 @@ export function createTools(deps: ToolDeps): AgentTool[] {
 		bindEnv(createWriteTool(), env),
 		bindEnv(createEditTool(), env),
 		bindEnv(bashTool(deps), env),
-		bindEnv(setWorkspaceTool(deps), env),
 		skillTool(deps),
 		webFetchTool(),
 		readMemoryTool(deps),

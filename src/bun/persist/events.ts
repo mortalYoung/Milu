@@ -95,6 +95,10 @@ export interface ContextChangedEventData {
 	skills: SkillDigestItem[];
 }
 
+export interface InstructionsChangedEventData {
+	agentMd: string | null;
+}
+
 export type MemoryRunEndReason = "completed" | "attempts-exhausted" | "error" | "interrupted";
 
 export interface MemoryRunStartEventData {

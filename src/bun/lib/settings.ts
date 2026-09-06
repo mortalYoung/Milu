@@ -27,7 +27,6 @@ export interface CustomProvider {
 export interface Settings {
 	/** Root directory for Partner profile storage (where partners get created). */
 	partner_profile_path: string;
-	/** Instructions file read by set_workspace (relative to the workspace root). */
 	detect_instructions_file: string;
 	/** Default sandbox mode for newly created partners (the Permission setting). */
 	defaultSandboxMode?: SandboxMode;

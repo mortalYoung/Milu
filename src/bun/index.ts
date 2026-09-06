@@ -1,9 +1,8 @@
 import { spawn } from "node:child_process";
 import { watch } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, sep } from "node:path";
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import { getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
 import { Cron } from "croner";
@@ -35,7 +34,7 @@ import { loadRuntimeStats, saveRuntimeStats } from "./core/runtime-stats";
 import { applyToolResultPrunes, planToolResultPrunes } from "./core/tool-result-pruner";
 import { aggregateUsage, dedupeRequestHeaders, fold, lastUsage } from "./core/trajectory";
 import { deleteApiKey, getApiKey, loadCredentials, setApiKey } from "./lib/credentials";
-import { ensureModel, ensureSandboxMode, ensureStoragePath, ensureWorkspace, isThinkingLevel } from "./lib/ensure";
+import { ensureModel, ensureSandboxMode, ensureStoragePath, ensureWorkspace, hasInvalidPersistedWorkspace, isThinkingLevel } from "./lib/ensure";
 import { listInstalledEditors, openInCodeEditor } from "./lib/open-in-editor";
 import {
 	partnerDirFor,
@@ -52,14 +51,14 @@ import {
 import { commandsDir, getPartnerDir, loadSettings, type Settings, saveSettings, sendMessageIntervalMs } from "./lib/settings";
 import { createPartner, deletePartner, listPartners, PartnerError, type PartnerInput } from "./partners";
 import type { EscalationDecision, EscalationRequest, SandboxMode } from "./permission";
-import { isSandboxMode, SandboxManager } from "./permission";
+import { isSandboxMode, SandboxManager, validateWorkspace } from "./permission";
 import { createSessionStore, type SessionScope } from "./persist";
-import { EVENTS, type MemoryRunEndEventData, type MemoryRunStartEventData } from "./persist/events";
+import { type ContextChangedEventData, EVENTS, type MemoryRunEndEventData, type MemoryRunStartEventData } from "./persist/events";
 import { scanSkillsRoot } from "./skills/filesystem";
 import { SKILL_NAME_RE } from "./skills/frontmatter";
 import { getSkill, listSkills } from "./skills/registry";
 import type { SkillsService } from "./skills/types";
-import { runEscalatedBash, workspaceResultText } from "./tools";
+import { runEscalatedBash } from "./tools";
 
 await loadCredentials();
 const startupSettings = await loadSettings();
@@ -279,11 +278,6 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 		{
 			onTurnStart: (turn) => rpc.send.agent_turn({ turn, partner: profile.name }),
 			onMessage: () => rpc.send.agent_message({}),
-			onWorkspaceUpdate: () => {
-				rpc.send.workspace_update({});
-				void armSkillsWatchers();
-			},
-			onWorkspaceSet: (path) => void persistWorkspace(dir, path),
 			onEnd: (error) => {
 				rejectPendingEscalations(profile.name, "run ended while awaiting approval");
 				rpc.send.agent_end({ error, partner: profile.name });
@@ -364,6 +358,10 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 
 	const surf = await session.surface(dir);
 	agent.restore(surf.replaceGeneration > 0 ? await session.deriveMessages(dir) : await session.restoreMessages(dir));
+
+	if (await hasInvalidPersistedWorkspace(dir)) {
+		await applyWorkspace({ profile, dir, scope, agent }, null);
+	}
 	return { profile, dir, scope, agent };
 }
 
@@ -427,41 +425,9 @@ async function sessionMemoryEvents(entry: PartnerAgent): Promise<MemoryRecord[]>
 	return lines.filter((l): l is MemoryRecord => l.kind === "event" && l.source.sessionFile === sessionFile);
 }
 
-async function workspaceContextMessage(entry: PartnerAgent): Promise<AgentMessage | null> {
-	const workspace = entry.agent.workspacePath;
-	if (!workspace) return null;
-	const settings = await ensureSettings();
-	const file = settings.detect_instructions_file || "AGENTS.md";
-	let agentMd: string | null = null;
-	try {
-		agentMd = await readFile(join(workspace, file), "utf8");
-	} catch {
-		agentMd = null;
-	}
-	return { role: "user", content: workspaceResultText(workspace, file, agentMd), timestamp: Date.now() } as AgentMessage;
-}
-
-function messageHasWorkspace(m: { content?: unknown }, workspace: string): boolean {
-	const needle = `Workspace set to ${workspace}`;
-	if (typeof m.content === "string") return m.content.startsWith(needle);
-	if (!Array.isArray(m.content)) return false;
-	return m.content.some((b) => {
-		const block = b as { type?: unknown; text?: unknown };
-		return block?.type === "text" && typeof block.text === "string" && block.text.startsWith(needle);
-	});
-}
-
 async function runCompaction(entry: PartnerAgent, plan: CompactionPlan): Promise<void> {
 	await applyCompaction(session, entry.dir, plan);
-	const messages = await session.deriveMessages(entry.dir);
-	const workspace = entry.agent.workspacePath;
-	if (workspace) {
-		const workspaceMsg = await workspaceContextMessage(entry);
-		if (workspaceMsg && !messages.some((m) => messageHasWorkspace(m as { content?: unknown }, workspace))) {
-			messages.splice(1, 0, workspaceMsg);
-		}
-	}
-	entry.agent.restore(messages);
+	await ensureContextAfterCompact(entry);
 	rpc.send.origin_update({ partner: entry.profile.name });
 }
 
@@ -711,6 +677,80 @@ async function reconcileTerminalStates(dir: string): Promise<{ commands: number;
 	return { commands, shells, escalations, memoryRuns };
 }
 
+async function applyWorkspace(entry: PartnerAgent, path: string | null): Promise<{ ok: true; workspace: string | null } | { ok: false; error: string }> {
+	if (entry.agent.isStreaming) return { ok: false, error: "agent is running" };
+	let resolved: string | null = null;
+	if (path) {
+		const decision = entry.agent.permission.setWorkspace(path);
+		if (!decision.allowed) return { ok: false, error: decision.reason };
+		resolved = decision.resolved;
+	}
+	await persistWorkspace(entry.dir, resolved);
+	entry.agent.setWorkspace(resolved);
+	await entry.agent.notifyContextChange();
+	const settings = await ensureSettings();
+	let agentMd: string | null = null;
+	if (resolved) {
+		try {
+			agentMd = await readFile(join(resolved, settings.detect_instructions_file || "AGENTS.md"), "utf8");
+		} catch {
+			agentMd = null;
+		}
+	}
+	await entry.scope.appendInstructionsChanged(agentMd, Date.now());
+	entry.agent.restore(await session.deriveMessages(entry.dir));
+
+	rpc.send.context_changed({ partner: entry.profile.name });
+	void armSkillsWatchers();
+	return { ok: true, workspace: resolved };
+}
+
+async function ensureWorkspaceValid(entry: PartnerAgent): Promise<void> {
+	const workspace = entry.agent.workspacePath;
+	if (!workspace) return;
+	try {
+		const info = await stat(workspace);
+		if (info.isDirectory()) return;
+	} catch {}
+
+	await applyWorkspace(entry, null);
+}
+
+async function ensureContextAfterCompact(entry: PartnerAgent): Promise<void> {
+	const workspace = entry.agent.workspacePath;
+	const messages = await session.deriveMessages(entry.dir);
+	if (!workspace) return;
+
+	const hasWorkspaceContext = messages.some((m) => {
+		const content = (m as { content?: unknown }).content;
+		return typeof content === "string" && content.includes(`Current workspace: ${workspace}.`);
+	});
+	if (!hasWorkspaceContext) {
+		const snapshot: ContextChangedEventData = {
+			workspace,
+			storage: entry.agent.storagePath,
+			sandbox: entry.agent.sandboxMode,
+			skills: entry.agent.context.skills.map((s) => ({ ...s })),
+		};
+		await entry.scope.appendContextChanged(snapshot, Date.now());
+	}
+
+	const settings = await ensureSettings();
+	let agentMd: string | null = null;
+	try {
+		agentMd = await readFile(join(workspace, settings.detect_instructions_file || "AGENTS.md"), "utf8");
+	} catch {
+		agentMd = null;
+	}
+	const hasInstructions = messages.some((m) => {
+		const content = (m as { content?: unknown }).content;
+		return typeof content === "string" && (content.includes("Workspace instructions") || content.includes("Workspace cleared"));
+	});
+	if (!hasInstructions) await entry.scope.appendInstructionsChanged(agentMd, Date.now());
+
+	entry.agent.restore(await session.deriveMessages(entry.dir));
+}
+
 function commandContextFor(entry: PartnerAgent): CommandContext {
 	return {
 		partner: entry.profile.name,
@@ -736,6 +776,7 @@ function commandContextFor(entry: PartnerAgent): CommandContext {
 			setThinkingLevel: (level) => entry.agent.setThinkingLevel(level),
 		},
 		persistWorkspace: (path) => persistWorkspace(entry.dir, path),
+		applyWorkspace: (path) => applyWorkspace(entry, path),
 		runManualCompact: async (signal?: AbortSignal) => {
 			const result = await runManualCompact(entry, signal);
 			return signal?.aborted ? { ok: false, error: "aborted" } : result;
@@ -784,6 +825,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				const target = viewPartner;
 				if (!target) return { accepted: false };
 				const entry = await ensureAgent(target.profile);
+				await ensureWorkspaceValid(entry);
 
 				rejectPendingEscalations(target.name, "superseded by a new user message");
 
@@ -1057,6 +1099,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				const target = viewPartner;
 				if (!target) return { ok: false, error: "no partner selected" };
 				const entry = await ensureAgent(target.profile);
+				await ensureWorkspaceValid(entry);
 				if (entry.agent.isStreaming) return { ok: false, error: "agent is running" };
 				const settings = await ensureSettings();
 				const granted = await readPartnerGrantedSkills(target.dir);
@@ -1353,15 +1396,24 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 			create_partner: async (input) => {
 				try {
 					const settings = await loadSettings();
+					if (input.workspace) {
+						const dir = getPartnerDir(settings, input.name);
+						const validationError = validateWorkspace(input.workspace, { storagePath: join(dir, "storage") });
+						if (validationError) return { ok: false, error: validationError };
+					}
 					const profile = await createPartner(settings, input);
+					const entry = await ensureAgent(profile);
 
 					const providers = settings.providers ?? [];
 					const first = providers[0] ? providerModels(providers[0])[0] : undefined;
 					if (first) {
-						const entry = await ensureAgent(profile);
 						const pin = { provider: providers[0], modelId: first.id };
 						entry.agent.setModel(pin);
 						await persistModel(entry.dir, pin);
+					}
+					if (input.workspace) {
+						const applied = await applyWorkspace(entry, input.workspace);
+						if (!applied.ok) return { ok: false, error: applied.error };
 					}
 					return { ok: true, profile: { ...profile, path: getPartnerDir(settings, profile.name) } };
 				} catch (error) {
@@ -1377,7 +1429,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					viewPartner = { name: profile.name, dir, profile };
 					await ensureAgent(profile);
 
-					rpc.send.workspace_update({});
+					rpc.send.context_changed({ partner: profile.name });
 					void armSkillsWatchers();
 				} else {
 					viewPartner = null;

@@ -7,7 +7,15 @@ import type { RequestTool, SandboxMode, ThinkingLevel, ViewItem } from "../../sh
 export type { ViewItem } from "../../shared/rpc";
 
 import type { Surface, SurfaceOpRecord } from "../../shared/surface";
-import { buildResumeTurn, contextChangedText, deriveMessages as deriveSurfaceMessages, dropDanglingTurn, foldSurface, pairToolResults } from "../core/surface";
+import {
+	buildResumeTurn,
+	contextChangedText,
+	deriveMessages as deriveSurfaceMessages,
+	dropDanglingTurn,
+	foldSurface,
+	instructionsChangedText,
+	pairToolResults,
+} from "../core/surface";
 import { createExecutionEnv } from "../tools/execution-env";
 import { projectVisibleHistory } from "./entry-meta";
 import {
@@ -87,6 +95,7 @@ export interface SessionScope {
 	appendMemoryRunStart(details: MemoryRunStartEventData, timestamp: number): Promise<void>;
 	appendMemoryRunEnd(details: MemoryRunEndEventData, timestamp: number): Promise<void>;
 	appendContextChanged(details: ContextChangedEventData, timestamp: number): Promise<void>;
+	appendInstructionsChanged(agentMd: string | null, timestamp: number): Promise<void>;
 	lastContextChanged(): Promise<{ data: ContextChangedEventData; timestamp: number } | null>;
 	appendSkillRun(details: SkillRunEventData, timestamp: number): Promise<void>;
 	appendSkillDone(details: SkillDoneEventData, timestamp: number): Promise<void>;
@@ -149,6 +158,17 @@ const TIME_GAP_REMINDER_PROJECTOR = (entry: CustomEntry): AgentMessage[] | undef
 	const data = entry.data as { text?: unknown; timestamp?: unknown } | undefined;
 	if (!data || typeof data.text !== "string") return undefined;
 	return [{ role: "user", content: data.text, timestamp: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0) }];
+};
+
+const INSTRUCTIONS_CHANGED_PROJECTOR = (entry: CustomEntry): AgentMessage[] | undefined => {
+	const data = entry.data as { agentMd?: unknown; timestamp?: unknown } | undefined;
+	return [
+		{
+			role: "user",
+			content: instructionsChangedText(typeof data?.agentMd === "string" ? data.agentMd : null),
+			timestamp: typeof data?.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
+		},
+	];
 };
 
 const CONTEXT_CHANGED_PROJECTOR = (entry: CustomEntry): AgentMessage[] | undefined => {
@@ -327,6 +347,9 @@ export function createSessionStore(): SessionStore {
 			async appendContextChanged(details, timestamp) {
 				await appendCustom(dir, EVENTS.contextChanged, { ...details, timestamp });
 			},
+			async appendInstructionsChanged(agentMd, timestamp) {
+				await appendCustom(dir, EVENTS.instructionsChanged, { agentMd, timestamp });
+			},
 			async lastContextChanged() {
 				const state = await stateFor(dir);
 				for (let i = state.entries.length - 1; i >= 0; i--) {
@@ -441,6 +464,7 @@ export function createSessionStore(): SessionStore {
 					[EVENTS.sendMessage]: SEND_MESSAGE_PROJECTOR,
 					[EVENTS.toolResult]: TOOL_RESULT_PROJECTOR,
 					[EVENTS.contextChanged]: CONTEXT_CHANGED_PROJECTOR,
+					[EVENTS.instructionsChanged]: INSTRUCTIONS_CHANGED_PROJECTOR,
 					[EVENTS.timeGapReminder]: TIME_GAP_REMINDER_PROJECTOR,
 				},
 			});

@@ -7,8 +7,6 @@ export class Context {
 	lastVisibleAt = Date.now();
 	lastTurnEndAt = 0;
 	contextClearedAt = 0;
-	/** Set when set_workspace succeeded this turn; reset on the next turn so each turn may change it once. */
-	workspaceSetThisTurn = false;
 	skills: { name: string; description: string; digest: string }[] = [];
 	private partner: PartnerPrompt | null = null;
 	storage_path: string | null = null;
@@ -24,7 +22,6 @@ export class Context {
 	}
 	beginTurn(): number {
 		this.turn += 1;
-		this.workspaceSetThisTurn = false;
 		return this.turn;
 	}
 	endTurn(): void {
@@ -47,6 +44,5 @@ export class Context {
 		this.running = false;
 		this.lastVisibleAt = Date.now();
 		this.contextClearedAt = Date.now();
-		this.workspaceSetThisTurn = false;
 	}
 }

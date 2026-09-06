@@ -1,6 +1,6 @@
 /**
  * Workspace boundary rules + the persisted policy file locations.
- * validateWorkspace is the policy-change resolution for set_workspace; the file
+ * validateWorkspace is the workspace policy-change resolution; the file
  * paths are the policy's persisted state (per partner), so they live with the policy.
  */
 import { statSync } from "node:fs";
@@ -10,7 +10,6 @@ import { isInside } from "./roots";
 export const workspaceFilePath = (dir: string) => join(dir, "workspace.json");
 export const sandboxFilePath = (dir: string) => join(dir, "sandbox.json");
 
-/** set_workspace boundary validation: absolute, exists, outside storage. (Per-turn limit is enforced by the agent.) */
 export function validateWorkspace(workspace: string, state: { storagePath: string | null }): string | null {
 	if (!isAbsolute(workspace)) return "Workspace must be an absolute path";
 	const abs = resolve(workspace);

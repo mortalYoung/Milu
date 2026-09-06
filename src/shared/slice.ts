@@ -9,7 +9,7 @@ import type { Entry } from "@earendil-works/pi-agent-core";
 import { EVENTS } from "./events";
 import type { Surface, SurfaceNode, SurfaceOpRecord } from "./surface";
 
-const SURFACE_CUSTOM_TYPES = new Set<string>([EVENTS.sendMessage, EVENTS.toolResult, EVENTS.contextChanged, EVENTS.timeGapReminder]);
+const SURFACE_CUSTOM_TYPES = new Set<string>([EVENTS.sendMessage, EVENTS.toolResult, EVENTS.contextChanged, EVENTS.timeGapReminder, EVENTS.instructionsChanged]);
 
 export class SurfaceError extends Error {}
 
@@ -43,6 +43,9 @@ function nodeFor(entry: Entry, seq: number): SurfaceNode | null {
 		return { kind: "tool_result", seq, id: entry.id, time: entryTime(entry) };
 	}
 	if (entry.type === "custom" && entry.customType === EVENTS.timeGapReminder) {
+		return { kind: "user", seq, id: entry.id, time: entryTime(entry) };
+	}
+	if (entry.type === "custom" && (entry.customType === EVENTS.contextChanged || entry.customType === EVENTS.instructionsChanged)) {
 		return { kind: "user", seq, id: entry.id, time: entryTime(entry) };
 	}
 	return null;

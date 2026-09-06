@@ -1,6 +1,5 @@
 /**
- * set_workspace validation tests: the workspace must be absolute, outside storage, and exist.
- * (The per-turn limit is enforced by the agent, not by validateWorkspace.)
+ * Workspace validation tests: the workspace must be absolute, outside storage, and exist.
  */
 
 import { describe, expect, test } from "bun:test";

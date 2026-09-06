@@ -1,7 +1,7 @@
 /**
  * The Permission facade — the single public API for every permission decision:
  * the fs fence, the bash sensitive scan, the OS confinement seam, escalation
- * rules, and the set_workspace policy-change resolution. Consumers never touch
+ * rules, and the workspace policy-change resolution. Consumers never touch
  * the guards or backends directly (see docs/2026-08-25-permission-module.md).
  */
 import { resolve } from "node:path";
@@ -75,7 +75,6 @@ export class Permission {
 		});
 	}
 
-	/** set_workspace policy-change resolution: validate + resolve (applying stays with the caller). */
 	setWorkspace(path: string): { allowed: true; resolved: string } | { allowed: false; code: "workspace_validation"; reason: string } {
 		const error = validateWorkspace(path, { storagePath: this.policy().storage });
 		if (error) return { allowed: false, code: "workspace_validation", reason: error };

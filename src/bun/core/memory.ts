@@ -143,7 +143,6 @@ Workflow:
 
 Allowed memory kinds: fact, decision, issue, reference, event.
 Do NOT extract preferences, conventions, or task checklists.
-Ignore set_workspace tool calls/results and workspace instruction files: they are environment setup, not durable memory.
 
 An event is an objective user-driven episode: a coherent thing the user did, asked, or accomplished across one or more messages. State only what happened — never infer preferences, motives, or conventions.
 
@@ -357,20 +356,6 @@ function isMemoryRunEntry(entry: Entry): boolean {
 	return entry.type === "custom" && (entry.customType === EVENTS.memoryRunStart || entry.customType === EVENTS.memoryRunEnd);
 }
 
-function isWorkspaceSetupEntry(entry: Entry): boolean {
-	if (entry.type === "message" && entry.message.role === "assistant" && Array.isArray(entry.message.content)) {
-		return entry.message.content.some((b) => {
-			const block = b as { type?: unknown; name?: unknown };
-			return block?.type === "toolCall" && block.name === "set_workspace";
-		});
-	}
-	if (entry.type === "custom" && entry.customType === EVENTS.toolResult) {
-		const data = entry.data as { toolName?: unknown } | undefined;
-		return data?.toolName === "set_workspace";
-	}
-	return false;
-}
-
 function collectModelMessages(messages: AgentMessage[], attempt: number, out: MemoryRunModelMessage[]): void {
 	for (const message of messages) {
 		if (message.role !== "assistant") continue;
@@ -448,7 +433,7 @@ function createReadRawTool(
 			const text = selected
 				.map((e) => {
 					if (e.type === "custom" && e.customType === EVENTS.timeGapReminder) return `[${e.id}] time_gap_reminder (skipped)`;
-					if (isWorkspaceSetupEntry(e)) return `[${e.id}] set_workspace (skipped)`;
+					if (e.type === "custom" && (e.customType === EVENTS.contextChanged || e.customType === EVENTS.instructionsChanged)) return `[${e.id}] ${e.customType} (skipped)`;
 					const msg = deriveEventMessage(e);
 					const m = msg as { role?: unknown; content?: unknown } | null;
 					const content = m ? (typeof m.content === "string" ? m.content : JSON.stringify(m.content ?? "")) : JSON.stringify(e);

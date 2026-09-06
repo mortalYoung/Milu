@@ -37,6 +37,17 @@ export async function ensureWorkspace(dir: string): Promise<string | null> {
 	return null;
 }
 
+export async function hasInvalidPersistedWorkspace(dir: string): Promise<boolean> {
+	const storagePath = join(dir, "storage");
+	try {
+		const raw = await readFile(workspaceFilePath(dir), "utf8");
+		const saved = JSON.parse(raw) as { path?: unknown };
+		return typeof saved.path === "string" && validateWorkspace(saved.path, { storagePath }) !== null;
+	} catch {
+		return false;
+	}
+}
+
 /** Restore the persisted sandbox mode (fallback default when unset or corrupt). */
 export async function ensureSandboxMode(dir: string, fallback: SandboxMode = "workspace-write"): Promise<SandboxMode> {
 	try {
