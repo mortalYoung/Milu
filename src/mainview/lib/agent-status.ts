@@ -25,7 +25,6 @@ export function createAgentStatus(rpc: RPC) {
 
 	rpc.addMessageListener("context_changed", () => void refetch());
 	rpc.addMessageListener("sandbox_mode_update", () => void refetch());
-	rpc.addMessageListener("thinking_level_update", () => void refetch());
 
 	const partnerWriting = (name: string) => data.partners.find((p) => p.name === name)?.writing ?? false;
 

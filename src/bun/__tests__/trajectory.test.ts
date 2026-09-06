@@ -147,18 +147,16 @@ describe("fold — total over the entry union", () => {
 		expect(records.map((r) => (r.kind === "assistant" || r.kind === "toolResult" ? r.turn : -1))).toEqual([-1, 1, 2]);
 	});
 
-	test("structural entries (model_change / thinking_level / active_tools) fold with their fields", () => {
+	test("structural entries (model_change / active_tools) fold with their fields", () => {
 		const records = fold([
 			entry({ type: "model_change", provider: "deepseek", modelId: "deepseek-v4-flash" }),
-			entry({ type: "thinking_level_change", thinkingLevel: "high" }),
 			entry({ type: "active_tools_change", activeToolNames: ["read", "write"] }),
 			userEntry("hi"),
 			assistantEntry([{ type: "text", text: "a" }]),
 		]);
-		expect(records.map((r) => r.kind)).toEqual(["modelChange", "thinkingLevel", "activeTools", "user", "assistant"]);
+		expect(records.map((r) => r.kind)).toEqual(["modelChange", "activeTools", "user", "assistant"]);
 		expect(records[0]).toMatchObject({ kind: "modelChange", provider: "deepseek", modelId: "deepseek-v4-flash" });
-		expect(records[1]).toMatchObject({ kind: "thinkingLevel", thinkingLevel: "high" });
-		expect(records[2]).toMatchObject({ kind: "activeTools", activeToolNames: ["read", "write"] });
+		expect(records[1]).toMatchObject({ kind: "activeTools", activeToolNames: ["read", "write"] });
 	});
 
 	test("compaction and branch_summary fold with summary/tokens/count", () => {

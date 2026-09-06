@@ -136,9 +136,6 @@ export function fold(entries: Entry[]): TrajectoryRecord[] {
 			case "model_change":
 				push({ ...base, kind: "modelChange", provider: entry.provider, modelId: entry.modelId });
 				break;
-			case "thinking_level_change":
-				push({ ...base, kind: "thinkingLevel", thinkingLevel: entry.thinkingLevel });
-				break;
 			case "active_tools_change":
 				push({ ...base, kind: "activeTools", activeToolNames: entry.activeToolNames });
 				break;

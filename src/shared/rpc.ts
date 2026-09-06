@@ -151,7 +151,6 @@ export type TrajectoryRecord =
 			isError: boolean;
 	  })
 	| (TrajectoryBase & { kind: "modelChange"; provider: string; modelId: string })
-	| (TrajectoryBase & { kind: "thinkingLevel"; thinkingLevel: string })
 	| (TrajectoryBase & { kind: "activeTools"; activeToolNames: string[] })
 	| (TrajectoryBase & {
 			kind: "compaction";
@@ -570,7 +569,6 @@ export type AppRPCSchema = __schema<{
 			agent_end: { error?: string; partner: string };
 
 			sandbox_mode_update: {};
-			thinking_level_update: {};
 
 			escalation_update: {};
 

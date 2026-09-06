@@ -23,7 +23,6 @@ export const EVENTS = {
 	compactionEnd: "compaction/end",
 	compactionPrune: "compaction/prune",
 	modelChange: "model_change",
-	thinkingLevelChange: "thinking_level_change",
 	commandRun: "command/run",
 	commandDone: "command/done",
 	contextChanged: "context/changed",

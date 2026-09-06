@@ -2,7 +2,7 @@ import { cp } from "node:fs/promises";
 import type { AgentMessage, CustomEntry, Entry } from "@earendil-works/pi-agent-core";
 import { buildSessionContext, JsonlSessionRepo, Session } from "@earendil-works/pi-agent-core";
 import { type AssistantMessage, type ToolResultMessage, type Usage, uuidv7 } from "@earendil-works/pi-ai";
-import type { RequestTool, SandboxMode, ThinkingLevel, ViewItem } from "../../shared/rpc";
+import type { RequestTool, SandboxMode, ViewItem } from "../../shared/rpc";
 
 export type { ViewItem } from "../../shared/rpc";
 
@@ -107,7 +107,6 @@ export interface SessionScope {
 	appendCompactionSummary(text: string, timestamp: number): Promise<string>;
 	appendCompactionRecord(type: "compaction/start" | "compaction/end" | "compaction/prune", details: Record<string, unknown>, timestamp: number): Promise<void>;
 	appendModelChange(model: { provider: string; modelId?: string }, timestamp: number): Promise<void>;
-	appendThinkingLevelChange(level: ThinkingLevel, timestamp: number): Promise<void>;
 }
 
 export interface SessionStore {
@@ -403,11 +402,6 @@ export function createSessionStore(): SessionStore {
 			async appendModelChange(model, _timestamp) {
 				const state = await stateFor(dir);
 				await state.session.appendEntry({ type: "model_change", id: uuidv7(), provider: model.provider, modelId: model.modelId ?? "" }, "main");
-				await refreshEntries(state);
-			},
-			async appendThinkingLevelChange(level, _timestamp) {
-				const state = await stateFor(dir);
-				await state.session.appendEntry({ type: "thinking_level_change", id: uuidv7(), thinkingLevel: level }, "main");
 				await refreshEntries(state);
 			},
 		};

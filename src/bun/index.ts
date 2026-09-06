@@ -270,7 +270,7 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 	const defaultMode = isSandboxMode(settings.defaultSandboxMode) ? settings.defaultSandboxMode : "workspace-write";
 	const mode = await ensureSandboxMode(dir, defaultMode);
 	const model = await ensureModel(dir);
-	const thinkingLevel = model?.thinkingLevel ?? "high";
+	const modelSelection = model ? { provider: model.provider, ...(model.modelId ? { modelId: model.modelId } : {}) } : null;
 	const readMemory = settings.memoryEnabled === false ? undefined : async (opts: QueryMemoryOptions) => queryMemory(await readMemoryLines(dir), opts);
 
 	const scope = session.scope(dir);
@@ -345,8 +345,9 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 	agent.setStoragePath(storagePath);
 	agent.setWorkspace(workspace);
 	agent.setSandboxMode(mode);
-	agent.setModel(model);
-	agent.setThinkingLevel(thinkingLevel);
+	agent.setModel(modelSelection);
+	agent.context.setThinkingLevel(model?.thinkingLevel ?? "high");
+	agent.setThinkingLevel(agent.context.thinkingLevel);
 
 	if (await promptChangedSinceLastPersist(dir, agent.systemPrompt)) {
 		await scope.appendSystemPrompt(agent.systemPrompt, Date.now());
@@ -925,7 +926,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				} catch (error) {
 					return { ok: false, error: error instanceof Error ? error.message : String(error) };
 				}
-				await persistModel(entry.dir, { ...normalized, thinkingLevel: entry.agent.thinkingLevel });
+				await persistModel(entry.dir, { ...normalized, thinkingLevel: entry.agent.context.thinkingLevel });
 				await entry.scope.appendModelChange(normalized, Date.now()).catch((error) => console.error("model_change append failed:", error));
 				rpc.send.origin_update({ partner: entry.profile.name });
 				return { ok: true };
@@ -934,15 +935,15 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				if (!viewPartner) return { ok: false, error: "no partner selected" };
 				if (!isThinkingLevel(level)) return { ok: false, error: "invalid level" };
 				const entry = await ensureAgent(viewPartner.profile);
-				entry.agent.setThinkingLevel(level);
+				const ctx = entry.agent.context;
+				ctx.setThinkingLevel(level);
 				await persistModel(entry.dir, {
-					provider: entry.agent.model?.provider ?? "deepseek",
-					...(entry.agent.model?.modelId ? { modelId: entry.agent.model.modelId } : {}),
-					thinkingLevel: level,
+					provider: ctx.model?.provider ?? "deepseek",
+					...(ctx.model?.modelId ? { modelId: ctx.model.modelId } : {}),
+					thinkingLevel: ctx.thinkingLevel,
 				});
-				await entry.scope.appendThinkingLevelChange(level, Date.now()).catch((error) => console.error("thinking_level_change append failed:", error));
-				rpc.send.thinking_level_update({});
-				rpc.send.origin_update({ partner: entry.profile.name });
+				entry.agent.setThinkingLevel(ctx.thinkingLevel);
+				rpc.send.context_changed({ partner: entry.profile.name });
 				return { ok: true };
 			},
 			set_sandbox_mode: async ({ mode }) => {

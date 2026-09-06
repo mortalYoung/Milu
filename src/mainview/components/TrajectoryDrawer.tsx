@@ -44,7 +44,6 @@ function markerClass(record: TrajectoryRecord): string | null {
 		case "toolResult":
 			return "mres";
 		case "modelChange":
-		case "thinkingLevel":
 		case "activeTools":
 			return "mchange";
 		case "compaction":
@@ -79,8 +78,6 @@ function chipLabel(record: TrajectoryRecord): string {
 			return "RES";
 		case "modelChange":
 			return "MOD";
-		case "thinkingLevel":
-			return "LVL";
 		case "activeTools":
 			return "TOOLS";
 		case "compaction":
@@ -128,8 +125,6 @@ function rowCaption(record: TrajectoryRecord): string {
 			return firstLine(record.content) || record.toolName;
 		case "modelChange":
 			return `${record.provider} → ${record.modelId}`;
-		case "thinkingLevel":
-			return record.thinkingLevel;
 		case "activeTools":
 			return record.activeToolNames.join(", ");
 		case "compaction":
@@ -169,7 +164,6 @@ function rowCaption(record: TrajectoryRecord): string {
 function rowClass(record: TrajectoryRecord): string {
 	switch (record.kind) {
 		case "modelChange":
-		case "thinkingLevel":
 		case "activeTools":
 			return "change";
 		case "compaction":
@@ -658,12 +652,6 @@ function DrawerContent(props: {
 					<div class="traj-meta">
 						<span>{r.provider}</span>
 						<span>→ {r.modelId}</span>
-					</div>
-				);
-			case "thinkingLevel":
-				return (
-					<div class="traj-meta">
-						<span>{r.thinkingLevel}</span>
 					</div>
 				);
 			case "activeTools":

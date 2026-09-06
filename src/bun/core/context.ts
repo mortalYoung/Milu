@@ -14,6 +14,9 @@ export class Context {
 	sandbox_mode: SandboxMode = "workspace-write";
 	model: { provider: string; modelId?: string } | null = null;
 	thinkingLevel: ThinkingLevel = "high";
+	setThinkingLevel(level: ThinkingLevel): void {
+		this.thinkingLevel = level;
+	}
 	setPartner(partner: PartnerPrompt | null): void {
 		this.partner = partner;
 	}

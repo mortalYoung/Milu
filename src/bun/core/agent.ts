@@ -576,8 +576,8 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			return ctx.thinkingLevel;
 		},
 		setThinkingLevel(level: ThinkingLevel) {
-			ctx.thinkingLevel = level;
-			agent.state.thinkingLevel = level as never;
+			ctx.setThinkingLevel(level);
+			agent.state.thinkingLevel = ctx.thinkingLevel;
 		},
 		get runtimeStats(): SessionStats["runtime"] {
 			const avg = (xs: number[]) => (xs.length > 0 ? xs.reduce((a, b) => a + b, 0) / xs.length : null);
