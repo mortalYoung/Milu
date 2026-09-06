@@ -2,16 +2,15 @@ import { createEffect, createSignal, type JSX } from "solid-js";
 
 export interface PartnerFormData {
 	name: string;
-	responsibilities?: string;
-	tones?: string;
+	persona?: string;
 	workspace?: string;
 }
 
 export function createPartnerForm(opts: { open: () => boolean; existingNames: () => string[]; onConfirm: (data: PartnerFormData) => Promise<string | null> }) {
 	const [name, setName] = createSignal("");
-	const [responsibilities, setResponsibilities] = createSignal("");
-	const [tones, setTones] = createSignal("");
+	const [persona, setPersona] = createSignal("");
 	const [workspace, setWorkspace] = createSignal("");
+	const [caveman, setCaveman] = createSignal(true);
 	const [error, setError] = createSignal<string | null>(null);
 	const [saving, setSaving] = createSignal(false);
 
@@ -20,9 +19,9 @@ export function createPartnerForm(opts: { open: () => boolean; existingNames: ()
 	createEffect(() => {
 		if (opts.open()) {
 			setName("");
-			setResponsibilities("");
-			setTones("");
+			setPersona("");
 			setWorkspace("");
+			setCaveman(true);
 			setError(null);
 		}
 	});
@@ -41,13 +40,12 @@ export function createPartnerForm(opts: { open: () => boolean; existingNames: ()
 		setError(null);
 		const err = await opts.onConfirm({
 			name: name().trim(),
-			responsibilities: responsibilities().trim() || undefined,
-			tones: tones().trim() || undefined,
+			persona: persona().trim() || undefined,
 			workspace: workspace().trim() || undefined,
 		});
 		setSaving(false);
 		if (err) setError(err);
 	};
 
-	return { name, setName, responsibilities, setResponsibilities, tones, setTones, workspace, setWorkspace, error, saving, submit };
+	return { name, setName, persona, setPersona, workspace, setWorkspace, caveman, setCaveman, error, saving, submit };
 }

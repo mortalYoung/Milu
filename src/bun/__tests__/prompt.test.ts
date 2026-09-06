@@ -1,14 +1,12 @@
 /**
  * Unit tests for the system prompt framework: IDENTIFY / PERSONA / WORKSPACE / STORAGE.
- * Coverage: fixed order, runtime injection, role required, Responsibilities/Tones omitted when empty,
- * no-Partner fallback.
+ * Coverage: fixed order, runtime injection, persona omitted when empty, no-Partner fallback.
  */
 import { describe, expect, test } from "bun:test";
 import { buildIdentify, buildPersona, buildSystemPrompt, type PartnerPrompt } from "../core/prompt";
 
 const PARTNER: PartnerPrompt = {
-	responsibilities: "Ship features end-to-end.",
-	tones: "Short and plain.",
+	persona: "Ship features end-to-end.\nSpeak short and plain.",
 };
 
 describe("buildSystemPrompt framework", () => {
@@ -25,19 +23,19 @@ describe("buildSystemPrompt framework", () => {
 		expect(p).not.toMatch(/model|framework|LETTERS/i);
 	});
 
-	test("PERSONA: Responsibilities generated when present (role sentence lives in IDENTIFY, not duplicated)", () => {
+	test("PERSONA: persona generated when present (role sentence lives in IDENTIFY, not duplicated)", () => {
 		const p = buildPersona(PARTNER);
 		expect(p).not.toContain("You are an agent running in Partner App.");
-		expect(p).toContain("## Responsibilities");
 		expect(p).toContain("Ship features end-to-end.");
+		expect(p).toContain("Speak short and plain.");
 	});
 
-	test("PERSONA: Responsibilities empty → section omitted entirely", () => {
+	test("PERSONA: persona empty → section omitted entirely", () => {
 		const p = buildPersona({});
 		expect(p).toBe("");
 	});
 
-	test("PERSONA section appears only when responsibilities exist", () => {
+	test("PERSONA section appears only when persona exists", () => {
 		expect(buildPersona(null)).toBe("");
 		const withPersona = buildSystemPrompt(PARTNER);
 		expect(withPersona).toContain("# PERSONA");
@@ -45,12 +43,10 @@ describe("buildSystemPrompt framework", () => {
 		expect(withoutPersona).not.toContain("# PERSONA");
 	});
 
-	test("PERSONA: Tones generated when present (moved under PERSONA), omitted when empty", () => {
-		const withTones = buildPersona(PARTNER);
-		expect(withTones).toContain("## Tones");
-		expect(withTones).toContain("Short and plain.");
-		const withoutTones = buildPersona({ responsibilities: "Ship features" });
-		expect(withoutTones).not.toContain("## Tones");
+	test("PERSONA no longer splits into Responsibilities / Tones subheadings", () => {
+		const p = buildPersona(PARTNER);
+		expect(p).not.toContain("## Responsibilities");
+		expect(p).not.toContain("## Tones");
 	});
 
 	test("RESPONSE-FORMAT section is gone from the system prompt", () => {

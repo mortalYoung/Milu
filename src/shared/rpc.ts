@@ -486,8 +486,7 @@ export type AppRPCSchema = __schema<{
 				response: {
 					partners: {
 						name: string;
-						responsibilities?: string;
-						tones?: string;
+						persona?: string;
 						createdAt: number;
 						path: string;
 
@@ -506,8 +505,7 @@ export type AppRPCSchema = __schema<{
 			create_partner: {
 				params: {
 					name: string;
-					responsibilities?: string;
-					tones?: string;
+					persona?: string;
 					workspace?: string;
 				};
 				response: {
@@ -516,8 +514,7 @@ export type AppRPCSchema = __schema<{
 
 					profile?: {
 						name: string;
-						responsibilities?: string;
-						tones?: string;
+						persona?: string;
 						createdAt: number;
 						path: string;
 					};
@@ -526,7 +523,7 @@ export type AppRPCSchema = __schema<{
 
 			set_partner: {
 				params: {
-					profile: { name: string; responsibilities?: string; tones?: string } | null;
+					profile: { name: string; persona?: string } | null;
 				};
 				response: { ok: boolean };
 			};

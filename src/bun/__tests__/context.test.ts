@@ -44,16 +44,16 @@ describe("Context lifecycle", () => {
 describe("Context prompt assembly", () => {
 	test("composeSystemPrompt has all sections after setPartner", () => {
 		const ctx = new Context();
-		ctx.setPartner({ responsibilities: "Ship features" });
+		ctx.setPartner({ persona: "Ship features" });
 		const p = ctx.composeSystemPrompt();
 		expect(p).toContain("# IDENTIFY");
 		expect(p).toContain("You are a helpful software engineer assistant");
 		expect(p).toContain("# STORAGE");
 	});
 
-	test("composeSystemPrompt includes PERSONA when responsibilities exist", () => {
+	test("composeSystemPrompt includes PERSONA when persona exists", () => {
 		const ctx = new Context();
-		ctx.setPartner({ responsibilities: "Ship features" });
+		ctx.setPartner({ persona: "Ship features" });
 		const p = ctx.composeSystemPrompt();
 		expect(p).toContain("# PERSONA");
 		expect(p).toContain("Ship features");

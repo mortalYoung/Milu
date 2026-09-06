@@ -6,17 +6,14 @@ import { getPartnerDir, partnerRoot, type Settings } from "./lib/settings";
 // ————— Partner profiles —————
 export interface PartnerProfile {
 	name: string;
-	/** Responsibilities (user-filled, no default). */
-	responsibilities?: string;
-	/** Tones (user-filled, no default). */
-	tones?: string;
+	/** Persona (user-filled, no default): how the partner works and speaks. */
+	persona?: string;
 	createdAt: number;
 }
 
 export interface PartnerInput {
 	name: string;
-	responsibilities?: string;
-	tones?: string;
+	persona?: string;
 }
 
 const NAME_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
@@ -76,8 +73,7 @@ export async function createPartner(settings: Settings, input: PartnerInput): Pr
 	validateName(name);
 	const profile: PartnerProfile = {
 		name,
-		responsibilities: input.responsibilities?.trim() || undefined,
-		tones: input.tones?.trim() || undefined,
+		persona: input.persona?.trim() || undefined,
 		createdAt: Date.now(),
 	};
 	const dir = getPartnerDir(settings, name);

@@ -163,7 +163,7 @@ export function createSession(rpc: RPC) {
 	function select(partner: PartnerItem | null) {
 		setData("selected", partner?.name ?? null);
 
-		const profile = partner ? { name: partner.name, responsibilities: partner.responsibilities, tones: partner.tones } : null;
+		const profile = partner ? { name: partner.name, persona: partner.persona } : null;
 		historyLoading.begin();
 		void Promise.all([
 			// TODO: remove set_partner once every RPC is parameterized by partner name

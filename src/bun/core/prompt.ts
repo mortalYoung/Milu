@@ -1,9 +1,7 @@
 /** Fields required for prompt construction (display fields like name do not enter the prompt). */
 export interface PartnerPrompt {
-	/** Responsibilities, user-filled; omitted when empty. */
-	responsibilities?: string;
-	/** Tones, user-filled; omitted when empty. */
-	tones?: string;
+	/** Persona, user-filled; omitted when empty. */
+	persona?: string;
 }
 
 /** IDENTIFY: one static sentence establishing who you are — no runtime injection (paths/model arrive per-run or not at all). */
@@ -11,15 +9,11 @@ export function buildIdentify(): string {
 	return "# IDENTIFY\nYou are a helpful software engineer assistant.";
 }
 
-/** PERSONA: user-filled Responsibilities + Tones (each omitted when empty). The role sentence lives in IDENTIFY — no duplicate identity statement. */
+/** PERSONA: the user-filled persona (omitted when empty). The role sentence lives in IDENTIFY — no duplicate identity statement. */
 export function buildPersona(partner?: PartnerPrompt | null): string {
-	const responsibilities = partner?.responsibilities?.trim();
-	const tones = partner?.tones?.trim();
-	if (!responsibilities && !tones) return "";
-	const lines = ["# PERSONA"];
-	if (responsibilities) lines.push("", "## Responsibilities", responsibilities);
-	if (tones) lines.push("", "## Tones", tones);
-	return lines.join("\n");
+	const persona = partner?.persona?.trim();
+	if (!persona) return "";
+	return `# PERSONA\n\n${persona}`;
 }
 
 /**

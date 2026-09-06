@@ -15,8 +15,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 export interface PartnerItem {
 	name: string;
-	responsibilities?: string;
-	tones?: string;
+	persona?: string;
 	createdAt: number;
 	/** Absolute path of the partner's storage root. */
 	path: string;
@@ -58,7 +57,7 @@ function previewFor(partner: PartnerItem): string {
 		if (partner.lastMessageKind === "shell") return `$ ${text}`;
 		return text;
 	}
-	return partner.responsibilities?.split("\n").find((l) => l.trim()) ?? "";
+	return partner.persona?.split("\n").find((l) => l.trim()) ?? "";
 }
 
 function PartnerAvatar(props: { partner: PartnerItem; selected: boolean }) {

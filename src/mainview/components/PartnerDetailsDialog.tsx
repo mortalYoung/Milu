@@ -44,23 +44,13 @@ export function PartnerDetailsDialog(props: { partner: PartnerItem | null; onOpe
 							Dear <span class="letter-alias-static">{p()!.name}</span>,
 						</p>
 
-						{/* Body: persona, read on the ruled lines */}
-						{p()!.responsibilities?.trim() ? (
+						{/* Body: the persona, read on the ruled lines */}
+						{p()!.persona?.trim() ? (
 							<div class="letter-lines">
-								<div class="md letter-read" innerHTML={renderMarkdown(p()!.responsibilities!)} />
+								<div class="md letter-read" innerHTML={renderMarkdown(p()!.persona!)} />
 							</div>
 						) : (
 							<p class="letter-lines letter-blank">persona not written</p>
-						)}
-
-						{/* P.S.: tones, further down the sheet */}
-						<span class="letter-ps-label letter-ps-spacer">P.S.</span>
-						{p()!.tones?.trim() ? (
-							<div class="letter-lines">
-								<div class="md letter-read" innerHTML={renderMarkdown(p()!.tones!)} />
-							</div>
-						) : (
-							<p class="letter-lines letter-blank">no P.S.</p>
 						)}
 
 						<Show when={days()}>
