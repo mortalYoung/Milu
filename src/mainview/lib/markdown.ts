@@ -92,6 +92,7 @@ patchLinkTarget(mdPlain);
 /** Cached singleton: markdown-it wired to the shiki highlighter. Built once, reused forever. */
 let mdShiki: MarkdownItType | null = null;
 let mdShikiPromise: Promise<MarkdownItType> | null = null;
+let highlighterPromise: Promise<HighlighterCore> | null = null;
 
 /** Ensure links open in a new tab with noreferrer, like the old hand-rolled renderer. */
 function patchLinkTarget(md: MarkdownItType) {
@@ -107,27 +108,87 @@ function patchLinkTarget(md: MarkdownItType) {
  * Build the shiki-wired markdown-it instance. All shiki modules are dynamic imports so the bundler
  * code-splits them into a lazy chunk — the main bundle only pays for markdown-it + app code.
  */
-async function buildShikiMd(): Promise<MarkdownItType> {
-	const [{ createHighlighterCore }, { createJavaScriptRegexEngine }, { fromHighlighter }, ts, tsx, js, python, html, css, githubLight, githubDark] = await Promise.all([
+async function buildHighlighter(): Promise<HighlighterCore> {
+	const [
+		{ createHighlighterCore },
+		{ createJavaScriptRegexEngine },
+		ts,
+		tsx,
+		js,
+		jsx,
+		python,
+		html,
+		css,
+		json,
+		jsonc,
+		markdown,
+		yaml,
+		bash,
+		sql,
+		toml,
+		ini,
+		diff,
+		xml,
+		githubLight,
+		githubDark,
+	] = await Promise.all([
 		import("shiki/core"),
 		import("shiki/engine/javascript"),
-		import("@shikijs/markdown-it/core"),
 		import("shiki/langs/ts.mjs"),
 		import("shiki/langs/tsx.mjs"),
 		import("shiki/langs/js.mjs"),
+		import("shiki/langs/jsx.mjs"),
 		import("shiki/langs/python.mjs"),
 		import("shiki/langs/html.mjs"),
 		import("shiki/langs/css.mjs"),
+		import("shiki/langs/json.mjs"),
+		import("shiki/langs/jsonc.mjs"),
+		import("shiki/langs/markdown.mjs"),
+		import("shiki/langs/yaml.mjs"),
+		import("shiki/langs/bash.mjs"),
+		import("shiki/langs/sql.mjs"),
+		import("shiki/langs/toml.mjs"),
+		import("shiki/langs/ini.mjs"),
+		import("shiki/langs/diff.mjs"),
+		import("shiki/langs/xml.mjs"),
 		import("shiki/themes/github-light.mjs"),
 		import("shiki/themes/github-dark.mjs"),
 	]);
 
-	const highlighter: HighlighterCore = await createHighlighterCore({
+	const instance = await createHighlighterCore({
 		themes: [githubLight.default, githubDark.default],
-		langs: [ts.default, tsx.default, js.default, python.default, html.default, css.default],
+		langs: [
+			ts.default,
+			tsx.default,
+			js.default,
+			jsx.default,
+			python.default,
+			html.default,
+			css.default,
+			json.default,
+			jsonc.default,
+			markdown.default,
+			yaml.default,
+			bash.default,
+			sql.default,
+			toml.default,
+			ini.default,
+			diff.default,
+			xml.default,
+		],
 		engine: createJavaScriptRegexEngine(),
 	});
-	const plugin = fromHighlighter(highlighter, {
+	return instance;
+}
+
+function getHighlighter(): Promise<HighlighterCore> {
+	highlighterPromise ??= buildHighlighter();
+	return highlighterPromise;
+}
+
+async function buildShikiMd(): Promise<MarkdownItType> {
+	const [{ fromHighlighter }, instance] = await Promise.all([import("@shikijs/markdown-it/core"), getHighlighter()]);
+	const plugin = fromHighlighter(instance, {
 		themes: { light: "github-light", dark: "github-dark" },
 		// Token colors ride light-dark() pairs (see above); the surface comes from the app's
 		// print-tint token (style.css) instead of the themes' own backgrounds.
@@ -148,6 +209,85 @@ function getShikiMd(): Promise<MarkdownItType> {
 		return md;
 	});
 	return mdShikiPromise;
+}
+
+const EXTENSION_LANGS: Record<string, string> = {
+	ts: "ts",
+	mts: "ts",
+	cts: "ts",
+	tsx: "tsx",
+	js: "js",
+	mjs: "js",
+	cjs: "js",
+	jsx: "jsx",
+	py: "python",
+	pyw: "python",
+	html: "html",
+	htm: "html",
+	css: "css",
+	json: "json",
+	jsonc: "jsonc",
+	md: "markdown",
+	mdx: "markdown",
+	markdown: "markdown",
+	yml: "yaml",
+	yaml: "yaml",
+	sh: "bash",
+	bash: "bash",
+	zsh: "bash",
+	sql: "sql",
+	toml: "toml",
+	ini: "ini",
+	cfg: "ini",
+	diff: "diff",
+	patch: "diff",
+	xml: "xml",
+	svg: "xml",
+};
+
+export function languageForPath(path: string): string | null {
+	const base = path.slice(path.lastIndexOf("/") + 1);
+	const dot = base.lastIndexOf(".");
+	if (dot <= 0) return null;
+	return EXTENSION_LANGS[base.slice(dot + 1).toLowerCase()] ?? null;
+}
+
+function escapeHtml(value: string): string {
+	return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+export interface HighlightToken {
+	content: string;
+	htmlStyle?: Record<string, string>;
+}
+
+export interface HighlightLine {
+	tokens: HighlightToken[];
+}
+
+export async function highlightCodeToLines(code: string, lang?: string | null): Promise<HighlightLine[]> {
+	const instance = await getHighlighter();
+	const result = instance.codeToTokens(code, {
+		lang: lang ?? "text",
+		themes: { light: "github-light", dark: "github-dark" },
+		defaultColor: "light-dark()",
+	});
+	return result.tokens.map((line) => ({
+		tokens: line.map((token) => ({ content: token.content, htmlStyle: token.htmlStyle })),
+	}));
+}
+
+export async function highlightCode(code: string, lang?: string | null): Promise<string> {
+	const instance = await getHighlighter();
+	try {
+		return instance.codeToHtml(code, {
+			lang: lang ?? "text",
+			themes: { light: "github-light", dark: "github-dark" },
+			defaultColor: "light-dark()",
+		});
+	} catch {
+		return `<pre class="shiki" style="background-color:var(--color-print-tint)"><code>${escapeHtml(code)}</code></pre>`;
+	}
 }
 
 /**

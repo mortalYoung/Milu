@@ -38,6 +38,7 @@ export interface SettingsData {
 		summarizer?: "local" | "llm";
 		prune?: { thresholdChars?: number; headChars?: number; tailChars?: number };
 	};
+	explorer?: { lineGap?: number };
 }
 
 export interface RuntimeInfo {
@@ -55,6 +56,7 @@ const CATS = [
 	{ id: "skills", label: "Skills" },
 	{ id: "mcp", label: "MCP" },
 	{ id: "webFetch", label: "Web Fetch" },
+	{ id: "explorer", label: "Explorer" },
 	{ id: "compaction", label: "Compaction" },
 	{ id: "permission", label: "Permission" },
 	{ id: "providers", label: "Providers" },
@@ -79,6 +81,7 @@ const DEFAULTS = {
 	memoryEnabled: true,
 	memoryCronEnabled: true,
 	memoryDailyTime: "06:00",
+	explorerLineGap: 0.2,
 };
 
 const EMPTY_CP = { id: "", name: "", baseUrl: "", models: [{ id: "", window: "" }], window: "", maxTokens: "" };
@@ -212,6 +215,7 @@ export function SettingsView() {
 	const [compactionSummaryCap, setCompactionSummaryCap] = createSignal("2000");
 	const [compactionOverflowRetries, setCompactionOverflowRetries] = createSignal("1");
 	const [compactionSummarizer, setCompactionSummarizer] = createSignal<"local" | "llm">("llm");
+	const [explorerLineGap, setExplorerLineGap] = createSignal("0.2");
 	const [instructionsFile, setInstructionsFile] = createSignal("");
 	const [defaultSandboxMode, setDefaultSandboxMode] = createSignal<SandboxMode>("workspace-write");
 	const [theme, setTheme] = createSignal<ThemeMode>("system");
@@ -245,6 +249,7 @@ export function SettingsView() {
 		if (s.compaction?.summaryCapChars !== undefined) setCompactionSummaryCap(String(s.compaction.summaryCapChars));
 		if (s.compaction?.maxOverflowRetries !== undefined) setCompactionOverflowRetries(String(s.compaction.maxOverflowRetries));
 		if (s.compaction?.summarizer !== undefined) setCompactionSummarizer(s.compaction.summarizer);
+		if (s.explorer?.lineGap !== undefined) setExplorerLineGap(String(s.explorer.lineGap));
 	});
 	function updateSkillsDir(i: number, v: string) {
 		setSkillsDirs((prev) => prev.map((d, idx) => (idx === i ? v : d)));
@@ -318,6 +323,9 @@ export function SettingsView() {
 	}
 	if (initial && initial.compaction?.summarizer !== undefined && compactionSummarizer() === "llm") {
 		setCompactionSummarizer(initial.compaction.summarizer);
+	}
+	if (initial && initial.explorer?.lineGap !== undefined && explorerLineGap() === "0.2") {
+		setExplorerLineGap(String(initial.explorer.lineGap));
 	}
 	if (initial && initial.defaultSandboxMode && defaultSandboxMode() !== initial.defaultSandboxMode) {
 		setDefaultSandboxMode(initial.defaultSandboxMode);
@@ -413,6 +421,9 @@ export function SettingsView() {
 				maxOverflowRetries: parsePositiveInt(compactionOverflowRetries(), 1),
 				summarizer: compactionSummarizer(),
 				...(current?.compaction?.prune ? { prune: current.compaction.prune } : {}),
+			},
+			explorer: {
+				lineGap: Number(explorerLineGap()) || DEFAULTS.explorerLineGap,
 			},
 		};
 	};
@@ -1358,6 +1369,37 @@ export function SettingsView() {
 							const next = parsePositiveInt(skillsWatchDelay(), DEFAULTS.skills_watch_delay_ms);
 							setSkillsWatchDelay(String(next));
 							void persist({ ...currentSettings(), skills_watch_delay_ms: next });
+						}}
+						onKeyDown={(e) => {
+							if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
+						}}
+					/>
+				</TextField>
+			),
+		},
+		{
+			id: "explorerLineGap",
+			title: "File preview line gap",
+			desc: "Extra visual spacing between code lines; line-height is 1 + gap.",
+			cats: ["explorer"],
+			modified: () => Number(explorerLineGap()) !== DEFAULTS.explorerLineGap,
+			control: () => (
+				<TextField class="h-[32px] w-[110px] shrink-0 gap-0" value={explorerLineGap()} onChange={setExplorerLineGap}>
+					<TextFieldInput
+						type="number"
+						min={0}
+						max={1}
+						step={0.05}
+						variant="compact"
+						title="File preview line gap"
+						aria-label="File preview line gap"
+						onBlur={() => {
+							const parsed = Number(explorerLineGap());
+							const next = Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULTS.explorerLineGap;
+							setExplorerLineGap(String(next));
+							const saved = settingsData()?.explorer?.lineGap ?? DEFAULTS.explorerLineGap;
+							if (next === saved) return;
+							void persist({ ...currentSettings(), explorer: { lineGap: next } });
 						}}
 						onKeyDown={(e) => {
 							if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();

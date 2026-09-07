@@ -60,6 +60,7 @@ export interface Settings {
 		summarizationModel?: string;
 		prune?: { thresholdChars?: number; headChars?: number; tailChars?: number };
 	};
+	explorer?: { lineGap?: number };
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -78,6 +79,7 @@ const DEFAULT_SETTINGS: Settings = {
 	memoryEnabled: true,
 	memoryCronEnabled: true,
 	memoryDailyTime: "06:00",
+	explorer: { lineGap: 0.2 },
 };
 
 const SETTINGS_PATH = join(homedir(), ".config", "letters", "settings.json");

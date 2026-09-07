@@ -13,6 +13,20 @@ export type CommandKind = "execute" | "leadingInput" | "popupSelect";
 
 export type ChatPreviewKind = "user" | "send_message" | "command" | "skill" | "shell";
 
+export type ExplorerRoot = "workspace" | "storage";
+
+export interface ExplorerEntry {
+	name: string;
+	path: string;
+	kind: "dir" | "file" | "link" | "other";
+	size?: number;
+	mtime?: number;
+	ignored?: boolean;
+	realPath?: string;
+	linkKind?: "dir" | "file" | "other";
+	linkTarget?: string;
+}
+
 export interface CommandDescriptor {
 	name: string;
 	description: string;
@@ -334,6 +348,16 @@ export type AppRPCSchema = __schema<{
 				response: { editors: { id: string; name: string }[] };
 			};
 
+			explorer_children: {
+				params: { name: string; root: ExplorerRoot; path: string };
+				response: { ok: boolean; error?: string; entries?: ExplorerEntry[]; realPath?: string };
+			};
+
+			explorer_read_file: {
+				params: { name: string; root: ExplorerRoot; path: string };
+				response: { ok: boolean; error?: string; content?: string; binary?: boolean; truncated?: boolean; size?: number };
+			};
+
 			get_status: {
 				params: { name: string };
 				response: {
@@ -438,6 +462,7 @@ export type AppRPCSchema = __schema<{
 							summarizationModel?: string;
 							prune?: { thresholdChars?: number; headChars?: number; tailChars?: number };
 						};
+						explorer?: { lineGap?: number };
 					};
 					runtime: {
 						providers: { id: string; configured: boolean; baseUrl?: string; modelCount: number }[];
@@ -480,6 +505,7 @@ export type AppRPCSchema = __schema<{
 							summarizationModel?: string;
 							prune?: { thresholdChars?: number; headChars?: number; tailChars?: number };
 						};
+						explorer?: { lineGap?: number };
 					};
 
 					credentials?: Record<string, string>;

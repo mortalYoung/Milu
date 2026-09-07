@@ -1127,6 +1127,166 @@ body::before {
 		background: var(--color-ink-soft);
 	}
 
+	.explorer-drawer {
+		@apply absolute top-0 right-0 bottom-0 z-20 w-[340px] bg-letter border-l border-hairline flex flex-col py-4;
+	}
+	.explorer-head {
+		@apply flex items-center gap-2 px-4 pb-3 border-b border-hairline;
+	}
+	.explorer-title {
+		@apply font-sans text-[9px] uppercase tracking-[0.2em] text-body-muted;
+	}
+	.explorer-root-toggle {
+		@apply flex-none flex items-center gap-0.5 rounded-[4px] border border-hairline p-[1px] ml-auto;
+	}
+	.explorer-root {
+		@apply font-mono text-[9px] uppercase tracking-[0.12em] text-body-muted rounded-[3px] px-1.5 py-[1px] cursor-pointer bg-transparent transition-colors;
+	}
+	.explorer-root:hover {
+		@apply text-ink;
+	}
+	.explorer-root.on {
+		@apply text-paper bg-ink;
+	}
+	.explorer-close {
+		@apply font-sans text-[15px] leading-none text-body-muted hover:text-ink cursor-pointer bg-transparent border-0 p-0 ml-1;
+	}
+	.explorer-tree {
+		@apply flex-1 min-h-0 overflow-y-auto pt-2;
+	}
+	.explorer-empty {
+		@apply px-4 py-3 font-mono text-[10px] text-muted;
+	}
+	.explorer-node-note {
+		@apply py-1 font-mono text-[10px] text-muted;
+	}
+	.explorer-row {
+		@apply flex items-center gap-1.5 w-full text-left py-[5px] pr-2 bg-transparent font-mono text-[12px] text-ink transition-colors;
+	}
+	.explorer-row:hover {
+		@apply bg-paper-hover;
+	}
+	.explorer-row.selected {
+		@apply bg-paper-hover text-seal;
+	}
+	.explorer-row.ignored .explorer-name,
+	.explorer-row.ignored .explorer-row-icon {
+		color: var(--color-muted);
+		opacity: 0.6;
+	}
+	.explorer-row-icon {
+		@apply shrink-0 text-muted;
+	}
+	.explorer-row.selected .explorer-row-icon {
+		color: var(--color-seal);
+	}
+	.explorer-chevron {
+		@apply shrink-0 text-muted;
+	}
+	.explorer-name {
+		@apply min-w-0 truncate;
+	}
+	.explorer-popover {
+		@apply absolute flex flex-col bg-letter border border-hairline;
+		left: 12px;
+		right: 352px;
+		top: 12px;
+		bottom: 12px;
+		z-index: 25;
+		border-radius: 10px;
+		box-shadow:
+			0 12px 32px color-mix(in srgb, var(--color-ink) 18%, transparent),
+			0 2px 8px color-mix(in srgb, var(--color-ink) 10%, transparent);
+	}
+	.explorer-popover-head {
+		@apply flex items-center gap-2 border-b border-hairline px-4 py-2.5;
+		border-radius: 10px 10px 0 0;
+	}
+	.explorer-popover-path {
+		@apply flex-1 min-w-0 truncate font-mono text-[11px] text-ink-soft;
+	}
+	.explorer-popover-close {
+		@apply shrink-0 size-6 flex items-center justify-center rounded-full text-muted cursor-pointer border-none bg-transparent hover:bg-paper-hover hover:text-ink;
+	}
+	.explorer-popover-note {
+		@apply flex-1 flex items-center justify-center gap-[3px] px-4 py-3 font-mono text-[11px] text-muted;
+	}
+	.explorer-file-body {
+		@apply flex-1 min-h-0 overflow-auto px-4 py-3;
+	}
+	.explorer-file-plain {
+		@apply m-0 whitespace-pre font-mono text-[12px];
+		line-height: var(--explorer-line-height, 1.2);
+	}
+	.explorer-file-highlight pre {
+		@apply m-0 bg-transparent border-0 p-0;
+		line-height: var(--explorer-line-height, 1.2);
+		white-space: pre;
+	}
+	.explorer-file-highlight pre.shiki {
+		background-color: transparent !important;
+	}
+	.explorer-file-highlight code {
+		@apply block font-mono text-[12px];
+		counter-reset: line;
+		white-space: pre;
+	}
+	.explorer-file-highlight .line {
+		display: block;
+		position: relative;
+		padding-left: 4ch;
+		min-height: var(--explorer-line-height-em, 1.2em);
+		line-height: var(--explorer-line-height, 1.2);
+		white-space: pre;
+	}
+	.explorer-file-highlight .line::before {
+		content: counter(line);
+		counter-increment: line;
+		position: absolute;
+		left: 0;
+		top: 0;
+		width: 3ch;
+		color: var(--color-muted);
+		text-align: right;
+		padding-right: 1ch;
+		user-select: none;
+	}
+	.explorer-code-lines {
+		@apply min-w-max;
+	}
+	.explorer-code-line {
+		@apply flex items-start whitespace-pre font-mono text-[12px];
+		line-height: var(--explorer-line-height, 1.2);
+		min-height: var(--explorer-line-height-em, 1.2em);
+	}
+	.explorer-code-line.selected {
+		background: var(--color-paper-hover);
+	}
+	.explorer-code-fold {
+		@apply flex-none size-[18px] flex items-center justify-center rounded-[3px] border-0 bg-transparent p-0 text-muted transition-colors;
+		opacity: 0;
+	}
+	.explorer-code-line:hover .explorer-code-fold:not(.empty),
+	.explorer-code-line.selected .explorer-code-fold:not(.empty) {
+		opacity: 1;
+	}
+	.explorer-code-fold:not(.empty):hover {
+		@apply bg-paper-hover text-ink;
+	}
+	.explorer-code-no {
+		@apply flex-none w-[3.5ch] text-right pr-[1ch] border-0 bg-transparent p-0 font-mono text-[12px] text-muted select-none cursor-pointer transition-colors;
+	}
+	.explorer-code-no:hover {
+		@apply text-ink;
+	}
+	.explorer-code-text {
+		@apply flex-1 min-w-0 whitespace-pre font-mono text-[12px];
+		line-height: var(--explorer-line-height, 1.2);
+	}
+	.explorer-popover-foot {
+		@apply border-t border-hairline px-4 py-2 font-mono text-[9px] uppercase tracking-[0.12em] text-muted;
+	}
+
 	.traj-drawer {
 		@apply absolute top-0 right-0 bottom-0 z-20 w-[440px] max-w-[72vw] bg-letter border-l border-hairline flex flex-col py-4;
 	}

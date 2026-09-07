@@ -37,6 +37,7 @@ import { applyToolResultPrunes, planToolResultPrunes } from "./core/tool-result-
 import { aggregateUsage, dedupeRequestHeaders, fold, lastUsage } from "./core/trajectory";
 import { deleteApiKey, getApiKey, loadCredentials, setApiKey } from "./lib/credentials";
 import { ensureModel, ensureSandboxMode, ensureStoragePath, ensureWorkspace, hasInvalidPersistedWorkspace, isThinkingLevel } from "./lib/ensure";
+import { listChildren, readFilePreview } from "./lib/explorer";
 import { listInstalledEditors, openInCodeEditor } from "./lib/open-in-editor";
 import {
 	partnerDirFor,
@@ -1304,6 +1305,32 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 			list_editors: async () => ({
 				editors: listInstalledEditors().map((e) => ({ id: e.id, name: e.name })),
 			}),
+
+			explorer_children: async ({ name, root, path }) => {
+				const entry = await agents.get(name);
+				if (!entry) return { ok: false as const, error: "no partner selected" };
+				const rootPath = root === "workspace" ? entry.agent.workspacePath : entry.agent.storagePath;
+				if (!rootPath) return { ok: false as const, error: root === "workspace" ? "workspace not set" : "storage not set" };
+				try {
+					const result = await listChildren(rootPath, path);
+					return { ok: true as const, entries: result.entries, realPath: result.realPath };
+				} catch (error) {
+					return { ok: false as const, error: error instanceof Error ? error.message : String(error) };
+				}
+			},
+
+			explorer_read_file: async ({ name, root, path }) => {
+				const entry = await agents.get(name);
+				if (!entry) return { ok: false as const, error: "no partner selected" };
+				const rootPath = root === "workspace" ? entry.agent.workspacePath : entry.agent.storagePath;
+				if (!rootPath) return { ok: false as const, error: root === "workspace" ? "workspace not set" : "storage not set" };
+				try {
+					const preview = await readFilePreview(rootPath, path);
+					return { ok: true as const, content: preview.content, binary: preview.binary, truncated: preview.truncated, size: preview.size };
+				} catch (error) {
+					return { ok: false as const, error: error instanceof Error ? error.message : String(error) };
+				}
+			},
 
 			skill_get: async ({ name }) => {
 				const target = viewPartner;
