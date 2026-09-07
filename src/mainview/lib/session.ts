@@ -35,6 +35,7 @@ export function createSession(rpc: RPC) {
 	const historyLoading = createInFlightBoolean();
 
 	let refreshPromise: { name: string | null; promise: Promise<void> } | null = null;
+	let partnersRefreshSeq = 0;
 
 	function resetOrigin() {
 		setData("origin", {
@@ -154,7 +155,9 @@ export function createSession(rpc: RPC) {
 	}
 
 	async function refreshPartners() {
+		const seq = ++partnersRefreshSeq;
 		const { partners: list } = await rpc.request.list_partners({});
+		if (seq !== partnersRefreshSeq) return;
 		setData("partners", list);
 
 		if (data.selected != null && !list.some((p) => p.name === data.selected)) select(null);

@@ -114,9 +114,13 @@ function WorkspaceControllers() {
 
 		if (partner === session.data.selected) {
 			void session.mutate.refreshHistory();
-			void session.mutate.refreshPartners();
+			void session.mutate.refreshPartners().then(
+				() => status.releaseTurn(partner),
+				() => status.releaseTurn(partner),
+			);
 		} else {
 			await session.mutate.refreshPartners();
+			status.releaseTurn(partner);
 			const p = session.data.partners.find((x) => x.name === partner);
 			const last = p?.lastMessageKind === "send_message" ? p.lastMessage : undefined;
 			toast.push(

@@ -55,6 +55,10 @@ export function createAgentStatus(rpc: RPC) {
 	}
 
 	function endTurn(partner: string) {
+		setWriting({ [partner]: false });
+	}
+
+	function releaseTurn(partner: string) {
 		setWriting((current) => {
 			if (!(partner in current)) return current;
 			const next = { ...current };
@@ -73,5 +77,6 @@ export function createAgentStatus(rpc: RPC) {
 		mutateThinkingLevel,
 		beginTurn,
 		endTurn,
+		releaseTurn,
 	};
 }
