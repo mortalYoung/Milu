@@ -23,6 +23,7 @@ import {
 	type CommandRunEventData,
 	type ContextChangedEventData,
 	EVENTS,
+	type McpChangedEventData,
 	type MemoryRunEndEventData,
 	type MemoryRunStartEventData,
 	type RetryScheduledEventData,
@@ -96,6 +97,7 @@ export interface SessionScope {
 	appendMemoryRunEnd(details: MemoryRunEndEventData, timestamp: number): Promise<void>;
 	appendContextChanged(details: ContextChangedEventData, timestamp: number): Promise<void>;
 	appendInstructionsChanged(agentMd: string | null, timestamp: number): Promise<void>;
+	appendMcpChanged(details: McpChangedEventData, timestamp: number): Promise<void>;
 	lastContextChanged(): Promise<{ data: ContextChangedEventData; timestamp: number } | null>;
 	appendSkillRun(details: SkillRunEventData, timestamp: number): Promise<void>;
 	appendSkillDone(details: SkillDoneEventData, timestamp: number): Promise<void>;
@@ -348,6 +350,9 @@ export function createSessionStore(): SessionStore {
 			},
 			async appendInstructionsChanged(agentMd, timestamp) {
 				await appendCustom(dir, EVENTS.instructionsChanged, { agentMd, timestamp });
+			},
+			async appendMcpChanged(details, timestamp) {
+				await appendCustom(dir, EVENTS.mcpChanged, { ...details, timestamp });
 			},
 			async lastContextChanged() {
 				const state = await stateFor(dir);

@@ -10,7 +10,7 @@ import { Permission, policyFor } from "../permission";
 import type { SessionScope } from "../persist";
 import type { ContextChangedEventData } from "../persist/events";
 import type { SkillsService } from "../skills/types";
-import { createTools } from "../tools";
+import { createTools, type McpAccess } from "../tools";
 import type { PartnerModel } from "./agent-config";
 import { convertToLlm, resolveModel, STREAM_FN } from "./agent-config";
 import { Context } from "./context";
@@ -54,6 +54,7 @@ export interface AgentHandle {
 	setStoragePath: (path: string | null) => void;
 	setWorkspace: (path: string | null) => void;
 	notifyContextChange: () => Promise<boolean>;
+	notifySystemReminder: (content: string) => void;
 }
 
 export interface AgentDeps {
@@ -69,6 +70,7 @@ export interface AgentDeps {
 	partnerDir?: string;
 	grantedSkills?: () => Promise<string[]>;
 	skills?: SkillsService;
+	mcp?: McpAccess;
 	onContextOverflow?: () => Promise<boolean>;
 }
 
@@ -185,6 +187,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		permission,
 		...(skills ? { skills } : {}),
 		...(deps.readMemory ? { readMemory: deps.readMemory } : {}),
+		...(deps.mcp ? { mcp: deps.mcp } : {}),
 	});
 	agent.state.systemPrompt = ctx.composeSystemPrompt();
 
@@ -659,6 +662,9 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			if (!(await syncContextChanged())) return false;
 			agent.state.messages.push({ role: "user", content: contextChangedText(currentContextSnapshot()), timestamp: Date.now() });
 			return true;
+		},
+		notifySystemReminder(content: string) {
+			agent.state.messages.push({ role: "user", content, timestamp: Date.now() });
 		},
 		invalidateSkillCatalog() {
 			skillCatalogDirty = true;

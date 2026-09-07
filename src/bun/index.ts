@@ -31,6 +31,7 @@ import { Context } from "./core/context";
 import { projectSnapshot } from "./core/context-project";
 import { type MemoryRecord, organizeMemory, type QueryMemoryOptions, queryMemory, readMemoryLines } from "./core/memory";
 import { loadRuntimeStats, saveRuntimeStats } from "./core/runtime-stats";
+import { mcpChangedText } from "./core/surface";
 import { applyToolResultPrunes, planToolResultPrunes } from "./core/tool-result-pruner";
 import { aggregateUsage, dedupeRequestHeaders, fold, lastUsage } from "./core/trajectory";
 import { deleteApiKey, getApiKey, loadCredentials, setApiKey } from "./lib/credentials";
@@ -39,16 +40,20 @@ import { listInstalledEditors, openInCodeEditor } from "./lib/open-in-editor";
 import {
 	partnerDirFor,
 	persistModel,
+	persistPartnerGrantedMcp,
 	persistPartnerGrantedSkills,
 	persistPartnerReadAt,
 	persistSandboxMode,
 	persistWorkspace,
 	promptChangedSinceLastPersist,
+	readPartnerGrantedMcp,
 	readPartnerGrantedSkills,
 	readPartnerReadAt,
 	recordPrompt,
 } from "./lib/partner-files";
-import { commandsDir, getPartnerDir, loadSettings, type Settings, saveSettings, sendMessageIntervalMs } from "./lib/settings";
+import { commandsDir, DEFAULT_MCP_CONFIG_PATH, getPartnerDir, loadSettings, type Settings, saveSettings, sendMessageIntervalMs } from "./lib/settings";
+import { loadMcpConfig, saveMcpConfig } from "./mcp/config";
+import { McpManager } from "./mcp/manager";
 import { copyPartner, createPartner, deletePartner, listPartners, PartnerError, type PartnerInput, promotePartner } from "./partners";
 import type { EscalationDecision, EscalationRequest, SandboxMode } from "./permission";
 import { isSandboxMode, SandboxManager, validateWorkspace } from "./permission";
@@ -58,7 +63,7 @@ import { scanSkillsRoot } from "./skills/filesystem";
 import { SKILL_NAME_RE } from "./skills/frontmatter";
 import { getSkill, listSkills } from "./skills/registry";
 import type { SkillsService } from "./skills/types";
-import { runEscalatedBash } from "./tools";
+import { type McpAccess, type McpServerSummary, runEscalatedBash } from "./tools";
 
 await loadCredentials();
 const startupSettings = await loadSettings();
@@ -66,6 +71,8 @@ for (const def of startupSettings.customProviders ?? []) registerCustomProvider(
 
 const session = createSessionStore();
 const sandbox = new SandboxManager();
+const mcpManager = new McpManager();
+await mcpManager.reload();
 
 const commandRegistry = createCommandRegistry();
 {
@@ -272,6 +279,14 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 	const model = await ensureModel(dir);
 	const modelSelection = model ? { provider: model.provider, ...(model.modelId ? { modelId: model.modelId } : {}) } : null;
 	const readMemory = settings.memoryEnabled === false ? undefined : async (opts: QueryMemoryOptions) => queryMemory(await readMemoryLines(dir), opts);
+	const mcpAccess: McpAccess = {
+		list: () => listMcpForPartner(dir),
+		call: async (server, tool, args, signal) => {
+			const granted = await readPartnerGrantedMcp(dir);
+			if (!granted.includes(server)) throw new Error(`MCP server "${server}" is not authorized for this partner`);
+			return mcpManager.callTool(server, tool, args, signal);
+		},
+	};
 
 	const scope = session.scope(dir);
 	const agent = createAgent(
@@ -295,6 +310,7 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 			partnerDir: dir,
 			grantedSkills: () => readPartnerGrantedSkills(dir),
 			skills: skillsService,
+			mcp: mcpAccess,
 			onContextOverflow: async () => {
 				const target = await agents.get(profile.name);
 				if (!target) return false;
@@ -850,6 +866,16 @@ async function promotePartnerRpc(name: string) {
 	}
 }
 
+async function listMcpForPartner(dir: string): Promise<McpServerSummary[]> {
+	const granted = await readPartnerGrantedMcp(dir);
+	const resolved = await mcpManager.resolve(granted);
+	return resolved.map((server) => ({
+		name: server.name,
+		tools: server.tools.map((tool) => ({ name: tool.name, ...(tool.description ? { description: tool.description } : {}) })),
+		...(server.error ? { error: server.error } : {}),
+	}));
+}
+
 const rpc = BrowserView.defineRPC<AppRPCSchema>({
 	handlers: {
 		requests: {
@@ -1398,6 +1424,95 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					return { ok: true };
 				} catch (error) {
 					console.error("update_settings failed:", error);
+					return { ok: false, error: error instanceof Error ? error.message : String(error) };
+				}
+			},
+			mcp_get_config: async () => {
+				const settings = await loadSettings();
+				return { config: await loadMcpConfig(), configFile: settings.mcp_config_path?.trim() || DEFAULT_MCP_CONFIG_PATH };
+			},
+			mcp_save_options: async ({ options }) => {
+				try {
+					const settings = await loadSettings();
+					if (options.configFile?.trim()) {
+						settings.mcp_config_path = options.configFile.trim();
+						await saveSettings(settings);
+					}
+					const config = await loadMcpConfig();
+					const next = {
+						...config,
+						...(options.idleTimeoutSec != null ? { idleTimeoutSec: options.idleTimeoutSec } : {}),
+						...(options.defaultLifecycle ? { defaultLifecycle: options.defaultLifecycle } : {}),
+						...(options.maxBufferSize != null ? { maxBufferSize: options.maxBufferSize } : {}),
+					};
+					await saveMcpConfig(next);
+					await mcpManager.reload();
+					return { ok: true };
+				} catch (error) {
+					console.error("mcp_save_options failed:", error);
+					return { ok: false, error: error instanceof Error ? error.message : String(error) };
+				}
+			},
+			mcp_save_servers: async ({ servers }) => {
+				try {
+					if (servers.some((server) => !server.name || !server.transport?.command)) return { ok: false, error: "Invalid MCP server entry" };
+					const config = await loadMcpConfig();
+					const next = { ...config, servers };
+					await saveMcpConfig(next);
+					await mcpManager.reload();
+					return { ok: true };
+				} catch (error) {
+					console.error("mcp_save_servers failed:", error);
+					return { ok: false, error: error instanceof Error ? error.message : String(error) };
+				}
+			},
+			mcp_list: async () => {
+				const settings = await loadSettings();
+				const profiles = await listPartners(settings);
+				const statuses = mcpManager.statuses();
+				const byName = new Map(statuses.map((status) => [status.name, status]));
+				const servers = await Promise.all(
+					mcpManager.listServers().map(async (server) => {
+						const grantedPartners: string[] = [];
+						for (const profile of profiles) {
+							const grants = await readPartnerGrantedMcp(getPartnerDir(settings, profile.name));
+							if (grants.includes(server.name)) grantedPartners.push(profile.name);
+						}
+						const status = byName.get(server.name);
+						return {
+							...server,
+							lifecycle: status?.lifecycle ?? server.lifecycle ?? "lazy",
+							state: status?.state ?? "stopped",
+							toolCount: status?.toolCount ?? 0,
+							...(status?.error ? { error: status.error } : {}),
+							grantedPartners,
+						};
+					}),
+				);
+				return { servers };
+			},
+			mcp_set_partners: async ({ name, partners }) => {
+				try {
+					const settings = await loadSettings();
+					const profiles = await listPartners(settings);
+					const target = new Set(partners);
+					for (const profile of profiles) {
+						const dir = getPartnerDir(settings, profile.name);
+						const current = await readPartnerGrantedMcp(dir);
+						const adding = target.has(profile.name) && !current.includes(name);
+						const removing = !target.has(profile.name) && current.includes(name);
+						const next = adding ? [...current, name] : removing ? current.filter((server) => server !== name) : current;
+						if (adding || removing) {
+							await persistPartnerGrantedMcp(dir, next);
+							const event = { server: name, change: adding ? ("added" as const) : ("removed" as const), granted: next };
+							await session.scope(dir).appendMcpChanged(event, Date.now());
+							const entry = await agents.get(profile.name);
+							if (entry) (await entry).agent.notifySystemReminder(mcpChangedText(event));
+						}
+					}
+					return { ok: true };
+				} catch (error) {
+					console.error("mcp_set_partners failed:", error);
 					return { ok: false, error: error instanceof Error ? error.message : String(error) };
 				}
 			},

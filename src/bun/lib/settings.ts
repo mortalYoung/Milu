@@ -47,6 +47,7 @@ export interface Settings {
 	memoryCronEnabled?: boolean;
 	memoryDailyTime?: string;
 	commands_path?: string;
+	mcp_config_path?: string;
 	retry?: { maxRetries?: number; baseDelayMs?: number };
 	webFetch?: { timeoutMs?: number; maxBytes?: number; maxChars?: number; userAgent?: string };
 	compaction?: {
@@ -66,6 +67,7 @@ const DEFAULT_SETTINGS: Settings = {
 	detect_instructions_file: "AGENTS.md",
 	defaultSandboxMode: "workspace-write",
 	commands_path: "~/.config/letters/commands",
+	mcp_config_path: "~/.config/letters/mcp.json",
 	theme: "system",
 	toastPlacement: "bottomcenter",
 	toastDurationMs: 4000,
@@ -121,6 +123,8 @@ export function getPartnerDir(settings: Settings, name: string): string {
 }
 
 const DEFAULT_COMMANDS_PATH = "~/.config/letters/commands";
+
+export const DEFAULT_MCP_CONFIG_PATH = "~/.config/letters/mcp.json";
 
 export function commandsDir(settings: Settings): string {
 	return expandHome(settings.commands_path?.trim() ? settings.commands_path : DEFAULT_COMMANDS_PATH);

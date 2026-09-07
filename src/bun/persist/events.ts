@@ -99,6 +99,13 @@ export interface InstructionsChangedEventData {
 	agentMd: string | null;
 }
 
+export interface McpChangedEventData {
+	server: string;
+	change: "added" | "removed";
+	granted: string[];
+	timestamp?: number;
+}
+
 export type MemoryRunEndReason = "completed" | "attempts-exhausted" | "error" | "interrupted";
 
 export interface MemoryRunStartEventData {

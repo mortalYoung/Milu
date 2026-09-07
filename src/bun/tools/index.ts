@@ -15,6 +15,23 @@ export interface ToolDeps {
 	permission?: Permission;
 	skills?: { list(): Promise<SkillSummary[]>; get(name: string): Promise<SkillDefinition | undefined> };
 	readMemory?: (opts: QueryMemoryOptions) => Promise<MemoryRecord[]>;
+	mcp?: McpAccess;
+}
+
+export interface McpToolSummary {
+	name: string;
+	description?: string;
+}
+
+export interface McpServerSummary {
+	name: string;
+	tools: McpToolSummary[];
+	error?: string;
+}
+
+export interface McpAccess {
+	list(): Promise<McpServerSummary[]>;
+	call(server: string, tool: string, args: unknown, signal?: AbortSignal): Promise<{ content: string; isError: boolean }>;
 }
 
 const MAX_OUTPUT_CHARS = 50 * 1024;
@@ -209,6 +226,63 @@ function readMemoryTool(deps: ToolDeps) {
 	});
 }
 
+const mcpListSchema = Type.Object({});
+type McpListDetails = { ok: boolean; error?: string };
+
+function mcpListTool(deps: ToolDeps): AgentTool<typeof mcpListSchema, McpListDetails> {
+	return {
+		name: "mcp_list",
+		label: "MCP List",
+		description: "List MCP servers authorized for this partner and the tools they expose. Use before mcp_call to discover available tools.",
+		parameters: mcpListSchema,
+		async execute(): Promise<{ content: { type: "text"; text: string }[]; details: McpListDetails }> {
+			if (!deps.mcp) return { content: [{ type: "text", text: "MCP is not available in this session." }], details: { ok: false, error: "unavailable" } };
+			try {
+				const servers = await deps.mcp.list();
+				if (servers.length === 0) return { content: [{ type: "text", text: "No MCP servers are authorized for this partner." }], details: { ok: true } };
+				const text = servers
+					.map((server) => {
+						const head = `## ${server.name}`;
+						if (server.error) return `${head}\n  error: ${server.error}`;
+						if (server.tools.length === 0) return `${head}\n  (no tools)`;
+						return `${head}\n` + server.tools.map((tool) => `- ${tool.name}${tool.description ? `: ${tool.description}` : ""}`).join("\n");
+					})
+					.join("\n\n");
+				return { content: [{ type: "text", text }], details: { ok: true } };
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return { content: [{ type: "text", text: `mcp_list failed: ${message}` }], details: { ok: false, error: message } };
+			}
+		},
+	};
+}
+
+const mcpCallSchema = Type.Object({
+	server: Type.String({ description: "MCP server name (from mcp_list)" }),
+	tool: Type.String({ description: "Tool name on that server (from mcp_list)" }),
+	arguments: Type.Optional(Type.Record(Type.String(), Type.Any(), { description: "Tool arguments" })),
+});
+type McpCallDetails = { ok: boolean; isError: boolean; error?: string };
+
+function mcpCallTool(deps: ToolDeps): AgentTool<typeof mcpCallSchema, McpCallDetails> {
+	return {
+		name: "mcp_call",
+		label: "MCP Call",
+		description: "Call a tool on an authorized MCP server. Run mcp_list first to discover available servers and tools.",
+		parameters: mcpCallSchema,
+		async execute(_toolCallId, params, signal) {
+			if (!deps.mcp) return { content: [{ type: "text", text: "MCP is not available in this session." }], details: { ok: false, isError: true, error: "unavailable" } };
+			try {
+				const result = await deps.mcp.call(params.server, params.tool, params.arguments, signal);
+				return { content: [{ type: "text", text: result.content || "(no output)" }], details: { ok: !result.isError, isError: result.isError } };
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return { content: [{ type: "text", text: `mcp_call failed: ${message}` }], details: { ok: false, isError: true, error: message } };
+			}
+		},
+	};
+}
+
 export function createTools(deps: ToolDeps): AgentTool[] {
 	const env = createExecutionEnv("", deps.permission);
 	return [
@@ -219,6 +293,8 @@ export function createTools(deps: ToolDeps): AgentTool[] {
 		skillTool(deps),
 		webFetchTool(),
 		readMemoryTool(deps),
+		mcpListTool(deps),
+		mcpCallTool(deps),
 	];
 }
 

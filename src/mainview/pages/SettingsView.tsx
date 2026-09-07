@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createSignal, For, Index, indexArray, type JSX, Show } from "solid-js";
 import type { CustomModel, CustomProvider, SandboxMode, ThemeMode, ToastPlacement } from "../../shared/rpc";
 import { Button } from "../components/Button";
+import { McpSettingsPanel } from "../components/McpSettingsPanel";
 import { PickFile } from "../components/PickFile";
 import { Select } from "../components/ui/select";
 import { Switch as SwitchToggle } from "../components/ui/switch";
@@ -52,6 +53,7 @@ export interface SaveResult {
 const CATS = [
 	{ id: "general", label: "General" },
 	{ id: "skills", label: "Skills" },
+	{ id: "mcp", label: "MCP" },
 	{ id: "webFetch", label: "Web Fetch" },
 	{ id: "compaction", label: "Compaction" },
 	{ id: "permission", label: "Permission" },
@@ -1530,7 +1532,7 @@ export function SettingsView() {
 					<Show when={!searching()}>
 						<For each={CATS}>
 							{(cat) => (
-								<Show when={tab() === cat.id && cat.id !== "providers"}>
+								<Show when={tab() === cat.id && cat.id !== "providers" && cat.id !== "mcp"}>
 									<div>
 										<div class="mb-3 font-serif text-[16px] font-medium text-ink">{cat.label}</div>
 										<div class="divide-y divide-hairline">
@@ -1771,6 +1773,9 @@ export function SettingsView() {
 									</Show>
 								</div>
 							</div>
+						</Show>
+						<Show when={tab() === "mcp"}>
+							<McpSettingsPanel />
 						</Show>
 					</Show>
 				</div>

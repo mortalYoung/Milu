@@ -1,6 +1,7 @@
 import type { Entry } from "@earendil-works/pi-agent-core";
 import type { ElectrobunRPCSchema } from "electrobun/main";
 import type { CustomModel, CustomProvider, ThemeMode, ToastPlacement } from "../bun/lib/settings";
+import type { McpConfig, McpLifecycle, McpServerConfig } from "../bun/mcp/types";
 import type { SandboxMode } from "../bun/permission/types";
 import type { SurfaceNode } from "./surface";
 
@@ -478,6 +479,47 @@ export type AppRPCSchema = __schema<{
 
 					credentials?: Record<string, string>;
 				};
+				response: { ok: boolean; error?: string };
+			};
+
+			mcp_get_config: {
+				params: {};
+				response: { config: McpConfig; configFile: string };
+			};
+
+			mcp_save_options: {
+				params: {
+					options: {
+						configFile?: string;
+						idleTimeoutSec?: number;
+						defaultLifecycle?: McpLifecycle;
+						maxBufferSize?: number;
+					};
+				};
+				response: { ok: boolean; error?: string };
+			};
+
+			mcp_save_servers: {
+				params: { servers: McpServerConfig[] };
+				response: { ok: boolean; error?: string };
+			};
+
+			mcp_list: {
+				params: {};
+				response: {
+					servers: Array<
+						McpServerConfig & {
+							state: "stopped" | "connecting" | "connected" | "error";
+							toolCount: number;
+							error?: string;
+							grantedPartners: string[];
+						}
+					>;
+				};
+			};
+
+			mcp_set_partners: {
+				params: { name: string; partners: string[] };
 				response: { ok: boolean; error?: string };
 			};
 

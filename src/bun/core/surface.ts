@@ -15,7 +15,7 @@ import type { Surface } from "../../shared/surface";
 
 export { applyReplace, foldSurface, isSurfaceEntry, SurfaceError, surfaceNodeIds };
 
-import { type ContextChangedEventData, EVENTS } from "../persist/events";
+import { type ContextChangedEventData, EVENTS, type McpChangedEventData } from "../persist/events";
 
 export function deriveMessages(entries: Entry[], surface: Surface): AgentMessage[] {
 	return dropDanglingTurn(projectChain(entries, surface));
@@ -45,6 +45,12 @@ export function contextChangedText(data: ContextChangedEventData): string {
 export function instructionsChangedText(agentMd: string | null): string {
 	if (agentMd) return `<system_reminder>Workspace instructions:\n\n${agentMd}</system_reminder>`;
 	return `<system_reminder>Workspace cleared; file operations now fall back to storage.</system_reminder>`;
+}
+
+export function mcpChangedText(data: McpChangedEventData): string {
+	const granted = data.granted.length > 0 ? data.granted.join(", ") : "none";
+	const action = data.change === "added" ? `MCP server "${data.server}" is now authorized` : `MCP server "${data.server}" is no longer authorized`;
+	return `<system_reminder>${action}. Authorized servers: ${granted}. Use mcp_list to see available tools and mcp_call to invoke one.</system_reminder>`;
 }
 
 export function deriveEventMessage(entry: Entry): AgentMessage | null {
@@ -97,6 +103,18 @@ export function deriveEventMessage(entry: Entry): AgentMessage | null {
 		return {
 			role: "user",
 			content: typeof data.text === "string" ? data.text : "",
+			timestamp: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
+		} as AgentMessage;
+	}
+	if (entry.type === "custom" && entry.customType === EVENTS.mcpChanged) {
+		const data = (entry.data ?? {}) as Partial<McpChangedEventData> & { timestamp?: unknown };
+		return {
+			role: "user",
+			content: mcpChangedText({
+				server: typeof data.server === "string" ? data.server : "",
+				change: data.change === "removed" ? "removed" : "added",
+				granted: Array.isArray(data.granted) ? data.granted.filter((s): s is string => typeof s === "string") : [],
+			}),
 			timestamp: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
 		} as AgentMessage;
 	}
