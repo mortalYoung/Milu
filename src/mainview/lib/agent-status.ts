@@ -55,7 +55,12 @@ export function createAgentStatus(rpc: RPC) {
 	}
 
 	function endTurn(partner: string) {
-		setWriting({ [partner]: false });
+		setWriting((current) => {
+			if (!(partner in current)) return current;
+			const next = { ...current };
+			delete next[partner];
+			return next;
+		});
 	}
 
 	return {
