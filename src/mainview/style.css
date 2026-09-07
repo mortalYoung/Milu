@@ -1287,6 +1287,125 @@ body::before {
 		@apply border-t border-hairline px-4 py-2 font-mono text-[9px] uppercase tracking-[0.12em] text-muted;
 	}
 
+	.git-drawer {
+		@apply absolute top-0 right-0 bottom-0 z-20 w-[360px] bg-letter border-l border-hairline flex flex-col py-4;
+	}
+	.git-head {
+		@apply flex items-center gap-2 px-4 pb-3 border-b border-hairline;
+	}
+	.git-title {
+		@apply font-sans text-[9px] uppercase tracking-[0.2em] text-body-muted;
+	}
+	.git-root {
+		@apply ml-auto min-w-0 truncate font-mono text-[10px] text-muted;
+	}
+	.git-refresh,
+	.git-close {
+		@apply shrink-0 size-6 flex items-center justify-center rounded-full text-muted cursor-pointer border-none bg-transparent hover:bg-paper-hover hover:text-ink;
+	}
+	.git-refresh.loading {
+		@apply cursor-default;
+		animation: git-spin 0.8s linear infinite;
+	}
+	@keyframes git-spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+	.git-body {
+		@apply flex-1 min-h-0 overflow-y-auto pt-2;
+	}
+	.git-empty {
+		@apply px-4 py-3 font-mono text-[10px] text-muted;
+	}
+	.git-group-title {
+		@apply flex items-center gap-1.5 px-4 pt-2 pb-1 font-sans text-[9px] uppercase tracking-[0.14em] text-muted;
+	}
+	.git-group-count {
+		@apply font-mono text-[9px] text-seal;
+	}
+	.git-row {
+		@apply flex w-full items-center gap-2 px-4 py-[4px] text-left font-mono text-[11px] text-ink transition-colors;
+		border: 0;
+		background: transparent;
+	}
+	.git-row:hover {
+		@apply bg-paper-hover;
+	}
+	.git-row.selected {
+		@apply bg-paper-hover;
+	}
+	.git-status {
+		@apply flex-none w-[18px] text-center text-[10px] font-bold;
+	}
+	.git-status.m {
+		color: var(--color-seal);
+	}
+	.git-status.a {
+		color: #1a7f37;
+	}
+	.git-status.d {
+		color: #cf222e;
+	}
+	.git-status.r {
+		color: #8250df;
+	}
+	.git-status.u {
+		color: var(--color-muted);
+	}
+	.git-path {
+		@apply min-w-0 truncate;
+	}
+	.git-popover {
+		@apply absolute flex flex-col bg-letter border border-hairline;
+		left: 12px;
+		right: 372px;
+		top: 12px;
+		bottom: 12px;
+		z-index: 25;
+		border-radius: 10px;
+		box-shadow:
+			0 12px 32px color-mix(in srgb, var(--color-ink) 18%, transparent),
+			0 2px 8px color-mix(in srgb, var(--color-ink) 10%, transparent);
+	}
+	.git-popover-head {
+		@apply flex items-center gap-2 border-b border-hairline px-4 py-2.5;
+		border-radius: 10px 10px 0 0;
+	}
+	.git-popover-path {
+		@apply flex-1 min-w-0 truncate font-mono text-[11px] text-ink-soft;
+	}
+	.git-popover-error {
+		@apply font-sans text-[10px] text-seal;
+	}
+	.git-popover-close {
+		@apply shrink-0 size-6 flex items-center justify-center rounded-full text-muted cursor-pointer border-none bg-transparent hover:bg-paper-hover hover:text-ink;
+	}
+	.git-popover-note {
+		@apply flex-1 flex items-center justify-center font-mono text-[11px] text-muted;
+	}
+	.git-diff-body {
+		@apply flex-1 min-h-0 overflow-auto px-4 py-3 font-mono text-[12px] leading-[1.4];
+	}
+	.git-diff-line {
+		white-space: pre;
+	}
+	.git-diff-line.add {
+		color: #1a7f37;
+	}
+	.git-diff-line.del {
+		color: #cf222e;
+	}
+	.git-diff-line.hunk {
+		color: var(--color-seal);
+	}
+	.git-diff-line.meta {
+		color: var(--color-muted);
+	}
+	.git-diff-new-note {
+		@apply mb-1 font-sans text-[9px] uppercase tracking-[0.14em] text-muted;
+	}
+
 	.traj-drawer {
 		@apply absolute top-0 right-0 bottom-0 z-20 w-[440px] max-w-[72vw] bg-letter border-l border-hairline flex flex-col py-4;
 	}

@@ -1,10 +1,11 @@
-import { Activity, Folder, ListTree, PanelLeftClose, PanelLeftOpen } from "lucide-solid";
+import { Activity, Folder, GitBranch, ListTree, PanelLeftClose, PanelLeftOpen } from "lucide-solid";
 import { type Accessor, createEffect, createSignal, type JSX, onCleanup } from "solid-js";
 import { AnimatePresence, Motion } from "solid-motion";
 import { Button } from "../components/Button";
 import { Composer } from "../components/Composer";
 import { ConversationList, type PartnerItem } from "../components/ConversationList";
 import { ExplorerDrawer } from "../components/ExplorerDrawer";
+import { GitChangesDrawer } from "../components/GitChangesDrawer";
 import { RepliesPane } from "../components/RepliesPane";
 import { Transcript } from "../layouts/Transcript";
 import { useAgentStatus } from "../lib/contexts/agent-status-context";
@@ -42,6 +43,7 @@ export function ConversationPage(props: {
 	const transcript = useTranscript();
 	const [outlineOpen, setOutlineOpen] = createSignal(false);
 	const [explorerOpen, setExplorerOpen] = createSignal(false);
+	const [gitOpen, setGitOpen] = createSignal(false);
 	const [explorerRoot, setExplorerRoot] = createSignal<"workspace" | "storage">("storage");
 	const workspacePath = () => status.data().workspace_path;
 	createEffect(() => {
@@ -53,6 +55,7 @@ export function ConversationPage(props: {
 		if (!hasConversation()) {
 			setOutlineOpen(false);
 			setExplorerOpen(false);
+			setGitOpen(false);
 			trajectory.mutate.setOpen(false);
 		}
 	});
@@ -118,6 +121,7 @@ export function ConversationPage(props: {
 							onClick={() => {
 								if (!outlineOpen()) {
 									setExplorerOpen(false);
+									setGitOpen(false);
 									trajectory.mutate.setOpen(false);
 								}
 								setOutlineOpen((v) => !v);
@@ -135,6 +139,7 @@ export function ConversationPage(props: {
 								const next = !explorerOpen();
 								if (next) {
 									setOutlineOpen(false);
+									setGitOpen(false);
 									trajectory.mutate.setOpen(false);
 									setExplorerRoot(workspacePath() ? "workspace" : "storage");
 								}
@@ -147,12 +152,31 @@ export function ConversationPage(props: {
 						<button
 							type="button"
 							class="size-8 rounded-full border-0 electrobun-webkit-app-region-no-drag flex items-center justify-center text-ink hover:bg-paper-hover disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+							title="Git Changes"
+							aria-label="Toggle git changes"
+							onClick={() => {
+								const next = !gitOpen();
+								if (next) {
+									setOutlineOpen(false);
+									setExplorerOpen(false);
+									trajectory.mutate.setOpen(false);
+								}
+								setGitOpen(next);
+							}}
+						>
+							<GitBranch size={16} />
+						</button>
+
+						<button
+							type="button"
+							class="size-8 rounded-full border-0 electrobun-webkit-app-region-no-drag flex items-center justify-center text-ink hover:bg-paper-hover disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
 							title="Open trajectory"
 							aria-label="Open trajectory"
 							disabled={!hasConversation()}
 							onClick={() => {
 								setOutlineOpen(false);
 								setExplorerOpen(false);
+								setGitOpen(false);
 								trajectory.mutate.view();
 							}}
 						>
@@ -182,6 +206,8 @@ export function ConversationPage(props: {
 				onRootChange={setExplorerRoot}
 				onClose={() => setExplorerOpen(false)}
 			/>
+
+			<GitChangesDrawer open={gitOpen()} partner={props.selected} onClose={() => setGitOpen(false)} />
 
 			<RepliesPane open={outlineOpen()} />
 		</div>

@@ -15,6 +15,15 @@ export type ChatPreviewKind = "user" | "send_message" | "command" | "skill" | "s
 
 export type ExplorerRoot = "workspace" | "storage";
 
+export type GitChangeStatus = "M" | "A" | "D" | "R" | "U";
+
+export interface GitChangeItem {
+	path: string;
+	status: GitChangeStatus;
+	staged: boolean;
+	untracked?: boolean;
+}
+
 export interface ExplorerEntry {
 	name: string;
 	path: string;
@@ -356,6 +365,16 @@ export type AppRPCSchema = __schema<{
 			explorer_read_file: {
 				params: { name: string; root: ExplorerRoot; path: string };
 				response: { ok: boolean; error?: string; content?: string; binary?: boolean; truncated?: boolean; size?: number };
+			};
+
+			git_changes: {
+				params: { name: string };
+				response: { ok: boolean; error?: string; repoRoot?: string; changes?: GitChangeItem[] };
+			};
+
+			git_diff: {
+				params: { name: string; path: string; staged?: boolean };
+				response: { ok: boolean; error?: string; kind?: "diff" | "new"; diff?: string; content?: string };
 			};
 
 			get_status: {
