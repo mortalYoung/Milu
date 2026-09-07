@@ -203,8 +203,17 @@ type PushTrace = (event: MemoryRunTraceEvent) => void;
 
 export async function organizeMemory(opts: OrganizeMemoryOptions): Promise<number> {
 	await ensureMemoryFile(opts.dir);
-	// Memory-run audit entries are log-only; never feed them back into extraction.
-	const entries = opts.entries.filter((e) => !isMemoryRunEntry(e));
+	// Rewound user edits stay in the raw log for audit but must not feed memory.
+	const rewoundIds = new Set<string>();
+	for (const e of opts.entries) {
+		if (e.type === "custom" && e.customType === EVENTS.userEdited) {
+			const data = e.data as { targetId?: unknown; shadowedIds?: unknown } | undefined;
+			if (typeof data?.targetId === "string") rewoundIds.add(data.targetId);
+			const shadowed = data?.shadowedIds;
+			if (Array.isArray(shadowed)) for (const id of shadowed) if (typeof id === "string") rewoundIds.add(id);
+		}
+	}
+	const entries = opts.entries.filter((e) => !isMemoryRunEntry(e) && !rewoundIds.has(e.id));
 	if (!opts.model || entries.length === 0) return 0;
 
 	const lines = await readMemoryLines(opts.dir);

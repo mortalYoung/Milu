@@ -876,6 +876,77 @@ async function listMcpForPartner(dir: string): Promise<McpServerSummary[]> {
 	}));
 }
 
+async function editLastUserRpc(text: string) {
+	if (!viewPartner) return { ok: false as const, error: "no partner selected" };
+	if (await isPartnerBusy(viewPartner.name)) return { ok: false as const, error: `"${viewPartner.name}" is still running; stop it before editing` };
+	try {
+		const dir = viewPartner.dir;
+		const entries = await session.rawEntries(dir);
+		let lastUserIndex = -1;
+		for (let i = 0; i < entries.length; i++) {
+			const entry = entries[i];
+			if (entry.type !== "message" || entry.message.role !== "user") continue;
+			if (typeof (entry.message as { skill?: unknown }).skill === "string") continue;
+			lastUserIndex = i;
+		}
+		if (lastUserIndex < 0) return { ok: false as const, error: "no user message to edit" };
+		const userEntry = entries[lastUserIndex];
+		let surfaceTargetId = userEntry.id;
+		let sawAborted = false;
+		for (let i = lastUserIndex + 1; i < entries.length; i++) {
+			const entry = entries[i];
+			if (entry.type === "message" && entry.message.role === "user" && typeof (entry.message as { skill?: unknown }).skill !== "string") {
+				return { ok: false as const, error: "only the latest user message can be edited" };
+			}
+			if (entry.type !== "custom") continue;
+			if (entry.customType === EVENTS.commandRun || entry.customType === EVENTS.skillRun || entry.customType === EVENTS.shellRun) {
+				return { ok: false as const, error: "conversation moved on after this message" };
+			}
+			if (entry.customType === EVENTS.userEdited) {
+				const data = (entry.data ?? {}) as { targetId?: unknown } | undefined;
+				if (data?.targetId === userEntry.id) surfaceTargetId = entry.id;
+				continue;
+			}
+			if (entry.customType === EVENTS.turnEnd) {
+				const reason = (entry.data as { reason?: unknown } | undefined)?.reason;
+				if (reason === "completed") return { ok: false as const, error: "agent already replied" };
+				if (reason === "aborted") sawAborted = true;
+			}
+		}
+		if (!sawAborted) return { ok: false as const, error: "no stopped run to rewind" };
+
+		const scope = session.scope(dir);
+		const surf = await session.surface(dir);
+		const start = surf.nodes.findIndex((node) => node.id === surfaceTargetId);
+		if (start < 0) return { ok: false as const, error: "user message not found in surface" };
+		const shadowedNodes = surf.nodes.slice(start);
+		const surfaceShadowedIds = shadowedNodes.map((node) => node.id);
+		const viewShadowedIds = entries.slice(lastUserIndex + 1).map((entry) => entry.id);
+		const timestamp = Date.now();
+		const editedId = await scope.appendUserEdited({ targetId: userEntry.id, text, shadowedIds: viewShadowedIds }, timestamp);
+		await scope.appendSurfaceOp(
+			{
+				op: "replace",
+				start,
+				end: surf.nodes.length - 1,
+				sourceEventSeqs: surfaceShadowedIds,
+				replacementId: editedId,
+				replaceGeneration: surf.replaceGeneration + 1,
+			},
+			timestamp,
+		);
+
+		const agentEntry = await ensureAgent(viewPartner.profile);
+		agentEntry.agent.restore(await session.deriveMessages(dir));
+		agentEntry.agent.markUserMessage();
+		await agentEntry.agent.continue();
+		return { ok: true as const };
+	} catch (error) {
+		console.error("edit_last_user failed:", error);
+		return { ok: false as const, error: error instanceof Error ? error.message : String(error) };
+	}
+}
+
 const rpc = BrowserView.defineRPC<AppRPCSchema>({
 	handlers: {
 		requests: {
@@ -891,6 +962,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				await entry.agent.chat(text);
 				return { accepted: true };
 			},
+			edit_last_user: async ({ text }) => editLastUserRpc(text),
 			stop: () => {
 				const name = viewPartner?.name;
 				if (name) backgroundAborts.get(name)?.abort();

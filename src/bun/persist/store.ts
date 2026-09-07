@@ -34,6 +34,7 @@ import {
 	type SkillRunEventData,
 	type ToolResultEventData,
 	type TurnEndReason,
+	type UserEditedEventData,
 } from "./events";
 
 const EMPTY_USAGE: Usage = {
@@ -98,6 +99,7 @@ export interface SessionScope {
 	appendContextChanged(details: ContextChangedEventData, timestamp: number): Promise<void>;
 	appendInstructionsChanged(agentMd: string | null, timestamp: number): Promise<void>;
 	appendMcpChanged(details: McpChangedEventData, timestamp: number): Promise<void>;
+	appendUserEdited(details: UserEditedEventData, timestamp: number): Promise<string>;
 	lastContextChanged(): Promise<{ data: ContextChangedEventData; timestamp: number } | null>;
 	appendSkillRun(details: SkillRunEventData, timestamp: number): Promise<void>;
 	appendSkillDone(details: SkillDoneEventData, timestamp: number): Promise<void>;
@@ -353,6 +355,13 @@ export function createSessionStore(): SessionStore {
 			},
 			async appendMcpChanged(details, timestamp) {
 				await appendCustom(dir, EVENTS.mcpChanged, { ...details, timestamp });
+			},
+			async appendUserEdited(details, timestamp) {
+				await appendCustom(dir, EVENTS.userEdited, { ...details, timestamp });
+				const state = await stateFor(dir);
+				const entry = state.entries.filter((e) => e.type === "custom" && e.customType === EVENTS.userEdited).at(-1);
+				if (!entry) throw new Error("user/edited append failed");
+				return entry.id;
 			},
 			async lastContextChanged() {
 				const state = await stateFor(dir);

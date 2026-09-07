@@ -237,6 +237,11 @@ export type AppRPCSchema = __schema<{
 				response: { accepted: boolean };
 			};
 
+			edit_last_user: {
+				params: { text: string };
+				response: { ok: boolean; error?: string };
+			};
+
 			commands_list: {
 				params: {};
 				response: { commands: CommandDescriptor[] };

@@ -26,6 +26,8 @@ export interface ChatProjectionContext {
 	skillDones: Map<string, { kind: "success" | "error"; text?: string }>;
 	shellDones: Map<string, { kind: "success" | "error" | "interrupted"; text?: string }>;
 	escalationDecisions: Map<string, { kind: "approved" | "rejected" | "dropped" }>;
+	editedUserText: Map<string, string>;
+	rewoundIds: Set<string>;
 }
 
 export interface ChatMeta {
@@ -47,11 +49,11 @@ type CustomEntryOf<E extends Entry> = Extract<E, { type: "custom" }>;
 
 const row = (id: string, kind: ViewItem["kind"], text: string, time: number): ViewItem => ({ id, kind, text, time });
 
-function userRow(entry: Entry): ViewItem[] {
+function userRow(entry: Entry, ctx: ChatProjectionContext): ViewItem[] {
 	if (entry.type !== "message" || entry.message.role !== "user") return [];
 	const content = entry.message.content;
 	const skill = (entry.message as { skill?: unknown }).skill;
-	const text = typeof content === "string" ? content : "";
+	const text = typeof content === "string" ? (ctx.editedUserText.get(entry.id) ?? content) : "";
 	return [
 		{
 			...row(entry.id, "user", text, entry.message.timestamp ?? entry.timestamp ?? 0),
@@ -207,6 +209,7 @@ export const EVENT_META: Record<string, EntryMeta> = {
 	[EVENTS.contextChanged]: logOnly(),
 	[EVENTS.instructionsChanged]: logOnly(),
 	[EVENTS.mcpChanged]: logOnly(),
+	[EVENTS.userEdited]: logOnly(),
 	[EVENTS.retryScheduled]: logOnly(),
 	[EVENTS.retryStarted]: logOnly(),
 };
@@ -224,6 +227,8 @@ export function buildChatContext(entries: Entry[]): ChatProjectionContext {
 	const skillDones = new Map<string, { kind: "success" | "error"; text?: string }>();
 	const shellDones = new Map<string, { kind: "success" | "error" | "interrupted"; text?: string }>();
 	const escalationDecisions = new Map<string, { kind: "approved" | "rejected" | "dropped" }>();
+	const editedUserText = new Map<string, string>();
+	const rewoundIds = new Set<string>();
 	for (const entry of entries) {
 		if (entry.type !== "custom") continue;
 		const custom = entry as CustomEntryOf<Entry>;
@@ -249,13 +254,19 @@ export function buildChatContext(entries: Entry[]): ChatProjectionContext {
 					kind: data.dropped === true ? "dropped" : data.approved === true ? "approved" : "rejected",
 				});
 			}
+		} else if (custom.customType === EVENTS.userEdited) {
+			const data = custom.data as { targetId?: unknown; text?: unknown; shadowedIds?: unknown } | undefined;
+			if (data?.targetId != null && typeof data.text === "string") editedUserText.set(String(data.targetId), data.text);
+			if (Array.isArray(data?.shadowedIds)) {
+				for (const id of data.shadowedIds) if (typeof id === "string") rewoundIds.add(id);
+			}
 		}
 	}
-	return { commandDones, skillDones, shellDones, escalationDecisions };
+	return { commandDones, skillDones, shellDones, escalationDecisions, editedUserText, rewoundIds };
 }
 
 /** Project the full log into the human chat transcript via EVENT_META. */
 export function projectVisibleHistory(entries: Entry[]): ViewItem[] {
 	const ctx = buildChatContext(entries);
-	return entries.flatMap((entry) => EVENT_META[entryKey(entry)]?.chat?.project(entry, ctx) ?? []);
+	return entries.filter((entry) => !ctx.rewoundIds.has(entry.id)).flatMap((entry) => EVENT_META[entryKey(entry)]?.chat?.project(entry, ctx) ?? []);
 }

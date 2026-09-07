@@ -9,7 +9,15 @@ import type { Entry } from "@earendil-works/pi-agent-core";
 import { EVENTS } from "./events";
 import type { Surface, SurfaceNode, SurfaceOpRecord } from "./surface";
 
-const SURFACE_CUSTOM_TYPES = new Set<string>([EVENTS.sendMessage, EVENTS.toolResult, EVENTS.contextChanged, EVENTS.timeGapReminder, EVENTS.instructionsChanged, EVENTS.mcpChanged]);
+const SURFACE_CUSTOM_TYPES = new Set<string>([
+	EVENTS.sendMessage,
+	EVENTS.toolResult,
+	EVENTS.contextChanged,
+	EVENTS.timeGapReminder,
+	EVENTS.instructionsChanged,
+	EVENTS.mcpChanged,
+	EVENTS.userEdited,
+]);
 
 export class SurfaceError extends Error {}
 
@@ -45,7 +53,13 @@ function nodeFor(entry: Entry, seq: number): SurfaceNode | null {
 	if (entry.type === "custom" && entry.customType === EVENTS.timeGapReminder) {
 		return { kind: "user", seq, id: entry.id, time: entryTime(entry) };
 	}
-	if (entry.type === "custom" && (entry.customType === EVENTS.contextChanged || entry.customType === EVENTS.instructionsChanged || entry.customType === EVENTS.mcpChanged)) {
+	if (
+		entry.type === "custom" &&
+		(entry.customType === EVENTS.contextChanged ||
+			entry.customType === EVENTS.instructionsChanged ||
+			entry.customType === EVENTS.mcpChanged ||
+			entry.customType === EVENTS.userEdited)
+	) {
 		return { kind: "user", seq, id: entry.id, time: entryTime(entry) };
 	}
 	return null;
@@ -116,7 +130,7 @@ export function foldSurface(entries: Entry[]): Surface {
 				replaceGeneration = op.replaceGeneration;
 				continue;
 			}
-			if (entry.customType === EVENTS.toolResult && replacementIds.has(entry.id)) {
+			if (replacementIds.has(entry.id) && (entry.customType === EVENTS.toolResult || isSurfaceEntry(entry))) {
 				pendingReplacements.set(entry.id, entry);
 				continue;
 			}

@@ -1,12 +1,14 @@
-import { Check, CircleStop } from "lucide-solid";
-import { type Accessor, createEffect, createSignal, For, onCleanup, Show } from "solid-js";
+import { Check, CircleStop, Pencil } from "lucide-solid";
+import { type Accessor, createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import { AnimatePresence, Motion, MotionConfigProvider } from "solid-motion";
+import { EVENTS } from "../../shared/events";
 import type { EscalationStatus, SandboxMode } from "../../shared/rpc";
 import { Dialog, DialogContent, DialogTitle } from "../components/ui/dialog";
 import { useSession } from "../lib/contexts/session-context";
 import { useSkills } from "../lib/contexts/skills-context";
 import { useTranscript } from "../lib/contexts/transcript-context";
 import { renderMarkdown, renderMarkdownPlain } from "../lib/markdown";
+import { rpc } from "../lib/rpc";
 
 export interface EscalationInfo {
 	id: string;
@@ -284,6 +286,66 @@ export function Transcript(props: {
 		if (res.ok && res.content != null) setSkillDialog({ name, content: res.content });
 	}
 
+	const [editingUserKey, setEditingUserKey] = createSignal<string | null>(null);
+	const [editDraft, setEditDraft] = createSignal("");
+	const [editSaving, setEditSaving] = createSignal(false);
+	const [editError, setEditError] = createSignal<string | null>(null);
+	const editableUserKey = createMemo<string | null>(() => {
+		const entries = session.data.origin.entries;
+		let last = -1;
+		for (let i = 0; i < entries.length; i++) {
+			const entry = entries[i];
+			if (entry.type === "message" && entry.message.role === "user" && typeof (entry.message as { skill?: unknown }).skill !== "string") last = i;
+		}
+		if (last < 0) return null;
+		let sawAborted = false;
+		for (let i = last + 1; i < entries.length; i++) {
+			const entry = entries[i];
+			if (entry.type === "message" && entry.message.role === "user" && typeof (entry.message as { skill?: unknown }).skill !== "string") return null;
+			if (entry.type !== "custom") continue;
+			if (entry.customType === EVENTS.commandRun || entry.customType === EVENTS.skillRun || entry.customType === EVENTS.shellRun) return null;
+			if (entry.customType === EVENTS.turnEnd) {
+				const reason = (entry.data as { reason?: unknown } | undefined)?.reason;
+				if (reason === "completed") return null;
+				if (reason === "aborted") sawAborted = true;
+			}
+		}
+		return sawAborted ? String(entries[last].id) : null;
+	});
+	function startEdit(key: string, text: string) {
+		setEditingUserKey(key);
+		setEditDraft(text);
+		setEditError(null);
+		setEditSaving(false);
+	}
+	function cancelEdit() {
+		setEditingUserKey(null);
+		setEditError(null);
+		setEditSaving(false);
+	}
+	async function saveEdit() {
+		const key = editingUserKey();
+		if (!key || editSaving()) return;
+		setEditSaving(true);
+		setEditError(null);
+		const res = await rpc.request.edit_last_user({ text: editDraft().trimEnd() });
+		setEditSaving(false);
+		if (!res.ok) {
+			setEditError(res.error ?? "Edit failed");
+			return;
+		}
+		setEditingUserKey(null);
+		await session.mutate.refreshHistory();
+	}
+
+	const userEditEls = new Map<string, HTMLDivElement>();
+	createEffect(() => {
+		const key = editingUserKey();
+		if (!key) return;
+		const el = userEditEls.get(key);
+		if (el) requestAnimationFrame(() => el.focus());
+	});
+
 	return (
 		<MotionConfigProvider reducedMotion="user">
 			<div class="relative flex-1 min-h-0 flex flex-col">
@@ -354,22 +416,51 @@ export function Transcript(props: {
 								const e = block;
 								const key = blockKey(block);
 								if (e.kind === "user") {
+									const isEditing = () => editingUserKey() === key;
 									return (
-										<>
-											<Motion
-												as="div"
-												class={"msg-user" + (controller.locateFlashId() === e.id ? " locate-flash" : "")}
+										<div class="msg-user-row group" data-chat-anchor-key={key} data-chat-flow-key={key}>
+											<div
+												class={"msg-user" + (isEditing() ? " msg-user-editing" : "") + (controller.locateFlashId() === e.id ? " locate-flash" : "")}
 												id={"entry-" + e.id}
-												data-chat-anchor-key={key}
-												data-chat-flow-key={key}
-												initial={{ opacity: 0, y: 6 }}
-												animate={{ opacity: 1, y: 0 }}
-												transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
+												contenteditable={isEditing() ? "plaintext-only" : undefined}
+												role={isEditing() ? "textbox" : undefined}
+												aria-multiline={isEditing() ? true : undefined}
+												ref={(el) => {
+													if (el) userEditEls.set(key, el as HTMLDivElement);
+												}}
+												onInput={(ev) => {
+													if (!isEditing()) return;
+													setEditDraft((ev.currentTarget as HTMLElement).innerText ?? "");
+												}}
+												onKeyDown={(ev) => {
+													if (!isEditing()) return;
+													if (ev.key === "Escape") cancelEdit();
+													if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing) {
+														ev.preventDefault();
+														void saveEdit();
+													}
+												}}
 											>
 												{e.text}
-											</Motion>
-											<span class="msg-user-time">{formatHistoryTime(e.time)}</span>
-										</>
+											</div>
+											<span class="msg-user-meta">
+												{isEditing() ? (
+													<span class="msg-user-edit-hint">{editSaving() ? "resending…" : "enter save · esc cancel"}</span>
+												) : (
+													<>
+														<span class="msg-user-time">{formatHistoryTime(e.time)}</span>
+														{key === editableUserKey() && !props.working() && (
+															<button type="button" class="msg-user-edit-link" title="Edit message" aria-label="Edit message" onClick={() => startEdit(key, e.text)}>
+																<Pencil size={12} />
+															</button>
+														)}
+													</>
+												)}
+											</span>
+											<Show when={isEditing() && editError()}>
+												<p class="msg-user-edit-error">{editError()}</p>
+											</Show>
+										</div>
 									);
 								}
 								if (e.kind === "sys") {

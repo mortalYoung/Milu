@@ -15,7 +15,7 @@ import type { Surface } from "../../shared/surface";
 
 export { applyReplace, foldSurface, isSurfaceEntry, SurfaceError, surfaceNodeIds };
 
-import { type ContextChangedEventData, EVENTS, type McpChangedEventData } from "../persist/events";
+import { type ContextChangedEventData, EVENTS, type McpChangedEventData, type UserEditedEventData } from "../persist/events";
 
 export function deriveMessages(entries: Entry[], surface: Surface): AgentMessage[] {
 	return dropDanglingTurn(projectChain(entries, surface));
@@ -115,6 +115,14 @@ export function deriveEventMessage(entry: Entry): AgentMessage | null {
 				change: data.change === "removed" ? "removed" : "added",
 				granted: Array.isArray(data.granted) ? data.granted.filter((s): s is string => typeof s === "string") : [],
 			}),
+			timestamp: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
+		} as AgentMessage;
+	}
+	if (entry.type === "custom" && entry.customType === EVENTS.userEdited) {
+		const data = (entry.data ?? {}) as Partial<UserEditedEventData> & { timestamp?: unknown };
+		return {
+			role: "user",
+			content: typeof data.text === "string" ? data.text : "",
 			timestamp: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
 		} as AgentMessage;
 	}

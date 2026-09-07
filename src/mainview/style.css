@@ -686,11 +686,41 @@ body::before {
 	.transcript-inner {
 		@apply w-[60%] mx-auto flex flex-col;
 	}
+	.msg-user-row {
+		@apply flex flex-col items-end self-end;
+	}
 	.msg-user {
-		@apply self-end mt-6 max-w-full bg-ink text-paper font-serif text-[16px] leading-[1.5] whitespace-pre-wrap break-words rounded-[10px] px-[15px] py-[10px];
+		@apply mt-6 max-w-full bg-ink text-paper font-serif text-[16px] leading-[1.5] whitespace-pre-wrap break-words rounded-[10px] px-[15px] py-[10px];
 	}
 	.msg-user-time {
-		@apply self-end font-sans text-[10.5px] text-seal tracking-[0.05em] mt-1.5;
+		@apply font-sans text-[10.5px] text-seal tracking-[0.05em] mt-1.5;
+	}
+	.msg-user-meta {
+		@apply flex items-center gap-2 mt-1.5;
+	}
+	.msg-user-edit-link {
+		@apply flex size-5 items-center justify-center rounded text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-paper-hover hover:text-ink focus-visible:opacity-100;
+	}
+	.msg-user-editing {
+		cursor: text;
+		caret-color: var(--color-seal);
+		min-height: 44px;
+	}
+	.msg-user-editing:focus {
+		outline: 1.5px solid var(--color-seal);
+		outline-offset: 2px;
+	}
+	.msg-user-edit-hint {
+		@apply font-sans text-[10px] text-muted;
+	}
+	.msg-user-edit-error {
+		@apply mt-2 font-sans text-[11px] text-seal;
+	}
+	.msg-user-edit-btn {
+		@apply rounded-[8px] border border-hairline px-3 py-1.5 font-sans text-[11px] text-ink-soft transition-colors hover:bg-paper-hover hover:text-ink disabled:cursor-not-allowed disabled:opacity-40;
+	}
+	.msg-user-edit-btn-primary {
+		@apply border-seal bg-seal text-paper hover:bg-seal/90 hover:text-paper;
 	}
 
 	.load-earlier-wrap {

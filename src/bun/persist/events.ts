@@ -106,6 +106,13 @@ export interface McpChangedEventData {
 	timestamp?: number;
 }
 
+export interface UserEditedEventData {
+	targetId: string;
+	text: string;
+	shadowedIds: string[];
+	timestamp?: number;
+}
+
 export type MemoryRunEndReason = "completed" | "attempts-exhausted" | "error" | "interrupted";
 
 export interface MemoryRunStartEventData {

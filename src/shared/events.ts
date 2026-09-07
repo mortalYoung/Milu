@@ -28,6 +28,7 @@ export const EVENTS = {
 	contextChanged: "context/changed",
 	instructionsChanged: "instructions/changed",
 	mcpChanged: "mcp/changed",
+	userEdited: "user/edited",
 	memoryRunStart: "memory/run/start",
 	memoryRunEnd: "memory/run/end",
 	skillRun: "skill/run",
