@@ -72,6 +72,7 @@ export interface AgentDeps {
 	skills?: SkillsService;
 	mcp?: McpAccess;
 	onContextOverflow?: () => Promise<boolean>;
+	onBeforeNextTurn?: (signal?: AbortSignal) => Promise<AgentMessage[] | null>;
 }
 
 export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
@@ -167,6 +168,14 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			const reminder = { role: "user" as const, content: contextChangedText(currentContextSnapshot()), timestamp: Date.now() };
 			agent.state.messages.push(reminder);
 			return [...messages, reminder];
+		},
+		prepareNextTurnWithContext: async ({ context, message }, signal) => {
+			if (!deps.onBeforeNextTurn) return undefined;
+			if (message.content.some((block) => block.type === "toolCall")) return undefined;
+			const messages = await deps.onBeforeNextTurn(signal);
+			if (!messages) return undefined;
+			agent.state.messages = messages;
+			return { context: { ...context, messages } };
 		},
 	});
 

@@ -3,6 +3,7 @@ import { watch } from "node:fs";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join, sep } from "node:path";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import { getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
 import { Cron } from "croner";
@@ -296,7 +297,6 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 			onEnd: (error) => {
 				rejectPendingEscalations(profile.name, "run ended while awaiting approval");
 				rpc.send.agent_end({ error, partner: profile.name });
-				void agents.get(profile.name)?.then((e) => void maybeAutoCompact(e));
 			},
 		},
 		{
@@ -311,6 +311,11 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 			grantedSkills: () => readPartnerGrantedSkills(dir),
 			skills: skillsService,
 			mcp: mcpAccess,
+			onBeforeNextTurn: async (signal) => {
+				const target = await agents.get(profile.name);
+				if (!target) return null;
+				return autoCompactBeforeNextTurn(target, signal);
+			},
 			onContextOverflow: async () => {
 				const target = await agents.get(profile.name);
 				if (!target) return false;
@@ -483,37 +488,36 @@ async function runManualCompact(entry: PartnerAgent, signal?: AbortSignal): Prom
 	}
 }
 
-async function maybeAutoCompact(entry: PartnerAgent): Promise<void> {
-	if (entry.agent.isStreaming) return;
+async function autoCompactBeforeNextTurn(entry: PartnerAgent, signal?: AbortSignal): Promise<AgentMessage[] | null> {
 	const settings = await ensureSettings();
 	const entries = await session.rawEntries(entry.dir);
 	if (hasOrphanCompactionStart(entries)) {
 		console.warn("compaction skipped: orphan compaction/start found (previous run may have crashed)");
-		return;
+		return null;
 	}
 	const usage = lastUsage(entries);
-	if (!usage) return;
+	if (!usage) return null;
 	const window = contextWindow(entry.agent.model ?? undefined);
 	const used = usage.input + usage.cacheRead + usage.cacheWrite;
-	if (used < window * (settings.compaction?.thresholdRatio ?? 0.8)) return;
-	await withBackgroundAbort(entry.profile.name, async (signal) => {
-		try {
-			await pruneSession(entry);
-			const flush = await flushMemoryForCompact(entry, signal);
-			if (!flush.ok) {
-				console.warn("auto-compact skipped:", flush.error ?? "memory flush failed");
-				return;
-			}
-			const input = await compactionInput(entry);
-			const events = await sessionMemoryEvents(entry);
-			const plan = await planMemoryCompaction(input.entries, input.surface, { ...input.opts, memoryEvents: events });
-			if (!plan) return;
-			await runCompaction(entry, plan);
-			console.log(`auto-compacted ${plan.range.end - plan.range.start + 1} surface nodes`);
-		} catch (error) {
-			await compactionFailure(entry, error);
+	if (used < window * (settings.compaction?.thresholdRatio ?? 0.8)) return null;
+	try {
+		await pruneSession(entry);
+		const flush = await flushMemoryForCompact(entry, signal);
+		if (!flush.ok) {
+			console.warn("auto-compact skipped:", flush.error ?? "memory flush failed");
+			return null;
 		}
-	});
+		const input = await compactionInput(entry);
+		const events = await sessionMemoryEvents(entry);
+		const plan = await planMemoryCompaction(input.entries, input.surface, { ...input.opts, memoryEvents: events });
+		if (!plan) return null;
+		await runCompaction(entry, plan);
+		console.log(`auto-compacted ${plan.range.end - plan.range.start + 1} surface nodes`);
+		return session.deriveMessages(entry.dir);
+	} catch (error) {
+		await compactionFailure(entry, error);
+		return null;
+	}
 }
 
 async function withBackgroundAbort<T>(partner: string, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
