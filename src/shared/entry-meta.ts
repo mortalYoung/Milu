@@ -4,17 +4,8 @@ import { contextChangedText, EVENTS, instructionsChangedText, mcpChangedText } f
 import type { SandboxMode, ViewItem } from "./rpc";
 import type { SurfaceNode } from "./surface";
 
-export interface ViewProjectionContext {
-	commandDones: Map<string, { kind: "success" | "error" | "interrupted"; text?: string }>;
-	skillDones: Map<string, { kind: "success" | "error"; text?: string }>;
-	shellDones: Map<string, { kind: "success" | "error" | "interrupted"; text?: string }>;
-	escalationDecisions: Map<string, { kind: "approved" | "rejected" | "dropped" }>;
-	editedUserText: Map<string, string>;
-	rewoundIds: Set<string>;
-}
-
 export interface ViewMeta {
-	project(entry: Entry, ctx: ViewProjectionContext): ViewItem[];
+	visit(entry: Entry, out: ViewItem[]): void;
 }
 
 export interface SliceMeta {
@@ -32,116 +23,158 @@ export interface EntryMeta {
 	trajectory?: TrajectoryMeta;
 }
 
-type CustomEntryOf<E extends Entry> = Extract<E, { type: "custom" }>;
-
 const row = (id: string, kind: ViewItem["kind"], text: string, time: number): ViewItem => ({ id, kind, text, time });
 
-function userRow(entry: Entry, ctx: ViewProjectionContext): ViewItem[] {
-	if (entry.type !== "message" || entry.message.role !== "user") return [];
+function findLast(out: ViewItem[], predicate: (item: ViewItem) => boolean): ViewItem | undefined {
+	for (let i = out.length - 1; i >= 0; i--) {
+		if (predicate(out[i])) return out[i];
+	}
+	return undefined;
+}
+
+function userVisit(entry: Entry, out: ViewItem[]): void {
+	if (entry.type !== "message" || entry.message.role !== "user") return;
 	const content = entry.message.content;
 	const skill = (entry.message as { skill?: unknown }).skill;
-	const text = typeof content === "string" ? (ctx.editedUserText.get(entry.id) ?? content) : "";
-	return [
-		{
-			...row(entry.id, "user", text, entry.message.timestamp ?? entry.timestamp ?? 0),
-			...(typeof skill === "string" ? { skillName: skill } : {}),
-		},
-	];
+	const text = typeof content === "string" ? content : "";
+	out.push({
+		...row(entry.id, "user", text, entry.message.timestamp ?? entry.timestamp ?? 0),
+		...(typeof skill === "string" ? { skillName: skill } : {}),
+	});
 }
 
-function sendMessageRow(entry: Entry): ViewItem[] {
-	if (entry.type !== "custom") return [];
+function sendMessageVisit(entry: Entry, out: ViewItem[]): void {
+	if (entry.type !== "custom") return;
 	const data = entry.data as { text?: unknown; timestamp?: unknown; toolCallId?: unknown } | undefined;
-	if (!data || typeof data.text !== "string") return [];
-	if (typeof data.toolCallId === "string" && data.toolCallId.startsWith("shell:")) return [];
-	return [row(entry.id, "send_message", data.text, typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0))];
+	if (!data || typeof data.text !== "string") return;
+	if (typeof data.toolCallId === "string" && data.toolCallId.startsWith("shell:")) return;
+	out.push(row(entry.id, "send_message", data.text, typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0)));
 }
 
-function turnEndRow(entry: Entry): ViewItem[] {
-	if (entry.type !== "custom") return [];
+function turnEndVisit(entry: Entry, out: ViewItem[]): void {
+	if (entry.type !== "custom") return;
 	const data = entry.data as { reason?: unknown; error?: unknown; timestamp?: unknown } | undefined;
 	const time = typeof data?.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0);
-	if (data?.reason === "aborted") return [row(entry.id, "aborted", "stopped", time)];
-	if (data?.reason === "error" && typeof data.error === "string") return [row(entry.id, "error", data.error, time)];
-	return [];
+	if (data?.reason === "aborted") out.push(row(entry.id, "aborted", "stopped", time));
+	else if (data?.reason === "error" && typeof data.error === "string") out.push(row(entry.id, "error", data.error, time));
 }
 
-function escalationRow(entry: Entry, ctx: ViewProjectionContext): ViewItem[] {
-	if (entry.type !== "custom") return [];
+function escalationVisit(entry: Entry, out: ViewItem[]): void {
+	if (entry.type !== "custom") return;
 	const data = entry.data as { escalationId?: unknown; command?: unknown; from?: unknown; to?: unknown; justification?: unknown; timestamp?: unknown } | undefined;
-	if (data?.escalationId == null) return [];
-	const decision = ctx.escalationDecisions.get(String(data.escalationId));
-	return [
-		{
-			...row(entry.id, "escalation", String(data.command ?? ""), typeof data.timestamp === "number" ? data.timestamp : 0),
-			escalation: {
-				id: String(data.escalationId),
-				command: String(data.command ?? ""),
-				from: data.from as SandboxMode,
-				to: data.to as SandboxMode,
-				justification: String(data.justification ?? ""),
-				status: decision?.kind ?? "pending",
-			},
+	if (data?.escalationId == null) return;
+	out.push({
+		...row(entry.id, "escalation", String(data.command ?? ""), typeof data.timestamp === "number" ? data.timestamp : 0),
+		escalation: {
+			id: String(data.escalationId),
+			command: String(data.command ?? ""),
+			from: data.from as SandboxMode,
+			to: data.to as SandboxMode,
+			justification: String(data.justification ?? ""),
+			status: "pending",
 		},
-	];
+	});
 }
 
-function commandRow(entry: Entry, ctx: ViewProjectionContext): ViewItem[] {
-	if (entry.type !== "custom") return [];
+function escalationDecisionVisit(entry: Entry, out: ViewItem[]): void {
+	if (entry.type !== "custom") return;
+	const data = entry.data as { escalationId?: unknown; approved?: unknown; dropped?: unknown } | undefined;
+	if (data?.escalationId == null) return;
+	const status = data.dropped === true ? "dropped" : data.approved === true ? "approved" : "rejected";
+	const item = findLast(out, (r) => r.kind === "escalation" && r.escalation?.id === String(data.escalationId));
+	if (item?.kind === "escalation" && item.escalation) item.escalation.status = status;
+}
+
+function commandVisit(entry: Entry, out: ViewItem[]): void {
+	if (entry.type !== "custom") return;
 	const data = entry.data as { commandId?: unknown; name?: unknown; args?: unknown; timestamp?: unknown } | undefined;
-	if (data?.commandId == null) return [];
-	const done = ctx.commandDones.get(String(data.commandId));
+	if (data?.commandId == null) return;
 	const name = String(data.name ?? "");
-	return [
-		{
-			...row(entry.id, "command", name, typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0)),
-			command: {
-				commandId: String(data.commandId),
-				name,
-				...(typeof data.args === "string" ? { args: data.args } : {}),
-				status: done ? done.kind : "running",
-				...(done?.text ? { text: done.text } : {}),
-			},
+	out.push({
+		...row(entry.id, "command", name, typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0)),
+		command: {
+			commandId: String(data.commandId),
+			name,
+			...(typeof data.args === "string" ? { args: data.args } : {}),
+			status: "running",
 		},
-	];
+	});
 }
 
-function skillRow(entry: Entry, ctx: ViewProjectionContext): ViewItem[] {
-	if (entry.type !== "custom") return [];
+function commandDoneVisit(entry: Entry, out: ViewItem[]): void {
+	if (entry.type !== "custom") return;
+	const data = entry.data as { commandId?: unknown; kind?: unknown; text?: unknown } | undefined;
+	if (data?.commandId == null) return;
+	const item = findLast(out, (r) => r.kind === "command" && r.command?.commandId === String(data.commandId));
+	if (item?.kind !== "command" || !item.command) return;
+	item.command.status = data.kind === "error" ? "error" : "success";
+	if (typeof data.text === "string") item.command.text = data.text;
+}
+
+function skillVisit(entry: Entry, out: ViewItem[]): void {
+	if (entry.type !== "custom") return;
 	const data = entry.data as { skillId?: unknown; name?: unknown; hint?: unknown; timestamp?: unknown } | undefined;
-	if (data?.skillId == null) return [];
-	const done = ctx.skillDones.get(String(data.skillId));
+	if (data?.skillId == null) return;
 	const name = String(data.name ?? "");
-	return [
-		{
-			...row(entry.id, "skill", name, typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0)),
-			skill: {
-				commandId: String(data.skillId),
-				name,
-				...(typeof data.hint === "string" && data.hint ? { args: data.hint } : {}),
-				status: done ? done.kind : "running",
-			},
+	out.push({
+		...row(entry.id, "skill", name, typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0)),
+		skill: {
+			commandId: String(data.skillId),
+			name,
+			...(typeof data.hint === "string" && data.hint ? { args: data.hint } : {}),
+			status: "running",
 		},
-	];
+	});
 }
 
-function shellRow(entry: Entry, ctx: ViewProjectionContext): ViewItem[] {
-	if (entry.type !== "custom") return [];
+function skillDoneVisit(entry: Entry, out: ViewItem[]): void {
+	if (entry.type !== "custom") return;
+	const data = entry.data as { skillId?: unknown; kind?: unknown; text?: unknown } | undefined;
+	if (data?.skillId == null) return;
+	const item = findLast(out, (r) => r.kind === "skill" && r.skill?.commandId === String(data.skillId));
+	if (item?.kind !== "skill" || !item.skill) return;
+	item.skill.status = data.kind === "error" ? "error" : "success";
+	if (typeof data.text === "string") item.skill.text = data.text;
+}
+
+function shellVisit(entry: Entry, out: ViewItem[]): void {
+	if (entry.type !== "custom") return;
 	const data = entry.data as { shellId?: unknown; command?: unknown; timestamp?: unknown } | undefined;
-	if (data?.shellId == null) return [];
-	const done = ctx.shellDones.get(String(data.shellId));
+	if (data?.shellId == null) return;
 	const command = String(data.command ?? "");
-	return [
-		{
-			...row(entry.id, "shell", command, typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0)),
-			command: {
-				commandId: String(data.shellId),
-				name: command,
-				status: done ? done.kind : "running",
-				...(done?.text ? { text: done.text } : {}),
-			},
+	out.push({
+		...row(entry.id, "shell", command, typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0)),
+		command: {
+			commandId: String(data.shellId),
+			name: command,
+			status: "running",
 		},
-	];
+	});
+}
+
+function shellDoneVisit(entry: Entry, out: ViewItem[]): void {
+	if (entry.type !== "custom") return;
+	const data = entry.data as { shellId?: unknown; kind?: unknown; text?: unknown } | undefined;
+	if (data?.shellId == null) return;
+	const item = findLast(out, (r) => r.kind === "shell" && r.command?.commandId === String(data.shellId));
+	if (item?.kind !== "shell" || !item.command) return;
+	item.command.status = data.kind === "error" ? "error" : "success";
+	if (typeof data.text === "string") item.command.text = data.text;
+}
+
+function userEditedVisit(entry: Entry, out: ViewItem[]): void {
+	if (entry.type !== "custom") return;
+	const data = entry.data as { targetId?: unknown; text?: unknown; shadowedIds?: unknown } | undefined;
+	if (data?.targetId == null || typeof data.text !== "string") return;
+	const targetId = String(data.targetId);
+	const item = findLast(out, (r) => r.kind === "user" && r.id === targetId);
+	if (item?.kind === "user") item.text = data.text;
+	if (Array.isArray(data.shadowedIds)) {
+		const shadowed = new Set(data.shadowedIds.filter((id): id is string => typeof id === "string"));
+		for (let i = out.length - 1; i >= 0; i--) {
+			if (shadowed.has(out[i].id)) out.splice(i, 1);
+		}
+	}
 }
 
 function messageProject(entry: Entry): AgentMessage | null {
@@ -247,27 +280,27 @@ function contextChangedProject(entry: Entry): AgentMessage | null {
 }
 
 function viewHidden(): EntryMeta {
-	return { view: { project: () => [] } };
+	return { view: { visit: () => {} } };
 }
 
 export const EVENT_META: Record<string, EntryMeta> = {
-	"role:user": { view: { project: userRow }, slice: { node: "user", project: messageProject } },
+	"role:user": { view: { visit: userVisit }, slice: { node: "user", project: messageProject } },
 	"role:assistant": {
-		view: { project: () => [] },
+		...viewHidden(),
 		slice: { node: "assistant", project: messageProject },
 	},
 
-	[EVENTS.sendMessage]: { view: { project: sendMessageRow }, slice: { node: sendMessageNode, project: sendMessageProject } },
-	[EVENTS.turnEnd]: { view: { project: turnEndRow } },
-	[EVENTS.escalationRequest]: { view: { project: escalationRow } },
-	[EVENTS.commandRun]: { view: { project: commandRow } },
-	[EVENTS.skillRun]: { view: { project: skillRow } },
-	[EVENTS.shellRun]: { view: { project: shellRow } },
+	[EVENTS.sendMessage]: { view: { visit: sendMessageVisit }, slice: { node: sendMessageNode, project: sendMessageProject } },
+	[EVENTS.turnEnd]: { view: { visit: turnEndVisit } },
+	[EVENTS.escalationRequest]: { view: { visit: escalationVisit } },
+	[EVENTS.commandRun]: { view: { visit: commandVisit } },
+	[EVENTS.skillRun]: { view: { visit: skillVisit } },
+	[EVENTS.shellRun]: { view: { visit: shellVisit } },
 
-	[EVENTS.commandDone]: viewHidden(),
-	[EVENTS.skillDone]: viewHidden(),
-	[EVENTS.shellDone]: viewHidden(),
-	[EVENTS.escalationDecision]: viewHidden(),
+	[EVENTS.commandDone]: { view: { visit: commandDoneVisit } },
+	[EVENTS.skillDone]: { view: { visit: skillDoneVisit } },
+	[EVENTS.shellDone]: { view: { visit: shellDoneVisit } },
+	[EVENTS.escalationDecision]: { view: { visit: escalationDecisionVisit } },
 	[EVENTS.memoryRunStart]: viewHidden(),
 	[EVENTS.memoryRunEnd]: viewHidden(),
 
@@ -276,7 +309,7 @@ export const EVENT_META: Record<string, EntryMeta> = {
 	[EVENTS.contextChanged]: { ...viewHidden(), slice: { node: "user", project: contextChangedProject } },
 	[EVENTS.instructionsChanged]: { ...viewHidden(), slice: { node: "user", project: instructionsChangedProject } },
 	[EVENTS.mcpChanged]: { ...viewHidden(), slice: { node: "user", project: mcpChangedProject } },
-	[EVENTS.userEdited]: { ...viewHidden(), slice: { node: "user", project: textUserProject } },
+	[EVENTS.userEdited]: { view: { visit: userEditedVisit }, slice: { node: "user", project: textUserProject } },
 
 	[EVENTS.surfaceOp]: viewHidden(),
 	[EVENTS.compactionSummary]: { ...viewHidden(), slice: { project: textUserProject } },
@@ -302,50 +335,10 @@ export function entryKey(entry: Entry): string {
 	return entry.type;
 }
 
-export function buildViewContext(entries: Entry[]): ViewProjectionContext {
-	const commandDones = new Map<string, { kind: "success" | "error" | "interrupted"; text?: string }>();
-	const skillDones = new Map<string, { kind: "success" | "error"; text?: string }>();
-	const shellDones = new Map<string, { kind: "success" | "error" | "interrupted"; text?: string }>();
-	const escalationDecisions = new Map<string, { kind: "approved" | "rejected" | "dropped" }>();
-	const editedUserText = new Map<string, string>();
-	const rewoundIds = new Set<string>();
-	for (const entry of entries) {
-		if (entry.type !== "custom") continue;
-		const custom = entry as CustomEntryOf<Entry>;
-		if (custom.customType === EVENTS.commandDone) {
-			const data = custom.data as { commandId?: unknown; kind?: unknown; text?: unknown } | undefined;
-			if (data?.commandId != null) {
-				commandDones.set(String(data.commandId), { kind: data.kind === "error" ? "error" : "success", ...(typeof data.text === "string" ? { text: data.text } : {}) });
-			}
-		} else if (custom.customType === EVENTS.skillDone) {
-			const data = custom.data as { skillId?: unknown; kind?: unknown; text?: unknown } | undefined;
-			if (data?.skillId != null) {
-				skillDones.set(String(data.skillId), { kind: data.kind === "error" ? "error" : "success", ...(typeof data.text === "string" ? { text: data.text } : {}) });
-			}
-		} else if (custom.customType === EVENTS.shellDone) {
-			const data = custom.data as { shellId?: unknown; kind?: unknown; text?: unknown } | undefined;
-			if (data?.shellId != null) {
-				shellDones.set(String(data.shellId), { kind: data.kind === "error" ? "error" : "success", ...(typeof data.text === "string" ? { text: data.text } : {}) });
-			}
-		} else if (custom.customType === EVENTS.escalationDecision) {
-			const data = custom.data as { escalationId?: unknown; approved?: unknown; dropped?: unknown } | undefined;
-			if (data?.escalationId != null) {
-				escalationDecisions.set(String(data.escalationId), {
-					kind: data.dropped === true ? "dropped" : data.approved === true ? "approved" : "rejected",
-				});
-			}
-		} else if (custom.customType === EVENTS.userEdited) {
-			const data = custom.data as { targetId?: unknown; text?: unknown; shadowedIds?: unknown } | undefined;
-			if (data?.targetId != null && typeof data.text === "string") editedUserText.set(String(data.targetId), data.text);
-			if (Array.isArray(data?.shadowedIds)) {
-				for (const id of data.shadowedIds) if (typeof id === "string") rewoundIds.add(id);
-			}
-		}
-	}
-	return { commandDones, skillDones, shellDones, escalationDecisions, editedUserText, rewoundIds };
-}
-
 export function projectVisibleHistory(entries: Entry[]): ViewItem[] {
-	const ctx = buildViewContext(entries);
-	return entries.filter((entry) => !ctx.rewoundIds.has(entry.id)).flatMap((entry) => EVENT_META[entryKey(entry)]?.view?.project(entry, ctx) ?? []);
+	const out: ViewItem[] = [];
+	for (const entry of entries) {
+		EVENT_META[entryKey(entry)]?.view?.visit(entry, out);
+	}
+	return out;
 }
