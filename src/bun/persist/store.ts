@@ -7,17 +7,9 @@ import type { RequestTool, SandboxMode, ViewItem } from "../../shared/rpc";
 export type { ViewItem } from "../../shared/rpc";
 
 import type { Surface, SurfaceOpRecord } from "../../shared/surface";
-import {
-	buildResumeTurn,
-	contextChangedText,
-	deriveMessages as deriveSurfaceMessages,
-	dropDanglingTurn,
-	foldSurface,
-	instructionsChangedText,
-	pairToolResults,
-} from "../core/surface";
+import { buildResumeTurn, deriveMessages as deriveSurfaceMessages, dropDanglingTurn, foldSurface, pairToolResults } from "../core/surface";
 import { createExecutionEnv } from "../tools/execution-env";
-import { projectVisibleHistory } from "./entry-meta";
+import { EVENT_META, projectVisibleHistory } from "./entry-meta";
 import {
 	type CommandDoneEventData,
 	type CommandRunEventData,
@@ -115,7 +107,6 @@ export interface SessionScope {
 
 export interface SessionStore {
 	scope(dir: string): SessionScope;
-	/** Project the Origin (raw log) into the user View (chat transcript rows). */
 	visibleHistory(dir: string): Promise<ViewItem[]>;
 	lastMessage(dir: string): Promise<ViewItem | null>;
 	restoreMessages(dir: string): Promise<AgentMessage[]>;
@@ -136,77 +127,24 @@ export interface SessionStore {
 	forkTo(sourceDir: string, targetDir: string): Promise<void>;
 	evictRoot(dir: string): void;
 	rawEntries(dir: string): Promise<Entry[]>;
-	/** Raw entries from every session file (current + rotated/archived parents). */
 	allRawEntries(dir: string): Promise<Entry[]>;
 	currentSessionFile(dir: string): Promise<string>;
-	/** Start a fresh session file for the root, archiving the current one as its parent. Returns the new session id. */
 	rotateSession(dir: string): Promise<string>;
 }
 
-const SEND_MESSAGE_PROJECTOR = (entry: CustomEntry): AgentMessage[] | undefined => {
-	const data = entry.data as { text: string; timestamp: number } | undefined;
-	if (!data) return undefined;
-	return [
-		{
-			role: "custom",
-			customType: "send_message",
-			content: data.text,
-			display: true,
-			timestamp: data.timestamp,
-		},
-	];
-};
-
-const TIME_GAP_REMINDER_PROJECTOR = (entry: CustomEntry): AgentMessage[] | undefined => {
-	const data = entry.data as { text?: unknown; timestamp?: unknown } | undefined;
-	if (!data || typeof data.text !== "string") return undefined;
-	return [{ role: "user", content: data.text, timestamp: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0) }];
-};
-
-const INSTRUCTIONS_CHANGED_PROJECTOR = (entry: CustomEntry): AgentMessage[] | undefined => {
-	const data = entry.data as { agentMd?: unknown; timestamp?: unknown } | undefined;
-	return [
-		{
-			role: "user",
-			content: instructionsChangedText(typeof data?.agentMd === "string" ? data.agentMd : null),
-			timestamp: typeof data?.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
-		},
-	];
-};
-
-const CONTEXT_CHANGED_PROJECTOR = (entry: CustomEntry): AgentMessage[] | undefined => {
-	const data = entry.data as (Partial<ContextChangedEventData> & { timestamp?: unknown }) | undefined;
-	if (!data) return undefined;
-	return [
-		{
-			role: "user",
-			content: contextChangedText({
-				workspace: typeof data.workspace === "string" ? data.workspace : null,
-				storage: typeof data.storage === "string" ? data.storage : null,
-				sandbox: data.sandbox ?? "workspace-write",
-				skills: Array.isArray(data.skills) ? data.skills : [],
-			}),
-			timestamp: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
-		},
-	];
-};
-
-const TOOL_RESULT_PROJECTOR = (entry: CustomEntry): AgentMessage[] | undefined => {
-	const data = entry.data as Partial<ToolResultEventData> | undefined;
-	if (!data || typeof data.toolCallId !== "string") return undefined;
-	return [
-		{
-			role: "toolResult",
-			toolCallId: data.toolCallId,
-			toolName: typeof data.toolName === "string" ? data.toolName : "",
-			content: Array.isArray(data.content) ? data.content : [],
-			details: data.details,
-			usage: data.usage as ToolResultMessage["usage"] | undefined,
-			isError: data.isError === true,
-			timestamp: (entry.data as { timestamp?: unknown }).timestamp ?? entry.timestamp ?? 0,
-		} as ToolResultMessage,
-	];
-};
+function modelEntryProjectors(): Readonly<Record<string, (entry: CustomEntry) => AgentMessage[] | undefined>> {
+	const out: Record<string, (entry: CustomEntry) => AgentMessage[] | undefined> = {};
+	for (const [key, meta] of Object.entries(EVENT_META)) {
+		if (key.startsWith("role:")) continue;
+		const project = meta.slice?.project;
+		if (!project) continue;
+		out[key] = (entry: CustomEntry) => {
+			const msg = project(entry);
+			return msg ? [msg] : undefined;
+		};
+	}
+	return out;
+}
 
 interface RootState {
 	repo: JsonlSessionRepo;
@@ -432,7 +370,6 @@ export function createSessionStore(): SessionStore {
 			await refreshEntries(state);
 			return (await session.getMetadata()).id;
 		},
-		// View: fold Origin entries through EVENT_META into the human chat transcript.
 		async visibleHistory(dir) {
 			const state = await stateFor(dir);
 			return projectVisibleHistory(state.entries);
@@ -468,13 +405,7 @@ export function createSessionStore(): SessionStore {
 		async restoreMessages(dir) {
 			const state = await stateFor(dir);
 			const context = buildSessionContext(state.entries, {
-				entryProjectors: {
-					[EVENTS.sendMessage]: SEND_MESSAGE_PROJECTOR,
-					[EVENTS.toolResult]: TOOL_RESULT_PROJECTOR,
-					[EVENTS.contextChanged]: CONTEXT_CHANGED_PROJECTOR,
-					[EVENTS.instructionsChanged]: INSTRUCTIONS_CHANGED_PROJECTOR,
-					[EVENTS.timeGapReminder]: TIME_GAP_REMINDER_PROJECTOR,
-				},
+				entryProjectors: modelEntryProjectors(),
 			});
 			return dropDanglingTurn(pairToolResults(context.messages));
 		},

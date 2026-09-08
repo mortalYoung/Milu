@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core";
 import { type AssistantMessage, isContextOverflow, retryAssistantCall, type ToolResultMessage } from "@earendil-works/pi-ai";
+import { contextChangedText } from "../../shared/events";
 import type { RequestTool, RuntimeStatsSnapshot, SessionStats, ThinkingLevel } from "../../shared/rpc";
 import { newRetryId, resolveRetryPolicy } from "../lib/retry";
 import { loadSettings } from "../lib/settings";
@@ -17,7 +18,6 @@ import { Context } from "./context";
 import { projectLoopContext } from "./context-project";
 import type { MemoryRecord, QueryMemoryOptions } from "./memory";
 import type { PartnerPrompt } from "./prompt";
-import { contextChangedText } from "./surface";
 
 export interface AgentBridge {
 	onTurnStart: (turn: number) => void;
@@ -220,7 +220,10 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		const timestamp = Date.now();
 		void deps.session
 			.appendSendMessage(text, { toolCallId: "harness-delivery" }, timestamp)
-			.then(() => deliverVisible(text, timestamp))
+			.then(() => {
+				ctx.markVisible();
+				bridge.onMessage(text);
+			})
 			.catch((error) => console.error("session appendSendMessage failed:", error));
 	}
 

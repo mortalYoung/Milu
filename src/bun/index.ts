@@ -8,6 +8,7 @@ import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import { getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
 import { Cron } from "croner";
 import { ApplicationMenu, BrowserView, BrowserWindow, Utils } from "electrobun/main";
+import { mcpChangedText } from "../shared/events";
 import { cleanOrigin } from "../shared/origin";
 import type { AppRPCSchema, ChatPreviewKind, TrajectoryRecord } from "../shared/rpc";
 import { loadCustomCommands, mergeCommandDefinitions } from "./commands/custom";
@@ -32,7 +33,6 @@ import { Context } from "./core/context";
 import { projectSnapshot } from "./core/context-project";
 import { type MemoryRecord, organizeMemory, type QueryMemoryOptions, queryMemory, readMemoryLines } from "./core/memory";
 import { loadRuntimeStats, saveRuntimeStats } from "./core/runtime-stats";
-import { mcpChangedText } from "./core/surface";
 import { applyToolResultPrunes, planToolResultPrunes } from "./core/tool-result-pruner";
 import { aggregateUsage, dedupeRequestHeaders, fold, lastUsage } from "./core/trajectory";
 import { deleteApiKey, getApiKey, loadCredentials, setApiKey } from "./lib/credentials";
@@ -186,7 +186,6 @@ const agents = new Map<string, Promise<PartnerAgent>>();
 let skillSeq = 0;
 let shellSeq = 0;
 
-/** Trajectory view cache: fold+dedupe(+surface filter) is expensive, paging should not redo it. */
 interface TrajectoryViewCache {
 	signature: string;
 	records: TrajectoryRecord[];
@@ -377,7 +376,6 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 		await recordPrompt(dir, agent.systemPrompt);
 	}
 
-	// Close orphan rows (crash / hard stop leftovers) so visibleHistory is a pure log projection.
 	await reconcileTerminalStates(dir);
 
 	const surf = await session.surface(dir);
@@ -580,9 +578,7 @@ async function runMemoryOrganizeAll(): Promise<void> {
 		try {
 			const entry = await promise;
 			await withBackgroundAbort(entry.profile.name, (signal) => runMemoryOrganize(entry, signal));
-		} catch {
-			// skip partner
-		}
+		} catch {}
 	}
 }
 
@@ -617,12 +613,6 @@ async function runMemoryDailyIfDueNow(): Promise<void> {
 void scheduleMemoryDaily();
 void runMemoryDailyIfDueNow();
 
-/**
- * Persist terminal states for rows the log never closed (crash / hard stop): commands and
- * shells without a Done become `interrupted`, escalations without a decision that are not
- * resumable become `dropped`. Run once per partner at startup, before the agent does anything,
- * so visibleHistory is a pure log projection and needs no runtime overlay.
- */
 async function reconcileTerminalStates(dir: string): Promise<{ commands: number; shells: number; escalations: number; memoryRuns: number }> {
 	const entries = await session.rawEntries(dir);
 	const commandDones = new Set<string>();
@@ -1018,8 +1008,6 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 			history: async () => {
 				const target = viewPartner;
 				if (!target) return { items: [] };
-				// Terminal states (interrupted/dropped) are persisted by startup reconciliation, so
-				// this is a pure log projection — cache by log signature, no runtime overlay needed.
 				const entries = await session.rawEntries(target.dir);
 				const lastId = entries.length > 0 ? entries[entries.length - 1].id : "";
 				const signature = `${entries.length}:${lastId}`;
@@ -1446,8 +1434,6 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				const dir = getPartnerDir(settings, name);
 				const entries = await session.rawEntries(dir);
 
-				// Surface folding is another full log replay; snapshot its ids once per request and
-				// include replaceGeneration in the cache signature so compaction invalidates the view.
 				let surfaceGen = 0;
 				let surfaceIds: Set<string> | undefined;
 				if (surfaceOnly) {
@@ -1456,7 +1442,6 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 						surfaceGen = surface.replaceGeneration;
 						surfaceIds = new Set(surface.nodes.map((n) => n.id));
 					} catch {
-						// Surface fold can fail mid-compaction; fall back to the whole log instead of an empty view.
 						surfaceOnly = false;
 					}
 				}
@@ -1467,8 +1452,6 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				let cached = trajectoryViewCache.get(cacheKey);
 				if (!cached || cached.signature !== signature) {
 					const allRecords = fold(entries);
-					// Header dedup is a display rule (tool-set content repeats across steps); it lives
-					// server-side so paging cannot resurrect a header that was already deduplicated.
 					let records = dedupeRequestHeaders(allRecords);
 					if (surfaceOnly && surfaceIds) records = records.filter((r) => surfaceIds.has(r.entryId));
 					cached = { signature, records, total: allRecords.length };
@@ -1482,8 +1465,6 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				const { records, total } = cached;
 				const end = before == null ? records.length : firstSeqAtOrAfter(records, before);
 				let start = Math.max(0, end - limit);
-				// Align the page start to a natural boundary (a user question or an assistant reply),
-				// so the top of the loaded window isn't a mid-turn marker like request/header.
 				while (start > 0 && records[start].kind !== "user" && records[start].kind !== "assistant") {
 					start--;
 				}
@@ -1726,7 +1707,6 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 						const dir = getPartnerDir(settings, target);
 						session.evictRoot(dir);
 						agents.delete(target);
-						// Drop cached views for the deleted partner's dir.
 						for (const key of [...historyViewCache.keys()]) if (key === `history:${dir}`) historyViewCache.delete(key);
 						for (const key of [...trajectoryViewCache.keys()]) if (key.startsWith(`${dir}:`)) trajectoryViewCache.delete(key);
 						if (viewPartner?.name === target) viewPartner = null;

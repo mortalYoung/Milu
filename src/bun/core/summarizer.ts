@@ -51,14 +51,11 @@ export function frameSummary(summary: string, previousCheckpoint?: string): stri
 	const preamble =
 		"This is an automatically generated checkpoint condensing an earlier span of the conversation to free up context. Treat the captured context as established background and build on it without restating it. Continue the task directly from the messages that follow, without acknowledging this checkpoint.";
 	if (previousCheckpoint) {
-		// The previous checkpoint is the only stable provider-prefix anchor: keep it verbatim
-		// at the front so the next request's [system][previous checkpoint] prefix still cache-hits.
 		return [previousCheckpoint, "", preamble, "", "<compacted-summary>", summary, "</compacted-summary>"].join("\n");
 	}
 	return [preamble, "", "<compacted-summary>", summary, "</compacted-summary>"].join("\n");
 }
 
-/** The previous checkpoint among the shadowed span, if any (used as the new checkpoint's cache anchor). */
 export function previousCheckpointText(entries: Entry[], shadowed: SurfaceNode[]): string | undefined {
 	const byId = new Map(entries.map((e) => [e.id, e]));
 	for (const node of shadowed) {
@@ -117,12 +114,10 @@ function replayLines(entries: Entry[], shadowed: SurfaceNode[]): string[] {
 		if (!raw) continue;
 		const text = oneLine(raw).slice(0, 80);
 		if (isCheckpoint(raw)) {
-			// The previous checkpoint is preserved verbatim as the cache anchor by planCompaction;
-			// do not duplicate it inside the condensed replay body.
 			continue;
 		}
 		if (node.kind === "user") lines.push(`Q: ${text}`);
-		else if (node.kind === "send_message") lines.push(`A: ${text}`);
+		else if (node.kind === "assistant" || node.kind === "send_message") lines.push(`A: ${text}`);
 		else if (node.kind === "tool_result") lines.push(`[tool] ${text}`);
 	}
 	return lines;

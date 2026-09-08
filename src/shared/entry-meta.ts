@@ -1,27 +1,10 @@
-/**
- * Per-entry metadata registry for the Origin (the append-only JSONL log).
- *
- * Concept naming (see docs/2026-09-02-origin-slice-view-naming.md):
- *   Origin  = the immutable log (rawEntries / EVENTS)
- *   Slice   = the model-visible projection (surface.nodes)
- *   View    = the human chat transcript (visibleHistory)
- *
- * Every EVENTS value (and every pi message role) gets one row here. Concerns are namespaced so
- * future views can attach their own metadata without touching existing logic:
- *
- *   - `chat`       — how / whether this Origin entry appears in the user View (chat transcript)
- *   - `trajectory` — (future) label / ordering for the Timeline (Trajectory drawer)
- *
- * The chat projector is the single source of truth: a row registered with a `chat` block can
- * produce rows, and returning `[]` means this particular entry is hidden. Entries without a
- * `chat` block (or whose projector always returns `[]`) never render in the View.
- */
-import type { Entry } from "@earendil-works/pi-agent-core";
-import { EVENTS } from "./events";
+import type { AgentMessage, Entry } from "@earendil-works/pi-agent-core";
+import type { ToolResultMessage } from "@earendil-works/pi-ai";
+import { contextChangedText, EVENTS, instructionsChangedText, mcpChangedText } from "./events";
 import type { SandboxMode, ViewItem } from "./rpc";
+import type { SurfaceNode } from "./surface";
 
-/** Precomputed per-fold context: Done/Decision events enrich their Run rows. */
-export interface ChatProjectionContext {
+export interface ViewProjectionContext {
 	commandDones: Map<string, { kind: "success" | "error" | "interrupted"; text?: string }>;
 	skillDones: Map<string, { kind: "success" | "error"; text?: string }>;
 	shellDones: Map<string, { kind: "success" | "error" | "interrupted"; text?: string }>;
@@ -30,18 +13,22 @@ export interface ChatProjectionContext {
 	rewoundIds: Set<string>;
 }
 
-export interface ChatMeta {
-	/** Build the chat rows for one entry; return [] when this particular entry is hidden. */
-	project(entry: Entry, ctx: ChatProjectionContext): ViewItem[];
+export interface ViewMeta {
+	project(entry: Entry, ctx: ViewProjectionContext): ViewItem[];
 }
 
-/** Reserved for the trajectory view (labels etc.). */
+export interface SliceMeta {
+	node?: SurfaceNode["kind"] | ((entry: Entry) => SurfaceNode["kind"] | null);
+	project?(entry: Entry): AgentMessage | null;
+}
+
 export interface TrajectoryMeta {
 	label: string;
 }
 
 export interface EntryMeta {
-	chat?: ChatMeta;
+	view?: ViewMeta;
+	slice?: SliceMeta;
 	trajectory?: TrajectoryMeta;
 }
 
@@ -49,7 +36,7 @@ type CustomEntryOf<E extends Entry> = Extract<E, { type: "custom" }>;
 
 const row = (id: string, kind: ViewItem["kind"], text: string, time: number): ViewItem => ({ id, kind, text, time });
 
-function userRow(entry: Entry, ctx: ChatProjectionContext): ViewItem[] {
+function userRow(entry: Entry, ctx: ViewProjectionContext): ViewItem[] {
 	if (entry.type !== "message" || entry.message.role !== "user") return [];
 	const content = entry.message.content;
 	const skill = (entry.message as { skill?: unknown }).skill;
@@ -66,7 +53,6 @@ function sendMessageRow(entry: Entry): ViewItem[] {
 	if (entry.type !== "custom") return [];
 	const data = entry.data as { text?: unknown; timestamp?: unknown; toolCallId?: unknown } | undefined;
 	if (!data || typeof data.text !== "string") return [];
-	// Shell heartbeats are model-visible duplicates of the shell row; never show them in chat.
 	if (typeof data.toolCallId === "string" && data.toolCallId.startsWith("shell:")) return [];
 	return [row(entry.id, "send_message", data.text, typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0))];
 }
@@ -80,7 +66,7 @@ function turnEndRow(entry: Entry): ViewItem[] {
 	return [];
 }
 
-function escalationRow(entry: Entry, ctx: ChatProjectionContext): ViewItem[] {
+function escalationRow(entry: Entry, ctx: ViewProjectionContext): ViewItem[] {
 	if (entry.type !== "custom") return [];
 	const data = entry.data as { escalationId?: unknown; command?: unknown; from?: unknown; to?: unknown; justification?: unknown; timestamp?: unknown } | undefined;
 	if (data?.escalationId == null) return [];
@@ -100,7 +86,7 @@ function escalationRow(entry: Entry, ctx: ChatProjectionContext): ViewItem[] {
 	];
 }
 
-function commandRow(entry: Entry, ctx: ChatProjectionContext): ViewItem[] {
+function commandRow(entry: Entry, ctx: ViewProjectionContext): ViewItem[] {
 	if (entry.type !== "custom") return [];
 	const data = entry.data as { commandId?: unknown; name?: unknown; args?: unknown; timestamp?: unknown } | undefined;
 	if (data?.commandId == null) return [];
@@ -120,7 +106,7 @@ function commandRow(entry: Entry, ctx: ChatProjectionContext): ViewItem[] {
 	];
 }
 
-function skillRow(entry: Entry, ctx: ChatProjectionContext): ViewItem[] {
+function skillRow(entry: Entry, ctx: ViewProjectionContext): ViewItem[] {
 	if (entry.type !== "custom") return [];
 	const data = entry.data as { skillId?: unknown; name?: unknown; hint?: unknown; timestamp?: unknown } | undefined;
 	if (data?.skillId == null) return [];
@@ -139,7 +125,7 @@ function skillRow(entry: Entry, ctx: ChatProjectionContext): ViewItem[] {
 	];
 }
 
-function shellRow(entry: Entry, ctx: ChatProjectionContext): ViewItem[] {
+function shellRow(entry: Entry, ctx: ViewProjectionContext): ViewItem[] {
 	if (entry.type !== "custom") return [];
 	const data = entry.data as { shellId?: unknown; command?: unknown; timestamp?: unknown } | undefined;
 	if (data?.shellId == null) return [];
@@ -158,71 +144,165 @@ function shellRow(entry: Entry, ctx: ChatProjectionContext): ViewItem[] {
 	];
 }
 
-/** Log-only events: never render a chat row, but stay registered for documentation/lookup. */
-function logOnly(): EntryMeta {
-	return { chat: { project: () => [] } };
+function messageProject(entry: Entry): AgentMessage | null {
+	if (entry.type !== "message") return null;
+	return entry.message as unknown as AgentMessage;
 }
 
-/**
- * Registry keyed by `role:<role>` for pi message entries and by EVENTS customType for custom
- * entries. Lookup misses (unknown / native non-custom types) default to hidden — safe for
- * forward compatibility.
- */
+function isAutoDelivered(entry: Entry): boolean {
+	if (entry.type !== "custom") return false;
+	const data = (entry.data ?? {}) as { toolCallId?: unknown };
+	return data.toolCallId === "harness-delivery";
+}
+
+function sendMessageProject(entry: Entry): AgentMessage | null {
+	if (entry.type !== "custom") return null;
+	if (isAutoDelivered(entry)) return null;
+	const data = (entry.data ?? {}) as { text?: unknown; timestamp?: unknown };
+	return {
+		role: "custom",
+		customType: "send_message",
+		content: typeof data.text === "string" ? data.text : "",
+		display: true,
+		timestamp: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
+	} as AgentMessage;
+}
+
+function sendMessageNode(entry: Entry): SurfaceNode["kind"] | null {
+	return sendMessageProject(entry) ? "send_message" : null;
+}
+
+function toolResultProject(entry: Entry): AgentMessage | null {
+	if (entry.type !== "custom") return null;
+	const data = (entry.data ?? {}) as {
+		toolCallId?: unknown;
+		toolName?: unknown;
+		content?: unknown;
+		details?: unknown;
+		usage?: unknown;
+		addedToolNames?: unknown;
+		isError?: unknown;
+		timestamp?: unknown;
+	};
+	return {
+		role: "toolResult",
+		toolCallId: typeof data.toolCallId === "string" ? data.toolCallId : "",
+		toolName: typeof data.toolName === "string" ? data.toolName : "",
+		content: Array.isArray(data.content) ? data.content : [],
+		details: data.details,
+		usage: data.usage as ToolResultMessage["usage"] | undefined,
+		...(Array.isArray(data.addedToolNames) ? { addedToolNames: data.addedToolNames } : {}),
+		isError: data.isError === true,
+		timestamp: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
+	} as unknown as AgentMessage;
+}
+
+function textUserProject(entry: Entry): AgentMessage | null {
+	if (entry.type !== "custom") return null;
+	const data = (entry.data ?? {}) as { text?: unknown; timestamp?: unknown };
+	return {
+		role: "user",
+		content: typeof data.text === "string" ? data.text : "",
+		timestamp: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
+	} as AgentMessage;
+}
+
+function mcpChangedProject(entry: Entry): AgentMessage | null {
+	if (entry.type !== "custom") return null;
+	const data = (entry.data ?? {}) as { server?: unknown; change?: unknown; granted?: unknown; timestamp?: unknown };
+	return {
+		role: "user",
+		content: mcpChangedText({
+			server: typeof data.server === "string" ? data.server : "",
+			change: data.change === "removed" ? "removed" : "added",
+			granted: Array.isArray(data.granted) ? data.granted.filter((s): s is string => typeof s === "string") : [],
+		}),
+		timestamp: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
+	} as AgentMessage;
+}
+
+function instructionsChangedProject(entry: Entry): AgentMessage | null {
+	if (entry.type !== "custom") return null;
+	const data = (entry.data ?? {}) as { agentMd?: unknown; timestamp?: unknown };
+	return {
+		role: "user",
+		content: instructionsChangedText(typeof data.agentMd === "string" ? data.agentMd : null),
+		timestamp: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
+	} as AgentMessage;
+}
+
+function contextChangedProject(entry: Entry): AgentMessage | null {
+	if (entry.type !== "custom") return null;
+	const data = (entry.data ?? {}) as { workspace?: unknown; storage?: unknown; sandbox?: unknown; skills?: unknown; timestamp?: unknown };
+	return {
+		role: "user",
+		content: contextChangedText({
+			workspace: typeof data.workspace === "string" ? data.workspace : null,
+			storage: typeof data.storage === "string" ? data.storage : null,
+			sandbox: (data.sandbox ?? "workspace-write") as SandboxMode,
+			skills: Array.isArray(data.skills) ? (data.skills as { name: string; description: string; digest: string }[]) : [],
+		}),
+		timestamp: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
+	} as AgentMessage;
+}
+
+function viewHidden(): EntryMeta {
+	return { view: { project: () => [] } };
+}
+
 export const EVENT_META: Record<string, EntryMeta> = {
-	"role:user": { chat: { project: userRow } },
+	"role:user": { view: { project: userRow }, slice: { node: "user", project: messageProject } },
 	"role:assistant": {
-		// Assistant text is delivered as send_message heartbeats; the raw message never renders.
-		chat: { project: () => [] },
+		view: { project: () => [] },
+		slice: { node: "assistant", project: messageProject },
 	},
 
-	[EVENTS.sendMessage]: { chat: { project: sendMessageRow } },
-	[EVENTS.turnEnd]: { chat: { project: turnEndRow } }, // aborted / error only
-	[EVENTS.escalationRequest]: { chat: { project: escalationRow } },
-	[EVENTS.commandRun]: { chat: { project: commandRow } },
-	[EVENTS.skillRun]: { chat: { project: skillRow } },
-	[EVENTS.shellRun]: { chat: { project: shellRow } },
+	[EVENTS.sendMessage]: { view: { project: sendMessageRow }, slice: { node: sendMessageNode, project: sendMessageProject } },
+	[EVENTS.turnEnd]: { view: { project: turnEndRow } },
+	[EVENTS.escalationRequest]: { view: { project: escalationRow } },
+	[EVENTS.commandRun]: { view: { project: commandRow } },
+	[EVENTS.skillRun]: { view: { project: skillRow } },
+	[EVENTS.shellRun]: { view: { project: shellRow } },
 
-	// Done/decision events never render; they only enrich their Run row through the context.
-	[EVENTS.commandDone]: logOnly(),
-	[EVENTS.skillDone]: logOnly(),
-	[EVENTS.shellDone]: logOnly(),
-	[EVENTS.escalationDecision]: logOnly(),
-	[EVENTS.memoryRunStart]: logOnly(),
-	[EVENTS.memoryRunEnd]: logOnly(),
+	[EVENTS.commandDone]: viewHidden(),
+	[EVENTS.skillDone]: viewHidden(),
+	[EVENTS.shellDone]: viewHidden(),
+	[EVENTS.escalationDecision]: viewHidden(),
+	[EVENTS.memoryRunStart]: viewHidden(),
+	[EVENTS.memoryRunEnd]: viewHidden(),
 
-	// Log-only machinery.
-	[EVENTS.turnStart]: logOnly(),
-	[EVENTS.stepStart]: logOnly(),
-	[EVENTS.stepEnd]: logOnly(),
-	[EVENTS.toolCall]: logOnly(),
-	[EVENTS.toolResult]: logOnly(),
-	[EVENTS.requestHeader]: logOnly(),
-	[EVENTS.systemPrompt]: logOnly(),
-	[EVENTS.followUp]: logOnly(),
-	[EVENTS.timeGapReminder]: logOnly(),
-	[EVENTS.surfaceOp]: logOnly(),
-	[EVENTS.compactionSummary]: logOnly(),
-	[EVENTS.compactionStart]: logOnly(),
-	[EVENTS.compactionEnd]: logOnly(),
-	[EVENTS.compactionPrune]: logOnly(),
-	[EVENTS.modelChange]: logOnly(),
-	[EVENTS.contextChanged]: logOnly(),
-	[EVENTS.instructionsChanged]: logOnly(),
-	[EVENTS.mcpChanged]: logOnly(),
-	[EVENTS.userEdited]: logOnly(),
-	[EVENTS.retryScheduled]: logOnly(),
-	[EVENTS.retryStarted]: logOnly(),
+	[EVENTS.toolResult]: { ...viewHidden(), slice: { node: "tool_result", project: toolResultProject } },
+	[EVENTS.timeGapReminder]: { ...viewHidden(), slice: { node: "user", project: textUserProject } },
+	[EVENTS.contextChanged]: { ...viewHidden(), slice: { node: "user", project: contextChangedProject } },
+	[EVENTS.instructionsChanged]: { ...viewHidden(), slice: { node: "user", project: instructionsChangedProject } },
+	[EVENTS.mcpChanged]: { ...viewHidden(), slice: { node: "user", project: mcpChangedProject } },
+	[EVENTS.userEdited]: { ...viewHidden(), slice: { node: "user", project: textUserProject } },
+
+	[EVENTS.surfaceOp]: viewHidden(),
+	[EVENTS.compactionSummary]: { ...viewHidden(), slice: { project: textUserProject } },
+
+	[EVENTS.turnStart]: viewHidden(),
+	[EVENTS.stepStart]: viewHidden(),
+	[EVENTS.stepEnd]: viewHidden(),
+	[EVENTS.toolCall]: viewHidden(),
+	[EVENTS.requestHeader]: viewHidden(),
+	[EVENTS.systemPrompt]: viewHidden(),
+	[EVENTS.followUp]: viewHidden(),
+	[EVENTS.compactionStart]: viewHidden(),
+	[EVENTS.compactionEnd]: viewHidden(),
+	[EVENTS.compactionPrune]: viewHidden(),
+	[EVENTS.modelChange]: viewHidden(),
+	[EVENTS.retryScheduled]: viewHidden(),
+	[EVENTS.retryStarted]: viewHidden(),
 };
 
-/** Discriminator used to look up EVENT_META (native non-custom types fall through as hidden). */
 export function entryKey(entry: Entry): string {
 	if (entry.type === "message") return `role:${entry.message.role}`;
 	if (entry.type === "custom") return entry.customType;
 	return entry.type;
 }
 
-/** Build the Done/Decision maps once per fold. */
-export function buildChatContext(entries: Entry[]): ChatProjectionContext {
+export function buildViewContext(entries: Entry[]): ViewProjectionContext {
 	const commandDones = new Map<string, { kind: "success" | "error" | "interrupted"; text?: string }>();
 	const skillDones = new Map<string, { kind: "success" | "error"; text?: string }>();
 	const shellDones = new Map<string, { kind: "success" | "error" | "interrupted"; text?: string }>();
@@ -265,8 +345,7 @@ export function buildChatContext(entries: Entry[]): ChatProjectionContext {
 	return { commandDones, skillDones, shellDones, escalationDecisions, editedUserText, rewoundIds };
 }
 
-/** Project the full log into the human chat transcript via EVENT_META. */
 export function projectVisibleHistory(entries: Entry[]): ViewItem[] {
-	const ctx = buildChatContext(entries);
-	return entries.filter((entry) => !ctx.rewoundIds.has(entry.id)).flatMap((entry) => EVENT_META[entryKey(entry)]?.chat?.project(entry, ctx) ?? []);
+	const ctx = buildViewContext(entries);
+	return entries.filter((entry) => !ctx.rewoundIds.has(entry.id)).flatMap((entry) => EVENT_META[entryKey(entry)]?.view?.project(entry, ctx) ?? []);
 }

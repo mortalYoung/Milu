@@ -1,31 +1,17 @@
-/**
- * Slice folding — Origin (the log) → Slice (the model-visible projection).
- *
- * Pure, shared by server and renderer: folds the Origin and applies logged `surface_op`
- * records (slice rewrites: compaction checkpoints and tool-result pruning). The derived prompt
- * chain (deriveMessages) is a further projection of the Slice, not the Slice itself.
- */
 import type { Entry } from "@earendil-works/pi-agent-core";
+import { EVENT_META, entryKey } from "./entry-meta";
 import { EVENTS } from "./events";
 import type { Surface, SurfaceNode, SurfaceOpRecord } from "./surface";
 
-const SURFACE_CUSTOM_TYPES = new Set<string>([
-	EVENTS.sendMessage,
-	EVENTS.toolResult,
-	EVENTS.contextChanged,
-	EVENTS.timeGapReminder,
-	EVENTS.instructionsChanged,
-	EVENTS.mcpChanged,
-	EVENTS.userEdited,
-]);
-
 export class SurfaceError extends Error {}
 
+function sliceNodeKind(entry: Entry): SurfaceNode["kind"] | null {
+	const node = EVENT_META[entryKey(entry)]?.slice?.node;
+	return typeof node === "function" ? node(entry) : (node ?? null);
+}
+
 export function isSurfaceEntry(entry: Entry): boolean {
-	if (entry.type === "message") {
-		return entry.message.role === "user" || entry.message.role === "assistant";
-	}
-	return entry.type === "custom" && SURFACE_CUSTOM_TYPES.has(entry.customType);
+	return sliceNodeKind(entry) != null;
 }
 
 function entryTime(entry: Entry): number {
@@ -38,45 +24,11 @@ function entryTime(entry: Entry): number {
 }
 
 function nodeFor(entry: Entry, seq: number): SurfaceNode | null {
-	if (entry.type === "message") {
-		const time = entryTime(entry);
-		if (entry.message.role === "user") return { kind: "user", seq, id: entry.id, time };
-		if (entry.message.role === "assistant") return { kind: "assistant", seq, id: entry.id, time };
-		return null;
-	}
-	if (entry.type === "custom" && entry.customType === EVENTS.sendMessage) {
-		return { kind: "send_message", seq, id: entry.id, time: entryTime(entry) };
-	}
-	if (entry.type === "custom" && entry.customType === EVENTS.toolResult) {
-		return { kind: "tool_result", seq, id: entry.id, time: entryTime(entry) };
-	}
-	if (entry.type === "custom" && entry.customType === EVENTS.timeGapReminder) {
-		return { kind: "user", seq, id: entry.id, time: entryTime(entry) };
-	}
-	if (
-		entry.type === "custom" &&
-		(entry.customType === EVENTS.contextChanged ||
-			entry.customType === EVENTS.instructionsChanged ||
-			entry.customType === EVENTS.mcpChanged ||
-			entry.customType === EVENTS.userEdited)
-	) {
-		return { kind: "user", seq, id: entry.id, time: entryTime(entry) };
-	}
-	return null;
+	const kind = sliceNodeKind(entry);
+	if (!kind) return null;
+	return { kind, seq, id: entry.id, time: entryTime(entry) };
 }
 
-/**
- * Slice entry ids for a (possibly partial / windowed) Origin.
- *
- * `foldSurface` replays positional `surface_op` ranges and therefore needs the full
- * Origin prefix before the newest window. The Trajectory drawer loads the Origin from the
- * newest entry backwards, so a 200-entry window can contain a `surface_op` whose range
- * refers to surface nodes that are not loaded yet (e.g. a compaction of the whole log).
- * Membership in the Slice for the rows we already hold only depends on shadowing, not on
- * replaying those positions: an op shadows exactly the entries in `sourceEventSeqs`, and a
- * checkpoint inserts its `compaction_summary` id. This returns the same id set as
- * `foldSurface(...).nodes` for a complete Origin, but never throws on a truncated one.
- */
 export function surfaceNodeIds(entries: Entry[]): Set<string> {
 	const shadowed = new Set<string>();
 	const summaries = new Map<string, Entry>();
@@ -94,7 +46,6 @@ export function surfaceNodeIds(entries: Entry[]): Set<string> {
 	}
 	const ids = new Set<string>();
 	for (const entry of entries) {
-		if (entry.type === "custom" && (entry.customType === EVENTS.surfaceOp || entry.customType === EVENTS.compactionSummary)) continue;
 		const node = nodeFor(entry, 0);
 		if (!node || shadowed.has(entry.id)) continue;
 		ids.add(entry.id);
@@ -109,8 +60,6 @@ export function foldSurface(entries: Entry[]): Surface {
 	const nodes: SurfaceNode[] = [];
 	let replaceGeneration = 0;
 	const pendingSummaries = new Map<string, Entry>();
-	// tool/result entries that a later surface_op will splice into the range as `replacementId`
-	// (the pruner's in-place replace). They must not also append at the end of the surface.
 	const pendingReplacements = new Map<string, Entry>();
 	const replacementIds = new Set<string>();
 	for (const e of entries) {
@@ -130,7 +79,7 @@ export function foldSurface(entries: Entry[]): Surface {
 				replaceGeneration = op.replaceGeneration;
 				continue;
 			}
-			if (replacementIds.has(entry.id) && (entry.customType === EVENTS.toolResult || isSurfaceEntry(entry))) {
+			if (replacementIds.has(entry.id) && isSurfaceEntry(entry)) {
 				pendingReplacements.set(entry.id, entry);
 				continue;
 			}
