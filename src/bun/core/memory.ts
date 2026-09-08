@@ -6,7 +6,7 @@ import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
 import { type Model, Type } from "@earendil-works/pi-ai";
 import { EVENTS, type MemoryRunEndEventData, type MemoryRunModelMessage, type MemoryRunStartEventData, type MemoryRunTraceEvent } from "../persist/events";
 import { convertToLlm, STREAM_FN } from "./agent-config";
-import { deriveEventMessage } from "./surface";
+import { deriveEventMessage } from "./slice";
 
 export type MemoryKind = "fact" | "decision" | "issue" | "reference" | "event";
 
@@ -206,7 +206,7 @@ export async function organizeMemory(opts: OrganizeMemoryOptions): Promise<numbe
 	// Rewound user edits stay in the raw log for audit but must not feed memory.
 	const rewoundIds = new Set<string>();
 	for (const e of opts.entries) {
-		if (e.type === "custom" && e.customType === EVENTS.userEdited) {
+		if (e.type === "custom" && e.customType === EVENTS.rewind) {
 			const data = e.data as { targetId?: unknown; shadowedIds?: unknown } | undefined;
 			if (typeof data?.targetId === "string") rewoundIds.add(data.targetId);
 			const shadowed = data?.shadowedIds;

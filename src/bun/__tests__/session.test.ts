@@ -44,68 +44,6 @@ describe("session store (pi JSONL backend)", () => {
 		expect((await reopened.visibleHistory(dir)).map((m) => m.kind)).toEqual(["user", "send_message"]);
 	});
 
-	it("restoreMessages rebuilds the full chain in order", async () => {
-		const dir = await tempDir();
-		const session = createSessionStore();
-		const scope = session.scope(dir);
-		await scope.appendUser("hello", 1);
-		await scope.appendAssistant(
-			{
-				blocks: [{ type: "toolCall", id: "t1", name: "bash", arguments: {} }],
-				toolResults: [{ role: "toolResult", toolCallId: "t1", toolName: "bash", content: [{ type: "text", text: "out" }], isError: false, timestamp: 2 }],
-			},
-			2,
-		);
-		await scope.appendSendMessage("done", {}, 3);
-
-		const restored = await session.restoreMessages(dir);
-		expect(restored).toHaveLength(4);
-		expect(restored[0]).toMatchObject({ role: "user", content: "hello" });
-		expect(restored[1]).toMatchObject({ role: "assistant" });
-		expect(restored[2]).toMatchObject({ role: "toolResult", toolCallId: "t1" });
-		expect(restored[3]).toMatchObject({ role: "custom", customType: "send_message", content: "done", display: true });
-	});
-
-	it("drops a trailing incomplete turn (tool_use without tool_result)", async () => {
-		const dir = await tempDir();
-		const session = createSessionStore();
-		const scope = session.scope(dir);
-		await scope.appendUser("hi", 1);
-		await scope.appendAssistant({ blocks: [{ type: "toolCall", id: "t9", name: "bash", arguments: {} }] }, 2);
-
-		const restored = await session.restoreMessages(dir);
-		expect(restored).toHaveLength(1);
-		expect(restored[0]).toMatchObject({ role: "user" });
-	});
-
-	it("strips undefined fields from pi messages (toolResult details/usage)", async () => {
-		const dir = await tempDir();
-		const session = createSessionStore();
-		const scope = session.scope(dir);
-		await scope.appendAssistant(
-			{
-				blocks: [{ type: "toolCall", id: "t1", name: "bash", arguments: {} }],
-				// Messages built by the pi loop carry explicit undefined fields; they must still be storable
-				toolResults: [
-					{
-						role: "toolResult",
-						toolCallId: "t1",
-						toolName: "bash",
-						content: [{ type: "text", text: "out" }],
-						isError: false,
-						timestamp: 2,
-						details: undefined,
-						usage: undefined,
-					} as never,
-				],
-			},
-			2,
-		);
-		const restored = await session.restoreMessages(dir);
-		expect(restored).toHaveLength(2);
-		expect(restored[1]).toMatchObject({ role: "toolResult", toolCallId: "t1" });
-	});
-
 	it("scopes append to their own roots; per-dir reads stay isolated", async () => {
 		const dirA = await tempDir();
 		const dirB = await tempDir();
@@ -166,24 +104,6 @@ describe("session store (pi JSONL backend)", () => {
 
 		const third = createSessionStore();
 		expect((await third.visibleHistory(dir)).map((m) => m.text)).toEqual(["one", "reply one", "two"]);
-	});
-
-	it("forkTo copies the log into a new root and the surface re-folds there", async () => {
-		const source = await tempDir();
-		const fork = await tempDir();
-		const session = createSessionStore();
-		const scope = session.scope(source);
-		await scope.appendUser("q1", 1);
-		await scope.appendSendMessage("a1", {}, 2);
-		await scope.appendUser("q2", 3);
-		await scope.appendSendMessage("a2", {}, 4);
-
-		await session.forkTo(source, fork);
-
-		// the fork re-folds the same surface (deterministic replay) and the same human transcript
-		expect((await session.surface(fork)).nodes).toEqual((await session.surface(source)).nodes);
-		expect((await session.visibleHistory(fork)).map((m) => m.text)).toEqual(["q1", "a1", "q2", "a2"]);
-		expect((await session.deriveMessages(fork)).map((m) => m.role)).toEqual((await session.deriveMessages(source)).map((m) => m.role));
 	});
 
 	it("rotateSession archives the current log and starts a fresh one", async () => {

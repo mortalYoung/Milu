@@ -1,18 +1,18 @@
 import { cp } from "node:fs/promises";
-import type { AgentMessage, CustomEntry, Entry } from "@earendil-works/pi-agent-core";
-import { buildSessionContext, JsonlSessionRepo, Session } from "@earendil-works/pi-agent-core";
+import type { AgentMessage, Entry } from "@earendil-works/pi-agent-core";
+import { JsonlSessionRepo, Session } from "@earendil-works/pi-agent-core";
 import { type AssistantMessage, type ToolResultMessage, type Usage, uuidv7 } from "@earendil-works/pi-ai";
 import type { RequestTool, SandboxMode, ViewItem } from "../../shared/rpc";
 
 export type { ViewItem } from "../../shared/rpc";
 
-import type { Surface, SurfaceOpRecord } from "../../shared/surface";
-import { buildResumeTurn, deriveMessages as deriveSurfaceMessages, dropDanglingTurn, foldSurface, pairToolResults } from "../core/surface";
+import { buildResumeTurn, foldSlice } from "../core/slice";
 import { createExecutionEnv } from "../tools/execution-env";
-import { EVENT_META, projectVisibleHistory } from "./entry-meta";
+import { projectVisibleHistory } from "./entry-meta";
 import {
 	type CommandDoneEventData,
 	type CommandRunEventData,
+	type CompactionEventData,
 	type ContextChangedEventData,
 	EVENTS,
 	type McpChangedEventData,
@@ -20,13 +20,13 @@ import {
 	type MemoryRunStartEventData,
 	type RetryScheduledEventData,
 	type RetryStartedEventData,
+	type RewindEventData,
 	type ShellDoneEventData,
 	type ShellRunEventData,
 	type SkillDoneEventData,
 	type SkillRunEventData,
 	type ToolResultEventData,
 	type TurnEndReason,
-	type UserEditedEventData,
 } from "./events";
 
 const EMPTY_USAGE: Usage = {
@@ -91,7 +91,8 @@ export interface SessionScope {
 	appendContextChanged(details: ContextChangedEventData, timestamp: number): Promise<void>;
 	appendInstructionsChanged(agentMd: string | null, timestamp: number): Promise<void>;
 	appendMcpChanged(details: McpChangedEventData, timestamp: number): Promise<void>;
-	appendUserEdited(details: UserEditedEventData, timestamp: number): Promise<string>;
+	appendRewind(details: RewindEventData, timestamp: number): Promise<string>;
+	appendCompaction(details: CompactionEventData, timestamp: number): Promise<string>;
 	lastContextChanged(): Promise<{ data: ContextChangedEventData; timestamp: number } | null>;
 	appendSkillRun(details: SkillRunEventData, timestamp: number): Promise<void>;
 	appendSkillDone(details: SkillDoneEventData, timestamp: number): Promise<void>;
@@ -99,7 +100,6 @@ export interface SessionScope {
 	appendShellDone(details: ShellDoneEventData, timestamp: number): Promise<void>;
 	appendRetryScheduled(details: RetryScheduledEventData, timestamp: number): Promise<void>;
 	appendRetryStarted(details: RetryStartedEventData, timestamp: number): Promise<void>;
-	appendSurfaceOp(op: SurfaceOpRecord, timestamp: number): Promise<void>;
 	appendCompactionSummary(text: string, timestamp: number): Promise<string>;
 	appendCompactionRecord(type: "compaction/start" | "compaction/end" | "compaction/prune", details: Record<string, unknown>, timestamp: number): Promise<void>;
 	appendModelChange(model: { provider: string; modelId?: string }, timestamp: number): Promise<void>;
@@ -109,8 +109,6 @@ export interface SessionStore {
 	scope(dir: string): SessionScope;
 	visibleHistory(dir: string): Promise<ViewItem[]>;
 	lastMessage(dir: string): Promise<ViewItem | null>;
-	restoreMessages(dir: string): Promise<AgentMessage[]>;
-	surface(dir: string): Promise<Surface>;
 	deriveMessages(dir: string): Promise<AgentMessage[]>;
 	escalationRequest(
 		dir: string,
@@ -130,20 +128,6 @@ export interface SessionStore {
 	allRawEntries(dir: string): Promise<Entry[]>;
 	currentSessionFile(dir: string): Promise<string>;
 	rotateSession(dir: string): Promise<string>;
-}
-
-function modelEntryProjectors(): Readonly<Record<string, (entry: CustomEntry) => AgentMessage[] | undefined>> {
-	const out: Record<string, (entry: CustomEntry) => AgentMessage[] | undefined> = {};
-	for (const [key, meta] of Object.entries(EVENT_META)) {
-		if (key.startsWith("role:")) continue;
-		const project = meta.slice?.project;
-		if (!project) continue;
-		out[key] = (entry: CustomEntry) => {
-			const msg = project(entry);
-			return msg ? [msg] : undefined;
-		};
-	}
-	return out;
 }
 
 interface RootState {
@@ -294,11 +278,18 @@ export function createSessionStore(): SessionStore {
 			async appendMcpChanged(details, timestamp) {
 				await appendCustom(dir, EVENTS.mcpChanged, { ...details, timestamp });
 			},
-			async appendUserEdited(details, timestamp) {
-				await appendCustom(dir, EVENTS.userEdited, { ...details, timestamp });
+			async appendRewind(details, timestamp) {
+				await appendCustom(dir, EVENTS.rewind, { ...details, timestamp });
 				const state = await stateFor(dir);
-				const entry = state.entries.filter((e) => e.type === "custom" && e.customType === EVENTS.userEdited).at(-1);
-				if (!entry) throw new Error("user/edited append failed");
+				const entry = state.entries.filter((e) => e.type === "custom" && e.customType === EVENTS.rewind).at(-1);
+				if (!entry) throw new Error("rewind append failed");
+				return entry.id;
+			},
+			async appendCompaction(details, timestamp) {
+				await appendCustom(dir, EVENTS.compaction, { ...details, timestamp });
+				const state = await stateFor(dir);
+				const entry = state.entries.filter((e) => e.type === "custom" && e.customType === EVENTS.compaction).at(-1);
+				if (!entry) throw new Error("compaction append failed");
 				return entry.id;
 			},
 			async lastContextChanged() {
@@ -337,9 +328,6 @@ export function createSessionStore(): SessionStore {
 			},
 			async appendRetryStarted(details, timestamp) {
 				await appendCustom(dir, EVENTS.retryStarted, { ...details, timestamp });
-			},
-			async appendSurfaceOp(op, timestamp) {
-				await appendCustom(dir, EVENTS.surfaceOp, { ...op, timestamp });
 			},
 			async appendCompactionSummary(text, timestamp) {
 				await appendCustom(dir, EVENTS.compactionSummary, { text, timestamp });
@@ -402,20 +390,9 @@ export function createSessionStore(): SessionStore {
 			}
 			return last;
 		},
-		async restoreMessages(dir) {
-			const state = await stateFor(dir);
-			const context = buildSessionContext(state.entries, {
-				entryProjectors: modelEntryProjectors(),
-			});
-			return dropDanglingTurn(pairToolResults(context.messages));
-		},
-		async surface(dir) {
-			const state = await stateFor(dir);
-			return foldSurface(state.entries);
-		},
 		async deriveMessages(dir) {
 			const state = await stateFor(dir);
-			return deriveSurfaceMessages(state.entries, foldSurface(state.entries));
+			return foldSlice(state.entries);
 		},
 		async escalationRequest(dir, id) {
 			const state = await stateFor(dir);

@@ -3,7 +3,6 @@ import type { ElectrobunRPCSchema } from "electrobun/main";
 import type { CustomModel, CustomProvider, ThemeMode, ToastPlacement } from "../bun/lib/settings";
 import type { McpConfig, McpLifecycle, McpServerConfig } from "../bun/mcp/types";
 import type { SandboxMode } from "../bun/permission/types";
-import type { SurfaceNode } from "./surface";
 
 export type { CustomModel, CustomProvider, SandboxMode, ThemeMode, ToastPlacement };
 
@@ -423,17 +422,12 @@ export type AppRPCSchema = __schema<{
 			};
 
 			trajectory: {
-				params: { name: string; before?: number; limit?: number; surfaceOnly?: boolean };
+				params: { name: string; before?: number; limit?: number };
 				response: { records: TrajectoryRecord[]; hasMore: boolean; total: number };
 			};
 			partner_activity: {
 				params: { name: string; weeks: number };
 				response: { days: PartnerActivityDay[] };
-			};
-
-			surface: {
-				params: {};
-				response: { nodes: SurfaceNode[]; replaceGeneration: number };
 			};
 
 			pick_directory: {
@@ -473,7 +467,6 @@ export type AppRPCSchema = __schema<{
 						webFetch?: { timeoutMs?: number; maxBytes?: number; maxChars?: number; userAgent?: string };
 						compaction?: {
 							thresholdRatio?: number;
-							tailBudget?: number;
 							eventDigestCount?: number;
 							summaryCapChars?: number;
 							maxOverflowRetries?: number;
@@ -516,7 +509,6 @@ export type AppRPCSchema = __schema<{
 						webFetch?: { timeoutMs?: number; maxBytes?: number; maxChars?: number; userAgent?: string };
 						compaction?: {
 							thresholdRatio?: number;
-							tailBudget?: number;
 							eventDigestCount?: number;
 							summaryCapChars?: number;
 							maxOverflowRetries?: number;

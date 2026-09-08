@@ -33,7 +33,6 @@ import { Context } from "./core/context";
 import { projectSnapshot } from "./core/context-project";
 import { type MemoryRecord, organizeMemory, type QueryMemoryOptions, queryMemory, readMemoryLines } from "./core/memory";
 import { loadRuntimeStats, saveRuntimeStats } from "./core/runtime-stats";
-import { applyToolResultPrunes, planToolResultPrunes } from "./core/tool-result-pruner";
 import { aggregateUsage, dedupeRequestHeaders, fold, lastUsage } from "./core/trajectory";
 import { deleteApiKey, getApiKey, loadCredentials, setApiKey } from "./lib/credentials";
 import { ensureModel, ensureSandboxMode, ensureStoragePath, ensureWorkspace, hasInvalidPersistedWorkspace, isThinkingLevel } from "./lib/ensure";
@@ -321,16 +320,16 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 				const target = await agents.get(profile.name);
 				if (!target) return false;
 				try {
-					const genBefore = (await session.surface(dir)).replaceGeneration;
-					await pruneSession(target);
+					const before = (await session.rawEntries(dir)).filter((e) => e.type === "custom" && e.customType === EVENTS.compaction).length;
 					const flush = await flushMemoryForCompact(target);
 					if (!flush.ok) return false;
 					const input = await compactionInput(target);
 					const events = await sessionMemoryEvents(target);
-					const plan = await planMemoryCompaction(input.entries, input.surface, { ...input.opts, tailBudget: 0, memoryEvents: events });
+					const plan = await planMemoryCompaction(input.entries, { ...input.opts, memoryEvents: events });
 					if (!plan) return false;
 					await runCompaction(target, plan);
-					return (await session.surface(dir)).replaceGeneration > genBefore;
+					const after = (await session.rawEntries(dir)).filter((e) => e.type === "custom" && e.customType === EVENTS.compaction).length;
+					return after > before;
 				} catch (error) {
 					await compactionFailure(target, error);
 					return false;
@@ -378,8 +377,7 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 
 	await reconcileTerminalStates(dir);
 
-	const surf = await session.surface(dir);
-	agent.restore(surf.replaceGeneration > 0 ? await session.deriveMessages(dir) : await session.restoreMessages(dir));
+	agent.restore(await session.deriveMessages(dir));
 
 	if (await hasInvalidPersistedWorkspace(dir)) {
 		await applyWorkspace({ profile, dir, scope, agent }, null);
@@ -414,12 +412,9 @@ async function compactionInput(entry: PartnerAgent) {
 	const settings = await ensureSettings();
 	const c = settings.compaction ?? {};
 	const entries = await session.rawEntries(entry.dir);
-	const surface = await session.surface(entry.dir);
 	return {
 		entries,
-		surface,
 		opts: {
-			tailBudget: c.tailBudget ?? 16,
 			eventDigestCount: c.eventDigestCount ?? 5,
 		},
 	};
@@ -460,28 +455,17 @@ async function compactionFailure(entry: PartnerAgent, error: unknown): Promise<v
 	} catch {}
 }
 
-async function pruneSession(entry: PartnerAgent): Promise<void> {
-	const settings = await ensureSettings();
-	const entries = await session.rawEntries(entry.dir);
-	const surface = await session.surface(entry.dir);
-	const prunes = planToolResultPrunes(entries, surface, settings.compaction?.prune ?? {});
-	if (prunes.length === 0) return;
-	await applyToolResultPrunes(session.scope(entry.dir), surface, prunes);
-	console.log(`pruned ${prunes.length} oversized tool results`);
-}
-
 async function runManualCompact(entry: PartnerAgent, signal?: AbortSignal): Promise<{ ok: boolean; error?: string; compacted?: number }> {
 	if (entry.agent.isStreaming) return { ok: false, error: "agent is running" };
 	try {
-		await pruneSession(entry);
 		const flush = await flushMemoryForCompact(entry, signal);
 		if (!flush.ok) return { ok: false, error: flush.error ?? "memory flush failed" };
 		const input = await compactionInput(entry);
 		const events = await sessionMemoryEvents(entry);
-		const plan = await planMemoryCompaction(input.entries, input.surface, { ...input.opts, memoryEvents: events });
+		const plan = await planMemoryCompaction(input.entries, { ...input.opts, memoryEvents: events });
 		if (!plan) return { ok: true, compacted: 0 };
 		await runCompaction(entry, plan);
-		return { ok: true, compacted: plan.range.end - plan.range.start + 1 };
+		return { ok: true, compacted: plan.shadowed };
 	} catch (error) {
 		await compactionFailure(entry, error);
 		return { ok: false, error: error instanceof Error ? error.message : String(error) };
@@ -501,7 +485,6 @@ async function autoCompactBeforeNextTurn(entry: PartnerAgent, signal?: AbortSign
 	const used = usage.input + usage.cacheRead + usage.cacheWrite;
 	if (used < window * (settings.compaction?.thresholdRatio ?? 0.8)) return null;
 	try {
-		await pruneSession(entry);
 		const flush = await flushMemoryForCompact(entry, signal);
 		if (!flush.ok) {
 			console.warn("auto-compact skipped:", flush.error ?? "memory flush failed");
@@ -509,10 +492,10 @@ async function autoCompactBeforeNextTurn(entry: PartnerAgent, signal?: AbortSign
 		}
 		const input = await compactionInput(entry);
 		const events = await sessionMemoryEvents(entry);
-		const plan = await planMemoryCompaction(input.entries, input.surface, { ...input.opts, memoryEvents: events });
+		const plan = await planMemoryCompaction(input.entries, { ...input.opts, memoryEvents: events });
 		if (!plan) return null;
 		await runCompaction(entry, plan);
-		console.log(`auto-compacted ${plan.range.end - plan.range.start + 1} surface nodes`);
+		console.log(`auto-compacted ${plan.shadowed} entries`);
 		return session.deriveMessages(entry.dir);
 	} catch (error) {
 		await compactionFailure(entry, error);
@@ -887,7 +870,6 @@ async function editLastUserRpc(text: string) {
 		}
 		if (lastUserIndex < 0) return { ok: false as const, error: "no user message to edit" };
 		const userEntry = entries[lastUserIndex];
-		let surfaceTargetId = userEntry.id;
 		let sawAborted = false;
 		for (let i = lastUserIndex + 1; i < entries.length; i++) {
 			const entry = entries[i];
@@ -898,10 +880,9 @@ async function editLastUserRpc(text: string) {
 			if (entry.customType === EVENTS.commandRun || entry.customType === EVENTS.skillRun || entry.customType === EVENTS.shellRun) {
 				return { ok: false as const, error: "conversation moved on after this message" };
 			}
-			if (entry.customType === EVENTS.userEdited) {
+			if (entry.customType === EVENTS.rewind) {
 				const data = (entry.data ?? {}) as { targetId?: unknown } | undefined;
-				if (data?.targetId === userEntry.id) surfaceTargetId = entry.id;
-				continue;
+				if (data?.targetId === userEntry.id) continue;
 			}
 			if (entry.customType === EVENTS.turnEnd) {
 				const reason = (entry.data as { reason?: unknown } | undefined)?.reason;
@@ -912,25 +893,9 @@ async function editLastUserRpc(text: string) {
 		if (!sawAborted) return { ok: false as const, error: "no stopped run to rewind" };
 
 		const scope = session.scope(dir);
-		const surf = await session.surface(dir);
-		const start = surf.nodes.findIndex((node) => node.id === surfaceTargetId);
-		if (start < 0) return { ok: false as const, error: "user message not found in surface" };
-		const shadowedNodes = surf.nodes.slice(start);
-		const surfaceShadowedIds = shadowedNodes.map((node) => node.id);
-		const viewShadowedIds = entries.slice(lastUserIndex + 1).map((entry) => entry.id);
+		const shadowedIds = entries.slice(lastUserIndex + 1).map((entry) => entry.id);
 		const timestamp = Date.now();
-		const editedId = await scope.appendUserEdited({ targetId: userEntry.id, text, shadowedIds: viewShadowedIds }, timestamp);
-		await scope.appendSurfaceOp(
-			{
-				op: "replace",
-				start,
-				end: surf.nodes.length - 1,
-				sourceEventSeqs: surfaceShadowedIds,
-				replacementId: editedId,
-				replaceGeneration: surf.replaceGeneration + 1,
-			},
-			timestamp,
-		);
+		await scope.appendRewind({ targetId: userEntry.id, text, shadowedIds }, timestamp);
 
 		const agentEntry = await ensureAgent(viewPartner.profile);
 		agentEntry.agent.restore(await session.deriveMessages(dir));
@@ -1122,11 +1087,6 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				rpc.send.escalation_update({});
 				if (resume) void resumeApprovedEscalation(resume.entry, resume.request, resume.turn);
 				return { ok: true };
-			},
-			surface: async () => {
-				const target = viewPartner;
-				if (!target) return { nodes: [], replaceGeneration: 0 };
-				return session.surface(target.dir);
 			},
 			pick_directory: async ({ startingFolder }) => {
 				try {
@@ -1427,34 +1387,20 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					tools: entry?.agent.tools,
 				});
 			},
-			trajectory: async ({ name, before, limit = 200, surfaceOnly = false }) => {
+			trajectory: async ({ name, before, limit = 200 }) => {
 				const settings = await loadSettings();
 				const profile = (await listPartners(settings)).find((p) => p.name === name);
 				if (!profile) return { records: [], hasMore: false, total: 0 };
 				const dir = getPartnerDir(settings, name);
 				const entries = await session.rawEntries(dir);
 
-				let surfaceGen = 0;
-				let surfaceIds: Set<string> | undefined;
-				if (surfaceOnly) {
-					try {
-						const surface = await session.surface(dir);
-						surfaceGen = surface.replaceGeneration;
-						surfaceIds = new Set(surface.nodes.map((n) => n.id));
-					} catch {
-						surfaceOnly = false;
-					}
-				}
-
 				const lastId = entries.length > 0 ? entries[entries.length - 1].id : "";
-				const signature = `${entries.length}:${lastId}:${surfaceOnly ? surfaceGen : "all"}`;
-				const cacheKey = `${dir}:${surfaceOnly ? "s" : "a"}`;
+				const signature = `${entries.length}:${lastId}`;
+				const cacheKey = dir;
 				let cached = trajectoryViewCache.get(cacheKey);
 				if (!cached || cached.signature !== signature) {
-					const allRecords = fold(entries);
-					let records = dedupeRequestHeaders(allRecords);
-					if (surfaceOnly && surfaceIds) records = records.filter((r) => surfaceIds.has(r.entryId));
-					cached = { signature, records, total: allRecords.length };
+					const records = dedupeRequestHeaders(fold(entries));
+					cached = { signature, records, total: records.length };
 					trajectoryViewCache.set(cacheKey, cached);
 					if (trajectoryViewCache.size > TRAJECTORY_CACHE_MAX) {
 						const oldest = trajectoryViewCache.keys().next().value;

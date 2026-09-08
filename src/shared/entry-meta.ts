@@ -2,15 +2,13 @@ import type { AgentMessage, Entry } from "@earendil-works/pi-agent-core";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import { contextChangedText, EVENTS, instructionsChangedText, mcpChangedText } from "./events";
 import type { SandboxMode, ViewItem } from "./rpc";
-import type { SurfaceNode } from "./surface";
 
 export interface ViewMeta {
 	visit(entry: Entry, out: ViewItem[]): void;
 }
 
 export interface SliceMeta {
-	node?: SurfaceNode["kind"] | ((entry: Entry) => SurfaceNode["kind"] | null);
-	project?(entry: Entry): AgentMessage | null;
+	visit?(entry: Entry, out: AgentMessage[]): void;
 }
 
 export interface TrajectoryMeta {
@@ -162,7 +160,7 @@ function shellDoneVisit(entry: Entry, out: ViewItem[]): void {
 	if (typeof data.text === "string") item.command.text = data.text;
 }
 
-function userEditedVisit(entry: Entry, out: ViewItem[]): void {
+function rewindVisit(entry: Entry, out: ViewItem[]): void {
 	if (entry.type !== "custom") return;
 	const data = entry.data as { targetId?: unknown; text?: unknown; shadowedIds?: unknown } | undefined;
 	if (data?.targetId == null || typeof data.text !== "string") return;
@@ -201,9 +199,20 @@ function sendMessageProject(entry: Entry): AgentMessage | null {
 	} as AgentMessage;
 }
 
-function sendMessageNode(entry: Entry): SurfaceNode["kind"] | null {
-	return sendMessageProject(entry) ? "send_message" : null;
+function pushProject(project: (entry: Entry) => AgentMessage | null): NonNullable<SliceMeta["visit"]> {
+	return (entry, out) => {
+		const msg = project(entry);
+		if (msg) out.push(msg);
+	};
 }
+
+const messageVisit = pushProject(messageProject);
+const sendMessageSliceVisit = pushProject(sendMessageProject);
+const toolResultVisit = pushProject(toolResultProject);
+const textUserVisit = pushProject(textUserProject);
+const mcpChangedVisit = pushProject(mcpChangedProject);
+const instructionsChangedVisit = pushProject(instructionsChangedProject);
+const contextChangedVisit = pushProject(contextChangedProject);
 
 function toolResultProject(entry: Entry): AgentMessage | null {
 	if (entry.type !== "custom") return null;
@@ -284,13 +293,13 @@ function viewHidden(): EntryMeta {
 }
 
 export const EVENT_META: Record<string, EntryMeta> = {
-	"role:user": { view: { visit: userVisit }, slice: { node: "user", project: messageProject } },
+	"role:user": { view: { visit: userVisit }, slice: { visit: messageVisit } },
 	"role:assistant": {
 		...viewHidden(),
-		slice: { node: "assistant", project: messageProject },
+		slice: { visit: messageVisit },
 	},
 
-	[EVENTS.sendMessage]: { view: { visit: sendMessageVisit }, slice: { node: sendMessageNode, project: sendMessageProject } },
+	[EVENTS.sendMessage]: { view: { visit: sendMessageVisit }, slice: { visit: sendMessageSliceVisit } },
 	[EVENTS.turnEnd]: { view: { visit: turnEndVisit } },
 	[EVENTS.escalationRequest]: { view: { visit: escalationVisit } },
 	[EVENTS.commandRun]: { view: { visit: commandVisit } },
@@ -304,15 +313,15 @@ export const EVENT_META: Record<string, EntryMeta> = {
 	[EVENTS.memoryRunStart]: viewHidden(),
 	[EVENTS.memoryRunEnd]: viewHidden(),
 
-	[EVENTS.toolResult]: { ...viewHidden(), slice: { node: "tool_result", project: toolResultProject } },
-	[EVENTS.timeGapReminder]: { ...viewHidden(), slice: { node: "user", project: textUserProject } },
-	[EVENTS.contextChanged]: { ...viewHidden(), slice: { node: "user", project: contextChangedProject } },
-	[EVENTS.instructionsChanged]: { ...viewHidden(), slice: { node: "user", project: instructionsChangedProject } },
-	[EVENTS.mcpChanged]: { ...viewHidden(), slice: { node: "user", project: mcpChangedProject } },
-	[EVENTS.userEdited]: { view: { visit: userEditedVisit }, slice: { node: "user", project: textUserProject } },
+	[EVENTS.toolResult]: { ...viewHidden(), slice: { visit: toolResultVisit } },
+	[EVENTS.timeGapReminder]: { ...viewHidden(), slice: { visit: textUserVisit } },
+	[EVENTS.contextChanged]: { ...viewHidden(), slice: { visit: contextChangedVisit } },
+	[EVENTS.instructionsChanged]: { ...viewHidden(), slice: { visit: instructionsChangedVisit } },
+	[EVENTS.mcpChanged]: { ...viewHidden(), slice: { visit: mcpChangedVisit } },
+	[EVENTS.rewind]: { view: { visit: rewindVisit }, slice: { visit: textUserVisit } },
 
-	[EVENTS.surfaceOp]: viewHidden(),
-	[EVENTS.compactionSummary]: { ...viewHidden(), slice: { project: textUserProject } },
+	[EVENTS.compaction]: viewHidden(),
+	[EVENTS.compactionSummary]: { ...viewHidden(), slice: { visit: textUserVisit } },
 
 	[EVENTS.turnStart]: viewHidden(),
 	[EVENTS.stepStart]: viewHidden(),

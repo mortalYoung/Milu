@@ -1,11 +1,10 @@
 import type { AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
 import type { ContextSnapshot, RequestTool, ThinkingLevel } from "../../shared/rpc";
-import type { Surface } from "../../shared/surface";
 import type { SessionStore } from "../persist";
 import { contextWindow, resolveModel } from "./agent-config";
 import type { Context } from "./context";
-import { foldSurface } from "./surface";
-import { priceSurface } from "./token-meter";
+import { foldSlice } from "./slice";
+import { priceMessages } from "./token-meter";
 import { lastTrajectoryUsage } from "./trajectory";
 
 export interface ContextSnapshotDeps {
@@ -17,7 +16,7 @@ export interface ContextSnapshotDeps {
 
 export async function projectSnapshot(ctx: Context, deps: ContextSnapshotDeps): Promise<ContextSnapshot> {
 	const entries = deps.dir ? await deps.session.rawEntries(deps.dir) : [];
-	const surface: Surface = deps.dir ? await deps.session.surface(deps.dir) : { nodes: [], replaceGeneration: 0 };
+	const messages = deps.dir ? await deps.session.deriveMessages(deps.dir) : [];
 	let usage = lastTrajectoryUsage(entries);
 	let cleared = false;
 	if (usage && ctx.contextClearedAt > 0) {
@@ -35,7 +34,7 @@ export async function projectSnapshot(ctx: Context, deps: ContextSnapshotDeps): 
 	const used = usage ? usage.input + usage.cacheRead + usage.cacheWrite : 0;
 	const window = contextWindow(ctx.model ?? undefined);
 	const hasAgent = deps.systemPrompt !== undefined && deps.tools !== undefined;
-	const breakdown = hasAgent && !cleared ? priceSurface(deps.systemPrompt!, deps.tools!, entries, surface) : null;
+	const breakdown = hasAgent && !cleared ? priceMessages(deps.systemPrompt!, deps.tools!, messages) : null;
 	let projectedTokens: number | undefined;
 	if (hasAgent && usage && breakdown) {
 		let lastUsageIdx = -1;
@@ -48,8 +47,8 @@ export async function projectSnapshot(ctx: Context, deps: ContextSnapshotDeps): 
 		}
 		if (lastUsageIdx >= 0) {
 			const entriesAtSample = entries.slice(0, lastUsageIdx + 1);
-			const surfaceAtSample = foldSurface(entriesAtSample);
-			const atSample = priceSurface(deps.systemPrompt!, deps.tools!, entriesAtSample, surfaceAtSample);
+			const sampleMessages = foldSlice(entriesAtSample);
+			const atSample = priceMessages(deps.systemPrompt!, deps.tools!, sampleMessages);
 			const sampleTotal = atSample.systemTokens + atSample.toolsTokens + atSample.messageTokens;
 			const currentTotal = breakdown.systemTokens + breakdown.toolsTokens + breakdown.messageTokens;
 			projectedTokens = Math.max(0, used + (currentTotal - sampleTotal));

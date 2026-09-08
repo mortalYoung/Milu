@@ -15,7 +15,7 @@ export const EVENTS = {
 	timeGapReminder: "time_gap_reminder",
 	escalationRequest: "escalation/request",
 	escalationDecision: "escalation/decision",
-	surfaceOp: "surface_op",
+	compaction: "compaction",
 	compactionSummary: "compaction_summary",
 	compactionStart: "compaction/start",
 	compactionEnd: "compaction/end",
@@ -26,7 +26,7 @@ export const EVENTS = {
 	contextChanged: "context/changed",
 	instructionsChanged: "instructions/changed",
 	mcpChanged: "mcp/changed",
-	userEdited: "user/edited",
+	rewind: "rewind",
 	memoryRunStart: "memory/run/start",
 	memoryRunEnd: "memory/run/end",
 	skillRun: "skill/run",
@@ -139,7 +139,19 @@ export interface McpChangedEventData {
 	timestamp?: number;
 }
 
-export interface UserEditedEventData {
+/** Compaction checkpoint: foldSlice starts from the summary and skips entries through throughEntryId. */
+export interface CompactionEventData {
+	/** First origin entry id covered by this compaction. Omit to compact from the current frontier. */
+	fromEntryId?: string;
+	/** Last origin entry id covered by this compaction (inclusive). */
+	throughEntryId: string;
+	/** Checkpoint text that replaces the compacted span in the slice. */
+	summary: string;
+	timestamp?: number;
+}
+
+/** Rewind: foldSlice replaces the target user message and skips the shadowed entries. */
+export interface RewindEventData {
 	targetId: string;
 	text: string;
 	shadowedIds: string[];

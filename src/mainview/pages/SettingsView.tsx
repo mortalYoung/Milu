@@ -31,7 +31,6 @@ export interface SettingsData {
 	webFetch?: { timeoutMs?: number; maxBytes?: number; maxChars?: number; userAgent?: string };
 	compaction?: {
 		thresholdRatio?: number;
-		tailBudget?: number;
 		eventDigestCount?: number;
 		summaryCapChars?: number;
 		maxOverflowRetries?: number;
@@ -211,7 +210,6 @@ export function SettingsView() {
 	const [webFetchMaxChars, setWebFetchMaxChars] = createSignal("50000");
 	const [webFetchUserAgent, setWebFetchUserAgent] = createSignal("Letters-web-fetch/0.1");
 	const [compactionThreshold, setCompactionThreshold] = createSignal("0.8");
-	const [compactionTailBudget, setCompactionTailBudget] = createSignal("16");
 	const [compactionSummaryCap, setCompactionSummaryCap] = createSignal("2000");
 	const [compactionOverflowRetries, setCompactionOverflowRetries] = createSignal("1");
 	const [compactionSummarizer, setCompactionSummarizer] = createSignal<"local" | "llm">("llm");
@@ -245,7 +243,6 @@ export function SettingsView() {
 		if (s.webFetch?.maxChars !== undefined) setWebFetchMaxChars(String(s.webFetch.maxChars));
 		if (s.webFetch?.userAgent !== undefined) setWebFetchUserAgent(s.webFetch.userAgent);
 		if (s.compaction?.thresholdRatio !== undefined) setCompactionThreshold(String(s.compaction.thresholdRatio));
-		if (s.compaction?.tailBudget !== undefined) setCompactionTailBudget(String(s.compaction.tailBudget));
 		if (s.compaction?.summaryCapChars !== undefined) setCompactionSummaryCap(String(s.compaction.summaryCapChars));
 		if (s.compaction?.maxOverflowRetries !== undefined) setCompactionOverflowRetries(String(s.compaction.maxOverflowRetries));
 		if (s.compaction?.summarizer !== undefined) setCompactionSummarizer(s.compaction.summarizer);
@@ -311,9 +308,6 @@ export function SettingsView() {
 	}
 	if (initial && initial.compaction?.thresholdRatio !== undefined && compactionThreshold() === "0.8") {
 		setCompactionThreshold(String(initial.compaction.thresholdRatio));
-	}
-	if (initial && initial.compaction?.tailBudget !== undefined && compactionTailBudget() === "16") {
-		setCompactionTailBudget(String(initial.compaction.tailBudget));
 	}
 	if (initial && initial.compaction?.summaryCapChars !== undefined && compactionSummaryCap() === "2000") {
 		setCompactionSummaryCap(String(initial.compaction.summaryCapChars));
@@ -415,7 +409,6 @@ export function SettingsView() {
 			},
 			compaction: {
 				thresholdRatio: Number(compactionThreshold()) || 0.8,
-				tailBudget: parsePositiveInt(compactionTailBudget(), 16),
 				eventDigestCount: current?.compaction?.eventDigestCount ?? 5,
 				summaryCapChars: parsePositiveInt(compactionSummaryCap(), 2000),
 				maxOverflowRetries: parsePositiveInt(compactionOverflowRetries(), 1),
@@ -864,46 +857,10 @@ export function SettingsView() {
 							void persist({
 								...currentSettings(),
 								compaction: {
-									tailBudget: parsePositiveInt(compactionTailBudget(), 16),
 									summaryCapChars: parsePositiveInt(compactionSummaryCap(), 2000),
 									maxOverflowRetries: parsePositiveInt(compactionOverflowRetries(), 1),
 									summarizer: compactionSummarizer(),
 									...(compactionThreshold() ? { thresholdRatio: next } : {}),
-								},
-							});
-						}}
-						onKeyDown={(e) => {
-							if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
-						}}
-					/>
-				</TextField>
-			),
-		},
-		{
-			id: "compactionTailBudget",
-			title: "Compaction tail budget",
-			desc: "Surface nodes kept verbatim at the tail of a compaction.",
-			cats: ["compaction"],
-			modified: () => parsePositiveInt(compactionTailBudget(), 16) !== 16,
-			control: () => (
-				<TextField class="w-[200px] shrink-0" value={compactionTailBudget()} onChange={setCompactionTailBudget}>
-					<TextFieldInput
-						type="number"
-						min={0}
-						variant="compact"
-						title="Compaction tail budget"
-						aria-label="Compaction tail budget"
-						onBlur={() => {
-							const next = parsePositiveInt(compactionTailBudget(), 16);
-							const saved = settingsData()?.compaction?.tailBudget ?? 16;
-							if (next === saved) return;
-							void persist({
-								...currentSettings(),
-								compaction: {
-									tailBudget: next,
-									summaryCapChars: parsePositiveInt(compactionSummaryCap(), 2000),
-									maxOverflowRetries: parsePositiveInt(compactionOverflowRetries(), 1),
-									summarizer: compactionSummarizer(),
 								},
 							});
 						}}
@@ -935,7 +892,6 @@ export function SettingsView() {
 							void persist({
 								...currentSettings(),
 								compaction: {
-									tailBudget: parsePositiveInt(compactionTailBudget(), 16),
 									summaryCapChars: next,
 									maxOverflowRetries: parsePositiveInt(compactionOverflowRetries(), 1),
 									summarizer: compactionSummarizer(),
@@ -970,7 +926,6 @@ export function SettingsView() {
 							void persist({
 								...currentSettings(),
 								compaction: {
-									tailBudget: parsePositiveInt(compactionTailBudget(), 16),
 									summaryCapChars: parsePositiveInt(compactionSummaryCap(), 2000),
 									maxOverflowRetries: next,
 									summarizer: compactionSummarizer(),
@@ -1004,7 +959,6 @@ export function SettingsView() {
 						void persist({
 							...currentSettings(),
 							compaction: {
-								tailBudget: parsePositiveInt(compactionTailBudget(), 16),
 								summaryCapChars: parsePositiveInt(compactionSummaryCap(), 2000),
 								maxOverflowRetries: parsePositiveInt(compactionOverflowRetries(), 1),
 								summarizer: next,

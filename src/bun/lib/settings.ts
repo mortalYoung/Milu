@@ -52,7 +52,6 @@ export interface Settings {
 	webFetch?: { timeoutMs?: number; maxBytes?: number; maxChars?: number; userAgent?: string };
 	compaction?: {
 		thresholdRatio?: number;
-		tailBudget?: number;
 		eventDigestCount?: number;
 		summaryCapChars?: number;
 		maxOverflowRetries?: number;

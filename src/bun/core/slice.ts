@@ -1,34 +1,74 @@
 import type { AgentMessage, Entry } from "@earendil-works/pi-agent-core";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
-import type { RequestTool } from "../../shared/rpc";
-import { applyReplace, foldSurface, isSurfaceEntry, SurfaceError, surfaceNodeIds } from "../../shared/slice";
-import type { Surface } from "../../shared/surface";
-
-export { applyReplace, foldSurface, isSurfaceEntry, SurfaceError, surfaceNodeIds };
-
 import { EVENT_META, entryKey } from "../../shared/entry-meta";
+import type { CompactionEventData, RewindEventData } from "../../shared/events";
+import type { RequestTool } from "../../shared/rpc";
 import { EVENTS } from "../persist/events";
 
-export function deriveMessages(entries: Entry[], surface: Surface): AgentMessage[] {
-	return dropDanglingTurn(projectChain(entries, surface));
-}
-
 export function deriveEventMessage(entry: Entry): AgentMessage | null {
-	return EVENT_META[entryKey(entry)]?.slice?.project?.(entry) ?? null;
+	const out: AgentMessage[] = [];
+	EVENT_META[entryKey(entry)]?.slice?.visit?.(entry, out);
+	return out[0] ?? null;
 }
 
-export function projectChain(entries: Entry[], surface?: Surface): AgentMessage[] {
-	const byId = new Map<string, Entry>();
-	for (const e of entries) byId.set(e.id, e);
+/** Collect the model-visible slice from origin entries, handling compaction and rewind markers. */
+export function projectChain(entries: Entry[]): AgentMessage[] {
+	let latestCompaction: { through: string; summary: string; time: number } | null = null;
+	const rewinds = new Map<string, { text: string; shadowedIds: string[] }>();
+	for (const e of entries) {
+		if (e.type !== "custom") continue;
+		if (e.customType === EVENTS.compaction) {
+			const d = (e.data ?? {}) as CompactionEventData;
+			latestCompaction = { through: d.throughEntryId, summary: d.summary, time: d.timestamp ?? e.timestamp ?? 0 };
+		} else if (e.customType === EVENTS.rewind) {
+			const d = (e.data ?? {}) as RewindEventData;
+			rewinds.set(d.targetId, { text: d.text, shadowedIds: d.shadowedIds });
+		}
+	}
+
+	const shadowed = new Set<string>();
+	for (const r of rewinds.values()) for (const id of r.shadowedIds) shadowed.add(id);
+
+	const throughIndex = latestCompaction ? entries.findIndex((e) => e.id === latestCompaction.through) : -1;
 	const out: AgentMessage[] = [];
-	const nodes = (surface ?? foldSurface(entries)).nodes;
-	for (const node of nodes) {
-		const entry = byId.get(node.id);
-		if (!entry) continue;
-		const msg = deriveEventMessage(entry);
+	if (latestCompaction && throughIndex >= 0) {
+		out.push({ role: "user", content: latestCompaction.summary, timestamp: latestCompaction.time } as AgentMessage);
+	}
+	for (let i = 0; i < entries.length; i++) {
+		const e = entries[i];
+		if (latestCompaction && i <= throughIndex) continue;
+		if (
+			e.type === "custom" &&
+			(e.customType === EVENTS.compaction ||
+				e.customType === EVENTS.rewind ||
+				e.customType === EVENTS.compactionSummary ||
+				e.customType === EVENTS.compactionStart ||
+				e.customType === EVENTS.compactionEnd ||
+				e.customType === EVENTS.compactionPrune)
+		) {
+			continue;
+		}
+		if (shadowed.has(e.id)) continue;
+		if (e.type === "message" && e.message.role === "user") {
+			const rewind = rewinds.get(e.id);
+			if (rewind) {
+				out.push({ ...(e.message as object), content: rewind.text } as AgentMessage);
+				continue;
+			}
+		}
+		const msg = deriveEventMessage(e);
 		if (msg) out.push(msg);
 	}
 	return pairToolResults(out);
+}
+
+/** Fold origin entries directly into the model-visible slice (AgentMessage[]). */
+export function foldSlice(entries: Entry[]): AgentMessage[] {
+	return dropDanglingTurn(projectChain(entries));
+}
+
+export function deriveMessages(entries: Entry[]): AgentMessage[] {
+	return foldSlice(entries);
 }
 
 export function pairToolResults(messages: AgentMessage[]): AgentMessage[] {

@@ -1,7 +1,6 @@
 import { createEffect, createMemo, createSignal } from "solid-js";
 import { projectVisibleHistory } from "../../shared/entry-meta";
 import type { TrajectoryRecord } from "../../shared/rpc";
-import { surfaceNodeIds } from "../../shared/slice";
 import { fold } from "../../shared/timeline";
 import { useSession } from "./contexts/session-context";
 
@@ -15,10 +14,6 @@ export function createTrajectory() {
 	const records = createMemo<TrajectoryRecord[]>(() => {
 		const entries = session.origin.entries;
 		const all = fold(entries);
-		if (mode() === "slice") {
-			const sliceIds = surfaceNodeIds(entries);
-			return all.filter((r) => sliceIds.has(r.entryId));
-		}
 		if (mode() === "view") {
 			const viewIds = new Set(projectVisibleHistory(entries).map((v) => v.id));
 			return all.filter((r) => viewIds.has(r.entryId));

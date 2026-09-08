@@ -1,15 +1,5 @@
-/**
- * Surface-priced context composition (4 chars ≈ 1 token).
- *
- * Unlike estimateBreakdown (which scans raw log entries), this prices exactly the
- * model-visible projection: user / assistant text / send_message / tool_result
- * nodes on the surface. Tool results are model-visible in the pi double loop, so
- * they count here — a deliberate improvement over the raw-entry heuristic.
- * Still heuristic (CJK/code undercounted), still labeled `~` in the UI.
- */
-import type { Entry } from "@earendil-works/pi-agent-core";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { RequestTool } from "../../shared/rpc";
-import type { Surface } from "../../shared/surface";
 import type { ContextBreakdown } from "./context-estimate";
 
 const CHARS_PER_TOKEN = 4;
@@ -54,44 +44,28 @@ function priceContent(content: unknown): number {
 	return total;
 }
 
-function priceNode(entry: Entry): number {
-	if (entry.type === "message") {
-		const m = entry.message;
-		if (m.role === "user") return priceContent(m.content) + ROLE_OVERHEAD;
-		if (m.role === "assistant") return priceContent(m.content) + ROLE_OVERHEAD;
-		if (m.role === "toolResult") return priceContent(m.content) + ROLE_OVERHEAD;
-		return ROLE_OVERHEAD;
-	}
-	if (entry.type === "custom" && (entry.customType === "send_message" || entry.customType === "compaction_summary")) {
-		const data = (entry.data ?? {}) as { text?: unknown };
-		return (typeof data.text === "string" ? tokens(data.text.length) + BLOCK_OVERHEAD : 0) + ROLE_OVERHEAD;
-	}
-	if (entry.type === "custom" && entry.customType === "tool/result") {
-		const data = (entry.data ?? {}) as { content?: unknown };
-		return priceContent(data.content) + ROLE_OVERHEAD;
-	}
+function priceMessage(m: AgentMessage): number {
+	if (m.role === "user") return priceContent(m.content) + ROLE_OVERHEAD;
+	if (m.role === "assistant") return priceContent(m.content) + ROLE_OVERHEAD;
+	if (m.role === "toolResult") return priceContent((m as unknown as { content?: unknown }).content) + ROLE_OVERHEAD;
+	if (m.role === "custom") return priceContent((m as unknown as { content?: unknown }).content) + ROLE_OVERHEAD;
 	return ROLE_OVERHEAD;
 }
 
 /**
- * Price the model-visible surface: system + tool definitions + surface-node messages.
- * Tools are not rendered into the prompt text anymore, but they ARE sent to the provider
- * via the tools parameter — so their serialized schema is priced as its own segment.
+ * Price the model-visible slice: system + tool definitions + the actual AgentMessage[].
+ * Tools are sent to the provider via the tools parameter, so their serialized schema is
+ * priced as its own segment. Still heuristic (CJK/code undercounted), labeled `~` in the UI.
  */
-export function priceSurface(systemPrompt: string, tools: RequestTool[], entries: Entry[], surface: Surface): ContextBreakdown {
-	const byId = new Map<string, Entry>();
-	for (const e of entries) byId.set(e.id, e);
-	let messageTokens = 0;
-	for (const node of surface.nodes) {
-		const entry = byId.get(node.id);
-		if (entry) messageTokens += priceNode(entry);
-	}
+export function priceMessages(systemPrompt: string, tools: RequestTool[], messages: AgentMessage[]): ContextBreakdown {
 	let toolsChars = 0;
 	try {
 		toolsChars = JSON.stringify(tools).length;
 	} catch {
 		// non-serializable schema → fall back to 0 rather than breaking the meter
 	}
+	let messageTokens = 0;
+	for (const m of messages) messageTokens += priceMessage(m);
 	return {
 		systemTokens: tokens(systemPrompt.length) + ROLE_OVERHEAD,
 		toolsTokens: tools.length === 0 ? 0 : tokens(toolsChars) + BLOCK_OVERHEAD,
