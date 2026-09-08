@@ -11,11 +11,16 @@ export interface SliceMeta {
 	visit?(entry: Entry, out: AgentMessage[]): void;
 }
 
+export interface OriginMeta {
+	visit?(entry: Entry, out: Entry[]): void;
+}
+
 export interface TrajectoryMeta {
 	label: string;
 }
 
 export interface EntryMeta {
+	origin?: OriginMeta;
 	view?: ViewMeta;
 	slice?: SliceMeta;
 	trajectory?: TrajectoryMeta;
@@ -288,6 +293,12 @@ function contextChangedProject(entry: Entry): AgentMessage | null {
 	} as AgentMessage;
 }
 
+function requestHeaderOriginVisit(entry: Entry, out: Entry[]): void {
+	if (entry.type !== "custom") return;
+	if (out.some((prev) => prev.type === "custom" && prev.customType === EVENTS.requestHeader)) return;
+	out.push(entry);
+}
+
 function viewHidden(): EntryMeta {
 	return { view: { visit: () => {} } };
 }
@@ -327,7 +338,7 @@ export const EVENT_META: Record<string, EntryMeta> = {
 	[EVENTS.stepStart]: viewHidden(),
 	[EVENTS.stepEnd]: viewHidden(),
 	[EVENTS.toolCall]: viewHidden(),
-	[EVENTS.requestHeader]: viewHidden(),
+	[EVENTS.requestHeader]: { ...viewHidden(), origin: { visit: requestHeaderOriginVisit } },
 	[EVENTS.systemPrompt]: viewHidden(),
 	[EVENTS.followUp]: viewHidden(),
 	[EVENTS.compactionStart]: viewHidden(),
@@ -344,10 +355,18 @@ export function entryKey(entry: Entry): string {
 	return entry.type;
 }
 
-export function projectVisibleHistory(entries: Entry[]): ViewItem[] {
+export function projectView(entries: Entry[]): ViewItem[] {
 	const out: ViewItem[] = [];
 	for (const entry of entries) {
 		EVENT_META[entryKey(entry)]?.view?.visit(entry, out);
+	}
+	return out;
+}
+
+export function projectSlice(entries: Entry[]): AgentMessage[] {
+	const out: AgentMessage[] = [];
+	for (const entry of entries) {
+		EVENT_META[entryKey(entry)]?.slice?.visit?.(entry, out);
 	}
 	return out;
 }

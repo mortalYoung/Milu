@@ -1,5 +1,5 @@
 import { createEffect, createMemo, createSignal } from "solid-js";
-import { projectVisibleHistory } from "../../shared/entry-meta";
+import { projectView } from "../../shared/entry-meta";
 import type { TrajectoryRecord } from "../../shared/rpc";
 import { fold } from "../../shared/timeline";
 import { useSession } from "./contexts/session-context";
@@ -15,7 +15,7 @@ export function createTrajectory() {
 		const entries = session.origin.entries;
 		const all = fold(entries);
 		if (mode() === "view") {
-			const viewIds = new Set(projectVisibleHistory(entries).map((v) => v.id));
+			const viewIds = new Set(projectView(entries).map((v) => v.id));
 			return all.filter((r) => viewIds.has(r.entryId));
 		}
 		return all;

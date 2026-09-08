@@ -1,5 +1,5 @@
 import { type Accessor, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
-import { projectVisibleHistory } from "../../shared/entry-meta";
+import { projectView } from "../../shared/entry-meta";
 import type { ViewItem } from "../../shared/rpc";
 import {
 	type Entry,
@@ -110,7 +110,6 @@ function sameEntry(a: Entry, b: Entry): boolean {
 	);
 }
 
-/** Keep unchanged rows on the same Entry objects so <For> (reference-keyed) does not remount them. */
 function reconcileViews(prev: Entry[], next: Entry[]): Entry[] {
 	const prevByKey = new Map<string, Entry>();
 	for (const e of prev) {
@@ -135,7 +134,6 @@ function sameStackRef(a: Entry[], b: Entry[]): boolean {
 	return a.length === b.length && a.every((e, i) => e === b[i]);
 }
 
-/** Group the view into blocks, keeping stackable agent/escalation runs together. */
 function groupView(view: Entry[]): ChatBlock[] {
 	const out: ChatBlock[] = [];
 	let stack: Entry[] | null = null;
@@ -157,7 +155,6 @@ function groupView(view: Entry[]): ChatBlock[] {
 	return out;
 }
 
-/** Keep unchanged blocks on the same references so <For> does not remount them. */
 function reconcileBlocks(prev: ChatBlock[], fresh: ChatBlock[]): ChatBlock[] {
 	const prevByKey = new Map<string, ChatBlock>();
 	for (const b of prev) prevByKey.set(blockKey(b), b);
@@ -183,7 +180,7 @@ export function createTranscript(): TranscriptController {
 	let flashTimer: ReturnType<typeof setTimeout> | undefined;
 
 	const view = createMemo<Entry[]>((prev) => {
-		const next = buildView(projectVisibleHistory(data.origin.entries));
+		const next = buildView(projectView(data.origin.entries));
 		return reconcileViews(prev, next);
 	}, []);
 

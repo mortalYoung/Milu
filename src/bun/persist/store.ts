@@ -8,7 +8,7 @@ export type { ViewItem } from "../../shared/rpc";
 
 import { buildResumeTurn, foldSlice } from "../core/slice";
 import { createExecutionEnv } from "../tools/execution-env";
-import { projectVisibleHistory } from "./entry-meta";
+import { projectView } from "./entry-meta";
 import {
 	type CommandDoneEventData,
 	type CommandRunEventData,
@@ -360,7 +360,7 @@ export function createSessionStore(): SessionStore {
 		},
 		async visibleHistory(dir) {
 			const state = await stateFor(dir);
-			return projectVisibleHistory(state.entries);
+			return projectView(state.entries);
 		},
 		async lastMessage(dir) {
 			const state = await stateFor(dir);

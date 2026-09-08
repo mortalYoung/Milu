@@ -9,7 +9,7 @@ import { getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
 import { Cron } from "croner";
 import { ApplicationMenu, BrowserView, BrowserWindow, Utils } from "electrobun/main";
 import { mcpChangedText } from "../shared/events";
-import { cleanOrigin } from "../shared/origin";
+import { projectOrigin } from "../shared/origin";
 import type { AppRPCSchema, ChatPreviewKind, TrajectoryRecord } from "../shared/rpc";
 import { loadCustomCommands, mergeCommandDefinitions } from "./commands/custom";
 import { defaultCommands } from "./commands/defaults";
@@ -940,7 +940,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				const profile = (await listPartners(settings)).find((p) => p.name === name);
 				if (!profile) return { entries: [], total: 0, hasMore: false, reset: false };
 				const dir = getPartnerDir(settings, name);
-				const origin = cleanOrigin(await session.rawEntries(dir));
+				const origin = projectOrigin(await session.rawEntries(dir));
 				const total = origin.length;
 				let start: number;
 				let end: number;

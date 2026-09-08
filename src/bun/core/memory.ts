@@ -4,9 +4,9 @@ import { join } from "node:path";
 import type { AgentMessage, Entry } from "@earendil-works/pi-agent-core";
 import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
 import { type Model, Type } from "@earendil-works/pi-ai";
+import { projectSlice } from "../../shared/entry-meta";
 import { EVENTS, type MemoryRunEndEventData, type MemoryRunModelMessage, type MemoryRunStartEventData, type MemoryRunTraceEvent } from "../persist/events";
 import { convertToLlm, STREAM_FN } from "./agent-config";
-import { deriveEventMessage } from "./slice";
 
 export type MemoryKind = "fact" | "decision" | "issue" | "reference" | "event";
 
@@ -46,7 +46,6 @@ export function formatMemoryRecord(record: MemoryRecord, opts: { withDetail?: bo
 
 export const memoryFilePath = (dir: string) => join(dir, "memory.jsonl");
 
-/** Create an empty memory file when the partner dir has none yet (new partners, old data). */
 export async function ensureMemoryFile(dir: string): Promise<void> {
 	await mkdir(dir, { recursive: true });
 	await appendFile(memoryFilePath(dir), "", "utf8");
@@ -61,9 +60,7 @@ export async function readMemoryLines(dir: string): Promise<MemoryLine[]> {
 			try {
 				const parsed = JSON.parse(line) as MemoryLine;
 				if (parsed && typeof parsed.id === "string" && typeof parsed.kind === "string") out.push(parsed);
-			} catch {
-				// skip corrupt lines
-			}
+			} catch {}
 		}
 		return out;
 	} catch {
@@ -190,7 +187,6 @@ export interface OrganizeMemoryOptions {
 	entries: Entry[];
 	model?: Model<any>;
 	signal?: AbortSignal;
-	/** Optional raw-origin audit logger: appends memory/run/start and memory/run/end. */
 	logRun?: {
 		start(data: MemoryRunStartEventData): Promise<void>;
 		end(data: MemoryRunEndEventData): Promise<void>;
@@ -203,7 +199,6 @@ type PushTrace = (event: MemoryRunTraceEvent) => void;
 
 export async function organizeMemory(opts: OrganizeMemoryOptions): Promise<number> {
 	await ensureMemoryFile(opts.dir);
-	// Rewound user edits stay in the raw log for audit but must not feed memory.
 	const rewoundIds = new Set<string>();
 	for (const e of opts.entries) {
 		if (e.type === "custom" && e.customType === EVENTS.rewind) {
@@ -236,8 +231,6 @@ export async function organizeMemory(opts: OrganizeMemoryOptions): Promise<numbe
 	const logEnd = opts.logRun?.end;
 	let attempts = 0;
 
-	// 补齐：crash / attempts-exhausted 后可能只有 memory records、没有对应 checkpoint。
-	// 在依赖 checkpointIndexForSession 之前，先按 memory records 的进度补一个 checkpoint。
 	const existingCursor = checkpointIndexForSession(lines, opts.sessionFile, indexById);
 	const recovered = recordProgressIndex(sessionRecords, indexById);
 	let cursorIndex = Math.max(existingCursor, recovered);
@@ -335,19 +328,16 @@ export async function organizeMemory(opts: OrganizeMemoryOptions): Promise<numbe
 			attempts += 1;
 			collectModelMessages(agent.state.messages, attempts, modelMessages);
 
-			// 只更新内存进度用于下一轮起点，不落盘：正常结束时统一写一个 checkpoint。
 			progressIndex = Math.max(progressIndex, readProgress.index, recordProgressIndex(sessionRecords, indexById));
 			pushTrace({ event: "attempt_end", attempt: attempts, progressRawId: progressIndex >= 0 ? entries[progressIndex].id : null });
 		}
 
-		// 正常流程结束才 append checkpoint：读完 target（无论是否产出 memory）或 target 已被 memory 覆盖。
 		if (progressIndex >= targetIndex && cursorIndex < targetIndex) {
 			const rawId = entries[targetIndex].id;
 			await appendMemoryLines(opts.dir, [makeCheckpoint(opts.sessionFile, rawId)]);
 			checkpoints.push(rawId);
 			pushTrace({ event: "checkpoint", lastRawId: rawId });
 		} else if (attempts >= MAX_ORGANIZE_ATTEMPTS && progressIndex > cursorIndex && progressIndex < targetIndex) {
-			// attempts-exhausted：把本轮实际推进写成一个部分 checkpoint，下次从这里之后继续。
 			const rawId = entries[progressIndex].id;
 			await appendMemoryLines(opts.dir, [makeCheckpoint(opts.sessionFile, rawId)]);
 			checkpoints.push(rawId);
@@ -443,7 +433,7 @@ function createReadRawTool(
 				.map((e) => {
 					if (e.type === "custom" && e.customType === EVENTS.timeGapReminder) return `[${e.id}] time_gap_reminder (skipped)`;
 					if (e.type === "custom" && (e.customType === EVENTS.contextChanged || e.customType === EVENTS.instructionsChanged)) return `[${e.id}] ${e.customType} (skipped)`;
-					const msg = deriveEventMessage(e);
+					const msg = projectSlice([e])[0] ?? null;
 					const m = msg as { role?: unknown; content?: unknown } | null;
 					const content = m ? (typeof m.content === "string" ? m.content : JSON.stringify(m.content ?? "")) : JSON.stringify(e);
 					return `[${e.id}] ${m ? String(m.role ?? "") : e.type}: ${content}`;
