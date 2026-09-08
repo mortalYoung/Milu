@@ -1,10 +1,12 @@
 import type { AgentMessage, Entry } from "@earendil-works/pi-agent-core";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
-import { contextChangedText, EVENTS, instructionsChangedText, mcpChangedText } from "./events";
+import { type CompactionEventData, contextChangedText, EVENTS, instructionsChangedText, mcpChangedText, type RewindEventData } from "./events";
 import type { SandboxMode, ViewItem } from "./rpc";
 
+// ——— metadata types ———
+
 export interface ViewMeta {
-	visit(entry: Entry, out: ViewItem[]): void;
+	visit?(entry: Entry, out: ViewItem[]): void;
 }
 
 export interface SliceMeta {
@@ -15,16 +17,31 @@ export interface OriginMeta {
 	visit?(entry: Entry, out: Entry[]): void;
 }
 
+export interface ReconcileContext {
+	entry: Entry;
+	index: number;
+	entries: Entry[];
+	out: Entry[];
+	keepDangling: boolean;
+}
+
+export interface ReconcileMeta {
+	visit?(ctx: ReconcileContext): void;
+}
+
 export interface TrajectoryMeta {
 	label: string;
 }
 
 export interface EntryMeta {
 	origin?: OriginMeta;
+	reconcile?: ReconcileMeta;
 	view?: ViewMeta;
 	slice?: SliceMeta;
 	trajectory?: TrajectoryMeta;
 }
+
+// ——— view projection ———
 
 const row = (id: string, kind: ViewItem["kind"], text: string, time: number): ViewItem => ({ id, kind, text, time });
 
@@ -180,6 +197,8 @@ function rewindVisit(entry: Entry, out: ViewItem[]): void {
 	}
 }
 
+// ——— slice projection ———
+
 function messageProject(entry: Entry): AgentMessage | null {
 	if (entry.type !== "message") return null;
 	return entry.message as unknown as AgentMessage;
@@ -293,20 +312,91 @@ function contextChangedProject(entry: Entry): AgentMessage | null {
 	} as AgentMessage;
 }
 
+// ——— origin & reconcile handlers ———
+
 function requestHeaderOriginVisit(entry: Entry, out: Entry[]): void {
 	if (entry.type !== "custom") return;
 	if (out.some((prev) => prev.type === "custom" && prev.customType === EVENTS.requestHeader)) return;
 	out.push(entry);
 }
 
-function viewHidden(): EntryMeta {
-	return { view: { visit: () => {} } };
+function assistantToolCallIds(entry: Entry): string[] {
+	if (entry.type !== "message" || entry.message.role !== "assistant") return [];
+	const blocks = Array.isArray(entry.message.content) ? entry.message.content : [];
+	return blocks.filter((b) => (b as { type?: unknown }).type === "toolCall").map((b) => String((b as { id?: unknown }).id ?? ""));
 }
+
+function reconcileAssistant(ctx: ReconcileContext): void {
+	const ids = assistantToolCallIds(ctx.entry);
+	if (ids.length === 0) {
+		ctx.out.push(ctx.entry);
+		return;
+	}
+	const firstId = ids[0];
+	const hasResult = ctx.entries
+		.slice(ctx.index + 1)
+		.some((e) => e.type === "custom" && e.customType === EVENTS.toolResult && (e.data as { toolCallId?: unknown }).toolCallId === firstId);
+	if (hasResult || ctx.keepDangling) ctx.out.push(ctx.entry);
+}
+
+function reconcileToolResult(ctx: ReconcileContext): void {
+	if (ctx.entry.type !== "custom" || ctx.entry.customType !== EVENTS.toolResult) return;
+	const callId = (ctx.entry.data as { toolCallId?: unknown }).toolCallId;
+	let owner = -1;
+	for (let i = ctx.out.length - 1; i >= 0; i--) {
+		const prev = ctx.out[i];
+		if (prev.type !== "message" || prev.message.role !== "assistant") continue;
+		if (assistantToolCallIds(prev).includes(String(callId))) {
+			owner = i;
+			break;
+		}
+	}
+	if (owner < 0) {
+		ctx.out.push(ctx.entry);
+		return;
+	}
+	let k = owner;
+	while (k + 1 < ctx.out.length) {
+		const next = ctx.out[k + 1];
+		if (next.type !== "custom" || next.customType !== EVENTS.toolResult) break;
+		k++;
+	}
+	ctx.out.splice(k + 1, 0, ctx.entry);
+}
+
+function reconcileCompaction(ctx: ReconcileContext): void {
+	if (ctx.entry.type !== "custom" || ctx.entry.customType !== EVENTS.compaction) return;
+	const d = (ctx.entry.data ?? {}) as CompactionEventData;
+	ctx.out.length = 0;
+	ctx.out.push({
+		type: "custom",
+		customType: EVENTS.compactionSummary,
+		id: `__compaction__${d.throughEntryId}`,
+		data: { text: d.summary, timestamp: d.timestamp ?? ctx.entry.timestamp ?? 0 },
+		timestamp: d.timestamp ?? ctx.entry.timestamp ?? 0,
+	} as unknown as Entry);
+}
+
+function reconcileRewind(ctx: ReconcileContext): void {
+	if (ctx.entry.type !== "custom" || ctx.entry.customType !== EVENTS.rewind) return;
+	const d = (ctx.entry.data ?? {}) as RewindEventData;
+	const shadowed = new Set(d.shadowedIds ?? []);
+	for (let i = ctx.out.length - 1; i >= 0; i--) {
+		if (shadowed.has(ctx.out[i].id)) ctx.out.splice(i, 1);
+	}
+	const targetIndex = ctx.out.findIndex((e) => e.id === d.targetId && e.type === "message" && e.message.role === "user");
+	if (targetIndex >= 0) {
+		const target = ctx.out[targetIndex];
+		if (target.type === "message") ctx.out[targetIndex] = { ...(target as object), message: { ...target.message, content: d.text } } as Entry;
+	}
+}
+
+// ——— event registry ———
 
 export const EVENT_META: Record<string, EntryMeta> = {
 	"role:user": { view: { visit: userVisit }, slice: { visit: messageVisit } },
 	"role:assistant": {
-		...viewHidden(),
+		reconcile: { visit: reconcileAssistant },
 		slice: { visit: messageVisit },
 	},
 
@@ -321,33 +411,35 @@ export const EVENT_META: Record<string, EntryMeta> = {
 	[EVENTS.skillDone]: { view: { visit: skillDoneVisit } },
 	[EVENTS.shellDone]: { view: { visit: shellDoneVisit } },
 	[EVENTS.escalationDecision]: { view: { visit: escalationDecisionVisit } },
-	[EVENTS.memoryRunStart]: viewHidden(),
-	[EVENTS.memoryRunEnd]: viewHidden(),
+	[EVENTS.memoryRunStart]: {},
+	[EVENTS.memoryRunEnd]: {},
 
-	[EVENTS.toolResult]: { ...viewHidden(), slice: { visit: toolResultVisit } },
-	[EVENTS.timeGapReminder]: { ...viewHidden(), slice: { visit: textUserVisit } },
-	[EVENTS.contextChanged]: { ...viewHidden(), slice: { visit: contextChangedVisit } },
-	[EVENTS.instructionsChanged]: { ...viewHidden(), slice: { visit: instructionsChangedVisit } },
-	[EVENTS.mcpChanged]: { ...viewHidden(), slice: { visit: mcpChangedVisit } },
-	[EVENTS.rewind]: { view: { visit: rewindVisit }, slice: { visit: textUserVisit } },
+	[EVENTS.toolResult]: { reconcile: { visit: reconcileToolResult }, slice: { visit: toolResultVisit } },
+	[EVENTS.timeGapReminder]: { slice: { visit: textUserVisit } },
+	[EVENTS.contextChanged]: { slice: { visit: contextChangedVisit } },
+	[EVENTS.instructionsChanged]: { slice: { visit: instructionsChangedVisit } },
+	[EVENTS.mcpChanged]: { slice: { visit: mcpChangedVisit } },
+	[EVENTS.rewind]: { view: { visit: rewindVisit }, reconcile: { visit: reconcileRewind }, slice: { visit: textUserVisit } },
 
-	[EVENTS.compaction]: viewHidden(),
-	[EVENTS.compactionSummary]: { ...viewHidden(), slice: { visit: textUserVisit } },
+	[EVENTS.compaction]: { reconcile: { visit: reconcileCompaction } },
+	[EVENTS.compactionSummary]: { slice: { visit: textUserVisit } },
 
-	[EVENTS.turnStart]: viewHidden(),
-	[EVENTS.stepStart]: viewHidden(),
-	[EVENTS.stepEnd]: viewHidden(),
-	[EVENTS.toolCall]: viewHidden(),
-	[EVENTS.requestHeader]: { ...viewHidden(), origin: { visit: requestHeaderOriginVisit } },
-	[EVENTS.systemPrompt]: viewHidden(),
-	[EVENTS.followUp]: viewHidden(),
-	[EVENTS.compactionStart]: viewHidden(),
-	[EVENTS.compactionEnd]: viewHidden(),
-	[EVENTS.compactionPrune]: viewHidden(),
-	[EVENTS.modelChange]: viewHidden(),
-	[EVENTS.retryScheduled]: viewHidden(),
-	[EVENTS.retryStarted]: viewHidden(),
+	[EVENTS.turnStart]: {},
+	[EVENTS.stepStart]: {},
+	[EVENTS.stepEnd]: {},
+	[EVENTS.toolCall]: {},
+	[EVENTS.requestHeader]: { origin: { visit: requestHeaderOriginVisit } },
+	[EVENTS.systemPrompt]: {},
+	[EVENTS.followUp]: {},
+	[EVENTS.compactionStart]: {},
+	[EVENTS.compactionEnd]: {},
+	[EVENTS.compactionPrune]: {},
+	[EVENTS.modelChange]: {},
+	[EVENTS.retryScheduled]: {},
+	[EVENTS.retryStarted]: {},
 };
+
+// ——— public projection ———
 
 export function entryKey(entry: Entry): string {
 	if (entry.type === "message") return `role:${entry.message.role}`;
@@ -358,7 +450,7 @@ export function entryKey(entry: Entry): string {
 export function projectView(entries: Entry[]): ViewItem[] {
 	const out: ViewItem[] = [];
 	for (const entry of entries) {
-		EVENT_META[entryKey(entry)]?.view?.visit(entry, out);
+		EVENT_META[entryKey(entry)]?.view?.visit?.(entry, out);
 	}
 	return out;
 }
