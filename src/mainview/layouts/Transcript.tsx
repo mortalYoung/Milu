@@ -1,13 +1,14 @@
-import { Check, CircleStop, Pencil } from "lucide-solid";
+import { Check, ChevronRight, CircleStop, Pencil } from "lucide-solid";
 import { type Accessor, createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import { AnimatePresence, Motion, MotionConfigProvider } from "solid-motion";
 import { EVENTS } from "../../shared/events";
 import type { EscalationStatus, SandboxMode } from "../../shared/rpc";
+import { BtwPanel } from "../components/BtwPanel";
 import { Dialog, DialogContent, DialogTitle } from "../components/ui/dialog";
 import { useSession } from "../lib/contexts/session-context";
 import { useSkills } from "../lib/contexts/skills-context";
 import { useTranscript } from "../lib/contexts/transcript-context";
-import { renderMarkdown, renderMarkdownPlain } from "../lib/markdown";
+import { renderMarkdown, renderMarkdownReady } from "../lib/markdown";
 import { rpc } from "../lib/rpc";
 
 export interface EscalationInfo {
@@ -119,35 +120,30 @@ function Markdown(props: { text: string; class?: string }) {
 		const el = ref;
 		if (!el) return;
 
-		el.innerHTML = renderMarkdownPlain(props.text);
+		let cancelled = false;
+		el.innerHTML = renderMarkdown(props.text);
+		void renderMarkdownReady(props.text).then((html) => {
+			if (!cancelled && el.isConnected) el.innerHTML = html;
+		});
 
-		let observer: IntersectionObserver | undefined;
-		const upgrade = () => {
-			if (el.querySelector(".shiki")) return;
-			el.innerHTML = renderMarkdown(props.text);
-			observer?.disconnect();
-		};
-
-		if (typeof IntersectionObserver === "function") {
-			observer = new IntersectionObserver(
-				(entries) => {
-					for (const entry of entries) {
-						if (entry.isIntersecting) upgrade();
-					}
-				},
-				{ root: null, rootMargin: "200px" },
-			);
-			observer.observe(el);
-		} else {
-			upgrade();
-		}
-
-		onCleanup(() => observer?.disconnect());
+		onCleanup(() => {
+			cancelled = true;
+		});
 	});
 	return <div ref={ref} class={props.class} />;
 }
 
-function letterBody(card: Entry, worker?: string, showPostmark = true, rich = true) {
+function letterBody(
+	card: Entry,
+	worker?: string,
+	showPostmark = true,
+	rich = true,
+	onBtw?: (anchorId: string) => void,
+	btwActive = false,
+	showRail = true,
+	onBtwClose?: () => void,
+	btwLocked = false,
+) {
 	const stamp = showPostmark ? parseStamp(card.time) : null;
 	return (
 		<>
@@ -162,6 +158,32 @@ function letterBody(card: Entry, worker?: string, showPostmark = true, rich = tr
 				<div class="msg-sign">
 					— {worker} · {formatHistoryTime(card.time)}
 				</div>
+			)}
+			{onBtw && card.kind === "agent" && showRail && (
+				<button
+					type="button"
+					class={"msg-rail" + (btwActive ? " on" : "")}
+					aria-label={btwActive ? "Close side question" : "Ask a side question about this message"}
+					onClick={(e) => {
+						e.stopPropagation();
+						if (btwActive) onBtwClose?.();
+						else if (!btwLocked) onBtw(card.key ?? String(card.id));
+					}}
+					onMouseMove={(e) => {
+						const el = e.currentTarget;
+						const rect = el.getBoundingClientRect();
+						const half = 58;
+						const y = Math.min(Math.max(e.clientY - rect.top, half), Math.max(half, rect.height - half));
+						el.style.setProperty("--rail-y", `${y}px`);
+					}}
+					onMouseLeave={(e) => {
+						e.currentTarget.style.removeProperty("--rail-y");
+					}}
+				>
+					<span class="msg-rail-indicator">
+						<ChevronRight size={10} strokeWidth={2} />
+					</span>
+				</button>
 			)}
 		</>
 	);
@@ -207,6 +229,9 @@ function MessageStack(props: {
 	worker?: string;
 	locateFlashId?: Accessor<number | null>;
 	onEscalationRespond?: (id: string, approved: boolean) => void;
+	onBtw?: (anchorId: string) => void;
+	onBtwClose?: () => void;
+	activeBtwAnchor?: string | null;
 }) {
 	const [current, setCurrent] = createSignal(props.cards.length - 1);
 
@@ -245,7 +270,17 @@ function MessageStack(props: {
 						>
 							{card.kind === "escalation" && card.escalation
 								? escalationBody(card.escalation, props.onEscalationRespond)
-								: letterBody(card, props.worker, depth() === 0, depth() <= 2)}
+								: letterBody(
+										card,
+										props.worker,
+										depth() === 0,
+										depth() <= 2,
+										props.onBtw,
+										props.activeBtwAnchor === card.key,
+										depth() === 0,
+										props.onBtwClose,
+										!!props.activeBtwAnchor && props.activeBtwAnchor !== card.key,
+									)}
 						</div>
 					);
 				}}
@@ -274,6 +309,9 @@ export function Transcript(props: {
 	historyLoading: Accessor<boolean>;
 	worker?: string;
 	onEscalationRespond?: (id: string, approved: boolean) => void;
+	onBtw?: (anchorId: string) => void;
+	onBtwClose?: () => void;
+	activeBtwAnchor?: string | null;
 }) {
 	const controller = useTranscript();
 	const session = useSession();
@@ -346,11 +384,45 @@ export function Transcript(props: {
 		if (el) requestAnimationFrame(() => el.focus());
 	});
 
+	let innerRef: HTMLDivElement | undefined;
+	let btwAnchorObserver: ResizeObserver | undefined;
+	createEffect(() => {
+		btwAnchorObserver?.disconnect();
+		btwAnchorObserver = undefined;
+
+		const anchor = props.activeBtwAnchor;
+		const inner = innerRef;
+		if (!anchor || !inner) return;
+
+		let anchorEl: HTMLElement | null = null;
+		for (const block of controller.blocks()) {
+			const cards = Array.isArray(block) ? block : [block];
+			const card = cards.find((c) => (c.key ?? String(c.id)) === anchor);
+			if (card) {
+				anchorEl = document.getElementById("entry-" + card.id);
+				break;
+			}
+		}
+		if (!anchorEl) return;
+
+		const update = () => {
+			const innerRect = inner.getBoundingClientRect();
+			const elRect = anchorEl!.getBoundingClientRect();
+			inner.style.setProperty("--btw-top", `${elRect.top - innerRect.top + inner.scrollTop}px`);
+			inner.style.setProperty("--btw-height", `${elRect.height}px`);
+		};
+		update();
+		btwAnchorObserver = new ResizeObserver(update);
+		btwAnchorObserver.observe(anchorEl);
+		btwAnchorObserver.observe(inner);
+		onCleanup(() => btwAnchorObserver?.disconnect());
+	});
+
 	return (
 		<MotionConfigProvider reducedMotion="user">
 			<div class="relative flex-1 min-h-0 flex flex-col">
 				<section class="transcript flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3" id="transcript" aria-live="polite" ref={controller.setContainer}>
-					<div class="transcript-inner">
+					<div class="transcript-inner" classList={{ "btw-open": !!props.activeBtwAnchor }} ref={(el) => (innerRef = el)}>
 						{controller.view().length === 0 && !props.working() && (
 							<div class="text-center pt-16">
 								{props.historyLoading() ? (
@@ -397,7 +469,7 @@ export function Transcript(props: {
 										return (
 											<Motion
 												as="div"
-												class={"msg-letter" + (controller.locateFlashId() === card.id ? " locate-flash" : "")}
+												class={"msg-letter" + (controller.locateFlashId() === card.id ? " locate-flash" : "") + (props.activeBtwAnchor === key ? " btw-active" : "")}
 												id={"entry-" + card.id}
 												data-chat-anchor-key={key}
 												data-chat-flow-key={key}
@@ -405,12 +477,31 @@ export function Transcript(props: {
 												animate={{ opacity: 1, scale: 1, rotate: 0 }}
 												transition={{ duration: 0.24, ease: [0.23, 1, 0.32, 1] }}
 											>
-												{letterBody(card, props.worker)}
+												{letterBody(
+													card,
+													props.worker,
+													true,
+													true,
+													props.onBtw,
+													props.activeBtwAnchor === key,
+													true,
+													props.onBtwClose,
+													!!props.activeBtwAnchor && props.activeBtwAnchor !== key,
+												)}
 											</Motion>
 										);
 									}
 									return (
-										<MessageStack cards={block} anchorKey={key} worker={props.worker} locateFlashId={controller.locateFlashId} onEscalationRespond={props.onEscalationRespond} />
+										<MessageStack
+											cards={block}
+											anchorKey={key}
+											worker={props.worker}
+											locateFlashId={controller.locateFlashId}
+											onEscalationRespond={props.onEscalationRespond}
+											onBtw={props.onBtw}
+											onBtwClose={props.onBtwClose}
+											activeBtwAnchor={props.activeBtwAnchor}
+										/>
 									);
 								}
 								const e = block;
@@ -577,6 +668,12 @@ export function Transcript(props: {
 								</Motion>
 							)}
 						</AnimatePresence>
+
+						<Show when={props.activeBtwAnchor && props.worker}>
+							<div class="btw-cell">
+								<BtwPanel name={props.worker!} anchorEntryId={props.activeBtwAnchor!} onClose={() => props.onBtwClose?.()} />
+							</div>
+						</Show>
 					</div>
 				</section>
 

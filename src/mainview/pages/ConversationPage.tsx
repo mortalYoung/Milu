@@ -44,6 +44,8 @@ export function ConversationPage(props: {
 	const [outlineOpen, setOutlineOpen] = createSignal(false);
 	const [explorerOpen, setExplorerOpen] = createSignal(false);
 	const [gitOpen, setGitOpen] = createSignal(false);
+	const [btwOpen, setBtwOpen] = createSignal(false);
+	const [btwAnchor, setBtwAnchor] = createSignal<string | null>(null);
 	const [explorerRoot, setExplorerRoot] = createSignal<"workspace" | "storage">("storage");
 	const workspacePath = () => status.data().workspace_path;
 	createEffect(() => {
@@ -51,11 +53,23 @@ export function ConversationPage(props: {
 	});
 
 	const hasConversation = () => props.selected != null && transcript.view().length > 0;
+	const preserveTranscriptScroll = (toggle: () => void) => {
+		const el = document.getElementById("transcript");
+		const prev = el?.scrollTop;
+		toggle();
+		if (el && prev != null) {
+			requestAnimationFrame(() => {
+				el.scrollTop = prev;
+			});
+		}
+	};
 	createEffect(() => {
 		if (!hasConversation()) {
 			setOutlineOpen(false);
 			setExplorerOpen(false);
 			setGitOpen(false);
+			setBtwOpen(false);
+			setBtwAnchor(null);
 			trajectory.mutate.setOpen(false);
 		}
 	});
@@ -185,10 +199,32 @@ export function ConversationPage(props: {
 					</div>
 				</div>
 				{props.selected ? (
-					<>
-						<Transcript working={status.isBusyForSelected} historyLoading={props.historyLoading} worker={props.selected} onEscalationRespond={props.onEscalationRespond} />
-						<Composer onSend={props.onSend} onStop={props.onStop} onShell={props.onShell} onOpenPath={props.onOpenPath} editors={props.editors} />
-					</>
+					<div class="chat-body" classList={{ "btw-open": btwOpen() }}>
+						<div class="chat-main">
+							<div class="chat-transcript-region">
+								<Transcript
+									working={status.isBusyForSelected}
+									historyLoading={props.historyLoading}
+									worker={props.selected}
+									onEscalationRespond={props.onEscalationRespond}
+									onBtw={(anchor) => {
+										preserveTranscriptScroll(() => {
+											setBtwAnchor(anchor);
+											setBtwOpen(true);
+										});
+									}}
+									onBtwClose={() =>
+										preserveTranscriptScroll(() => {
+											setBtwAnchor(null);
+											setBtwOpen(false);
+										})
+									}
+									activeBtwAnchor={btwOpen() ? btwAnchor() : null}
+								/>
+							</div>
+							<Composer onSend={props.onSend} onStop={props.onStop} onShell={props.onShell} onOpenPath={props.onOpenPath} editors={props.editors} />
+						</div>
+					</div>
 				) : (
 					<div class="flex-1 flex flex-col items-center justify-center gap-3 text-center">
 						<p class="font-serif text-[17px] text-ink-soft">— select a partner to begin —</p>

@@ -108,6 +108,21 @@ export interface RequestTool {
 	parameters?: unknown;
 }
 
+export interface BtwMessageRpc {
+	id: string;
+	role: "user" | "assistant";
+	content: string;
+	createdAt: number;
+}
+
+export interface BtwThreadRpc {
+	id: string;
+	anchorEntryId: string;
+	createdAt: number;
+	updatedAt: number;
+	messages: BtwMessageRpc[];
+}
+
 export interface TrajectoryBase {
 	seq: number;
 
@@ -421,6 +436,19 @@ export type AppRPCSchema = __schema<{
 			stats: {
 				params: { name: string };
 				response: SessionStats;
+			};
+
+			btw_threads: {
+				params: { name: string; anchorEntryId: string };
+				response: { threads: BtwThreadRpc[] };
+			};
+			btw_create: {
+				params: { name: string; anchorEntryId: string; question: string };
+				response: { thread: BtwThreadRpc };
+			};
+			btw_ask: {
+				params: { name: string; threadId: string; question: string };
+				response: { thread: BtwThreadRpc };
 			};
 
 			trajectory: {

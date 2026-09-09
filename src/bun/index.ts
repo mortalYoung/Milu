@@ -28,6 +28,7 @@ import {
 	unregisterCustomProvider,
 	validateCustomProviders,
 } from "./core/agent-config";
+import { askBtwThread, btwBaseContext, btwThreadsForAnchor, createBtwThread, readBtwThreads } from "./core/btw";
 import { applyCompaction, type CompactionPlan, hasOrphanCompactionStart, planMemoryCompaction } from "./core/compaction";
 import { Context } from "./core/context";
 import { projectSnapshot } from "./core/context-project";
@@ -1429,6 +1430,41 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				const entry = profile ? await agents.get(name) : undefined;
 				const usage = dir ? aggregateUsage(await session.rawEntries(dir)) : null;
 				return { usage, runtime: entry?.agent.runtimeStats ?? { runs: 0, avgTtftMs: null, avgTps: null, lastTtftMs: null } };
+			},
+
+			btw_threads: async ({ name, anchorEntryId }) => {
+				const settings = await loadSettings();
+				const profile = (await listPartners(settings)).find((p) => p.name === name);
+				if (!profile) return { threads: [] };
+				const dir = getPartnerDir(settings, name);
+				return { threads: btwThreadsForAnchor(await readBtwThreads(dir), anchorEntryId) };
+			},
+
+			btw_create: async ({ name, anchorEntryId, question }) => {
+				const settings = await loadSettings();
+				const profile = (await listPartners(settings)).find((p) => p.name === name);
+				if (!profile) throw new Error("partner not found");
+				const dir = getPartnerDir(settings, name);
+				const entries = await session.rawEntries(dir);
+				const entry = await agents.get(name);
+				const systemPrompt = entry?.agent.systemPrompt ?? "";
+				const thread = await createBtwThread(dir, anchorEntryId, question, systemPrompt, btwBaseContext(entries, anchorEntryId));
+				return { thread };
+			},
+
+			btw_ask: async ({ name, threadId, question }) => {
+				const settings = await loadSettings();
+				const profile = (await listPartners(settings)).find((p) => p.name === name);
+				if (!profile) throw new Error("partner not found");
+				const dir = getPartnerDir(settings, name);
+				const entries = await session.rawEntries(dir);
+				const threadBefore = await readBtwThreads(dir);
+				const anchor = threadBefore.find((t) => t.id === threadId)?.anchorEntryId;
+				if (!anchor) throw new Error("btw thread not found");
+				const entry = await agents.get(name);
+				const systemPrompt = entry?.agent.systemPrompt ?? "";
+				const thread = await askBtwThread(dir, threadId, question, systemPrompt, btwBaseContext(entries, anchor));
+				return { thread };
 			},
 			get_settings: async () => {
 				const settings = await ensureSettings();

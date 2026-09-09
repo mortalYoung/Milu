@@ -25,7 +25,7 @@ const credentials: CredentialStore = {
 	async delete() {},
 };
 
-const MODELS = builtinModels({ credentials });
+export const MODELS = builtinModels({ credentials });
 
 const DEFAULT_MODELS: Record<string, string> = { deepseek: "deepseek-v4-flash" };
 
