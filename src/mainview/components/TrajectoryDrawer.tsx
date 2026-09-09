@@ -809,7 +809,6 @@ function DrawerContent(props: {
 			<aside class="traj-drawer traj-enter" ref={drawerRef}>
 				<div class="traj-head">
 					<span class="traj-title">Trajectory</span>
-					<span class="traj-count">{props.loading ? "…" : countText()}</span>
 					<div class="traj-mode-toggle" role="group" aria-label="Timeline projection">
 						{(["slice", "view"] as const).map((m) => (
 							<button
@@ -879,7 +878,10 @@ function DrawerContent(props: {
 					</>
 				)}
 
-				<div class="traj-foot">{footText()}</div>
+				<div class="traj-foot">
+					<span class="traj-count">{props.loading ? "…" : countText()}</span>
+					<span class="traj-foot-mode">{footText()}</span>
+				</div>
 
 				<Show when={selectedRow() != null}>
 					<div class={"traj-popover" + (popStyle() ? " ready" : "")} ref={popRef} style={{ top: popStyle() ? `${popStyle()!.top}px` : "50%" }}>
@@ -891,7 +893,19 @@ function DrawerContent(props: {
 								×
 							</button>
 						</div>
-						<div class="traj-popover-body">{rowBody(selectedRow()!)}</div>
+						<div class="traj-popover-body">
+							{rowBody(selectedRow()!)}
+							<Show when={selectedRow()!.node.record.sliceMessage}>
+								<div class="traj-raw-section">
+									<div class="traj-raw-head">AgentMessage</div>
+									<div class="traj-agent-meta">
+										<span class="traj-role-chip">{String(selectedRow()?.node.record.sliceMessage?.role ?? "")}</span>
+										<span class="traj-slice-id">{selectedRow()!.node.record.entryId}</span>
+									</div>
+									<pre class="traj-raw">{json(selectedRow()!.node.record.sliceMessage)}</pre>
+								</div>
+							</Show>
+						</div>
 						<div class="traj-popover-meta">{bodyMeta(selectedRow()!.node)}</div>
 					</div>
 				</Show>

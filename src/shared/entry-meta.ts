@@ -9,24 +9,25 @@ export interface ViewMeta {
 	visit?(entry: Entry, out: ViewItem[]): void;
 }
 
+export interface SliceItem {
+	id: string;
+	message: AgentMessage;
+}
+
+export interface SliceContext {
+	entry: Entry;
+	index: number;
+	entries: Entry[];
+	out: SliceItem[];
+	keepDangling: boolean;
+}
+
 export interface SliceMeta {
-	visit?(entry: Entry, out: AgentMessage[]): void;
+	visit?(ctx: SliceContext): void;
 }
 
 export interface OriginMeta {
 	visit?(entry: Entry, out: Entry[]): void;
-}
-
-export interface ReconcileContext {
-	entry: Entry;
-	index: number;
-	entries: Entry[];
-	out: Entry[];
-	keepDangling: boolean;
-}
-
-export interface ReconcileMeta {
-	visit?(ctx: ReconcileContext): void;
 }
 
 export interface TrajectoryMeta {
@@ -35,7 +36,6 @@ export interface TrajectoryMeta {
 
 export interface EntryMeta {
 	origin?: OriginMeta;
-	reconcile?: ReconcileMeta;
 	view?: ViewMeta;
 	slice?: SliceMeta;
 	trajectory?: TrajectoryMeta;
@@ -223,21 +223,6 @@ function sendMessageProject(entry: Entry): AgentMessage | null {
 	} as AgentMessage;
 }
 
-function pushProject(project: (entry: Entry) => AgentMessage | null): NonNullable<SliceMeta["visit"]> {
-	return (entry, out) => {
-		const msg = project(entry);
-		if (msg) out.push(msg);
-	};
-}
-
-const messageVisit = pushProject(messageProject);
-const sendMessageSliceVisit = pushProject(sendMessageProject);
-const toolResultVisit = pushProject(toolResultProject);
-const textUserVisit = pushProject(textUserProject);
-const mcpChangedVisit = pushProject(mcpChangedProject);
-const instructionsChangedVisit = pushProject(instructionsChangedProject);
-const contextChangedVisit = pushProject(contextChangedProject);
-
 function toolResultProject(entry: Entry): AgentMessage | null {
 	if (entry.type !== "custom") return null;
 	const data = (entry.data ?? {}) as {
@@ -312,13 +297,19 @@ function contextChangedProject(entry: Entry): AgentMessage | null {
 	} as AgentMessage;
 }
 
-// ——— origin & reconcile handlers ———
-
-function requestHeaderOriginVisit(entry: Entry, out: Entry[]): void {
-	if (entry.type !== "custom") return;
-	if (out.some((prev) => prev.type === "custom" && prev.customType === EVENTS.requestHeader)) return;
-	out.push(entry);
+function pushProject(project: (entry: Entry) => AgentMessage | null): NonNullable<SliceMeta["visit"]> {
+	return (ctx) => {
+		const msg = project(ctx.entry);
+		if (msg) ctx.out.push({ id: ctx.entry.id, message: msg });
+	};
 }
+
+const messageVisit = pushProject(messageProject);
+const sendMessageSliceVisit = pushProject(sendMessageProject);
+const textUserVisit = pushProject(textUserProject);
+const mcpChangedVisit = pushProject(mcpChangedProject);
+const instructionsChangedVisit = pushProject(instructionsChangedProject);
+const contextChangedVisit = pushProject(contextChangedProject);
 
 function assistantToolCallIds(entry: Entry): string[] {
 	if (entry.type !== "message" || entry.message.role !== "assistant") return [];
@@ -326,69 +317,74 @@ function assistantToolCallIds(entry: Entry): string[] {
 	return blocks.filter((b) => (b as { type?: unknown }).type === "toolCall").map((b) => String((b as { id?: unknown }).id ?? ""));
 }
 
-function reconcileAssistant(ctx: ReconcileContext): void {
+function sliceAssistant(ctx: SliceContext): void {
 	const ids = assistantToolCallIds(ctx.entry);
 	if (ids.length === 0) {
-		ctx.out.push(ctx.entry);
+		messageVisit(ctx);
 		return;
 	}
 	const firstId = ids[0];
 	const hasResult = ctx.entries
 		.slice(ctx.index + 1)
 		.some((e) => e.type === "custom" && e.customType === EVENTS.toolResult && (e.data as { toolCallId?: unknown }).toolCallId === firstId);
-	if (hasResult || ctx.keepDangling) ctx.out.push(ctx.entry);
+	if (hasResult || ctx.keepDangling) messageVisit(ctx);
 }
 
-function reconcileToolResult(ctx: ReconcileContext): void {
-	if (ctx.entry.type !== "custom" || ctx.entry.customType !== EVENTS.toolResult) return;
-	const callId = (ctx.entry.data as { toolCallId?: unknown }).toolCallId;
+function sliceToolResult(ctx: SliceContext): void {
+	const msg = toolResultProject(ctx.entry);
+	if (!msg) return;
+	const item: SliceItem = { id: ctx.entry.id, message: msg };
+	const callId = String((msg as unknown as { toolCallId?: unknown }).toolCallId ?? "");
 	let owner = -1;
 	for (let i = ctx.out.length - 1; i >= 0; i--) {
-		const prev = ctx.out[i];
-		if (prev.type !== "message" || prev.message.role !== "assistant") continue;
-		if (assistantToolCallIds(prev).includes(String(callId))) {
+		const prev = ctx.out[i].message;
+		if (prev.role !== "assistant") continue;
+		const blocks = Array.isArray(prev.content) ? prev.content : [];
+		const ids = blocks.filter((b) => (b as { type?: unknown }).type === "toolCall").map((b) => String((b as { id?: unknown }).id ?? ""));
+		if (ids.includes(callId)) {
 			owner = i;
 			break;
 		}
 	}
 	if (owner < 0) {
-		ctx.out.push(ctx.entry);
+		ctx.out.push(item);
 		return;
 	}
 	let k = owner;
-	while (k + 1 < ctx.out.length) {
-		const next = ctx.out[k + 1];
-		if (next.type !== "custom" || next.customType !== EVENTS.toolResult) break;
-		k++;
-	}
-	ctx.out.splice(k + 1, 0, ctx.entry);
+	while (k + 1 < ctx.out.length && ctx.out[k + 1].message.role === "toolResult") k++;
+	ctx.out.splice(k + 1, 0, item);
 }
 
-function reconcileCompaction(ctx: ReconcileContext): void {
+function sliceCompaction(ctx: SliceContext): void {
 	if (ctx.entry.type !== "custom" || ctx.entry.customType !== EVENTS.compaction) return;
 	const d = (ctx.entry.data ?? {}) as CompactionEventData;
 	ctx.out.length = 0;
 	ctx.out.push({
-		type: "custom",
-		customType: EVENTS.compactionSummary,
-		id: `__compaction__${d.throughEntryId}`,
-		data: { text: d.summary, timestamp: d.timestamp ?? ctx.entry.timestamp ?? 0 },
-		timestamp: d.timestamp ?? ctx.entry.timestamp ?? 0,
-	} as unknown as Entry);
+		id: ctx.entry.id,
+		message: { role: "user", content: d.summary, timestamp: d.timestamp ?? ctx.entry.timestamp ?? 0 } as AgentMessage,
+	});
 }
 
-function reconcileRewind(ctx: ReconcileContext): void {
+function sliceRewind(ctx: SliceContext): void {
 	if (ctx.entry.type !== "custom" || ctx.entry.customType !== EVENTS.rewind) return;
 	const d = (ctx.entry.data ?? {}) as RewindEventData;
 	const shadowed = new Set(d.shadowedIds ?? []);
 	for (let i = ctx.out.length - 1; i >= 0; i--) {
 		if (shadowed.has(ctx.out[i].id)) ctx.out.splice(i, 1);
 	}
-	const targetIndex = ctx.out.findIndex((e) => e.id === d.targetId && e.type === "message" && e.message.role === "user");
+	const targetIndex = ctx.out.findIndex((item) => item.id === d.targetId && item.message.role === "user");
 	if (targetIndex >= 0) {
 		const target = ctx.out[targetIndex];
-		if (target.type === "message") ctx.out[targetIndex] = { ...(target as object), message: { ...target.message, content: d.text } } as Entry;
+		ctx.out[targetIndex] = { ...target, message: { ...(target.message as object), content: d.text } as AgentMessage };
 	}
+}
+
+// ——— origin handlers ———
+
+function requestHeaderOriginVisit(entry: Entry, out: Entry[]): void {
+	if (entry.type !== "custom") return;
+	if (out.some((prev) => prev.type === "custom" && prev.customType === EVENTS.requestHeader)) return;
+	out.push(entry);
 }
 
 // ——— event registry ———
@@ -396,8 +392,8 @@ function reconcileRewind(ctx: ReconcileContext): void {
 export const EVENT_META: Record<string, EntryMeta> = {
 	"role:user": { view: { visit: userVisit }, slice: { visit: messageVisit } },
 	"role:assistant": {
-		reconcile: { visit: reconcileAssistant },
-		slice: { visit: messageVisit },
+		view: {},
+		slice: { visit: sliceAssistant },
 	},
 
 	[EVENTS.sendMessage]: { view: { visit: sendMessageVisit }, slice: { visit: sendMessageSliceVisit } },
@@ -414,14 +410,14 @@ export const EVENT_META: Record<string, EntryMeta> = {
 	[EVENTS.memoryRunStart]: {},
 	[EVENTS.memoryRunEnd]: {},
 
-	[EVENTS.toolResult]: { reconcile: { visit: reconcileToolResult }, slice: { visit: toolResultVisit } },
+	[EVENTS.toolResult]: { slice: { visit: sliceToolResult } },
 	[EVENTS.timeGapReminder]: { slice: { visit: textUserVisit } },
 	[EVENTS.contextChanged]: { slice: { visit: contextChangedVisit } },
 	[EVENTS.instructionsChanged]: { slice: { visit: instructionsChangedVisit } },
 	[EVENTS.mcpChanged]: { slice: { visit: mcpChangedVisit } },
-	[EVENTS.rewind]: { view: { visit: rewindVisit }, reconcile: { visit: reconcileRewind }, slice: { visit: textUserVisit } },
+	[EVENTS.rewind]: { view: { visit: rewindVisit }, slice: { visit: sliceRewind } },
 
-	[EVENTS.compaction]: { reconcile: { visit: reconcileCompaction } },
+	[EVENTS.compaction]: { slice: { visit: sliceCompaction } },
 	[EVENTS.compactionSummary]: { slice: { visit: textUserVisit } },
 
 	[EVENTS.turnStart]: {},
@@ -455,10 +451,25 @@ export function projectView(entries: Entry[]): ViewItem[] {
 	return out;
 }
 
-export function projectSlice(entries: Entry[]): AgentMessage[] {
-	const out: AgentMessage[] = [];
-	for (const entry of entries) {
-		EVENT_META[entryKey(entry)]?.slice?.visit?.(entry, out);
+export interface ProjectSliceOptions {
+	keepDangling?: boolean;
+}
+
+export function projectSliceItems(entries: Entry[], options: ProjectSliceOptions = {}): SliceItem[] {
+	const out: SliceItem[] = [];
+	for (let i = 0; i < entries.length; i++) {
+		const entry = entries[i];
+		EVENT_META[entryKey(entry)]?.slice?.visit?.({
+			entry,
+			index: i,
+			entries,
+			out,
+			keepDangling: options.keepDangling ?? false,
+		});
 	}
 	return out;
+}
+
+export function projectSlice(entries: Entry[], options: ProjectSliceOptions = {}): AgentMessage[] {
+	return projectSliceItems(entries, options).map((item) => item.message);
 }

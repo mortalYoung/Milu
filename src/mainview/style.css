@@ -1426,10 +1426,10 @@ body::before {
 		@apply font-sans text-[9px] uppercase tracking-[0.2em] text-body-muted;
 	}
 	.traj-count {
-		@apply ml-auto font-mono text-[10px] text-seal;
+		@apply font-mono text-[10px] text-body-muted;
 	}
 	.traj-mode-toggle {
-		@apply flex-none flex items-center gap-0.5 rounded-[4px] border border-hairline p-[1px];
+		@apply flex-none flex items-center gap-0.5 rounded-[4px] border border-hairline p-[1px] ml-auto;
 	}
 	.traj-mode {
 		@apply font-mono text-[9px] uppercase tracking-[0.12em] text-body-muted rounded-[3px] px-1.5 py-[1px] cursor-pointer bg-transparent transition-colors;
@@ -1798,6 +1798,25 @@ body::before {
 		@apply border-seal/60 text-seal;
 	}
 
+	.traj-popover-body .traj-raw-section {
+		@apply mt-3 border-t border-hairline pt-2.5;
+	}
+	.traj-popover-body .traj-raw-head {
+		@apply font-mono text-[8.5px] uppercase tracking-[0.16em] text-muted;
+	}
+	.traj-popover-body .traj-agent-meta {
+		@apply mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 min-w-0;
+	}
+	.traj-popover-body .traj-role-chip {
+		@apply font-mono text-[8.5px] text-seal border border-seal/30 rounded-[3px] px-1 py-[1px];
+	}
+	.traj-popover-body .traj-slice-id {
+		@apply min-w-0 truncate font-mono text-[8px] text-muted;
+	}
+	.traj-popover-body .traj-raw {
+		@apply mt-2 max-h-[220px] overflow-auto whitespace-pre-wrap break-words font-mono text-[10px] leading-[1.6] text-ink-soft bg-paper-hover/60 border border-hairline rounded-[6px] px-2.5 py-2;
+	}
+
 	.traj-body .one-think-label,
 	.traj-body .traj-meta,
 	.traj-body .traj-id,
@@ -1823,7 +1842,13 @@ body::before {
 		@apply text-seal;
 	}
 	.traj-foot {
-		@apply px-4 pt-2 font-sans text-[8px] text-muted text-right;
+		@apply flex items-baseline justify-between gap-2 px-4 pt-2 font-sans text-[8px] text-muted;
+	}
+	.traj-foot .traj-count {
+		@apply min-w-0 text-left;
+	}
+	.traj-foot .traj-foot-mode {
+		@apply shrink-0 text-right;
 	}
 
 	.traj-empty {

@@ -1,4 +1,4 @@
-import type { Entry } from "@earendil-works/pi-agent-core";
+import type { AgentMessage, Entry } from "@earendil-works/pi-agent-core";
 import type { ElectrobunRPCSchema } from "electrobun/main";
 import type { CustomModel, CustomProvider, ThemeMode, ToastPlacement } from "../bun/lib/settings";
 import type { McpConfig, McpLifecycle, McpServerConfig } from "../bun/mcp/types";
@@ -114,6 +114,8 @@ export interface TrajectoryBase {
 	entryId: string;
 
 	time: number;
+
+	sliceMessage?: AgentMessage;
 }
 
 export interface TrajectoryUsage {

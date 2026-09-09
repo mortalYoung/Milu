@@ -1,27 +1,7 @@
 import type { AgentMessage, Entry } from "@earendil-works/pi-agent-core";
-import { EVENT_META, entryKey, projectSlice } from "../../shared/entry-meta";
+import { foldSlice } from "../../shared/slice";
 
-interface ReconcileOptions {
-	keepDangling?: boolean;
-}
-
-function reconcileOrigin(entries: Entry[], options: ReconcileOptions = {}): Entry[] {
-	const out: Entry[] = [];
-	for (let i = 0; i < entries.length; i++) {
-		const e = entries[i];
-		const meta = EVENT_META[entryKey(e)];
-		if (meta?.reconcile?.visit) {
-			meta.reconcile.visit({ entry: e, index: i, entries, out, keepDangling: options.keepDangling ?? false });
-		} else {
-			out.push(e);
-		}
-	}
-	return out;
-}
-
-export function foldSlice(entries: Entry[], options: ReconcileOptions = {}): AgentMessage[] {
-	return projectSlice(reconcileOrigin(entries, options));
-}
+export { type FoldSliceOptions, foldSlice, foldSliceItems } from "../../shared/slice";
 
 export function buildResumeTurn(entries: Entry[], toolCallId: string): { messages: AgentMessage[]; insertAt: number } | null {
 	const messages = foldSlice(entries, { keepDangling: true });
