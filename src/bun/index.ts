@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { watch } from "node:fs";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, sep } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import { getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
@@ -54,7 +54,8 @@ import {
 	readPartnerReadAt,
 	recordPrompt,
 } from "./lib/partner-files";
-import { commandsDir, DEFAULT_MCP_CONFIG_PATH, getPartnerDir, loadSettings, type Settings, saveSettings, sendMessageIntervalMs } from "./lib/settings";
+import { searchFiles } from "./lib/search";
+import { commandsDir, DEFAULT_MCP_CONFIG_PATH, DEFAULT_PALETTE_IGNORE_DIRS, getPartnerDir, loadSettings, type Settings, saveSettings, sendMessageIntervalMs } from "./lib/settings";
 import { loadMcpConfig, saveMcpConfig } from "./mcp/config";
 import { McpManager } from "./mcp/manager";
 import { copyPartner, createPartner, deletePartner, listPartners, PartnerError, type PartnerInput, promotePartner } from "./partners";
@@ -224,6 +225,18 @@ function rejectPendingEscalations(partner: string, reason: string) {
 			.appendEscalationRecord("escalation/decision", { escalationId: id, approved: false }, timestamp)
 			.catch((error) => console.error("escalation decision failed:", error));
 	}
+}
+
+/** Absolute path of a workspace-relative Explorer entry, with the same containment guard as the tree. */
+async function explorerTarget(name: string, path: string): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
+	const entry = await agents.get(name);
+	if (!entry) return { ok: false, error: "no partner selected" };
+	const workspace = entry.agent.workspacePath;
+	if (!workspace) return { ok: false, error: "workspace not set" };
+	const target = resolve(workspace, path);
+	const rel = relative(workspace, target);
+	if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return { ok: false, error: "path escapes workspace" };
+	return { ok: true, path: target };
 }
 
 function tildify(path: string): string {
@@ -1311,6 +1324,13 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				}
 			},
 
+			explorer_reveal: async ({ name, path }) => {
+				const target = await explorerTarget(name, path);
+				if (!target.ok) return target;
+				spawn("open", ["-R", target.path], { stdio: "ignore" }).unref();
+				return { ok: true as const };
+			},
+
 			explorer_read_file: async ({ name, root, path }) => {
 				const entry = await agents.get(name);
 				if (!entry) return { ok: false as const, error: "no partner selected" };
@@ -1644,6 +1664,18 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 						return { name: server, state: status?.state ?? ("stopped" as const), toolCount: status?.toolCount ?? 0 };
 					}),
 				};
+			},
+			palette_search_files: async ({ name, query }) => {
+				const settings = await loadSettings();
+				const entry = await agents.get(name);
+				const workspace = entry?.agent.workspacePath ?? (await ensureWorkspace(getPartnerDir(settings, name)));
+				if (!workspace) return { ok: false as const, error: "workspace not set", items: [], truncated: false };
+				try {
+					const result = await searchFiles(workspace, query, settings.palette?.searchIgnoreDirs ?? DEFAULT_PALETTE_IGNORE_DIRS);
+					return { ok: true as const, items: result.items, truncated: result.truncated };
+				} catch (error) {
+					return { ok: false as const, error: error instanceof Error ? error.message : String(error), items: [], truncated: false };
+				}
 			},
 			list_partners: async () => {
 				const settings = await loadSettings();

@@ -69,6 +69,24 @@ export function Composer(props: {
 	const skillDirectory = useSkills();
 	const shellContinuous = () => settings.data()?.settings?.shellContinuous ?? true;
 	const [text, setText] = createSignal("");
+	// A prefill (e.g. the palette handing over `/model `) writes straight into the live box and focuses it.
+	let handledPrefillId = 0;
+	createEffect(() => {
+		const request = composer.pendingPrefill();
+		if (!request || request.id === handledPrefillId) return;
+		handledPrefillId = request.id;
+		if (request.partner !== session.data.selected) return;
+		setText(request.text);
+		composer.change(request.text);
+		requestAnimationFrame(() => {
+			if (!textareaRef) return;
+			textareaRef.focus();
+			textareaRef.setSelectionRange(request.text.length, request.text.length);
+			setCaret(request.text.length);
+			syncCommandState(request.text, request.text.length);
+			resize();
+		});
+	});
 	// The draft is per-chat: switching chats loads the other chat's saved text and resets the box height.
 	createEffect(() => {
 		const name = session.data.selected;

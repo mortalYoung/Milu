@@ -1,5 +1,6 @@
-import { createEffect, createResource, createSignal, For, Show } from "solid-js";
+import { createEffect, createMemo, createResource, createSignal, For, Show } from "solid-js";
 import type { GitChangeItem } from "../../shared/rpc";
+import { createPresence, DOCK_EXIT_MS, DOCK_POPOVER_EXIT_MS } from "../lib/presence";
 import { rpc } from "../lib/rpc";
 
 interface GitData {
@@ -30,6 +31,9 @@ export function GitChangesDrawer(props: { open: boolean; partner: string | null;
 	const [error, setError] = createSignal<string | null>(null);
 	const [loading, setLoading] = createSignal(false);
 	const [selected, setSelected] = createSignal<GitChangeItem | null>(null);
+	const drawer = createPresence(() => props.open, DOCK_EXIT_MS);
+	const viewer = createPresence(() => props.open && selected() != null, DOCK_POPOVER_EXIT_MS);
+	const shownChange = createMemo<GitChangeItem | null>((prev) => selected() ?? prev, null);
 
 	async function refresh() {
 		if (!props.partner) return;
@@ -59,7 +63,7 @@ export function GitChangesDrawer(props: { open: boolean; partner: string | null;
 	});
 
 	const [diffData] = createResource(
-		() => (selected() && props.partner ? { change: selected()!, name: props.partner } : null),
+		() => (shownChange() && props.partner ? { change: shownChange()!, name: props.partner } : null),
 		async ({ change, name }): Promise<DiffData | null> => {
 			const res = await rpc.request.git_diff({ name, path: change.path, staged: change.staged });
 			if (!res.ok) return { error: res.error ?? "failed to load diff" };
@@ -109,8 +113,8 @@ export function GitChangesDrawer(props: { open: boolean; partner: string | null;
 
 	return (
 		<>
-			<Show when={props.open}>
-				<aside class={"git-drawer side-" + (props.side ?? "right")}>
+			<Show when={drawer.visible()}>
+				<aside class={"git-drawer dock-panel side-" + (props.side ?? "right")} classList={{ leaving: drawer.leaving() }}>
 					<div class="git-head">
 						<span class="git-title">Git Changes</span>
 						<span class="git-root">{shortRoot()}</span>
@@ -143,31 +147,35 @@ export function GitChangesDrawer(props: { open: boolean; partner: string | null;
 					</div>
 				</aside>
 
-				<Show when={selected()}>
-					<div class={"git-popover side-" + (props.side ?? "right")}>
-						<div class="git-popover-head">
-							<span class="git-popover-path">{selected()!.path}</span>
-							<Show when={diffData()?.error}>
-								<span class="git-popover-error">{diffData()!.error}</span>
-							</Show>
-							<button type="button" class="git-popover-close" title="Close" onClick={() => setSelected(null)}>
-								×
-							</button>
-						</div>
-						<Show when={!diffData.loading} fallback={<div class="git-popover-note">loading…</div>}>
-							<Show when={diffData()?.kind === "new"}>
-								<div class="git-diff-body">
-									<div class="git-diff-new-note">new file</div>
-									<For each={(diffData()?.content ?? "").split("\n")}>{(line) => <div class="git-diff-line add">{line || " "}</div>}</For>
+				<Show when={viewer.visible()}>
+					<Show when={shownChange()}>
+						{(change) => (
+							<div class={"git-popover dock-pop side-" + (props.side ?? "right")} classList={{ leaving: viewer.leaving() }}>
+								<div class="git-popover-head">
+									<span class="git-popover-path">{change().path}</span>
+									<Show when={diffData()?.error}>
+										<span class="git-popover-error">{diffData()!.error}</span>
+									</Show>
+									<button type="button" class="git-popover-close" title="Close" onClick={() => setSelected(null)}>
+										×
+									</button>
 								</div>
-							</Show>
-							<Show when={diffData()?.kind === "diff"}>
-								<div class="git-diff-body">
-									<For each={(diffData()?.diff ?? "").split("\n")}>{(line) => <DiffLineView text={line} />}</For>
-								</div>
-							</Show>
-						</Show>
-					</div>
+								<Show when={!diffData.loading} fallback={<div class="git-popover-note">loading…</div>}>
+									<Show when={diffData()?.kind === "new"}>
+										<div class="git-diff-body">
+											<div class="git-diff-new-note">new file</div>
+											<For each={(diffData()?.content ?? "").split("\n")}>{(line) => <div class="git-diff-line add">{line || " "}</div>}</For>
+										</div>
+									</Show>
+									<Show when={diffData()?.kind === "diff"}>
+										<div class="git-diff-body">
+											<For each={(diffData()?.diff ?? "").split("\n")}>{(line) => <DiffLineView text={line} />}</For>
+										</div>
+									</Show>
+								</Show>
+							</div>
+						)}
+					</Show>
 				</Show>
 			</Show>
 		</>

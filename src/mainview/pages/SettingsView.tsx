@@ -39,6 +39,7 @@ export interface SettingsData {
 		prune?: { thresholdChars?: number; headChars?: number; tailChars?: number };
 	};
 	explorer?: { lineGap?: number };
+	palette?: { searchIgnoreDirs?: string[] };
 }
 
 export interface RuntimeInfo {
@@ -57,6 +58,7 @@ const CATS = [
 	{ id: "mcp", label: "MCP" },
 	{ id: "webFetch", label: "Web Fetch" },
 	{ id: "explorer", label: "Explorer" },
+	{ id: "palette", label: "Palette" },
 	{ id: "compaction", label: "Compaction" },
 	{ id: "permission", label: "Permission" },
 	{ id: "providers", label: "Providers" },
@@ -216,6 +218,7 @@ export function SettingsView() {
 	const [compactionOverflowRetries, setCompactionOverflowRetries] = createSignal("1");
 	const [compactionSummarizer, setCompactionSummarizer] = createSignal<"local" | "llm">("llm");
 	const [explorerLineGap, setExplorerLineGap] = createSignal("0.2");
+	const [paletteIgnoreDirs, setPaletteIgnoreDirs] = createSignal("");
 	const [instructionsFile, setInstructionsFile] = createSignal("");
 	const [defaultSandboxMode, setDefaultSandboxMode] = createSignal<SandboxMode>("workspace-write");
 	const [theme, setTheme] = createSignal<ThemeMode>("system");
@@ -324,6 +327,9 @@ export function SettingsView() {
 	if (initial && initial.explorer?.lineGap !== undefined && explorerLineGap() === "0.2") {
 		setExplorerLineGap(String(initial.explorer.lineGap));
 	}
+	if (initial && initial.palette?.searchIgnoreDirs !== undefined && paletteIgnoreDirs() === "") {
+		setPaletteIgnoreDirs(initial.palette.searchIgnoreDirs.join(", "));
+	}
 	if (initial && initial.defaultSandboxMode && defaultSandboxMode() !== initial.defaultSandboxMode) {
 		setDefaultSandboxMode(initial.defaultSandboxMode);
 	}
@@ -380,6 +386,11 @@ export function SettingsView() {
 		const n = parseInt(value, 10);
 		return Number.isFinite(n) && n >= 0 ? n : fallback;
 	};
+	const parseIgnoreDirs = () =>
+		paletteIgnoreDirs()
+			.split(/[,\n]/)
+			.map((name) => name.trim())
+			.filter(Boolean);
 
 	const currentSettings = (): SettingsData => {
 		const current = settingsData();
@@ -425,6 +436,7 @@ export function SettingsView() {
 			explorer: {
 				lineGap: Number(explorerLineGap()) || DEFAULTS.explorerLineGap,
 			},
+			...(parseIgnoreDirs().length > 0 ? { palette: { searchIgnoreDirs: parseIgnoreDirs() } } : {}),
 		};
 	};
 	const flashError = (message: string) => {
@@ -1388,6 +1400,30 @@ export function SettingsView() {
 							const saved = settingsData()?.explorer?.lineGap ?? DEFAULTS.explorerLineGap;
 							if (next === saved) return;
 							void persist({ ...currentSettings(), explorer: { lineGap: next } });
+						}}
+						onKeyDown={(e) => {
+							if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
+						}}
+					/>
+				</TextField>
+			),
+		},
+		{
+			id: "paletteSearchIgnoreDirs",
+			title: "File search ignore list",
+			desc: "Directories (and files like .DS_Store) the Cmd+P file search skips. Leave empty for the built-in list.",
+			cats: ["palette"],
+			modified: () => parseIgnoreDirs().length > 0,
+			control: () => (
+				<TextField class="h-[32px] w-[280px] shrink-0 gap-0" value={paletteIgnoreDirs()} onChange={setPaletteIgnoreDirs}>
+					<TextFieldInput
+						variant="compact"
+						placeholder=".git, node_modules, dist"
+						title="File search ignore list"
+						aria-label="File search ignore list"
+						onBlur={() => {
+							// Empty clears the override, so the built-in list applies again.
+							void persist(parseIgnoreDirs().length > 0 ? currentSettings() : { ...currentSettings(), palette: undefined });
 						}}
 						onKeyDown={(e) => {
 							if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();

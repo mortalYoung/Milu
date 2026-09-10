@@ -1,33 +1,14 @@
-import {
-	CaseSensitive,
-	ChevronDown,
-	ChevronRight,
-	ChevronUp,
-	File,
-	FileArchive,
-	FileAudio,
-	FileCode,
-	FileCog,
-	FileDiff,
-	FileImage,
-	FileJson,
-	FileSymlink,
-	FileTerminal,
-	FileText,
-	FileVideo,
-	Folder,
-	FolderOpen,
-	FolderSymlink,
-	Regex,
-	WholeWord,
-	X,
-} from "lucide-solid";
+import { CaseSensitive, ChevronDown, ChevronRight, ChevronUp, Folder, FolderOpen, FolderSymlink, Regex, WholeWord, X } from "lucide-solid";
 import { type Accessor, createEffect, createMemo, createResource, createSignal, For, Show, untrack } from "solid-js";
 import type { ExplorerEntry } from "../../shared/rpc";
 import { useSettings } from "../lib/contexts/settings-context";
+import { useToast } from "../lib/contexts/toast-context";
+import type { RevealRange, RevealTarget } from "../lib/dock";
+import { fileGlyph, linkGlyph } from "../lib/file-icons";
 import { type HighlightToken, highlightCodeToLines, languageForPath } from "../lib/markdown";
+import { createPresence, DOCK_EXIT_MS, DOCK_POPOVER_EXIT_MS } from "../lib/presence";
 import { rpc } from "../lib/rpc";
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "./ui/context-menu";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "./ui/context-menu";
 
 interface DirState {
 	status: "loading" | "ready" | "error";
@@ -38,6 +19,7 @@ interface DirState {
 interface SelectedFile {
 	path: string;
 	name: string;
+	range?: RevealRange;
 }
 
 interface FileData {
@@ -48,77 +30,9 @@ interface FileData {
 	error?: string;
 }
 
-function fileGlyph(entry: ExplorerEntry) {
-	const base = entry.name.toLowerCase();
-	if (entry.kind === "link") return <FileSymlink size={14} class="explorer-row-icon" />;
-	const dot = base.lastIndexOf(".");
-	const ext = dot >= 0 ? base.slice(dot + 1) : "";
-	switch (ext) {
-		case "ts":
-		case "mts":
-		case "cts":
-		case "tsx":
-		case "js":
-		case "mjs":
-		case "cjs":
-		case "jsx":
-		case "py":
-		case "pyw":
-		case "html":
-		case "htm":
-		case "css":
-		case "sql":
-			return <FileCode size={14} class="explorer-row-icon" />;
-		case "json":
-		case "jsonc":
-			return <FileJson size={14} class="explorer-row-icon" />;
-		case "md":
-		case "mdx":
-		case "markdown":
-		case "txt":
-			return <FileText size={14} class="explorer-row-icon" />;
-		case "yml":
-		case "yaml":
-		case "toml":
-		case "ini":
-		case "cfg":
-		case "env":
-			return <FileCog size={14} class="explorer-row-icon" />;
-		case "sh":
-		case "bash":
-		case "zsh":
-			return <FileTerminal size={14} class="explorer-row-icon" />;
-		case "png":
-		case "jpg":
-		case "jpeg":
-		case "gif":
-		case "webp":
-		case "svg":
-		case "ico":
-		case "avif":
-			return <FileImage size={14} class="explorer-row-icon" />;
-		case "diff":
-		case "patch":
-			return <FileDiff size={14} class="explorer-row-icon" />;
-		case "zip":
-		case "gz":
-		case "tar":
-		case "rar":
-		case "7z":
-			return <FileArchive size={14} class="explorer-row-icon" />;
-		case "mp3":
-		case "wav":
-		case "ogg":
-		case "m4a":
-			return <FileAudio size={14} class="explorer-row-icon" />;
-		case "mp4":
-		case "mov":
-		case "mkv":
-		case "webm":
-			return <FileVideo size={14} class="explorer-row-icon" />;
-		default:
-			return <File size={14} class="explorer-row-icon" />;
-	}
+function explorerGlyph(entry: ExplorerEntry) {
+	if (entry.kind === "link") return linkGlyph("explorer-row-icon");
+	return fileGlyph(entry.name, "explorer-row-icon");
 }
 
 interface FoldRange {
@@ -225,7 +139,7 @@ function buildPieces(tokens: HighlightToken[], ranges: { start: number; end: num
 const findHistory: string[] = [];
 const MAX_FIND_HISTORY = 50;
 
-function CodeViewer(props: { content: string; lang: string | null; foldable: boolean; path: string }) {
+function CodeViewer(props: { content: string; lang: string | null; foldable: boolean; path: string; locate?: RevealRange | null }) {
 	const [tokenData] = createResource(
 		() => ({ content: props.content, lang: props.lang }),
 		async ({ content, lang }) => highlightCodeToLines(content, lang),
@@ -241,8 +155,12 @@ function CodeViewer(props: { content: string; lang: string | null; foldable: boo
 	const [selection, setSelection] = createSignal<{ anchor: number; head: number } | null>(null);
 	createEffect(() => {
 		void props.content;
+		void props.locate;
 		setCollapsed(new Set<number>());
-		setSelection(null);
+		// A `path#16` / `path#74-80` request selects that range; plain opens start with no selection.
+		// Tracking content as well means the range is (re)applied once the file body actually arrives.
+		setSelection(props.locate ? { anchor: props.locate.start - 1, head: props.locate.end - 1 } : null);
+		if (props.locate) requestAnimationFrame(() => revealMatch(props.locate!.start - 1));
 	});
 	const foldEndByStart = createMemo(() => {
 		const map = new Map<number, number>();
@@ -627,8 +545,16 @@ function CodeViewer(props: { content: string; lang: string | null; foldable: boo
 	);
 }
 
+interface ExplorerRowMenu {
+	reveal: (entry: ExplorerEntry) => void;
+	copyPath: (entry: ExplorerEntry) => void;
+	copyRelative: (entry: ExplorerEntry) => void;
+	collapseAll: () => void;
+}
+
 function ExplorerNode(props: {
 	entry: ExplorerEntry;
+	menu: ExplorerRowMenu;
 	depth: number;
 	dirs: Accessor<Record<string, DirState>>;
 	expanded: Accessor<Set<string>>;
@@ -641,30 +567,59 @@ function ExplorerNode(props: {
 	const isOpen = () => props.expanded().has(key());
 	const state = () => props.dirs()[key()];
 	const selected = () => props.selectedKey() === key();
+	const [menuOpen, setMenuOpen] = createSignal(false);
+	/** Left click and the context menu's Open do the same thing: select a file, toggle a folder. */
+	const activate = () => (isDir() ? props.onToggle(props.entry) : props.onSelect(props.entry));
 
 	return (
 		<div class="explorer-node">
-			<button
-				type="button"
-				class={"explorer-row" + (selected() ? " selected" : "") + (props.entry.ignored ? " ignored" : "")}
-				style={{ "padding-left": `${10 + props.depth * 16}px` }}
-				title={props.entry.kind === "link" && props.entry.linkTarget ? `${props.entry.name} → ${props.entry.linkTarget}` : undefined}
-				onClick={() => (isDir() ? props.onToggle(props.entry) : props.onSelect(props.entry))}
-			>
-				{isDir() && (isOpen() ? <ChevronDown size={11} class="explorer-chevron" /> : <ChevronRight size={11} class="explorer-chevron" />)}
-				{isDir() ? (
-					props.entry.kind === "link" ? (
-						<FolderSymlink size={14} class="explorer-row-icon" />
-					) : isOpen() ? (
-						<FolderOpen size={14} class="explorer-row-icon" />
+			<ContextMenu onOpenChange={setMenuOpen}>
+				<ContextMenuTrigger
+					as="button"
+					type="button"
+					class={"explorer-row" + (selected() ? " selected" : "") + (props.entry.ignored ? " ignored" : "")}
+					classList={{ "menu-open": menuOpen() }}
+					data-path={props.entry.path}
+					style={{ "padding-left": `${10 + props.depth * 16}px` }}
+					title={props.entry.kind === "link" && props.entry.linkTarget ? `${props.entry.name} → ${props.entry.linkTarget}` : undefined}
+					onClick={activate}
+				>
+					{isDir() && (isOpen() ? <ChevronDown size={11} class="explorer-chevron" /> : <ChevronRight size={11} class="explorer-chevron" />)}
+					{isDir() ? (
+						props.entry.kind === "link" ? (
+							<FolderSymlink size={14} class="explorer-row-icon" />
+						) : isOpen() ? (
+							<FolderOpen size={14} class="explorer-row-icon" />
+						) : (
+							<Folder size={14} class="explorer-row-icon" />
+						)
 					) : (
-						<Folder size={14} class="explorer-row-icon" />
-					)
-				) : (
-					fileGlyph(props.entry)
-				)}
-				<span class="explorer-name">{props.entry.name}</span>
-			</button>
+						explorerGlyph(props.entry)
+					)}
+					<span class="explorer-name">{props.entry.name}</span>
+				</ContextMenuTrigger>
+				<ContextMenuContent size="sm">
+					<ContextMenuItem size="sm" onSelect={() => props.menu.reveal(props.entry)}>
+						Reveal in Finder
+					</ContextMenuItem>
+					<ContextMenuItem size="sm" onSelect={activate}>
+						Open
+					</ContextMenuItem>
+					<ContextMenuSeparator />
+					<ContextMenuItem size="sm" onSelect={() => props.menu.copyPath(props.entry)}>
+						Copy Path
+					</ContextMenuItem>
+					<ContextMenuItem size="sm" onSelect={() => props.menu.copyRelative(props.entry)}>
+						Copy Relative Path
+					</ContextMenuItem>
+					<Show when={isDir()}>
+						<ContextMenuSeparator />
+						<ContextMenuItem size="sm" onSelect={() => props.menu.collapseAll()}>
+							Collapse All
+						</ContextMenuItem>
+					</Show>
+				</ContextMenuContent>
+			</ContextMenu>
 			<Show when={isDir() && isOpen()}>
 				<Show
 					when={state()?.status === "ready"}
@@ -678,6 +633,7 @@ function ExplorerNode(props: {
 						{(child) => (
 							<ExplorerNode
 								entry={child}
+								menu={props.menu}
 								depth={props.depth + 1}
 								dirs={props.dirs}
 								expanded={props.expanded}
@@ -693,14 +649,18 @@ function ExplorerNode(props: {
 	);
 }
 
-export function ExplorerDrawer(props: { open: boolean; partner: string | null; side?: "left" | "right"; onClose: () => void }) {
+export function ExplorerDrawer(props: { open: boolean; partner: string | null; reveal?: RevealTarget | null; side?: "left" | "right"; onClose: () => void }) {
 	const settingsView = useSettings();
+	const toast = useToast();
 	const codeLineGap = () => settingsView.data()?.settings?.explorer?.lineGap ?? 0.2;
 	const codeLineHeight = () => 1 + codeLineGap();
 	const [dirs, setDirs] = createSignal<Record<string, DirState>>({});
 	const [dirReal, setDirReal] = createSignal<Record<string, string>>({});
 	const [expanded, setExpanded] = createSignal<Set<string>>(new Set());
 	const [selected, setSelected] = createSignal<SelectedFile | null>(null);
+	const drawer = createPresence(() => props.open, DOCK_EXIT_MS);
+	const viewer = createPresence(() => props.open && selected() != null, DOCK_POPOVER_EXIT_MS);
+	const shownFile = createMemo<SelectedFile | null>((prev) => selected() ?? prev, null);
 	const tokens = new Map<string, number>();
 	let treeEl: HTMLDivElement | undefined;
 	let treeScrollTop = 0;
@@ -748,6 +708,43 @@ export function ExplorerDrawer(props: { open: boolean; partner: string | null; s
 		if (!untrack(dirs)[""]) void loadDir("");
 	});
 
+	let lastRevealSeq = 0;
+	createEffect(() => {
+		const target = props.reveal;
+		// Read `open` before consuming the seq: the dock sets reveal and panel in two writes, and an
+		// unbatched flush would otherwise burn the request while the drawer is still closed.
+		if (!target || !props.open || target.seq === lastRevealSeq) return;
+		lastRevealSeq = target.seq;
+		void revealFile(target.path);
+	});
+
+	async function revealFile(path: string, range?: RevealRange) {
+		if (!props.partner) return;
+		const segments = path.split("/").filter(Boolean);
+		if (segments.length === 0) return;
+		const chain = [""];
+		for (let i = 0; i < segments.length - 1; i++) chain.push(segments.slice(0, i + 1).join("/"));
+		const next = new Set(expanded());
+		for (const dir of chain) {
+			next.add(dir);
+			await loadDir(dir);
+		}
+		setExpanded(next);
+		setSelected({ path, name: segments[segments.length - 1], ...(range ? { range } : {}) });
+		scrollToRow(path);
+	}
+
+	function scrollToRow(path: string) {
+		const row = () => [...(treeEl?.querySelectorAll<HTMLElement>(".explorer-row[data-path]") ?? [])].find((el) => el.dataset["path"] === path);
+		requestAnimationFrame(() => {
+			if (row()) {
+				row()!.scrollIntoView({ block: "center" });
+				return;
+			}
+			requestAnimationFrame(() => row()?.scrollIntoView({ block: "center" }));
+		});
+	}
+
 	createEffect(() => {
 		if (!props.open) return;
 		requestAnimationFrame(() => {
@@ -791,17 +788,39 @@ export function ExplorerDrawer(props: { open: boolean; partner: string | null; s
 		setSelected({ path: entry.path, name: entry.name });
 	}
 
+	const workspaceRoot = () => dirReal()[""];
+
+	function entryAbsPath(path: string) {
+		const root = workspaceRoot();
+		if (!root) return path;
+		return root.endsWith("/") ? `${root}${path}` : `${root}/${path}`;
+	}
+
+	async function revealRow(path: string) {
+		if (!props.partner) return;
+		const res = await rpc.request.explorer_reveal({ name: props.partner, path });
+		if (!res.ok) toast.push({ title: "Couldn't reveal in Finder", body: res.error ?? "Unknown error" }, "error");
+	}
+
+	// Row context menu: Finder / clipboard paths, plus a tree-wide collapse for folders.
+	const rowMenu: ExplorerRowMenu = {
+		reveal: (entry) => void revealRow(entry.path),
+		copyPath: (entry) => void navigator.clipboard?.writeText(entryAbsPath(entry.path)),
+		copyRelative: (entry) => void navigator.clipboard?.writeText(entry.path),
+		collapseAll: () => setExpanded(new Set<string>()),
+	};
+
 	const selectedKey = () => selected()?.path ?? null;
 	const rootState = () => dirs()[""];
-	const crumbs = () => (selected()?.path || selected()?.name || "").split("/").filter(Boolean);
+	const crumbs = () => (shownFile()?.path || shownFile()?.name || "").split("/").filter(Boolean);
 	const foldable = () => {
-		const path = selected()?.path;
+		const path = shownFile()?.path;
 		if (!path) return false;
 		const lang = languageForPath(path);
 		return lang === "json" || lang === "jsonc" || lang === "markdown";
 	};
 
-	const [fileData] = createResource(selected, async (sel: SelectedFile): Promise<FileData | null> => {
+	const [fileData] = createResource(shownFile, async (sel: SelectedFile): Promise<FileData | null> => {
 		if (!props.partner) return null;
 		const res = await rpc.request.explorer_read_file({ name: props.partner, root: "workspace", path: sel.path });
 		if (!res.ok) return { error: res.error ?? "failed to read file" };
@@ -821,8 +840,8 @@ export function ExplorerDrawer(props: { open: boolean; partner: string | null; s
 
 	return (
 		<>
-			<Show when={props.open}>
-				<aside class={"explorer-drawer side-" + (props.side ?? "right")}>
+			<Show when={drawer.visible()}>
+				<aside class={"explorer-drawer dock-panel side-" + (props.side ?? "right")} classList={{ leaving: drawer.leaving() }}>
 					<div class="explorer-head">
 						<span class="explorer-title">Explorer</span>
 						<button type="button" class="explorer-close" title="Close" onClick={props.onClose}>
@@ -835,60 +854,72 @@ export function ExplorerDrawer(props: { open: boolean; partner: string | null; s
 							fallback={<div class="explorer-empty">{rootState()?.status === "error" ? (rootState()?.error ?? "failed to load") : "loading workspace…"}</div>}
 						>
 							<For each={rootState()?.entries ?? []}>
-								{(entry) => <ExplorerNode entry={entry} depth={0} dirs={dirs} expanded={expanded} selectedKey={selectedKey} onToggle={toggleDir} onSelect={selectFile} />}
+								{(entry) => (
+									<ExplorerNode entry={entry} menu={rowMenu} depth={0} dirs={dirs} expanded={expanded} selectedKey={selectedKey} onToggle={toggleDir} onSelect={selectFile} />
+								)}
 							</For>
 						</Show>
 					</div>
 				</aside>
 
-				<Show when={selected()}>
-					<div class={"explorer-popover side-" + (props.side ?? "right")}>
-						<div class="explorer-popover-head">
-							<nav class="explorer-popover-crumbs" aria-label="File path" title={selected()!.path || selected()!.name}>
-								<For each={crumbs()}>
-									{(segment, index) => (
-										<>
-											<Show when={index() > 0}>
-												<ChevronRight size={11} class="explorer-crumb-sep" />
-											</Show>
-											<span class={"explorer-crumb" + (index() === crumbs().length - 1 ? " current" : "")}>{segment}</span>
-										</>
-									)}
-								</For>
-							</nav>
-							<button type="button" class="explorer-popover-close" title="Close" onClick={() => setSelected(null)}>
-								×
-							</button>
-						</div>
-						<Show
-							when={!fileData.loading}
-							fallback={
-								<div class="explorer-popover-note">
-									<span class="work-dot" />
-									<span class="work-dot" />
-									<span class="work-dot" />
+				<Show when={viewer.visible()}>
+					<Show when={shownFile()}>
+						{(file) => (
+							<div class={"explorer-popover dock-pop side-" + (props.side ?? "right")} classList={{ leaving: viewer.leaving() }}>
+								<div class="explorer-popover-head">
+									<nav class="explorer-popover-crumbs" aria-label="File path" title={file().path || file().name}>
+										<For each={crumbs()}>
+											{(segment, index) => (
+												<>
+													<Show when={index() > 0}>
+														<ChevronRight size={11} class="explorer-crumb-sep" />
+													</Show>
+													<span class={"explorer-crumb" + (index() === crumbs().length - 1 ? " current" : "")}>{segment}</span>
+												</>
+											)}
+										</For>
+									</nav>
+									<button type="button" class="explorer-popover-close" title="Close" onClick={() => setSelected(null)}>
+										×
+									</button>
 								</div>
-							}
-						>
-							<Show when={fileData()?.binary}>
-								<div class="explorer-popover-note">binary file · preview unavailable</div>
-							</Show>
-							<Show when={!fileData()?.binary && fileData()?.error}>
-								<div class="explorer-popover-note">{fileData()!.error}</div>
-							</Show>
-							<Show when={!fileData()?.binary && !fileData()?.error}>
-								<div
-									class="explorer-file-body"
-									style={`--explorer-line-gap: ${codeLineGap()}; --explorer-line-height: ${codeLineHeight()}; --explorer-line-height-em: ${codeLineHeight()}em`}
+								<Show
+									when={!fileData.loading}
+									fallback={
+										<div class="explorer-popover-note">
+											<span class="work-dot" />
+											<span class="work-dot" />
+											<span class="work-dot" />
+										</div>
+									}
 								>
-									<CodeViewer content={fileData()?.content ?? ""} lang={languageForPath(selected()!.path) ?? null} foldable={foldable()} path={selected()!.path} />
-								</div>
-								<Show when={fileData()?.truncated}>
-									<div class="explorer-popover-foot">truncated · file larger than preview limit</div>
+									<Show when={fileData()?.binary}>
+										<div class="explorer-popover-note">binary file · preview unavailable</div>
+									</Show>
+									<Show when={!fileData()?.binary && fileData()?.error}>
+										<div class="explorer-popover-note">{fileData()!.error}</div>
+									</Show>
+									<Show when={!fileData()?.binary && !fileData()?.error}>
+										<div
+											class="explorer-file-body"
+											style={`--explorer-line-gap: ${codeLineGap()}; --explorer-line-height: ${codeLineHeight()}; --explorer-line-height-em: ${codeLineHeight()}em`}
+										>
+											<CodeViewer
+												content={fileData()?.content ?? ""}
+												lang={languageForPath(file().path) ?? null}
+												foldable={foldable()}
+												path={file().path}
+												locate={file().range ?? null}
+											/>
+										</div>
+										<Show when={fileData()?.truncated}>
+											<div class="explorer-popover-foot">truncated · file larger than preview limit</div>
+										</Show>
+									</Show>
 								</Show>
-							</Show>
-						</Show>
-					</div>
+							</div>
+						)}
+					</Show>
 				</Show>
 			</Show>
 		</>

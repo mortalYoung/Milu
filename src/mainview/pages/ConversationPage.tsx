@@ -12,8 +12,10 @@ import { useAgentStatus } from "../lib/contexts/agent-status-context";
 import { useSettings } from "../lib/contexts/settings-context";
 import { useTrajectory } from "../lib/contexts/trajectory-context";
 import { useTranscript } from "../lib/contexts/transcript-context";
+import type { Dock } from "../lib/dock";
 
 export function ConversationPage(props: {
+	dock: Dock;
 	partners: PartnerItem[];
 	selected: string | null;
 	onSelect: (name: string) => void;
@@ -43,9 +45,7 @@ export function ConversationPage(props: {
 	const settings = useSettings();
 	const trajectory = useTrajectory();
 	const transcript = useTranscript();
-	const [outlineOpen, setOutlineOpen] = createSignal(false);
-	const [explorerOpen, setExplorerOpen] = createSignal(false);
-	const [gitOpen, setGitOpen] = createSignal(false);
+	const panel = () => props.dock.panel();
 	const [btwOpen, setBtwOpen] = createSignal(false);
 	const [btwAnchor, setBtwAnchor] = createSignal<string | null>(null);
 	const workspacePath = () => status.data().workspace_path;
@@ -53,10 +53,10 @@ export function ConversationPage(props: {
 	const gitAvailable = () => hasWorkspace() && status.data().is_git_repo;
 	const hasDockTools = () => hasWorkspace() || gitAvailable();
 	createEffect(() => {
-		if (!hasWorkspace()) setExplorerOpen(false);
+		if (!hasWorkspace() && panel() === "explorer") props.dock.close();
 	});
 	createEffect(() => {
-		if (!gitAvailable()) setGitOpen(false);
+		if (!gitAvailable() && panel() === "git") props.dock.close();
 	});
 
 	const hasConversation = () => props.selected != null && transcript.view().length > 0;
@@ -73,9 +73,7 @@ export function ConversationPage(props: {
 	};
 	createEffect(() => {
 		if (!hasConversation()) {
-			setOutlineOpen(false);
-			setExplorerOpen(false);
-			setGitOpen(false);
+			props.dock.close();
 			setBtwOpen(false);
 			setBtwAnchor(null);
 			trajectory.mutate.setOpen(false);
@@ -84,7 +82,7 @@ export function ConversationPage(props: {
 
 	createEffect(() => {
 		const onKey = (e: KeyboardEvent) => {
-			if (e.key === "Escape") setOutlineOpen(false);
+			if (e.key === "Escape" && panel() === "replies") props.dock.close();
 		};
 		window.addEventListener("keydown", onKey);
 		onCleanup(() => window.removeEventListener("keydown", onKey));
@@ -94,42 +92,14 @@ export function ConversationPage(props: {
 		"size-8 rounded-full border-0 electrobun-webkit-app-region-no-drag flex items-center justify-center text-ink hover:bg-paper-hover disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-paper";
 	const explorerButton = () => (
 		<Show when={hasWorkspace()}>
-			<button
-				type="button"
-				class={headerIconClass}
-				title="Explorer"
-				aria-label="Toggle explorer"
-				onClick={() => {
-					const next = !explorerOpen();
-					if (next) {
-						setOutlineOpen(false);
-						setGitOpen(false);
-						trajectory.mutate.setOpen(false);
-					}
-					setExplorerOpen(next);
-				}}
-			>
+			<button type="button" class={headerIconClass} title="Explorer" aria-label="Toggle explorer" onClick={() => props.dock.toggle("explorer")}>
 				<Folder size={16} />
 			</button>
 		</Show>
 	);
 	const gitButton = () => (
 		<Show when={gitAvailable()}>
-			<button
-				type="button"
-				class={headerIconClass}
-				title="Git Changes"
-				aria-label="Toggle git changes"
-				onClick={() => {
-					const next = !gitOpen();
-					if (next) {
-						setOutlineOpen(false);
-						setExplorerOpen(false);
-						trajectory.mutate.setOpen(false);
-					}
-					setGitOpen(next);
-				}}
-			>
+			<button type="button" class={headerIconClass} title="Git Changes" aria-label="Toggle git changes" onClick={() => props.dock.toggle("git")}>
 				<GitBranch size={16} />
 			</button>
 		</Show>
@@ -198,17 +168,10 @@ export function ConversationPage(props: {
 						<button
 							type="button"
 							class={headerIconClass}
-							title={outlineOpen() ? "Hide replies" : "Show replies"}
+							title={panel() === "replies" ? "Hide replies" : "Show replies"}
 							aria-label="Toggle replies"
 							disabled={!hasConversation()}
-							onClick={() => {
-								if (!outlineOpen()) {
-									setExplorerOpen(false);
-									setGitOpen(false);
-									trajectory.mutate.setOpen(false);
-								}
-								setOutlineOpen((v) => !v);
-							}}
+							onClick={() => props.dock.toggle("replies")}
 						>
 							<ListTree size={16} />
 						</button>
@@ -220,9 +183,7 @@ export function ConversationPage(props: {
 							aria-label="Open trajectory"
 							disabled={!hasConversation()}
 							onClick={() => {
-								setOutlineOpen(false);
-								setExplorerOpen(false);
-								setGitOpen(false);
+								props.dock.close();
 								trajectory.mutate.view();
 							}}
 						>
@@ -253,8 +214,8 @@ export function ConversationPage(props: {
 									}
 									activeBtwAnchor={btwOpen() ? btwAnchor() : null}
 								/>
-								<ExplorerDrawer open={explorerOpen()} partner={props.selected} side={dockSide()} onClose={() => setExplorerOpen(false)} />
-								<GitChangesDrawer open={gitOpen()} partner={props.selected} side={dockSide()} onClose={() => setGitOpen(false)} />
+								<ExplorerDrawer open={panel() === "explorer"} partner={props.selected} reveal={props.dock.reveal()} side={dockSide()} onClose={() => props.dock.close()} />
+								<GitChangesDrawer open={panel() === "git"} partner={props.selected} side={dockSide()} onClose={() => props.dock.close()} />
 							</div>
 							<Composer onSend={props.onSend} onStop={props.onStop} onShell={props.onShell} onOpenPath={props.onOpenPath} editors={props.editors} />
 						</div>
@@ -268,7 +229,7 @@ export function ConversationPage(props: {
 				{props.toastHost}
 			</div>
 
-			<RepliesPane open={outlineOpen()} />
+			<RepliesPane open={panel() === "replies"} />
 		</div>
 	);
 }

@@ -294,3 +294,18 @@
 - 原话摘录："`ESC` should close the search floating panel while it open rather than close code reviewer"
 - 收录：2026-08-31｜状态：生效
 - 教训：外层监听器注册更早时，内层必须用捕获阶段监听（`addEventListener(..., true)`）+ `stopPropagation` 抢在外层冒泡监听之前拦截，否则旧行为会先关掉外层
+
+### P-45 · 同一状态在全 app 使用同一词汇
+- 级别：强偏好
+- 何时适用：agent 运行状态、加载/忙碌文案在 header、列表、详情徽标、输入区的措辞
+- 规则：同一个状态词只保留一种说法；本项目统一用 writing / Writing…（不用 running）
+- 原话摘录："running 的状态改成 writing"
+- 收录：2026-09-10｜状态：生效
+- 教训：app 里 header 与 composer 早已是 "Writing…"，只有 partner 详情徽标写成 "● running"，同一个状态出现两种词是低成本高收益的一致性缺陷
+
+### P-46 · 空值/缺省字段用 "—" 占位，不写解释句
+- 级别：强偏好
+- 何时适用：详情面板、状态区、表格里的空字段
+- 规则：缺失值只放一个短占位符（`-` / `—`），不写 "No persona written." 这类整句系统自言自语
+- 原话摘录："「No persona written.」改写成 「-」"
+- 收录：2026-09-10｜状态：生效（与 P-14 同源：常规状态不得占版面）

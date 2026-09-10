@@ -379,6 +379,11 @@ export type AppRPCSchema = __schema<{
 				response: { ok: boolean; error?: string; entries?: ExplorerEntry[]; realPath?: string };
 			};
 
+			explorer_reveal: {
+				params: { name: string; path: string };
+				response: { ok: boolean; error?: string };
+			};
+
 			explorer_read_file: {
 				params: { name: string; root: ExplorerRoot; path: string };
 				response: { ok: boolean; error?: string; content?: string; binary?: boolean; truncated?: boolean; size?: number };
@@ -419,6 +424,16 @@ export type AppRPCSchema = __schema<{
 					sandbox_mode: SandboxMode;
 					model: { provider: string; modelId?: string } | null;
 					thinking_level: ThinkingLevel;
+				};
+			};
+
+			palette_search_files: {
+				params: { name: string; query: string };
+				response: {
+					ok: boolean;
+					error?: string;
+					items: { path: string; name: string }[];
+					truncated: boolean;
 				};
 			};
 
@@ -518,6 +533,7 @@ export type AppRPCSchema = __schema<{
 							prune?: { thresholdChars?: number; headChars?: number; tailChars?: number };
 						};
 						explorer?: { lineGap?: number };
+						palette?: { searchIgnoreDirs?: string[] };
 						dockSide?: "left" | "right";
 					};
 					runtime: {
@@ -561,6 +577,7 @@ export type AppRPCSchema = __schema<{
 							prune?: { thresholdChars?: number; headChars?: number; tailChars?: number };
 						};
 						explorer?: { lineGap?: number };
+						palette?: { searchIgnoreDirs?: string[] };
 						dockSide?: "left" | "right";
 					};
 

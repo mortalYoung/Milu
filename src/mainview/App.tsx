@@ -16,9 +16,11 @@ import { SkillsProvider } from "./lib/contexts/skills-context";
 import { ToastProvider, useToast } from "./lib/contexts/toast-context";
 import { TrajectoryProvider } from "./lib/contexts/trajectory-context";
 import { TranscriptProvider } from "./lib/contexts/transcript-context";
+import { createDock } from "./lib/dock";
 import { useKeybindings } from "./lib/keybindings";
 import { COPIED_ICON_SVG, COPY_ICON_SVG, warmUpMarkdown } from "./lib/markdown";
 import { createMetrics } from "./lib/metrics";
+import { createPalette } from "./lib/palette";
 import type { PartnerFormData } from "./lib/partner-form";
 import { rpc } from "./lib/rpc";
 import { createSession } from "./lib/session";
@@ -33,6 +35,7 @@ import { ConversationPage } from "./pages/ConversationPage";
 // On-demand overlays/views are lazy-loaded so they stay out of the main chat chunk.
 const PartnerDetailsDialog = lazy(() => import("./components/PartnerDetailsDialog").then((m) => ({ default: m.PartnerDetailsDialog })));
 const PartnerModal = lazy(() => import("./components/PartnerModal").then((m) => ({ default: m.PartnerModal })));
+const CommandPalette = lazy(() => import("./components/CommandPalette").then((m) => ({ default: m.CommandPalette })));
 const TrajectoryDrawer = lazy(() => import("./components/TrajectoryDrawer").then((m) => ({ default: m.TrajectoryDrawer })));
 const SettingsView = lazy(() => import("./pages/SettingsView").then((m) => ({ default: m.SettingsView })));
 const SkillsView = lazy(() => import("./pages/SkillsView").then((m) => ({ default: m.SkillsView })));
@@ -69,6 +72,8 @@ function WorkspaceControllers() {
 	const status = createAgentStatus(rpc);
 	const metrics = createMetrics(rpc);
 	const trajectory = createTrajectory();
+	const dock = createDock({ onOpen: () => trajectory.mutate.setOpen(false) });
+	const palette = createPalette();
 	const transcript = createTranscript();
 	const composer = createComposer();
 	const commands = createCommandDirectory(rpc);
@@ -84,6 +89,7 @@ function WorkspaceControllers() {
 		{ key: ",", meta: true, handler: () => settings.mutate.setOpen(true) },
 		{ key: "b", meta: true, handler: toggleList },
 		{ key: "w", meta: true, handler: () => closeCurrentChat() },
+		{ key: "p", meta: true, handler: () => palette.launch() },
 	]);
 
 	// ——— partner navigation helpers ———
@@ -325,6 +331,7 @@ function WorkspaceControllers() {
 											) : (
 												<TranscriptProvider value={transcript}>
 													<ConversationPage
+														dock={dock}
 														partners={session.data.partners}
 														selected={session.data.selected}
 														onSelect={(name) => {
@@ -380,6 +387,32 @@ function WorkspaceControllers() {
 
 								<Suspense fallback={null}>
 									<TrajectoryDrawer />
+								</Suspense>
+
+								<Suspense fallback={null}>
+									<CommandPalette
+										palette={palette}
+										partner={session.data.selected}
+										partners={session.data.partners}
+										hasWorkspace={status.data().workspace_path != null}
+										unread={unread.unread}
+										onSelectPartner={(name) => {
+											settings.mutate.setOpen(false);
+											setView("chat");
+											transcript.reset();
+											selectPartner(session.data.partners.find((p) => p.name === name) ?? null);
+										}}
+										onRevealFile={(path, range) => {
+											settings.mutate.setOpen(false);
+											dock.revealInExplorer(path, range);
+										}}
+										onOpenFile={(path) => {
+											settings.mutate.setOpen(false);
+											void rpc.request.open_path({ path }).then((res) => {
+												if (!res.ok) toast.push({ title: "Couldn't open file", body: res.error ?? "No supported editor found" }, "error");
+											});
+										}}
+									/>
 								</Suspense>
 							</div>
 						</SkillsProvider>

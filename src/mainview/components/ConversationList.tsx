@@ -7,6 +7,7 @@
 import { ArrowUpFromLine, ChevronDown, ChevronRight, Copy, CopyPlus, Files, GitFork, Info, MoreVertical, Plus, Trash2 } from "lucide-solid";
 import { createEffect, createMemo, createSignal, Show } from "solid-js";
 import type { ChatPreviewKind } from "../../shared/rpc";
+import { convTime, previewFor } from "../lib/chat-preview";
 import { useAgentStatus } from "../lib/contexts/agent-status-context";
 import { Button } from "./Button";
 import { Avatar } from "./ui/avatar";
@@ -40,36 +41,6 @@ export interface PartnerItem {
 	/** Per-partner read watermark (persisted): messages after this timestamp are unread. */
 	readAt?: number;
 	writing?: boolean;
-}
-
-const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-const pad = (n: number) => String(n).padStart(2, "0");
-
-/** Directory time: today → "10:42"; otherwise → "JUL 28" */
-function convTime(ts: number): string {
-	const d = new Date(ts);
-	if (d.toDateString() === new Date().toDateString()) {
-		return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-	}
-	return `${MONTHS[d.getMonth()]} ${d.getDate()}`;
-}
-
-/** Single-line preview for a list row: collapse newlines/whitespace so the truncate ellipsis works. */
-function oneLine(text: string): string {
-	return text.replace(/\s+/g, " ").trim();
-}
-
-/** The row's preview: the last visible row when there is one, else the profile note, else a placeholder. */
-function previewFor(partner: PartnerItem): string {
-	if (partner.lastMessage) {
-		const text = oneLine(partner.lastMessage);
-		if (partner.lastMessageKind === "user") return `You: ${text}`;
-		if (partner.lastMessageKind === "command") return `/${text}`;
-		if (partner.lastMessageKind === "skill") return `/skill:${text}`;
-		if (partner.lastMessageKind === "shell") return `$ ${text}`;
-		return text;
-	}
-	return partner.persona?.split("\n").find((l) => l.trim()) ?? "";
 }
 
 function copyText(text: string) {

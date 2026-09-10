@@ -64,7 +64,12 @@ export interface Settings {
 		prune?: { thresholdChars?: number; headChars?: number; tailChars?: number };
 	};
 	explorer?: { lineGap?: number };
+	/** Palette (Cmd+P) file search: names skipped during the workspace walk; unset = the built-in list. */
+	palette?: { searchIgnoreDirs?: string[] };
 }
+
+/** Directories (and stray files like .DS_Store) the palette file search skips when settings don't override the list. */
+export const DEFAULT_PALETTE_IGNORE_DIRS = [".git", ".DS_Store", "node_modules", "dist", "build", ".next", "out", "target", ".cache", "__pycache__", ".venv", "venv"];
 
 const DEFAULT_SETTINGS: Settings = {
 	partner_profile_path: "~/.partner/",
