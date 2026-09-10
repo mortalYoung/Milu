@@ -340,6 +340,7 @@ export function ExplorerDrawer(props: {
 	partner: string | null;
 	root: ExplorerRoot;
 	hasWorkspace: boolean;
+	side?: "left" | "right";
 	onRootChange: (root: ExplorerRoot) => void;
 	onClose: () => void;
 }) {
@@ -449,7 +450,7 @@ export function ExplorerDrawer(props: {
 	return (
 		<>
 			<Show when={props.open}>
-				<aside class="explorer-drawer">
+				<aside class={"explorer-drawer side-" + (props.side ?? "right")}>
 					<div class="explorer-head">
 						<span class="explorer-title">Explorer</span>
 						<Show when={props.hasWorkspace}>
@@ -484,7 +485,7 @@ export function ExplorerDrawer(props: {
 				</aside>
 
 				<Show when={selected()}>
-					<div class="explorer-popover">
+					<div class={"explorer-popover side-" + (props.side ?? "right")}>
 						<div class="explorer-popover-head">
 							<span class="explorer-popover-path" title={selected()!.path}>
 								{selected()!.path || selected()!.name}

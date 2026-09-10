@@ -771,6 +771,16 @@ body::before {
 		-webkit-app-region: no-drag;
 	}
 
+	.chat-tools-left {
+		@apply absolute left-14 top-1/2 -translate-y-1/2 flex items-center gap-1;
+		-webkit-app-region: no-drag;
+	}
+
+	.chat-tools-sep {
+		@apply h-4 w-px shrink-0 self-center;
+		background: var(--color-hairline);
+	}
+
 	.btn-group {
 		@apply absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1;
 		-webkit-app-region: no-drag;
@@ -1338,7 +1348,13 @@ body::before {
 	}
 
 	.explorer-drawer {
-		@apply absolute top-0 right-0 bottom-0 z-20 w-[340px] bg-letter border-l border-hairline flex flex-col py-4;
+		@apply absolute top-0 bottom-0 z-20 w-[340px] bg-letter flex flex-col py-4;
+	}
+	.explorer-drawer.side-right {
+		@apply right-0 border-l border-hairline;
+	}
+	.explorer-drawer.side-left {
+		@apply left-0 border-r border-hairline;
 	}
 	.explorer-head {
 		@apply flex items-center gap-2 px-4 pb-3 border-b border-hairline;
@@ -1407,6 +1423,10 @@ body::before {
 		box-shadow:
 			0 12px 32px color-mix(in srgb, var(--color-ink) 18%, transparent),
 			0 2px 8px color-mix(in srgb, var(--color-ink) 10%, transparent);
+	}
+	.explorer-popover.side-left {
+		left: 352px;
+		right: 12px;
 	}
 	.explorer-popover-head {
 		@apply flex items-center gap-2 border-b border-hairline px-4 py-2.5;
@@ -1498,7 +1518,13 @@ body::before {
 	}
 
 	.git-drawer {
-		@apply absolute top-0 right-0 bottom-0 z-20 w-[360px] bg-letter border-l border-hairline flex flex-col py-4;
+		@apply absolute top-0 bottom-0 z-20 w-[360px] bg-letter flex flex-col py-4;
+	}
+	.git-drawer.side-right {
+		@apply right-0 border-l border-hairline;
+	}
+	.git-drawer.side-left {
+		@apply left-0 border-r border-hairline;
 	}
 	.git-head {
 		@apply flex items-center gap-2 px-4 pb-3 border-b border-hairline;
@@ -1577,6 +1603,10 @@ body::before {
 		box-shadow:
 			0 12px 32px color-mix(in srgb, var(--color-ink) 18%, transparent),
 			0 2px 8px color-mix(in srgb, var(--color-ink) 10%, transparent);
+	}
+	.git-popover.side-left {
+		left: 372px;
+		right: 12px;
 	}
 	.git-popover-head {
 		@apply flex items-center gap-2 border-b border-hairline px-4 py-2.5;

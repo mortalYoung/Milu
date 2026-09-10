@@ -1,5 +1,5 @@
 import { Activity, Folder, GitBranch, ListTree, PanelLeftClose, PanelLeftOpen } from "lucide-solid";
-import { type Accessor, createEffect, createSignal, type JSX, onCleanup } from "solid-js";
+import { type Accessor, createEffect, createSignal, type JSX, onCleanup, Show } from "solid-js";
 import { AnimatePresence, Motion } from "solid-motion";
 import { Button } from "../components/Button";
 import { Composer } from "../components/Composer";
@@ -9,6 +9,7 @@ import { GitChangesDrawer } from "../components/GitChangesDrawer";
 import { RepliesPane } from "../components/RepliesPane";
 import { Transcript } from "../layouts/Transcript";
 import { useAgentStatus } from "../lib/contexts/agent-status-context";
+import { useSettings } from "../lib/contexts/settings-context";
 import { useTrajectory } from "../lib/contexts/trajectory-context";
 import { useTranscript } from "../lib/contexts/transcript-context";
 
@@ -39,6 +40,7 @@ export function ConversationPage(props: {
 	editors?: { id: string; name: string }[];
 }) {
 	const status = useAgentStatus();
+	const settings = useSettings();
 	const trajectory = useTrajectory();
 	const transcript = useTranscript();
 	const [outlineOpen, setOutlineOpen] = createSignal(false);
@@ -53,6 +55,7 @@ export function ConversationPage(props: {
 	});
 
 	const hasConversation = () => props.selected != null && transcript.view().length > 0;
+	const dockSide = () => settings.data()?.settings?.dockSide ?? "right";
 	const preserveTranscriptScroll = (toggle: () => void) => {
 		const el = document.getElementById("transcript");
 		const prev = el?.scrollTop;
@@ -81,6 +84,50 @@ export function ConversationPage(props: {
 		window.addEventListener("keydown", onKey);
 		onCleanup(() => window.removeEventListener("keydown", onKey));
 	});
+
+	const headerIconClass =
+		"size-8 rounded-full border-0 electrobun-webkit-app-region-no-drag flex items-center justify-center text-ink hover:bg-paper-hover disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-paper";
+	const explorerButton = () => (
+		<button
+			type="button"
+			class={headerIconClass}
+			title="Explorer"
+			aria-label="Toggle explorer"
+			disabled={!props.selected}
+			onClick={() => {
+				const next = !explorerOpen();
+				if (next) {
+					setOutlineOpen(false);
+					setGitOpen(false);
+					trajectory.mutate.setOpen(false);
+					setExplorerRoot(workspacePath() ? "workspace" : "storage");
+				}
+				setExplorerOpen(next);
+			}}
+		>
+			<Folder size={16} />
+		</button>
+	);
+	const gitButton = () => (
+		<button
+			type="button"
+			class={headerIconClass}
+			title="Git Changes"
+			aria-label="Toggle git changes"
+			disabled={!props.selected}
+			onClick={() => {
+				const next = !gitOpen();
+				if (next) {
+					setOutlineOpen(false);
+					setExplorerOpen(false);
+					trajectory.mutate.setOpen(false);
+				}
+				setGitOpen(next);
+			}}
+		>
+			<GitBranch size={16} />
+		</button>
+	);
 
 	return (
 		<div class="chat-page">
@@ -113,6 +160,13 @@ export function ConversationPage(props: {
 						icon={props.listCollapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
 						onClick={props.onToggleList}
 					/>
+					<Show when={dockSide() === "left"}>
+						<div class="chat-tools-left">
+							<span class="chat-tools-sep" />
+							{explorerButton()}
+							{gitButton()}
+						</div>
+					</Show>
 					<div class="chat-worker electrobun-webkit-app-region-no-drag cursor-pointer" title="View details" onClick={() => props.selected && props.onViewDetails(props.selected)}>
 						<span>{props.selected ?? "Chat"}</span>
 						{status.isBusyForSelected() && (
@@ -126,9 +180,14 @@ export function ConversationPage(props: {
 					</div>
 
 					<div class="btn-group">
+						<Show when={dockSide() === "right"}>
+							{explorerButton()}
+							{gitButton()}
+							<span class="chat-tools-sep" />
+						</Show>
 						<button
 							type="button"
-							class="size-8 rounded-full border-0 electrobun-webkit-app-region-no-drag flex items-center justify-center text-ink hover:bg-paper-hover disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+							class={headerIconClass}
 							title={outlineOpen() ? "Hide replies" : "Show replies"}
 							aria-label="Toggle replies"
 							disabled={!hasConversation()}
@@ -146,44 +205,7 @@ export function ConversationPage(props: {
 
 						<button
 							type="button"
-							class="size-8 rounded-full border-0 electrobun-webkit-app-region-no-drag flex items-center justify-center text-ink hover:bg-paper-hover disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
-							title="Explorer"
-							aria-label="Toggle explorer"
-							onClick={() => {
-								const next = !explorerOpen();
-								if (next) {
-									setOutlineOpen(false);
-									setGitOpen(false);
-									trajectory.mutate.setOpen(false);
-									setExplorerRoot(workspacePath() ? "workspace" : "storage");
-								}
-								setExplorerOpen(next);
-							}}
-						>
-							<Folder size={16} />
-						</button>
-
-						<button
-							type="button"
-							class="size-8 rounded-full border-0 electrobun-webkit-app-region-no-drag flex items-center justify-center text-ink hover:bg-paper-hover disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
-							title="Git Changes"
-							aria-label="Toggle git changes"
-							onClick={() => {
-								const next = !gitOpen();
-								if (next) {
-									setOutlineOpen(false);
-									setExplorerOpen(false);
-									trajectory.mutate.setOpen(false);
-								}
-								setGitOpen(next);
-							}}
-						>
-							<GitBranch size={16} />
-						</button>
-
-						<button
-							type="button"
-							class="size-8 rounded-full border-0 electrobun-webkit-app-region-no-drag flex items-center justify-center text-ink hover:bg-paper-hover disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
+							class={headerIconClass}
 							title="Open trajectory"
 							aria-label="Open trajectory"
 							disabled={!hasConversation()}
@@ -221,6 +243,16 @@ export function ConversationPage(props: {
 									}
 									activeBtwAnchor={btwOpen() ? btwAnchor() : null}
 								/>
+								<ExplorerDrawer
+									open={explorerOpen()}
+									partner={props.selected}
+									root={explorerRoot()}
+									hasWorkspace={workspacePath() != null}
+									side={dockSide()}
+									onRootChange={setExplorerRoot}
+									onClose={() => setExplorerOpen(false)}
+								/>
+								<GitChangesDrawer open={gitOpen()} partner={props.selected} side={dockSide()} onClose={() => setGitOpen(false)} />
 							</div>
 							<Composer onSend={props.onSend} onStop={props.onStop} onShell={props.onShell} onOpenPath={props.onOpenPath} editors={props.editors} />
 						</div>
@@ -233,17 +265,6 @@ export function ConversationPage(props: {
 				)}
 				{props.toastHost}
 			</div>
-
-			<ExplorerDrawer
-				open={explorerOpen()}
-				partner={props.selected}
-				root={explorerRoot()}
-				hasWorkspace={workspacePath() != null}
-				onRootChange={setExplorerRoot}
-				onClose={() => setExplorerOpen(false)}
-			/>
-
-			<GitChangesDrawer open={gitOpen()} partner={props.selected} onClose={() => setGitOpen(false)} />
 
 			<RepliesPane open={outlineOpen()} />
 		</div>

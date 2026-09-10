@@ -17,6 +17,7 @@ export interface SettingsData {
 	customProviders?: CustomProvider[];
 	theme?: ThemeMode;
 	toastPlacement?: ToastPlacement;
+	dockSide?: "left" | "right";
 	toastDurationMs?: number;
 	skills_dirs?: string[];
 	skills_watch?: boolean;
@@ -72,6 +73,7 @@ const DEFAULTS = {
 	theme: "system" as ThemeMode,
 	sandbox: "workspace-write" as SandboxMode,
 	toastPlacement: "bottomcenter" as ToastPlacement,
+	dockSide: "right" as "left" | "right",
 	toastDurationMs: 4000,
 	skills_dirs: [".agents/skills"],
 	skills_watch: true,
@@ -218,6 +220,7 @@ export function SettingsView() {
 	const [defaultSandboxMode, setDefaultSandboxMode] = createSignal<SandboxMode>("workspace-write");
 	const [theme, setTheme] = createSignal<ThemeMode>("system");
 	const [toastPlacement, setToastPlacement] = createSignal<ToastPlacement>("bottomcenter");
+	const [dockSide, setDockSide] = createSignal<"left" | "right">("right");
 	const [toastDurationMs, setToastDurationMs] = createSignal("4000");
 	const [skillsDirs, setSkillsDirs] = createSignal<string[]>(initial?.skills_dirs?.length ? initial.skills_dirs : [".agents/skills"]);
 	const [skillsWatch, setSkillsWatch] = createSignal(initial?.skills_watch ?? true);
@@ -330,6 +333,9 @@ export function SettingsView() {
 	if (initial && initial.toastPlacement !== undefined && toastPlacement() !== initial.toastPlacement) {
 		setToastPlacement(initial.toastPlacement);
 	}
+	if (initial && initial.dockSide !== undefined && dockSide() !== initial.dockSide) {
+		setDockSide(initial.dockSide);
+	}
 	if (initial && initial.toastDurationMs !== undefined && toastDurationMs() === "4000") {
 		setToastDurationMs(String(initial.toastDurationMs));
 	}
@@ -385,6 +391,7 @@ export function SettingsView() {
 			customProviders: customProviders() ?? undefined,
 			theme: theme(),
 			toastPlacement: toastPlacement(),
+			dockSide: dockSide(),
 			toastDurationMs: parsePositiveInt(toastDurationMs(), DEFAULTS.toastDurationMs),
 			skills_dirs: skillsDirs()
 				.map((d) => d.trim())
@@ -618,6 +625,33 @@ export function SettingsView() {
 					</div>
 				);
 			},
+		},
+		{
+			id: "dockSide",
+			title: "Dock side",
+			desc: "Dock Explorer and Git Changes to the left or right.",
+			cats: ["general"],
+			modified: () => dockSide() !== DEFAULTS.dockSide,
+			control: () => (
+				<Select
+					class="h-[32px] w-[150px] shrink-0 rounded-[10px] font-sans text-[12px]"
+					itemClass="font-sans text-[12px]"
+					contentClass="w-[150px] rounded-[10px]"
+					title="Dock side"
+					ariaLabel="Dock side"
+					portalMount={rootRef}
+					value={dockSide()}
+					onChange={(value) => {
+						const side = value as "left" | "right";
+						setDockSide(side);
+						void persist({ ...currentSettings(), dockSide: side });
+					}}
+					options={[
+						{ value: "left", label: "left" },
+						{ value: "right", label: "right" },
+					]}
+				/>
+			),
 		},
 		{
 			id: "sandbox",

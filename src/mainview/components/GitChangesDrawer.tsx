@@ -25,7 +25,7 @@ function DiffLineView(props: { text: string }) {
 	return <div class={"git-diff-line" + (cls() ? ` ${cls()}` : "")}>{props.text || " "}</div>;
 }
 
-export function GitChangesDrawer(props: { open: boolean; partner: string | null; onClose: () => void }) {
+export function GitChangesDrawer(props: { open: boolean; partner: string | null; side?: "left" | "right"; onClose: () => void }) {
 	const [data, setData] = createSignal<GitData | null>(null);
 	const [error, setError] = createSignal<string | null>(null);
 	const [loading, setLoading] = createSignal(false);
@@ -110,7 +110,7 @@ export function GitChangesDrawer(props: { open: boolean; partner: string | null;
 	return (
 		<>
 			<Show when={props.open}>
-				<aside class="git-drawer">
+				<aside class={"git-drawer side-" + (props.side ?? "right")}>
 					<div class="git-head">
 						<span class="git-title">Git Changes</span>
 						<span class="git-root">{shortRoot()}</span>
@@ -144,7 +144,7 @@ export function GitChangesDrawer(props: { open: boolean; partner: string | null;
 				</aside>
 
 				<Show when={selected()}>
-					<div class="git-popover">
+					<div class={"git-popover side-" + (props.side ?? "right")}>
 						<div class="git-popover-head">
 							<span class="git-popover-path">{selected()!.path}</span>
 							<Show when={diffData()?.error}>
