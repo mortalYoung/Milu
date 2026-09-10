@@ -49,6 +49,11 @@ export function ConversationPage(props: {
 	const [btwOpen, setBtwOpen] = createSignal(false);
 	const [btwAnchor, setBtwAnchor] = createSignal<string | null>(null);
 	const [explorerRoot, setExplorerRoot] = createSignal<"workspace" | "storage">("storage");
+	let explorerRootChosen = false;
+	const changeExplorerRoot = (root: "workspace" | "storage") => {
+		explorerRootChosen = true;
+		setExplorerRoot(root);
+	};
 	const workspacePath = () => status.data().workspace_path;
 	createEffect(() => {
 		if (!workspacePath() && explorerRoot() === "workspace") setExplorerRoot("storage");
@@ -100,7 +105,7 @@ export function ConversationPage(props: {
 					setOutlineOpen(false);
 					setGitOpen(false);
 					trajectory.mutate.setOpen(false);
-					setExplorerRoot(workspacePath() ? "workspace" : "storage");
+					if (!explorerRootChosen) setExplorerRoot(workspacePath() ? "workspace" : "storage");
 				}
 				setExplorerOpen(next);
 			}}
@@ -249,7 +254,7 @@ export function ConversationPage(props: {
 									root={explorerRoot()}
 									hasWorkspace={workspacePath() != null}
 									side={dockSide()}
-									onRootChange={setExplorerRoot}
+									onRootChange={changeExplorerRoot}
 									onClose={() => setExplorerOpen(false)}
 								/>
 								<GitChangesDrawer open={gitOpen()} partner={props.selected} side={dockSide()} onClose={() => setGitOpen(false)} />
