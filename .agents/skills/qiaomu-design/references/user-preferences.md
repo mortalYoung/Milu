@@ -286,3 +286,11 @@
 - 原话摘录：（自发现 2026-08-27，settings 方向 B 实现）Select 触发器覆写成 sans 12px 后，弹出层选项仍是组件默认的 mono 10px，同一控件内两种字体
 - 收录：2026-08-27｜状态：生效
 - 教训：覆写触发器样式时必须同步覆写弹出层 item 样式；组件应提供 itemClass/contentClass 透传口（已落入 ui/select.tsx）
+
+### P-44 · 嵌套浮层的 Esc 必须逐层关闭
+- 级别：硬禁令
+- 何时适用：任何存在内外两层可关闭浮层的界面（编辑器内查找层叠在文件预览上、弹层内的子菜单/弹窗等）
+- 规则：内层浮层打开时，Esc 先被内层消费并关闭内层，禁止越级直接关闭外层容器/页面；外层只在没有更内层浮层时响应 Esc
+- 原话摘录："`ESC` should close the search floating panel while it open rather than close code reviewer"
+- 收录：2026-08-31｜状态：生效
+- 教训：外层监听器注册更早时，内层必须用捕获阶段监听（`addEventListener(..., true)`）+ `stopPropagation` 抢在外层冒泡监听之前拦截，否则旧行为会先关掉外层
