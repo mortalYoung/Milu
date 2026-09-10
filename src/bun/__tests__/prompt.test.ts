@@ -1,7 +1,3 @@
-/**
- * Unit tests for the system prompt framework: IDENTIFY / PERSONA / WORKSPACE / STORAGE.
- * Coverage: fixed order, runtime injection, persona omitted when empty, no-Partner fallback.
- */
 import { describe, expect, test } from "bun:test";
 import { buildIdentify, buildPersona, buildSystemPrompt, type PartnerPrompt } from "../core/prompt";
 
@@ -10,9 +6,9 @@ const PARTNER: PartnerPrompt = {
 };
 
 describe("buildSystemPrompt framework", () => {
-	test("all sections present in fixed order IDENTIFY → PERSONA → WORKSPACE → STORAGE", () => {
+	test("all sections present in fixed order IDENTIFY → PERSONA → WORKING DIRECTORY → STORAGE", () => {
 		const p = buildSystemPrompt(PARTNER);
-		const idx = ["# IDENTIFY", "# PERSONA", "# WORKSPACE", "# STORAGE"].map((h) => p.indexOf(h));
+		const idx = ["# IDENTIFY", "# PERSONA", "# WORKING DIRECTORY", "# STORAGE"].map((h) => p.indexOf(h));
 		expect(idx).toEqual([...idx].sort((a, b) => a - b));
 		expect(idx.every((i) => i >= 0)).toBe(true);
 	});
@@ -55,20 +51,20 @@ describe("buildSystemPrompt framework", () => {
 		expect(p).not.toContain("mention the primary outputs");
 	});
 
-	test("WORKSPACE and STORAGE are always present and static (no embedded paths)", () => {
+	test("WORKING DIRECTORY and STORAGE are always present and static (no embedded paths)", () => {
 		const p1 = buildSystemPrompt(PARTNER);
 		const p2 = buildSystemPrompt(PARTNER);
-		expect(p1).toContain("# WORKSPACE");
+		expect(p1).toContain("# WORKING DIRECTORY");
 		expect(p1).toContain("# STORAGE");
 		expect(p1).not.toContain("/tmp/storage");
-		expect(p1.indexOf("# WORKSPACE")).toBeLessThan(p1.indexOf("# STORAGE"));
-		// Stable prefix: identical across builds → KV cache reuse
+		expect(p1.indexOf("# WORKING DIRECTORY")).toBeLessThan(p1.indexOf("# STORAGE"));
 		expect(p1).toBe(p2);
 	});
 
-	test("WORKSPACE section explains workspace as the per-partner working directory", () => {
+	test("WORKING DIRECTORY section explains relative-path resolution and the absolute-path fallback", () => {
 		const p = buildSystemPrompt(PARTNER);
-		expect(p).toContain("# WORKSPACE");
+		expect(p).toContain("# WORKING DIRECTORY");
+		expect(p).toContain("file tools require absolute paths");
 		expect(p).not.toContain("set_workspace");
 	});
 });

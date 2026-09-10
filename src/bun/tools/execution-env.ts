@@ -1,17 +1,10 @@
-/**
- * Tool execution environment: Bun filesystem + shell, implementing pi's ExecutionEnv.
- * Session persistence (pi JSONL backend) also reuses its pure fs part.
- * All permission decisions (fs fence, sensitive scan, sandbox wrap) go through the
- * injected Permission facade — this file is pure fs/shell plumbing.
- */
 import { appendFile, lstat, mkdir, mkdtemp, readdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { type ExecutionEnv, ExecutionError, err, FileError, type FileInfo, ok, type Result, type ShellExecOptions } from "@earendil-works/pi-agent-core";
 import type { SandboxMode } from "../permission";
 import { Permission, PermissionError, SandboxUnavailableError, sandboxDenialMarker } from "../permission";
 
-/** exec options extended with a per-call sandbox mode (escalation path). */
 export interface SandboxedExecOptions extends ShellExecOptions {
 	sandboxMode?: SandboxMode;
 }
@@ -36,29 +29,26 @@ function toFileInfo(path: string, s: { size: number; mtimeMs: number; isDirector
 	};
 }
 
-/** Filesystem + shell against the current working directory, optionally permission-gated. */
 export function createExecutionEnv(cwd: string, permission?: Permission): ExecutionEnv {
 	const checkAbort = (signal?: AbortSignal) => signal?.throwIfAborted();
-	// Relative paths resolve against the workspace when set; without a workspace, the storage
-	// path (the agent's own directory). A permissioned env with neither root fails loudly —
-	// silently resolving against a static cwd would misplace file effects. The static cwd
-	// serves only permission-less pure-fs envs (the session store).
-	const base = () => {
-		if (permission) {
-			const workspace = permission.workspaceRoot();
-			if (workspace) return workspace;
-			const storage = permission.storageRoot();
-			if (!storage) throw new Error("permission env has no workspace or storage root");
-			return storage;
-		}
-		return cwd;
+	const scratchBase = () => {
+		if (!permission) return cwd;
+		const workspace = permission.workspaceRoot();
+		if (workspace) return workspace;
+		const storage = permission.storageRoot();
+		if (!storage) throw new Error("permission env has no workspace or storage root");
+		return storage;
 	};
-	const absolute = (path: string) => resolve(base(), path);
+	const workspaceBase = () => (permission ? permission.workspaceRoot() : cwd);
+	const resolveTarget = (path: string): Result<string, FileError> => {
+		if (isAbsolute(path)) return ok(resolve(path));
+		const base = workspaceBase();
+		if (!base) return err(new FileError("invalid", "No working directory is set; pass an absolute path.", path));
+		return ok(resolve(base, path));
+	};
 
-	// Result<never, …> so returning it from any method narrows cleanly (never is assignable to every value type)
-	const denied = (path: string, op: "read" | "write"): Result<never, FileError> | null => {
+	const denied = (target: string, op: "read" | "write"): Result<never, FileError> | null => {
 		if (!permission) return null;
-		const target = absolute(path);
 		const decision = permission.checkFile(target, op);
 		return decision.allowed ? null : err(new PermissionError(decision.reason, target, decision.code));
 	};
@@ -68,20 +58,20 @@ export function createExecutionEnv(cwd: string, permission?: Permission): Execut
 
 		async absolutePath(path, signal) {
 			checkAbort(signal);
-			return ok(absolute(path));
+			return resolveTarget(path);
 		},
 		async joinPath(parts, signal) {
 			checkAbort(signal);
-			// Contract: join the parts verbatim (absolute segments stay absolute); must not re-prefix cwd,
-			// or the path recursively doubles when pi's JSONL session layer passes absolute paths
 			return ok(join(...parts));
 		},
 		async readTextFile(path, signal) {
 			checkAbort(signal);
-			const deniedPath = denied(path, "read");
+			const target = resolveTarget(path);
+			if (!target.ok) return target;
+			const deniedPath = denied(target.value, "read");
 			if (deniedPath) return deniedPath;
 			try {
-				return ok(await readFile(absolute(path), "utf8"));
+				return ok(await readFile(target.value, "utf8"));
 			} catch (e) {
 				return err(mapFileError(path, e));
 			}
@@ -96,22 +86,25 @@ export function createExecutionEnv(cwd: string, permission?: Permission): Execut
 		},
 		async readBinaryFile(path, signal) {
 			checkAbort(signal);
-			const deniedPath = denied(path, "read");
+			const target = resolveTarget(path);
+			if (!target.ok) return target;
+			const deniedPath = denied(target.value, "read");
 			if (deniedPath) return deniedPath;
 			try {
-				return ok(new Uint8Array(await readFile(absolute(path))));
+				return ok(new Uint8Array(await readFile(target.value)));
 			} catch (e) {
 				return err(mapFileError(path, e));
 			}
 		},
 		async writeFile(path, content, signal) {
 			checkAbort(signal);
-			const deniedPath = denied(path, "write");
+			const target = resolveTarget(path);
+			if (!target.ok) return target;
+			const deniedPath = denied(target.value, "write");
 			if (deniedPath) return deniedPath;
 			try {
-				const target = absolute(path);
-				await mkdir(dirname(target), { recursive: true });
-				await writeFile(target, content);
+				await mkdir(dirname(target.value), { recursive: true });
+				await writeFile(target.value, content);
 				return ok(undefined);
 			} catch (e) {
 				return err(mapFileError(path, e));
@@ -119,12 +112,13 @@ export function createExecutionEnv(cwd: string, permission?: Permission): Execut
 		},
 		async appendFile(path, content, signal) {
 			checkAbort(signal);
-			const deniedPath = denied(path, "write");
+			const target = resolveTarget(path);
+			if (!target.ok) return target;
+			const deniedPath = denied(target.value, "write");
 			if (deniedPath) return deniedPath;
 			try {
-				const target = absolute(path);
-				await mkdir(dirname(target), { recursive: true });
-				await appendFile(target, content);
+				await mkdir(dirname(target.value), { recursive: true });
+				await appendFile(target.value, content);
 				return ok(undefined);
 			} catch (e) {
 				return err(mapFileError(path, e));
@@ -132,12 +126,14 @@ export function createExecutionEnv(cwd: string, permission?: Permission): Execut
 		},
 		async renameFile(sourcePath, destinationPath, signal) {
 			checkAbort(signal);
-			// rename moves the source — a write effect — so both sides are checked as writes
-			// (read is unrestricted, but moving an outside file into the workspace would mutate it)
-			const deniedPath = denied(sourcePath, "write") ?? denied(destinationPath, "write");
+			const source = resolveTarget(sourcePath);
+			if (!source.ok) return source;
+			const destination = resolveTarget(destinationPath);
+			if (!destination.ok) return destination;
+			const deniedPath = denied(source.value, "write") ?? denied(destination.value, "write");
 			if (deniedPath) return deniedPath;
 			try {
-				await rename(absolute(sourcePath), absolute(destinationPath));
+				await rename(source.value, destination.value);
 				return ok(undefined);
 			} catch (e) {
 				return err(mapFileError(destinationPath, e));
@@ -145,20 +141,24 @@ export function createExecutionEnv(cwd: string, permission?: Permission): Execut
 		},
 		async fileInfo(path, signal) {
 			checkAbort(signal);
-			const deniedPath = denied(path, "read");
+			const target = resolveTarget(path);
+			if (!target.ok) return target;
+			const deniedPath = denied(target.value, "read");
 			if (deniedPath) return deniedPath;
 			try {
-				return ok(toFileInfo(path, await lstat(absolute(path))));
+				return ok(toFileInfo(path, await lstat(target.value)));
 			} catch (e) {
 				return err(mapFileError(path, e));
 			}
 		},
 		async listDir(path, signal) {
 			checkAbort(signal);
-			const deniedPath = denied(path, "read");
+			const target = resolveTarget(path);
+			if (!target.ok) return target;
+			const deniedPath = denied(target.value, "read");
 			if (deniedPath) return deniedPath;
 			try {
-				const dir = absolute(path);
+				const dir = target.value;
 				const entries = await readdir(dir, { withFileTypes: true });
 				const infos = await Promise.all(
 					entries.map(async (entry) => {
@@ -174,20 +174,24 @@ export function createExecutionEnv(cwd: string, permission?: Permission): Execut
 		},
 		async canonicalPath(path, signal) {
 			checkAbort(signal);
-			const deniedPath = denied(path, "read");
+			const target = resolveTarget(path);
+			if (!target.ok) return target;
+			const deniedPath = denied(target.value, "read");
 			if (deniedPath) return deniedPath;
 			try {
-				return ok(await realpath(absolute(path)));
+				return ok(await realpath(target.value));
 			} catch (e) {
 				return err(mapFileError(path, e));
 			}
 		},
 		async exists(path, signal) {
 			checkAbort(signal);
-			const deniedPath = denied(path, "read");
+			const target = resolveTarget(path);
+			if (!target.ok) return target;
+			const deniedPath = denied(target.value, "read");
 			if (deniedPath) return deniedPath;
 			try {
-				await lstat(absolute(path));
+				await lstat(target.value);
 				return ok(true);
 			} catch (e) {
 				if ((e as NodeJS.ErrnoException)?.code === "ENOENT") return ok(false);
@@ -196,10 +200,12 @@ export function createExecutionEnv(cwd: string, permission?: Permission): Execut
 		},
 		async createDir(path, options) {
 			checkAbort(options?.abortSignal);
-			const deniedPath = denied(path, "write");
+			const target = resolveTarget(path);
+			if (!target.ok) return target;
+			const deniedPath = denied(target.value, "write");
 			if (deniedPath) return deniedPath;
 			try {
-				await mkdir(absolute(path), { recursive: options?.recursive ?? true });
+				await mkdir(target.value, { recursive: options?.recursive ?? true });
 				return ok(undefined);
 			} catch (e) {
 				return err(mapFileError(path, e));
@@ -207,10 +213,12 @@ export function createExecutionEnv(cwd: string, permission?: Permission): Execut
 		},
 		async remove(path, options) {
 			checkAbort(options?.abortSignal);
-			const deniedPath = denied(path, "write");
+			const target = resolveTarget(path);
+			if (!target.ok) return target;
+			const deniedPath = denied(target.value, "write");
 			if (deniedPath) return deniedPath;
 			try {
-				await rm(absolute(path), {
+				await rm(target.value, {
 					recursive: options?.recursive ?? false,
 					force: options?.force ?? false,
 				});
@@ -240,12 +248,10 @@ export function createExecutionEnv(cwd: string, permission?: Permission): Execut
 		},
 		async exec(command, options) {
 			const opts: SandboxedExecOptions = options ?? {};
-			// sensitive scan (defense-in-depth; the kernel profile is the boundary for writes)
 			if (permission) {
 				const scan = permission.checkCommand(command);
 				if (!scan.allowed) return err(new ExecutionError("spawn_error", scan.reason));
 			}
-			// sandbox wrap: confine argv under the session mode (or the per-call escalation mode)
 			let argv = ["/bin/sh", "-c", command];
 			let denialSignatures: string[] = [];
 			let runnerFailureRules: string[] = [];
@@ -268,7 +274,7 @@ export function createExecutionEnv(cwd: string, permission?: Permission): Execut
 			const env = opts.inheritEnv === false ? { ...(opts.env ?? {}) } : { ...process.env, ...(opts.env ?? {}) };
 			try {
 				const proc = Bun.spawn(argv, {
-					cwd: opts.cwd ? resolve(base(), opts.cwd) : base(),
+					cwd: opts.cwd ? resolve(scratchBase(), opts.cwd) : scratchBase(),
 					env,
 					stdout: "pipe",
 					stderr: "pipe",
@@ -290,7 +296,6 @@ export function createExecutionEnv(cwd: string, permission?: Permission): Execut
 				if (opts.abortSignal?.aborted) {
 					return err(new ExecutionError("aborted", "Command aborted"));
 				}
-				// classify runner failure first (the command never ran), then denial
 				const lower = stderr.toLowerCase();
 				if (runnerFailureRules.some((r) => lower.includes(r.toLowerCase()))) {
 					return err(new ExecutionError("spawn_error", "sandbox unavailable — the sandbox runner failed before executing the command"));
@@ -306,13 +311,10 @@ export function createExecutionEnv(cwd: string, permission?: Permission): Execut
 				return err(new ExecutionError("spawn_error", e instanceof Error ? e.message : String(e)));
 			}
 		},
-		async cleanup() {
-			/* nothing to release */
-		},
+		async cleanup() {},
 	};
 }
 
-/** Collect a spawned stream, forwarding chunks to an optional callback. */
 async function readStream(stream: ReadableStream<Uint8Array>, onChunk?: (chunk: string) => void): Promise<string> {
 	const reader = stream.getReader();
 	const decoder = new TextDecoder();

@@ -720,7 +720,7 @@ async function ensureContextAfterCompact(entry: PartnerAgent): Promise<void> {
 
 	const hasWorkspaceContext = messages.some((m) => {
 		const content = (m as { content?: unknown }).content;
-		return typeof content === "string" && content.includes(`Current workspace: ${workspace}.`);
+		return typeof content === "string" && content.includes(`Current working directory: ${workspace}.`);
 	});
 	if (!hasWorkspaceContext) {
 		const snapshot: ContextChangedEventData = {
@@ -741,7 +741,7 @@ async function ensureContextAfterCompact(entry: PartnerAgent): Promise<void> {
 	}
 	const hasInstructions = messages.some((m) => {
 		const content = (m as { content?: unknown }).content;
-		return typeof content === "string" && (content.includes("Workspace instructions") || content.includes("Workspace cleared"));
+		return typeof content === "string" && content.toLowerCase().includes("working directory instructions");
 	});
 	if (!hasInstructions) await entry.scope.appendInstructionsChanged(agentMd, Date.now());
 

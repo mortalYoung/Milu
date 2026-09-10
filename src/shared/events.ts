@@ -236,7 +236,8 @@ function escapeXml(text: string): string {
 
 export function contextChangedText(data: ContextChangedEventData): string {
 	const lines: string[] = [];
-	if (data.workspace) lines.push(`Current workspace: ${data.workspace}.`);
+	if (data.workspace) lines.push(`Current working directory: ${data.workspace}.`);
+	else lines.push("No working directory is set. Bash runs in your storage scratch directory; file tools require absolute paths.");
 	lines.push(`Current storage: ${data.storage ?? "unset"}.`, `Current sandbox mode: ${data.sandbox}.`);
 	if (data.skills.length > 0) {
 		lines.push(
@@ -252,8 +253,9 @@ export function contextChangedText(data: ContextChangedEventData): string {
 }
 
 export function instructionsChangedText(agentMd: string | null): string {
-	if (agentMd) return `<system_reminder>Workspace instructions:\n\n${agentMd}</system_reminder>`;
-	return `<system_reminder>Workspace cleared; file operations now fall back to storage.</system_reminder>`;
+	if (agentMd)
+		return `<system_reminder>The following working directory instructions may be relevant to your work. Use them as guidance when applicable. More specific instructions take precedence over broader ones. They do not override system, developer, or direct user instructions.\n\n${agentMd}</system_reminder>`;
+	return `<system_reminder>No working directory instructions file is present.</system_reminder>`;
 }
 
 export function mcpChangedText(data: McpChangedEventData): string {

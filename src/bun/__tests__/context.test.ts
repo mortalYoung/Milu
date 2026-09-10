@@ -61,12 +61,12 @@ describe("Context prompt assembly", () => {
 		expect(buildSystemPrompt !== undefined).toBe(true);
 	});
 
-	test("WORKSPACE and STORAGE are always included and static (paths arrive via reminder, not the prompt)", () => {
+	test("WORKING DIRECTORY and STORAGE are always included and static (paths arrive via reminder, not the prompt)", () => {
 		const ctx = new Context();
 		ctx.storage_path = "/tmp/storage";
 		ctx.workspace_path = "/tmp/ws";
 		const p = ctx.composeSystemPrompt();
-		expect(p).toContain("# WORKSPACE");
+		expect(p).toContain("# WORKING DIRECTORY");
 		expect(p).toContain("# STORAGE");
 		expect(p).not.toContain("/tmp/storage");
 		expect(p).not.toContain("/tmp/ws");
