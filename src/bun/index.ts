@@ -1557,6 +1557,15 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					return { ok: false, error: error instanceof Error ? error.message : String(error) };
 				}
 			},
+			mcp_test: async ({ name }) => {
+				try {
+					const tools = await mcpManager.listTools(name);
+					return { ok: true, toolCount: tools.length };
+				} catch (error) {
+					console.error("mcp_test failed:", error);
+					return { ok: false, error: error instanceof Error ? error.message : String(error) };
+				}
+			},
 			mcp_list: async () => {
 				const settings = await loadSettings();
 				const profiles = await listPartners(settings);

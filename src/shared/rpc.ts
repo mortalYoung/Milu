@@ -505,6 +505,7 @@ export type AppRPCSchema = __schema<{
 							prune?: { thresholdChars?: number; headChars?: number; tailChars?: number };
 						};
 						explorer?: { lineGap?: number };
+						dockSide?: "left" | "right";
 					};
 					runtime: {
 						providers: { id: string; configured: boolean; baseUrl?: string; modelCount: number }[];
@@ -547,6 +548,7 @@ export type AppRPCSchema = __schema<{
 							prune?: { thresholdChars?: number; headChars?: number; tailChars?: number };
 						};
 						explorer?: { lineGap?: number };
+						dockSide?: "left" | "right";
 					};
 
 					credentials?: Record<string, string>;
@@ -574,6 +576,11 @@ export type AppRPCSchema = __schema<{
 			mcp_save_servers: {
 				params: { servers: McpServerConfig[] };
 				response: { ok: boolean; error?: string };
+			};
+
+			mcp_test: {
+				params: { name: string };
+				response: { ok: boolean; toolCount?: number; error?: string };
 			};
 
 			mcp_list: {

@@ -4,7 +4,7 @@ import { Button } from "./Button";
 import type { PartnerItem } from "./ConversationList";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Select } from "./ui/select";
-import { TextField, TextFieldInput, TextFieldLabel } from "./ui/text-field";
+import { TextField, TextFieldInput, TextFieldLabel, TextFieldTextArea } from "./ui/text-field";
 
 type McpServerItem = Awaited<ReturnType<typeof rpc.request.mcp_list>>["servers"][number];
 type Lifecycle = "lazy" | "eager" | "keep-alive" | "lazy-keep-alive";
@@ -15,6 +15,28 @@ const LIFECYCLES = [
 	{ value: "keep-alive", label: "keep-alive" },
 	{ value: "lazy-keep-alive", label: "lazy-keep-alive" },
 ];
+
+function envToText(env: Record<string, string> | undefined): string {
+	if (!env) return "";
+	return Object.entries(env)
+		.map(([key, value]) => `${key}=${value}`)
+		.join("\n");
+}
+
+function parseEnvText(text: string): { ok: true; value?: Record<string, string> } | { ok: false; error: string } {
+	const lines = text
+		.split("\n")
+		.map((line) => line.trim())
+		.filter(Boolean);
+	if (lines.length === 0) return { ok: true };
+	const value: Record<string, string> = {};
+	for (const line of lines) {
+		const eq = line.indexOf("=");
+		if (eq <= 0) return { ok: false, error: `Invalid env line: ${line}` };
+		value[line.slice(0, eq).trim()] = line.slice(eq + 1).trim();
+	}
+	return { ok: true, value };
+}
 
 function statusColor(state: McpServerItem["state"]): string {
 	if (state === "connected") return "bg-[#7FB069]";
@@ -31,9 +53,12 @@ export function McpServersPanel() {
 	const [name, setName] = createSignal("");
 	const [command, setCommand] = createSignal("");
 	const [args, setArgs] = createSignal("");
+	const [envText, setEnvText] = createSignal("");
 	const [lifecycle, setLifecycle] = createSignal<Lifecycle>("lazy");
 	const [error, setError] = createSignal<string | null>(null);
 	const [busy, setBusy] = createSignal(false);
+	const [testing, setTesting] = createSignal<Record<string, boolean>>({});
+	const [testResult, setTestResult] = createSignal<Record<string, string>>({});
 
 	async function load() {
 		const [{ servers: list }, { partners: ps }] = await Promise.all([rpc.request.mcp_list({}), rpc.request.list_partners({})]);
@@ -48,6 +73,7 @@ export function McpServersPanel() {
 		setName("");
 		setCommand("");
 		setArgs("");
+		setEnvText("");
 		setLifecycle("lazy");
 		setError(null);
 		setFormOpen(true);
@@ -58,6 +84,7 @@ export function McpServersPanel() {
 		setName(server.name);
 		setCommand(server.transport.command);
 		setArgs(server.transport.args?.join(" ") ?? "");
+		setEnvText(envToText(server.transport.env));
 		setLifecycle(server.lifecycle ?? "lazy");
 		setError(null);
 		setFormOpen(true);
@@ -72,6 +99,11 @@ export function McpServersPanel() {
 		}
 		setBusy(true);
 		try {
+			const env = parseEnvText(envText());
+			if (!env.ok) {
+				setError(env.error);
+				return;
+			}
 			const current = servers();
 			const next: McpServerItem[] = editing()
 				? current.map((server) =>
@@ -80,7 +112,12 @@ export function McpServersPanel() {
 									...server,
 									name: trimmedName,
 									lifecycle: lifecycle(),
-									transport: { type: "stdio", command: trimmedCommand, ...(args().trim() ? { args: args().trim().split(/\s+/) } : {}) },
+									transport: {
+										type: "stdio",
+										command: trimmedCommand,
+										...(args().trim() ? { args: args().trim().split(/\s+/) } : {}),
+										...(env.value ? { env: env.value } : {}),
+									},
 								}
 							: server,
 					)
@@ -89,7 +126,12 @@ export function McpServersPanel() {
 						{
 							name: trimmedName,
 							lifecycle: lifecycle(),
-							transport: { type: "stdio", command: trimmedCommand, ...(args().trim() ? { args: args().trim().split(/\s+/) } : {}) },
+							transport: {
+								type: "stdio",
+								command: trimmedCommand,
+								...(args().trim() ? { args: args().trim().split(/\s+/) } : {}),
+								...(env.value ? { env: env.value } : {}),
+							},
 							state: "stopped",
 							toolCount: 0,
 							grantedPartners: [],
@@ -111,6 +153,18 @@ export function McpServersPanel() {
 		await rpc.request.mcp_set_partners({ name: server.name, partners: [] });
 		const res = await rpc.request.mcp_save_servers({ servers: servers().filter((s) => s.name !== server.name) });
 		if (res.ok) await load();
+	}
+
+	async function testServer(serverName: string) {
+		setTesting((prev) => ({ ...prev, [serverName]: true }));
+		setTestResult((prev) => ({ ...prev, [serverName]: "" }));
+		try {
+			const res = await rpc.request.mcp_test({ name: serverName });
+			setTestResult((prev) => ({ ...prev, [serverName]: res.ok ? `ok · ${res.toolCount ?? 0} tools` : (res.error ?? "failed") }));
+			await load();
+		} finally {
+			setTesting((prev) => ({ ...prev, [serverName]: false }));
+		}
 	}
 
 	async function togglePartner(serverName: string, partnerName: string, on: boolean) {
@@ -164,6 +218,10 @@ export function McpServersPanel() {
 							<TextFieldLabel>Args</TextFieldLabel>
 							<TextFieldInput variant="compact" placeholder="-y @modelcontextprotocol/server-github" aria-label="Args" spellcheck={false} />
 						</TextField>
+						<TextField class="min-w-0" value={envText()} onChange={setEnvText}>
+							<TextFieldLabel>Env</TextFieldLabel>
+							<TextFieldTextArea class="min-h-[72px] font-mono text-[12px]" placeholder="KEY=value&#10;ANOTHER=value" aria-label="Environment variables" spellcheck={false} />
+						</TextField>
 					</div>
 					<DialogFooter class="border-t border-hairline px-5 py-4">
 						<div class="flex w-full items-center justify-between gap-3">
@@ -197,6 +255,15 @@ export function McpServersPanel() {
 								</span>
 								<span class="shrink-0 font-mono text-[10px] text-muted">{server.lifecycle ?? "lazy"}</span>
 								<span class="shrink-0 font-mono text-[10px] text-muted">{server.toolCount} tools</span>
+								{testResult()[server.name] && <span class="shrink-0 font-mono text-[10px] text-muted">{testResult()[server.name]}</span>}
+								<button
+									type="button"
+									class="h-6 rounded-[8px] px-1.5 font-mono text-[10px] text-muted transition-colors hover:bg-paper-hover hover:text-ink disabled:opacity-50"
+									disabled={testing()[server.name]}
+									onClick={() => void testServer(server.name)}
+								>
+									{testing()[server.name] ? "…" : "test"}
+								</button>
 								<button
 									type="button"
 									class="h-6 rounded-[8px] px-1.5 font-mono text-[10px] text-muted transition-colors hover:bg-paper-hover hover:text-ink"
