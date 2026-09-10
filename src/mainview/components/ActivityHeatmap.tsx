@@ -10,13 +10,18 @@ const INNER = 476;
 export const HEATMAP_WEEKS = Math.floor((INNER - GUTTER) / COL);
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const LEVELS = [1_000_000, 6_000_000, 35_000_000];
+const TOKENS_PER_TURN = 3_000;
+const LOAD_LEVELS = [100, 300, 900];
 
-function levelOf(tokens: number): number {
-	if (tokens === 0) return 0;
+function loadOf(day: PartnerActivityDay): number {
+	return day.turns + day.freshTokens / TOKENS_PER_TURN;
+}
+
+function levelOf(load: number): number {
+	if (load <= 0) return 0;
 	let passed = 0;
-	for (const bound of LEVELS) {
-		if (tokens < bound) break;
+	for (const bound of LOAD_LEVELS) {
+		if (load < bound) break;
 		passed += 1;
 	}
 	return passed + 1;
@@ -35,7 +40,7 @@ function count(n: number, one: string, many: string): string {
 function tipFor(day: PartnerActivityDay): string {
 	const d = new Date(day.ts);
 	const date = `${MONTHS[d.getMonth()]} ${d.getDate()}`;
-	return `${date} · ${fmtTokens(day.tokens)} tok · ${count(day.turns, "turn", "turns")} · ${count(day.tools, "tool", "tools")}`;
+	return `${date} · ${fmtTokens(day.freshTokens)} tok · ${count(day.turns, "turn", "turns")} · ${count(day.tools, "tool", "tools")}`;
 }
 
 interface MonthMark {
@@ -94,7 +99,7 @@ export function ActivityHeatmap(props: { days: PartnerActivityDay[] }) {
 					<For each={props.days}>
 						{(day) => (
 							<Tooltip openDelay={120} closeDelay={60} placement="top">
-								<TooltipTrigger as="div" tabIndex={-1} class={`activity-cell hlv-${levelOf(day.tokens)}`} />
+								<TooltipTrigger as="div" tabIndex={-1} class={`activity-cell hlv-${levelOf(loadOf(day))}`} />
 								<TooltipPortal>
 									<TooltipContent>{tipFor(day)}</TooltipContent>
 								</TooltipPortal>

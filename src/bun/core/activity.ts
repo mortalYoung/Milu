@@ -1,5 +1,6 @@
 import type { Entry } from "@earendil-works/pi-agent-core";
 import type { PartnerActivityDay } from "../../shared/rpc";
+import { toUsage } from "../../shared/timeline";
 
 const DAY_MS = 86_400_000;
 
@@ -22,7 +23,7 @@ export function dailyActivity(entries: Entry[], weeks: number): PartnerActivityD
 	const days: PartnerActivityDay[] = [];
 	const byDay = new Map<number, PartnerActivityDay>();
 	while (cursor.getTime() <= today) {
-		const day = { ts: cursor.getTime(), tokens: 0, turns: 0, tools: 0 };
+		const day = { ts: cursor.getTime(), tokens: 0, freshTokens: 0, turns: 0, tools: 0 };
 		days.push(day);
 		byDay.set(day.ts, day);
 		cursor.setDate(cursor.getDate() + 1);
@@ -33,7 +34,9 @@ export function dailyActivity(entries: Entry[], weeks: number): PartnerActivityD
 		if (msg.role !== "assistant" || !msg.usage) continue;
 		const day = byDay.get(midnight(entry.timestamp));
 		if (!day) continue;
-		day.tokens += msg.usage.totalTokens ?? 0;
+		const usage = toUsage(msg.usage);
+		day.tokens += usage.totalTokens;
+		day.freshTokens += usage.input + usage.output + usage.cacheWrite;
 		day.turns += 1;
 		if (Array.isArray(msg.content)) day.tools += msg.content.filter((b) => (b as { type?: unknown })?.type === "toolCall").length;
 	}

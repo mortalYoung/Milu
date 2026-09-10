@@ -261,6 +261,7 @@ export interface ContextSnapshot {
 export interface PartnerActivityDay {
 	ts: number;
 	tokens: number;
+	freshTokens: number;
 	turns: number;
 	tools: number;
 }
