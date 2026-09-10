@@ -48,8 +48,8 @@ export async function hasInvalidPersistedWorkspace(dir: string): Promise<boolean
 	}
 }
 
-/** Restore the persisted sandbox mode (fallback default when unset or corrupt). */
-export async function ensureSandboxMode(dir: string, fallback: SandboxMode = "workspace-write"): Promise<SandboxMode> {
+/** Read the persisted sandbox mode, or null when this partner never had one (no side effects). */
+export async function readSandboxMode(dir: string): Promise<SandboxMode | null> {
 	try {
 		const raw = await readFile(sandboxFilePath(dir), "utf8");
 		const saved = JSON.parse(raw) as { mode?: unknown };
@@ -57,6 +57,13 @@ export async function ensureSandboxMode(dir: string, fallback: SandboxMode = "wo
 	} catch {
 		// no persisted mode for this partner
 	}
+	return null;
+}
+
+/** Restore the persisted sandbox mode (fallback default when unset or corrupt). */
+export async function ensureSandboxMode(dir: string, fallback: SandboxMode = "workspace-write"): Promise<SandboxMode> {
+	const mode = await readSandboxMode(dir);
+	if (mode) return mode;
 	// Capture the default at first init so a later settings change doesn't retroactively
 	// change partners that never had an explicit mode.
 	await persistSandboxMode(dir, fallback);

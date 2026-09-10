@@ -83,6 +83,7 @@ function WorkspaceControllers() {
 	useKeybindings([
 		{ key: ",", meta: true, handler: () => settings.mutate.setOpen(true) },
 		{ key: "b", meta: true, handler: toggleList },
+		{ key: "w", meta: true, handler: () => closeCurrentChat() },
 	]);
 
 	// ——— partner navigation helpers ———
@@ -91,6 +92,12 @@ function WorkspaceControllers() {
 
 		toast.dismissAll();
 		session.mutate.select(p);
+	};
+	const closeCurrentChat = () => {
+		if (!session.data.selected) return;
+
+		transcript.reset();
+		selectPartner(null);
 	};
 	const openPartner = (name: string) => {
 		const p = session.data.partners.find((x) => x.name === name);

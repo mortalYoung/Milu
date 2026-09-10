@@ -6,6 +6,7 @@ import type { RPC } from "./rpc";
 
 const EMPTY_STATUS = {
 	workspace_path: null,
+	is_git_repo: false,
 	storage_path: null,
 	sandbox_mode: "workspace-write" as SandboxMode,
 	model: null,
@@ -22,6 +23,7 @@ export function createAgentStatus(rpc: RPC) {
 		async (name) => (name ? rpc.request.get_status({ name }) : EMPTY_STATUS),
 		{ initialValue: EMPTY_STATUS },
 	);
+	const status = () => (data.selected ? snapshot() : EMPTY_STATUS);
 
 	rpc.addMessageListener("context_changed", () => void refetch());
 	rpc.addMessageListener("sandbox_mode_update", () => void refetch());
@@ -68,7 +70,7 @@ export function createAgentStatus(rpc: RPC) {
 	}
 
 	return {
-		data: snapshot,
+		data: status,
 		isBusyForSelected,
 		workingFor,
 		calibrate,

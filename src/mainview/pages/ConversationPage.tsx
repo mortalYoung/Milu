@@ -48,15 +48,15 @@ export function ConversationPage(props: {
 	const [gitOpen, setGitOpen] = createSignal(false);
 	const [btwOpen, setBtwOpen] = createSignal(false);
 	const [btwAnchor, setBtwAnchor] = createSignal<string | null>(null);
-	const [explorerRoot, setExplorerRoot] = createSignal<"workspace" | "storage">("storage");
-	let explorerRootChosen = false;
-	const changeExplorerRoot = (root: "workspace" | "storage") => {
-		explorerRootChosen = true;
-		setExplorerRoot(root);
-	};
 	const workspacePath = () => status.data().workspace_path;
+	const hasWorkspace = () => workspacePath() != null;
+	const gitAvailable = () => hasWorkspace() && status.data().is_git_repo;
+	const hasDockTools = () => hasWorkspace() || gitAvailable();
 	createEffect(() => {
-		if (!workspacePath() && explorerRoot() === "workspace") setExplorerRoot("storage");
+		if (!hasWorkspace()) setExplorerOpen(false);
+	});
+	createEffect(() => {
+		if (!gitAvailable()) setGitOpen(false);
 	});
 
 	const hasConversation = () => props.selected != null && transcript.view().length > 0;
@@ -93,45 +93,46 @@ export function ConversationPage(props: {
 	const headerIconClass =
 		"size-8 rounded-full border-0 electrobun-webkit-app-region-no-drag flex items-center justify-center text-ink hover:bg-paper-hover disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-paper";
 	const explorerButton = () => (
-		<button
-			type="button"
-			class={headerIconClass}
-			title="Explorer"
-			aria-label="Toggle explorer"
-			disabled={!props.selected}
-			onClick={() => {
-				const next = !explorerOpen();
-				if (next) {
-					setOutlineOpen(false);
-					setGitOpen(false);
-					trajectory.mutate.setOpen(false);
-					if (!explorerRootChosen) setExplorerRoot(workspacePath() ? "workspace" : "storage");
-				}
-				setExplorerOpen(next);
-			}}
-		>
-			<Folder size={16} />
-		</button>
+		<Show when={hasWorkspace()}>
+			<button
+				type="button"
+				class={headerIconClass}
+				title="Explorer"
+				aria-label="Toggle explorer"
+				onClick={() => {
+					const next = !explorerOpen();
+					if (next) {
+						setOutlineOpen(false);
+						setGitOpen(false);
+						trajectory.mutate.setOpen(false);
+					}
+					setExplorerOpen(next);
+				}}
+			>
+				<Folder size={16} />
+			</button>
+		</Show>
 	);
 	const gitButton = () => (
-		<button
-			type="button"
-			class={headerIconClass}
-			title="Git Changes"
-			aria-label="Toggle git changes"
-			disabled={!props.selected}
-			onClick={() => {
-				const next = !gitOpen();
-				if (next) {
-					setOutlineOpen(false);
-					setExplorerOpen(false);
-					trajectory.mutate.setOpen(false);
-				}
-				setGitOpen(next);
-			}}
-		>
-			<GitBranch size={16} />
-		</button>
+		<Show when={gitAvailable()}>
+			<button
+				type="button"
+				class={headerIconClass}
+				title="Git Changes"
+				aria-label="Toggle git changes"
+				onClick={() => {
+					const next = !gitOpen();
+					if (next) {
+						setOutlineOpen(false);
+						setExplorerOpen(false);
+						trajectory.mutate.setOpen(false);
+					}
+					setGitOpen(next);
+				}}
+			>
+				<GitBranch size={16} />
+			</button>
+		</Show>
 	);
 
 	return (
@@ -167,7 +168,9 @@ export function ConversationPage(props: {
 					/>
 					<Show when={dockSide() === "left"}>
 						<div class="chat-tools-left">
-							<span class="chat-tools-sep" />
+							<Show when={hasDockTools()}>
+								<span class="chat-tools-sep" />
+							</Show>
 							{explorerButton()}
 							{gitButton()}
 						</div>
@@ -188,7 +191,9 @@ export function ConversationPage(props: {
 						<Show when={dockSide() === "right"}>
 							{explorerButton()}
 							{gitButton()}
-							<span class="chat-tools-sep" />
+							<Show when={hasDockTools()}>
+								<span class="chat-tools-sep" />
+							</Show>
 						</Show>
 						<button
 							type="button"
@@ -248,15 +253,7 @@ export function ConversationPage(props: {
 									}
 									activeBtwAnchor={btwOpen() ? btwAnchor() : null}
 								/>
-								<ExplorerDrawer
-									open={explorerOpen()}
-									partner={props.selected}
-									root={explorerRoot()}
-									hasWorkspace={workspacePath() != null}
-									side={dockSide()}
-									onRootChange={changeExplorerRoot}
-									onClose={() => setExplorerOpen(false)}
-								/>
+								<ExplorerDrawer open={explorerOpen()} partner={props.selected} side={dockSide()} onClose={() => setExplorerOpen(false)} />
 								<GitChangesDrawer open={gitOpen()} partner={props.selected} side={dockSide()} onClose={() => setGitOpen(false)} />
 							</div>
 							<Composer onSend={props.onSend} onStop={props.onStop} onShell={props.onShell} onOpenPath={props.onOpenPath} editors={props.editors} />

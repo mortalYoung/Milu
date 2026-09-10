@@ -36,9 +36,9 @@ import { type MemoryRecord, organizeMemory, type QueryMemoryOptions, queryMemory
 import { loadRuntimeStats, saveRuntimeStats } from "./core/runtime-stats";
 import { aggregateUsage, dedupeRequestHeaders, fold, lastUsage } from "./core/trajectory";
 import { deleteApiKey, getApiKey, loadCredentials, setApiKey } from "./lib/credentials";
-import { ensureModel, ensureSandboxMode, ensureStoragePath, ensureWorkspace, hasInvalidPersistedWorkspace, isThinkingLevel } from "./lib/ensure";
+import { ensureModel, ensureSandboxMode, ensureStoragePath, ensureWorkspace, hasInvalidPersistedWorkspace, isThinkingLevel, readSandboxMode } from "./lib/ensure";
 import { listChildren, readFilePreview } from "./lib/explorer";
-import { gitChanges, gitDiff } from "./lib/git-changes";
+import { gitChanges, gitDiff, isGitRepo } from "./lib/git-changes";
 import { listInstalledEditors, openInCodeEditor } from "./lib/open-in-editor";
 import {
 	partnerDirFor,
@@ -996,14 +996,32 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				const profile = partnersList.find((p) => p.name === name);
 				const entry = profile ? await agents.get(name) : undefined;
 				const addedProviders = settings.providers ?? [];
+				const workspacePath = entry?.agent.workspacePath ?? null;
 				return {
-					workspace_path: entry?.agent.workspacePath ? tildify(entry.agent.workspacePath) : null,
+					workspace_path: workspacePath ? tildify(workspacePath) : null,
+					is_git_repo: workspacePath ? await isGitRepo(workspacePath) : false,
 					storage_path: entry?.agent.storagePath ? tildify(entry.agent.storagePath) : null,
 					sandbox_mode: entry?.agent.sandboxMode ?? "workspace-write",
 					model: entry?.agent.model ?? null,
 					thinking_level: entry?.agent.thinkingLevel ?? "high",
 					thinking_levels: entry ? supportedThinkingLevels(entry.agent.model ?? undefined) : [],
 					models: addedProviders.map((p) => ({ provider: p, models: providerModels(p) })),
+				};
+			},
+			partner_runtime: async ({ name }) => {
+				const settings = await loadSettings();
+				const profile = (await listPartners(settings)).find((p) => p.name === name);
+				if (!profile) return { workspace_path: null, storage_path: null, sandbox_mode: "workspace-write" as const, model: null, thinking_level: "high" as const };
+				const dir = getPartnerDir(settings, name);
+				const workspace = await ensureWorkspace(dir);
+				const model = await ensureModel(dir);
+				const defaultMode = isSandboxMode(settings.defaultSandboxMode) ? settings.defaultSandboxMode : "workspace-write";
+				return {
+					workspace_path: workspace ? tildify(workspace) : null,
+					storage_path: tildify(join(dir, "storage")),
+					sandbox_mode: (await readSandboxMode(dir)) ?? defaultMode,
+					model: model ? { provider: model.provider, ...(model.modelId ? { modelId: model.modelId } : {}) } : null,
+					thinking_level: model?.thinkingLevel ?? "high",
 				};
 			},
 			set_partner_model: async ({ model }) => {
@@ -1615,6 +1633,17 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					console.error("mcp_set_partners failed:", error);
 					return { ok: false, error: error instanceof Error ? error.message : String(error) };
 				}
+			},
+			mcp_partner_grants: async ({ name }) => {
+				const settings = await loadSettings();
+				const granted = await readPartnerGrantedMcp(getPartnerDir(settings, name));
+				const byName = new Map(mcpManager.statuses().map((status) => [status.name, status]));
+				return {
+					servers: granted.map((server) => {
+						const status = byName.get(server);
+						return { name: server, state: status?.state ?? ("stopped" as const), toolCount: status?.toolCount ?? 0 };
+					}),
+				};
 			},
 			list_partners: async () => {
 				const settings = await loadSettings();

@@ -23,7 +23,7 @@ import {
 	X,
 } from "lucide-solid";
 import { type Accessor, createEffect, createMemo, createResource, createSignal, For, Show, untrack } from "solid-js";
-import type { ExplorerEntry, ExplorerRoot } from "../../shared/rpc";
+import type { ExplorerEntry } from "../../shared/rpc";
 import { useSettings } from "../lib/contexts/settings-context";
 import { type HighlightToken, highlightCodeToLines, languageForPath } from "../lib/markdown";
 import { rpc } from "../lib/rpc";
@@ -36,7 +36,6 @@ interface DirState {
 }
 
 interface SelectedFile {
-	root: ExplorerRoot;
 	path: string;
 	name: string;
 }
@@ -47,10 +46,6 @@ interface FileData {
 	truncated?: boolean;
 	size?: number;
 	error?: string;
-}
-
-function dirKey(root: ExplorerRoot, path: string): string {
-	return `${root}:${path}`;
 }
 
 function fileGlyph(entry: ExplorerEntry) {
@@ -634,7 +629,6 @@ function CodeViewer(props: { content: string; lang: string | null; foldable: boo
 
 function ExplorerNode(props: {
 	entry: ExplorerEntry;
-	root: ExplorerRoot;
 	depth: number;
 	dirs: Accessor<Record<string, DirState>>;
 	expanded: Accessor<Set<string>>;
@@ -642,7 +636,7 @@ function ExplorerNode(props: {
 	onToggle: (entry: ExplorerEntry) => void;
 	onSelect: (entry: ExplorerEntry) => void;
 }) {
-	const key = () => dirKey(props.root, props.entry.path);
+	const key = () => props.entry.path;
 	const isDir = () => props.entry.kind === "dir" || (props.entry.kind === "link" && props.entry.linkKind === "dir");
 	const isOpen = () => props.expanded().has(key());
 	const state = () => props.dirs()[key()];
@@ -684,7 +678,6 @@ function ExplorerNode(props: {
 						{(child) => (
 							<ExplorerNode
 								entry={child}
-								root={props.root}
 								depth={props.depth + 1}
 								dirs={props.dirs}
 								expanded={props.expanded}
@@ -700,15 +693,7 @@ function ExplorerNode(props: {
 	);
 }
 
-export function ExplorerDrawer(props: {
-	open: boolean;
-	partner: string | null;
-	root: ExplorerRoot;
-	hasWorkspace: boolean;
-	side?: "left" | "right";
-	onRootChange: (root: ExplorerRoot) => void;
-	onClose: () => void;
-}) {
+export function ExplorerDrawer(props: { open: boolean; partner: string | null; side?: "left" | "right"; onClose: () => void }) {
 	const settingsView = useSettings();
 	const codeLineGap = () => settingsView.data()?.settings?.explorer?.lineGap ?? 0.2;
 	const codeLineHeight = () => 1 + codeLineGap();
@@ -720,23 +705,22 @@ export function ExplorerDrawer(props: {
 	let treeEl: HTMLDivElement | undefined;
 	let treeScrollTop = 0;
 
-	async function loadDir(root: ExplorerRoot, path: string) {
+	async function loadDir(path: string) {
 		if (!props.partner) return;
-		const key = dirKey(root, path);
-		const token = (tokens.get(key) ?? 0) + 1;
-		tokens.set(key, token);
-		setDirs((prev) => ({ ...prev, [key]: { status: "loading" } }));
-		const res = await rpc.request.explorer_children({ name: props.partner, root, path });
-		if (tokens.get(key) !== token) return;
+		const token = (tokens.get(path) ?? 0) + 1;
+		tokens.set(path, token);
+		setDirs((prev) => ({ ...prev, [path]: { status: "loading" } }));
+		const res = await rpc.request.explorer_children({ name: props.partner, root: "workspace", path });
+		if (tokens.get(path) !== token) return;
 		setDirs((prev) => ({
 			...prev,
-			[key]: res.ok && res.entries ? { status: "ready", entries: res.entries } : { status: "error", error: res.error ?? "failed to load" },
+			[path]: res.ok && res.entries ? { status: "ready", entries: res.entries } : { status: "error", error: res.error ?? "failed to load" },
 		}));
 		if (res.ok) {
 			const realUpdates: Record<string, string> = {};
-			if (res.realPath) realUpdates[key] = res.realPath;
+			if (res.realPath) realUpdates[path] = res.realPath;
 			for (const entry of res.entries ?? []) {
-				if ((entry.kind === "dir" || (entry.kind === "link" && entry.linkKind === "dir")) && entry.realPath) realUpdates[dirKey(root, entry.path)] = entry.realPath;
+				if ((entry.kind === "dir" || (entry.kind === "link" && entry.linkKind === "dir")) && entry.realPath) realUpdates[entry.path] = entry.realPath;
 			}
 			if (Object.keys(realUpdates).length > 0) setDirReal((prev) => ({ ...prev, ...realUpdates }));
 		}
@@ -751,18 +735,17 @@ export function ExplorerDrawer(props: {
 		treeScrollTop = 0;
 	}
 
-	let scope: { partner: string | null; root: ExplorerRoot } | null = null;
+	let scope: string | null | undefined;
 	createEffect(() => {
 		const partner = props.partner;
-		const root = props.root;
-		if (scope && scope.partner === partner && scope.root === root) return;
-		scope = { partner, root };
+		if (scope === partner) return;
+		scope = partner;
 		reset();
 	});
 
 	createEffect(() => {
 		if (!props.open || !props.partner) return;
-		if (!untrack(dirs)[dirKey(props.root, "")]) void loadDir(props.root, "");
+		if (!untrack(dirs)[""]) void loadDir("");
 	});
 
 	createEffect(() => {
@@ -785,11 +768,11 @@ export function ExplorerDrawer(props: {
 			current = current ? `${current}/${segments[i]}` : segments[i];
 			ancestors.push(current);
 		}
-		return ancestors.some((ancestor) => dirReal()[dirKey(props.root, ancestor)] === entry.realPath);
+		return ancestors.some((ancestor) => dirReal()[ancestor] === entry.realPath);
 	}
 
 	function toggleDir(entry: ExplorerEntry) {
-		const key = dirKey(props.root, entry.path);
+		const key = entry.path;
 		const next = new Set(expanded());
 		if (next.has(key)) {
 			next.delete(key);
@@ -797,19 +780,19 @@ export function ExplorerDrawer(props: {
 			if (hasCycleToAncestor(entry)) return;
 			next.add(key);
 			const state = dirs()[key];
-			if (!state || state.status === "error") void loadDir(props.root, entry.path);
+			if (!state || state.status === "error") void loadDir(entry.path);
 		}
 		setExpanded(next);
 	}
 
 	function selectFile(entry: ExplorerEntry) {
 		const current = selected();
-		if (current && current.root === props.root && current.path === entry.path) return;
-		setSelected({ root: props.root, path: entry.path, name: entry.name });
+		if (current && current.path === entry.path) return;
+		setSelected({ path: entry.path, name: entry.name });
 	}
 
-	const selectedKey = () => (selected() ? dirKey(selected()!.root, selected()!.path) : null);
-	const rootState = () => dirs()[dirKey(props.root, "")];
+	const selectedKey = () => selected()?.path ?? null;
+	const rootState = () => dirs()[""];
 	const crumbs = () => (selected()?.path || selected()?.name || "").split("/").filter(Boolean);
 	const foldable = () => {
 		const path = selected()?.path;
@@ -820,7 +803,7 @@ export function ExplorerDrawer(props: {
 
 	const [fileData] = createResource(selected, async (sel: SelectedFile): Promise<FileData | null> => {
 		if (!props.partner) return null;
-		const res = await rpc.request.explorer_read_file({ name: props.partner, root: sel.root, path: sel.path });
+		const res = await rpc.request.explorer_read_file({ name: props.partner, root: "workspace", path: sel.path });
 		if (!res.ok) return { error: res.error ?? "failed to read file" };
 		return { content: res.content ?? "", binary: res.binary, truncated: res.truncated, size: res.size };
 	});
@@ -842,15 +825,6 @@ export function ExplorerDrawer(props: {
 				<aside class={"explorer-drawer side-" + (props.side ?? "right")}>
 					<div class="explorer-head">
 						<span class="explorer-title">Explorer</span>
-						<Show when={props.hasWorkspace}>
-							<div class="explorer-root-toggle" role="group" aria-label="Explorer root">
-								{(["workspace", "storage"] as const).map((r) => (
-									<button type="button" class={"explorer-root" + (props.root === r ? " on" : "")} onClick={() => props.onRootChange(r)} aria-pressed={props.root === r}>
-										{r}
-									</button>
-								))}
-							</div>
-						</Show>
 						<button type="button" class="explorer-close" title="Close" onClick={props.onClose}>
 							×
 						</button>
@@ -858,16 +832,10 @@ export function ExplorerDrawer(props: {
 					<div class="explorer-tree" ref={treeEl} onScroll={(e) => (treeScrollTop = e.currentTarget.scrollTop)}>
 						<Show
 							when={rootState()?.status === "ready"}
-							fallback={
-								<div class="explorer-empty">
-									{rootState()?.status === "error" ? (rootState()?.error ?? "failed to load") : props.root === "workspace" ? "loading workspace…" : "loading storage…"}
-								</div>
-							}
+							fallback={<div class="explorer-empty">{rootState()?.status === "error" ? (rootState()?.error ?? "failed to load") : "loading workspace…"}</div>}
 						>
 							<For each={rootState()?.entries ?? []}>
-								{(entry) => (
-									<ExplorerNode entry={entry} root={props.root} depth={0} dirs={dirs} expanded={expanded} selectedKey={selectedKey} onToggle={toggleDir} onSelect={selectFile} />
-								)}
+								{(entry) => <ExplorerNode entry={entry} depth={0} dirs={dirs} expanded={expanded} selectedKey={selectedKey} onToggle={toggleDir} onSelect={selectFile} />}
 							</For>
 						</Show>
 					</div>

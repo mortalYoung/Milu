@@ -1,10 +1,10 @@
 import type { AgentMessage, Entry } from "@earendil-works/pi-agent-core";
 import type { ElectrobunRPCSchema } from "electrobun/main";
 import type { CustomModel, CustomProvider, ThemeMode, ToastPlacement } from "../bun/lib/settings";
-import type { McpConfig, McpLifecycle, McpServerConfig } from "../bun/mcp/types";
+import type { McpConfig, McpLifecycle, McpServerConfig, McpServerStatusState } from "../bun/mcp/types";
 import type { SandboxMode } from "../bun/permission/types";
 
-export type { CustomModel, CustomProvider, SandboxMode, ThemeMode, ToastPlacement };
+export type { CustomModel, CustomProvider, McpServerStatusState, SandboxMode, ThemeMode, ToastPlacement };
 
 export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
@@ -398,6 +398,7 @@ export type AppRPCSchema = __schema<{
 				params: { name: string };
 				response: {
 					workspace_path: string | null;
+					is_git_repo: boolean;
 
 					storage_path: string | null;
 					sandbox_mode: SandboxMode;
@@ -407,6 +408,17 @@ export type AppRPCSchema = __schema<{
 					thinking_levels: ThinkingLevel[];
 
 					models: { provider: string; models: { id: string; name: string }[] }[];
+				};
+			};
+
+			partner_runtime: {
+				params: { name: string };
+				response: {
+					workspace_path: string | null;
+					storage_path: string | null;
+					sandbox_mode: SandboxMode;
+					model: { provider: string; modelId?: string } | null;
+					thinking_level: ThinkingLevel;
 				};
 			};
 
@@ -601,6 +613,11 @@ export type AppRPCSchema = __schema<{
 			mcp_set_partners: {
 				params: { name: string; partners: string[] };
 				response: { ok: boolean; error?: string };
+			};
+
+			mcp_partner_grants: {
+				params: { name: string };
+				response: { servers: Array<{ name: string; state: McpServerStatusState; toolCount: number }> };
 			};
 
 			list_partners: {

@@ -28,6 +28,13 @@ export async function gitRepoRoot(workspace: string): Promise<string> {
 	return res.stdout.trim();
 }
 
+export async function isGitRepo(workspace: string): Promise<boolean> {
+	return gitRepoRoot(workspace).then(
+		() => true,
+		() => false,
+	);
+}
+
 function statusLetter(code: string): GitChangeStatus {
 	if (code === "?") return "U";
 	if (code === "C") return "A";

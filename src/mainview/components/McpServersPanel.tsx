@@ -1,4 +1,5 @@
 import { createSignal, For, onMount, Show } from "solid-js";
+import { mcpStateColor } from "../lib/mcp";
 import { rpc } from "../lib/rpc";
 import { Button } from "./Button";
 import type { PartnerItem } from "./ConversationList";
@@ -36,13 +37,6 @@ function parseEnvText(text: string): { ok: true; value?: Record<string, string> 
 		value[line.slice(0, eq).trim()] = line.slice(eq + 1).trim();
 	}
 	return { ok: true, value };
-}
-
-function statusColor(state: McpServerItem["state"]): string {
-	if (state === "connected") return "bg-[#7FB069]";
-	if (state === "error") return "bg-seal";
-	if (state === "connecting") return "bg-[#D9A13B]";
-	return "bg-muted";
 }
 
 export function McpServersPanel() {
@@ -246,7 +240,7 @@ export function McpServersPanel() {
 					{(server) => (
 						<div class="rounded-[10px] border border-hairline bg-letter p-3">
 							<div class="flex items-center gap-3">
-								<span class={"size-2 shrink-0 rounded-full " + statusColor(server.state)} title={server.state} />
+								<span class={"size-2 shrink-0 rounded-full " + mcpStateColor(server.state)} title={server.state} />
 								<span class="min-w-0 flex-1">
 									<span class="block truncate font-serif text-[14px] font-semibold text-ink">{server.name}</span>
 									<span class="block truncate font-mono text-[10px] text-body-muted">

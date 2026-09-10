@@ -1,10 +1,11 @@
 /**
  * PartnerDetailsDialog — a quiet developer dashboard for observing one partner:
- * identity + metrics + persona + 12-week heatmap + granted skills.
+ * identity + metrics + persona + 12-week heatmap + granted skills + granted MCP servers.
  * Colors use the app theme tokens so light/dark/system all stay coherent.
  */
 import { createMemo, createResource, For, Show } from "solid-js";
 import { renderMarkdown } from "../lib/markdown";
+import { mcpStateColor } from "../lib/mcp";
 import { rpc } from "../lib/rpc";
 import { ActivityHeatmap, HEATMAP_WEEKS } from "./ActivityHeatmap";
 import type { PartnerItem } from "./ConversationList";
@@ -44,6 +45,14 @@ export function PartnerDetailsDialog(props: { partner: PartnerItem | null; onOpe
 		() => (p() ? p()!.name : null),
 		async (name) => (await rpc.request.skill_list({ partner: name })).skills,
 	);
+	const [mcpGrants] = createResource(
+		() => (p() ? p()!.name : null),
+		async (name) => (await rpc.request.mcp_partner_grants({ name })).servers,
+	);
+	const [runtime] = createResource(
+		() => (p() ? p()!.name : null),
+		(name) => rpc.request.partner_runtime({ name }),
+	);
 
 	const metrics = createMemo(() => {
 		const list = days() ?? [];
@@ -76,7 +85,7 @@ export function PartnerDetailsDialog(props: { partner: PartnerItem | null; onOpe
 								</p>
 							</div>
 							<Show when={p()!.writing}>
-								<span class="ml-auto font-sans text-[10px] font-medium text-seal border border-seal/30 bg-seal-soft rounded-[5px] px-2 py-1">● running</span>
+								<span class="ml-auto font-sans text-[10px] font-medium text-seal border border-seal/30 bg-seal-soft rounded-[5px] px-2 py-1">● writing</span>
 							</Show>
 						</div>
 
@@ -98,7 +107,7 @@ export function PartnerDetailsDialog(props: { partner: PartnerItem | null; onOpe
 								{p()!.persona?.trim() ? (
 									<div class="md font-sans text-[12.5px] leading-[1.65] text-ink" innerHTML={renderMarkdown(p()!.persona!)} />
 								) : (
-									<p class="font-sans text-[12.5px] text-muted">No persona written.</p>
+									<p class="font-sans text-[12.5px] text-muted">-</p>
 								)}
 
 								<Show when={days()}>
@@ -119,6 +128,28 @@ export function PartnerDetailsDialog(props: { partner: PartnerItem | null; onOpe
 										<div class="text-ink font-mono text-[10.5px]">{formatDate(p()!.createdAt)}</div>
 									</div>
 									<div>
+										<div class="text-body-muted">Workspace</div>
+										<div class="text-ink font-mono text-[10.5px] break-all">{runtime()?.workspace_path ?? "-"}</div>
+									</div>
+									<div>
+										<div class="text-body-muted">Storage</div>
+										<div class="text-ink font-mono text-[10.5px] break-all">{runtime()?.storage_path ?? "-"}</div>
+									</div>
+									<div>
+										<div class="text-body-muted">Model</div>
+										<div class="text-ink font-mono text-[10.5px] break-all">
+											{runtime()?.model ? [runtime()!.model!.provider, runtime()!.model!.modelId ?? "default"].join(" · ") : "default model"}
+										</div>
+									</div>
+									<div>
+										<div class="text-body-muted">Effort</div>
+										<div class="text-ink font-mono text-[10.5px]">{runtime()?.thinking_level ?? "-"}</div>
+									</div>
+									<div>
+										<div class="text-body-muted">Sandbox</div>
+										<div class="text-ink font-mono text-[10.5px] break-all">{runtime()?.sandbox_mode ?? "-"}</div>
+									</div>
+									<div>
 										<div class="text-body-muted">Skills</div>
 										<Show when={skills() && skills()!.length > 0} fallback={<div class="text-muted">none granted</div>}>
 											<ul class="mt-1 flex flex-col gap-1">
@@ -126,6 +157,21 @@ export function PartnerDetailsDialog(props: { partner: PartnerItem | null; onOpe
 													{(s) => (
 														<li class="font-mono text-[10.5px] text-body-muted border border-hairline rounded px-1.5 py-0.5 w-fit">
 															{s.name} <span class="text-muted">· {s.scope}</span>
+														</li>
+													)}
+												</For>
+											</ul>
+										</Show>
+									</div>
+									<div>
+										<div class="text-body-muted">MCP servers</div>
+										<Show when={mcpGrants() && mcpGrants()!.length > 0} fallback={<div class="text-muted">none granted</div>}>
+											<ul class="mt-1 flex flex-col gap-1">
+												<For each={mcpGrants()}>
+													{(s) => (
+														<li class="flex w-fit items-center gap-1.5 rounded border border-hairline px-1.5 py-0.5 font-mono text-[10.5px] text-body-muted">
+															<span class={"size-1.5 shrink-0 rounded-full " + mcpStateColor(s.state)} title={s.state} />
+															{s.name} <span class="text-muted">· {s.toolCount} tools</span>
 														</li>
 													)}
 												</For>

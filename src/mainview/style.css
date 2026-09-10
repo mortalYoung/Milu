@@ -1362,20 +1362,8 @@ body::before {
 	.explorer-title {
 		@apply font-sans text-[9px] uppercase tracking-[0.2em] text-body-muted;
 	}
-	.explorer-root-toggle {
-		@apply flex-none flex items-center gap-0.5 rounded-[4px] border border-hairline p-[1px] ml-auto;
-	}
-	.explorer-root {
-		@apply font-mono text-[9px] uppercase tracking-[0.12em] text-body-muted rounded-[3px] px-1.5 py-[1px] cursor-pointer bg-transparent transition-colors;
-	}
-	.explorer-root:hover {
-		@apply text-ink;
-	}
-	.explorer-root.on {
-		@apply text-paper bg-ink;
-	}
 	.explorer-close {
-		@apply font-sans text-[15px] leading-none text-body-muted hover:text-ink cursor-pointer bg-transparent border-0 p-0 ml-1;
+		@apply font-sans text-[15px] leading-none text-body-muted hover:text-ink cursor-pointer bg-transparent border-0 p-0 ml-auto;
 	}
 	.explorer-tree {
 		@apply flex-1 min-h-0 overflow-y-auto pt-2;
