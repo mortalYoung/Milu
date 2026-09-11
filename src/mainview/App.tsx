@@ -304,6 +304,14 @@ function WorkspaceControllers() {
 				})
 				.catch(() => {});
 		});
+
+		document.addEventListener("click", (event) => {
+			const anchor = (event.target as HTMLElement | null)?.closest?.("a[href]");
+			const href = anchor?.getAttribute("href");
+			if (!href) return;
+			event.preventDefault();
+			if (/^(https?|mailto):/i.test(href)) void rpc.request.open_external({ url: href });
+		});
 	});
 
 	return (

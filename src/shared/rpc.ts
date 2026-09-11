@@ -477,6 +477,11 @@ export type AppRPCSchema = __schema<{
 				response: { ok: boolean; error?: string; shellId?: string };
 			};
 
+			open_external: {
+				params: { url: string };
+				response: { ok: boolean };
+			};
+
 			open_path: {
 				params: { path: string; editorId?: string };
 				response: { ok: boolean; error?: string };

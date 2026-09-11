@@ -1721,6 +1721,8 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				}
 			},
 
+			open_external: ({ url }) => ({ ok: Utils.openExternal(url) }),
+
 			open_path: async ({ path, editorId }) => {
 				const opened = await openInCodeEditor(path, editorId);
 				return opened ? { ok: true } : { ok: false, error: "No supported code editor found" };
