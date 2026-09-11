@@ -1,10 +1,9 @@
 import { createSignal } from "solid-js";
 import { fuzzyScore } from "../../shared/fuzzy";
-import type { CommandDescriptor } from "../../shared/rpc";
 import type { PartnerItem } from "../components/ConversationList";
 import type { RevealRange } from "./dock";
 
-export type PaletteMode = "sessions" | "files" | "commands";
+export type PaletteMode = "sessions" | "files" | "access";
 
 export interface PaletteFile {
 	path: string;
@@ -15,7 +14,16 @@ export type PaletteRow =
 	| { kind: "header"; label: string }
 	| { kind: "session"; partner: PartnerItem }
 	| { kind: "file"; file: PaletteFile }
-	| { kind: "command"; command: CommandDescriptor };
+	| { kind: "grant"; grant: PaletteGrant };
+
+export interface PaletteGrant {
+	group: "skill" | "mcp";
+	name: string;
+	detail: string;
+	meta?: string;
+	granted: boolean;
+	alwaysOn: boolean;
+}
 
 export function createPalette() {
 	const [open, setOpen] = createSignal(false);
@@ -24,7 +32,6 @@ export function createPalette() {
 	const [index, setIndex] = createSignal(0);
 	const [focusSeq, setFocusSeq] = createSignal(0);
 
-	/** Open, or — when already open — just refocus the input (Cmd+P again). */
 	function launch() {
 		setOpen(true);
 		setFocusSeq((n) => n + 1);
@@ -48,15 +55,10 @@ export function createPalette() {
 
 export type Palette = ReturnType<typeof createPalette>;
 
-/** Rows that can be picked (headers are labels, not targets). */
 export function pickableIndexes(rows: PaletteRow[]): number[] {
-	return rows.map((row, index) => (row.kind === "header" ? -1 : index)).filter((index) => index >= 0);
+	return rows.map((row, index) => (row.kind === "header" || (row.kind === "grant" && row.grant.alwaysOn) ? -1 : index)).filter((index) => index >= 0);
 }
 
-/**
- * `src/a.ts#16` / `src/a.ts#74-80` — the reference syntax the Explorer's "Copy Relative Path" writes.
- * Anything that is not `<digits>[-<digits>]` after `#` stays part of the path query.
- */
 export function parseFileQuery(query: string): { path: string; range: RevealRange | null } {
 	const at = query.indexOf("#");
 	if (at === -1) return { path: query.trim(), range: null };
@@ -66,7 +68,6 @@ export function parseFileQuery(query: string): { path: string; range: RevealRang
 	const before = query.slice(0, at).trim();
 	const first = Number(match[1]);
 	const second = match[2] ? Number(match[2]) : first;
-	// `foo.ts#0` is a line reference that cannot be honoured — drop it, but still search the path.
 	if (first < 1 || second < 1) return { path: before, range: null };
 	return { path: before, range: { start: Math.min(first, second), end: Math.max(first, second) } };
 }
@@ -87,7 +88,6 @@ export function sessionRows(partners: PartnerItem[], query: string): PaletteRow[
 		const persona = partner.persona ? fuzzyScore(q, partner.persona) : null;
 		if (name !== null || persona !== null) hits.push({ partner, name, persona });
 	}
-	// Name hits rank above persona hits, then better score, then newest.
 	hits.sort(
 		(a, b) =>
 			Number(b.name !== null) - Number(a.name !== null) ||
@@ -107,31 +107,34 @@ export function fileRows(files: PaletteFile[], query: string): PaletteRow[] {
 		const score = fuzzyScore(q, file.path);
 		if (score !== null) hits.push({ file, score });
 	}
-	// An exact path (typically pasted from the Explorer with a line reference) beats every fuzzy hit.
 	hits.sort((a, b) => Number(b.file.path.toLowerCase() === lower) - Number(a.file.path.toLowerCase() === lower) || b.score - a.score || a.file.path.length - b.file.path.length);
 	return hits.map(({ file }) => ({ kind: "file" as const, file }));
 }
 
-export function commandRows(commands: CommandDescriptor[], query: string): PaletteRow[] {
-	const q = query.trim();
-	const hits: { command: CommandDescriptor; score: number }[] = [];
-	for (const command of commands) {
-		const name = fuzzyScore(q, command.name);
-		const description = fuzzyScore(q, command.description);
-		if (!q) hits.push({ command, score: 0 });
-		else if (name !== null || description !== null) hits.push({ command, score: (name ?? 0) * 2 + (description ?? 0) + (name !== null ? 8 : 0) });
-	}
-	hits.sort((a, b) => b.score - a.score || a.command.name.localeCompare(b.command.name));
+function grantScore(grant: PaletteGrant, query: string): number | null {
+	if (!query) return 0;
+	const name = fuzzyScore(query, grant.name);
+	const detail = grant.detail ? fuzzyScore(query, grant.detail) : null;
+	if (name === null && detail === null) return null;
+	return (name ?? 0) * 2 + (detail ?? 0) + (name !== null ? 8 : 0);
+}
 
+export function grantRows(grants: PaletteGrant[], query: string): PaletteRow[] {
+	const q = query.trim();
+	const hits: { grant: PaletteGrant; score: number }[] = [];
+	for (const grant of grants) {
+		const score = grantScore(grant, q);
+		if (score !== null) hits.push({ grant, score });
+	}
 	const rows: PaletteRow[] = [];
-	for (const [label, pick] of [
-		["Commands", (x: CommandDescriptor) => x.category !== "skill"],
-		["Skills", (x: CommandDescriptor) => x.category === "skill"],
+	for (const [label, group] of [
+		["Skills", "skill"],
+		["MCP servers", "mcp"],
 	] as const) {
-		const group = hits.filter((hit) => pick(hit.command));
-		if (group.length === 0) continue;
+		const list = hits.filter((hit) => hit.grant.group === group).sort((a, b) => b.score - a.score || a.grant.name.localeCompare(b.grant.name));
+		if (list.length === 0) continue;
 		rows.push({ kind: "header", label });
-		for (const { command } of group) rows.push({ kind: "command", command });
+		for (const hit of list) rows.push({ kind: "grant", grant: hit.grant });
 	}
 	return rows;
 }

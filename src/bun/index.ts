@@ -91,7 +91,7 @@ import { createSessionStore, type SessionScope } from "./persist";
 import { type ContextChangedEventData, EVENTS, type MemoryRunEndEventData, type MemoryRunStage, type MemoryRunStartEventData } from "./persist/events";
 import { scanSkillsRoot } from "./skills/filesystem";
 import { SKILL_NAME_RE } from "./skills/frontmatter";
-import { getSkill, listSkills } from "./skills/registry";
+import { getSkill, listSkillCandidates, listSkills } from "./skills/registry";
 import type { SkillsService } from "./skills/types";
 import { type McpAccess, type McpServerSummary, runEscalatedBash } from "./tools";
 
@@ -2106,6 +2106,72 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 						return { name: server, state: status?.state ?? ("stopped" as const), toolCount: status?.toolCount ?? 0 };
 					}),
 				};
+			},
+
+			partner_access: async ({ name }) => {
+				try {
+					const settings = await loadSettings();
+					const profile = (await listPartners(settings)).find((p) => p.name === name);
+					if (!profile) return { skills: [], mcp: [] };
+					const dir = getPartnerDir(settings, name);
+					const grantedSkills = await readPartnerGrantedSkills(dir);
+					const grantedMcp = await readPartnerGrantedMcp(dir);
+					const entry = await agents.get(name);
+					const workspace = entry?.agent.workspacePath ?? (await ensureWorkspace(dir));
+					const skills = await listSkillCandidates({ cwd: workspace, home: homedir(), skillsDirs: skillsDirsOf(settings) });
+					const statuses = new Map(mcpManager.statuses().map((status) => [status.name, status]));
+					return {
+						skills: skills.map((skill) => ({
+							name: skill.name,
+							description: skill.description,
+							scope: skill.scope,
+							granted: grantedSkills.includes(skill.name),
+						})),
+						mcp: mcpManager.listServers().map((server) => {
+							const status = statuses.get(server.name);
+							return { name: server.name, state: status?.state ?? ("stopped" as const), toolCount: status?.toolCount ?? 0, granted: grantedMcp.includes(server.name) };
+						}),
+					};
+				} catch (error) {
+					console.error("partner_access failed:", error);
+					return { skills: [], mcp: [] };
+				}
+			},
+
+			partner_set_skill: async ({ name, skill, granted }) => {
+				try {
+					const settings = await loadSettings();
+					const dir = getPartnerDir(settings, name);
+					const current = await readPartnerGrantedSkills(dir);
+					const next = granted ? (current.includes(skill) ? current : [...current, skill]) : current.filter((entry) => entry !== skill);
+					if (next.join("\n") !== current.join("\n")) await persistPartnerGrantedSkills(dir, next);
+					scheduleSkillsRefresh();
+					return { ok: true };
+				} catch (error) {
+					console.error("partner_set_skill failed:", error);
+					return { ok: false, error: error instanceof Error ? error.message : String(error) };
+				}
+			},
+
+			partner_set_mcp: async ({ name, server, granted }) => {
+				try {
+					const settings = await loadSettings();
+					const dir = getPartnerDir(settings, name);
+					const current = await readPartnerGrantedMcp(dir);
+					const adding = granted && !current.includes(server);
+					const removing = !granted && current.includes(server);
+					if (!adding && !removing) return { ok: true };
+					const next = adding ? [...current, server] : current.filter((entry) => entry !== server);
+					await persistPartnerGrantedMcp(dir, next);
+					const event = { server, change: adding ? ("added" as const) : ("removed" as const), granted: next };
+					await session.scope(dir).appendMcpChanged(event, Date.now());
+					const entry = await agents.get(name);
+					if (entry) (await entry).agent.notifySystemReminder(mcpChangedText(event));
+					return { ok: true };
+				} catch (error) {
+					console.error("partner_set_mcp failed:", error);
+					return { ok: false, error: error instanceof Error ? error.message : String(error) };
+				}
 			},
 			palette_search_files: async ({ name, query }) => {
 				const settings = await loadSettings();

@@ -1,8 +1,7 @@
-import { createEffect, createMemo, createSignal, For, onCleanup, Show } from "solid-js";
-import { useCommandDirectory } from "../lib/contexts/commands-context";
-import { useComposer } from "../lib/contexts/composer-context";
+import { createEffect, createMemo, createSignal, For, onCleanup, Show, untrack } from "solid-js";
+import type { PartnerAccessServer, PartnerAccessSkill } from "../../shared/rpc";
 import type { RevealRange } from "../lib/dock";
-import { commandRows, fileRows, type Palette, type PaletteMode, type PaletteRow, parseFileQuery, pickableIndexes, sessionRows } from "../lib/palette";
+import { fileRows, grantRows, type Palette, type PaletteGrant, type PaletteMode, type PaletteRow, parseFileQuery, pickableIndexes, sessionRows } from "../lib/palette";
 import { rpc } from "../lib/rpc";
 import type { PartnerItem } from "./ConversationList";
 import { PaletteList } from "./PaletteList";
@@ -10,7 +9,7 @@ import { PaletteList } from "./PaletteList";
 const MODES: { id: PaletteMode; label: string }[] = [
 	{ id: "sessions", label: "Sessions" },
 	{ id: "files", label: "Files" },
-	{ id: "commands", label: "Commands" },
+	{ id: "access", label: "Access" },
 ];
 const SEARCH_DEBOUNCE_MS = 150;
 
@@ -25,26 +24,21 @@ export function CommandPalette(props: {
 	onOpenFile: (path: string) => void;
 }) {
 	const palette = props.palette;
-	const commands = useCommandDirectory();
-	const composer = useComposer();
 	const [fileQuery, setFileQuery] = createSignal("");
 	const [composing, setComposing] = createSignal(false);
 	let panelEl: HTMLDivElement | undefined;
 	let inputEl: HTMLInputElement | undefined;
 
 	const filesAvailable = () => props.partner != null && props.hasWorkspace;
-	// Commands fill the composer, so they need a chat to fill (same rule as Files needing a workspace).
-	const modeAvailable = (mode: PaletteMode) => (mode === "files" ? filesAvailable() : mode === "commands" ? props.partner != null : true);
+	const modeAvailable = (mode: PaletteMode) => (mode === "files" ? filesAvailable() : mode === "access" ? props.partner != null : true);
 	const availableModes = createMemo(() => MODES.map((m) => m.id).filter(modeAvailable));
 
-	// A mode can disappear while the palette is open (chat closed): fall back to what is still available.
 	createEffect(() => {
 		const list = availableModes();
 		if (list.includes(palette.mode())) return;
 		palette.setMode(list[0]);
 	});
 
-	// The debounced query only settles into `fileQuery`, so a fetch never races the keystrokes.
 	createEffect(() => {
 		if (!palette.open()) {
 			searchSeq += 1;
@@ -63,9 +57,6 @@ export function CommandPalette(props: {
 	const [searching, setSearching] = createSignal(false);
 	let searchSeq = 0;
 
-	// A plain request + seq, deliberately **not** createResource: any resource load inside the
-	// palette's Suspense boundary makes Solid swap to the fallback, which unmounts the whole panel
-	// (entrance animation replays, input loses focus).
 	createEffect(() => {
 		if (!palette.open() || palette.mode() !== "files" || !filesAvailable() || fileQuery() !== parseFileQuery(palette.query()).path) return;
 		const seq = ++searchSeq;
@@ -85,20 +76,79 @@ export function CommandPalette(props: {
 		);
 	});
 
+	const [grants, setGrants] = createSignal<PaletteGrant[]>([]);
+	const [grantError, setGrantError] = createSignal<string | null>(null);
+	let accessSeq = 0;
+
+	function toGrants(skills: PartnerAccessSkill[], servers: PartnerAccessServer[]): PaletteGrant[] {
+		const skillRows: PaletteGrant[] = skills.map((skill) => ({
+			group: "skill" as const,
+			name: skill.name,
+			detail: skill.description,
+			...(skill.scope === "project" ? { meta: "project" } : {}),
+			granted: skill.granted,
+			alwaysOn: skill.scope === "project",
+		}));
+		const serverRows: PaletteGrant[] = servers.map((server) => ({
+			group: "mcp" as const,
+			name: server.name,
+			detail: server.state === "error" ? "error" : "",
+			...(server.toolCount > 0 ? { meta: `${server.toolCount} tools` } : {}),
+			granted: server.granted,
+			alwaysOn: false,
+		}));
+		return [...skillRows, ...serverRows];
+	}
+
+	createEffect(() => {
+		if (!palette.open() || palette.mode() !== "access") return;
+		const partner = props.partner;
+		if (!partner) return;
+		const seq = ++accessSeq;
+		void rpc.request.partner_access({ name: partner }).then(
+			(result) => {
+				if (seq !== accessSeq) return;
+				setGrants(toGrants(result.skills, result.mcp));
+				setGrantError(null);
+			},
+			(error) => {
+				if (seq !== accessSeq) return;
+				setGrantError(error instanceof Error ? error.message : String(error));
+			},
+		);
+	});
+
+	async function toggleGrant(grant: PaletteGrant) {
+		const next = !grant.granted;
+		const flip = (granted: boolean) => setGrants((list) => list.map((item) => (item === grant ? { ...item, granted } : item)));
+		flip(next);
+		setGrantError(null);
+		const partner = props.partner;
+		if (!partner) return;
+		try {
+			const result =
+				grant.group === "skill"
+					? await rpc.request.partner_set_skill({ name: partner, skill: grant.name, granted: next })
+					: await rpc.request.partner_set_mcp({ name: partner, server: grant.name, granted: next });
+			if (!result.ok) throw new Error(result.error ?? "grant failed");
+		} catch (error) {
+			flip(grant.granted);
+			setGrantError(error instanceof Error ? error.message : String(error));
+		}
+	}
+
 	const rows = createMemo<PaletteRow[]>(() => {
 		if (palette.mode() === "sessions") return sessionRows(props.partners, palette.query());
-		if (palette.mode() === "commands") return commandRows(commands.commands(), palette.query());
+		if (palette.mode() === "access") return grantRows(grants(), palette.query());
 		const result = fileResults();
 		return result?.ok ? fileRows(result.items, palette.query()) : [];
 	});
 	const positions = createMemo(() => pickableIndexes(rows()));
 
-	// Mode and query changes land on the first pickable row; the row set growing (partners refreshed,
-	// file results arriving) must not yank a selection the user is already navigating.
 	createEffect(() => {
 		void palette.mode();
 		void palette.query();
-		const list = positions();
+		const list = untrack(positions);
 		palette.setIndex(list.length > 0 ? list[0] : -1);
 	});
 	createEffect(() => {
@@ -122,10 +172,13 @@ export function CommandPalette(props: {
 
 	function activate(row: PaletteRow | undefined) {
 		if (!row || row.kind === "header") return;
+		if (row.kind === "grant") {
+			if (!row.grant.alwaysOn) void toggleGrant(row.grant);
+			return;
+		}
 		palette.close();
 		if (row.kind === "session") props.onSelectPartner(row.partner.name);
-		else if (row.kind === "file") props.onRevealFile(row.file.path, parseFileQuery(palette.query()).range);
-		else composer.prefill(`/${row.command.name} `);
+		else props.onRevealFile(row.file.path, parseFileQuery(palette.query()).range);
 	}
 
 	function onKeyDown(e: KeyboardEvent) {
@@ -165,16 +218,12 @@ export function CommandPalette(props: {
 		});
 	});
 
-	// Tab is a keyboard gesture: switching modes must leave the caret in the field (and survive any
-	// remount), without re-selecting the preserved query.
 	createEffect(() => {
 		void palette.mode();
 		if (!palette.open()) return;
 		requestAnimationFrame(() => inputEl?.focus());
 	});
 
-	// Esc is the palette's own key: consume it here (capture) so drawers / dialogs below stay open.
-	// The click that dismisses the palette is consumed too — it must not also act on what's behind.
 	createEffect(() => {
 		if (!palette.open()) return;
 		const onKey = (e: KeyboardEvent) => {
@@ -198,7 +247,7 @@ export function CommandPalette(props: {
 
 	const emptyNote = () => {
 		if (palette.mode() === "sessions") return "no partner found";
-		if (palette.mode() === "commands") return props.partner == null ? "open a chat to run commands" : "no command found";
+		if (palette.mode() === "access") return props.partner == null ? "open a chat to grant" : "no skills or MCP servers";
 		if (!filesAvailable()) return "open a chat to search files";
 		const result = fileResults();
 		if (result && !result.ok) return `search failed${result.error ? ` · ${result.error}` : ""}`;
@@ -206,7 +255,6 @@ export function CommandPalette(props: {
 		return "no file found";
 	};
 
-	/** `#16` / `#74-80` when the query carries a line reference — one always-accurate badge, applied on activate. */
 	const rangeNote = () => {
 		if (palette.mode() !== "files") return null;
 		const range = parseFileQuery(palette.query()).range;
@@ -215,8 +263,14 @@ export function CommandPalette(props: {
 	};
 
 	const statusNote = () => {
+		if (palette.mode() === "access") return grantError();
 		if (palette.mode() !== "files" || !filesAvailable() || searching()) return null;
 		return fileResults()?.truncated ? "first 50 · keep typing to narrow" : null;
+	};
+
+	const keyNote = () => {
+		if (palette.mode() === "access") return "tab switch · ↑↓ navigate · ↵ toggle · esc";
+		return `tab switch · ↑↓ navigate · ↵ open${palette.mode() === "files" ? " · ⌘↵ editor" : ""} · esc`;
 	};
 
 	return (
@@ -277,7 +331,7 @@ export function CommandPalette(props: {
 						<span class="palette-status" aria-live="polite">
 							{statusNote()}
 						</span>
-						<span class="palette-keys">tab switch · ↑↓ navigate · ↵ open{palette.mode() === "files" ? " · ⌘↵ editor" : ""} · esc</span>
+						<span class="palette-keys">{keyNote()}</span>
 					</div>
 				</div>
 			</div>

@@ -1435,14 +1435,23 @@ body::before {
 	.palette-range {
 		@apply shrink-0 font-mono text-[10px] text-seal border border-seal/30 rounded-[3px] px-1 py-[1px] whitespace-nowrap;
 	}
-	.palette-row-command {
-		@apply font-mono text-[12.5px] text-seal shrink-0;
+	.palette-row-glyph {
+		@apply w-[10px] shrink-0 text-center font-mono text-[11px] text-muted;
 	}
-	.palette-row-hint {
-		@apply shrink-0 font-mono text-[10.5px] text-muted whitespace-nowrap;
+	.palette-row-glyph.on {
+		@apply text-seal;
 	}
-	.palette-row-badge {
-		@apply shrink-0 font-sans text-[9px] uppercase tracking-[0.08em] text-seal border border-seal/30 rounded-[3px] px-1 py-[1px];
+	.palette-row-grant {
+		@apply shrink-0 font-mono text-[12px] text-body-muted;
+	}
+	.palette-row-grant.on {
+		@apply text-ink;
+	}
+	.palette-row-meta {
+		@apply shrink-0 font-mono text-[10px] text-muted whitespace-nowrap;
+	}
+	.palette-row.static {
+		@apply cursor-default;
 	}
 	.palette-note {
 		@apply px-4 py-6 text-center font-mono text-[11px] text-muted;

@@ -127,18 +127,19 @@ export function Composer(props: {
 	const menuItems = createMemo(() => {
 		const q = menuQuery();
 		const commands = filterCommands(commandDirectory.commands(), q);
-		const skillItems = (skillDirectory.data() ?? [])
-			.filter((s) => s.userInvocable)
-			.map(
-				(s): CommandDescriptor => ({
-					name: `skill:${s.name}`,
-					description: s.description,
-					kind: "execute",
-					category: "skill",
-				}),
-			)
-			.filter((s) => !q || s.name.startsWith(q) || s.name.includes(q))
-			.sort((a, b) => a.name.localeCompare(b.name));
+		const skillItems = filterCommands(
+			(skillDirectory.data() ?? [])
+				.filter((s) => s.userInvocable)
+				.map(
+					(s): CommandDescriptor => ({
+						name: `skill:${s.name}`,
+						description: s.description,
+						kind: "execute",
+						category: "skill",
+					}),
+				),
+			q,
+		);
 		return [...commands, ...skillItems];
 	});
 

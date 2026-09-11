@@ -266,6 +266,20 @@ export interface PartnerActivityDay {
 	tools: number;
 }
 
+export interface PartnerAccessSkill {
+	name: string;
+	description: string;
+	scope: "project" | "global";
+	granted: boolean;
+}
+
+export interface PartnerAccessServer {
+	name: string;
+	state: McpServerStatusState;
+	toolCount: number;
+	granted: boolean;
+}
+
 // ——— memory panel ———
 export type MemoryKindView = "fact" | "decision" | "issue" | "reference" | "event" | "preference" | "instruction";
 
@@ -738,6 +752,21 @@ export type AppRPCSchema = __schema<{
 			mcp_partner_grants: {
 				params: { name: string };
 				response: { servers: Array<{ name: string; state: McpServerStatusState; toolCount: number }> };
+			};
+
+			partner_access: {
+				params: { name: string };
+				response: { skills: PartnerAccessSkill[]; mcp: PartnerAccessServer[] };
+			};
+
+			partner_set_skill: {
+				params: { name: string; skill: string; granted: boolean };
+				response: { ok: boolean; error?: string };
+			};
+
+			partner_set_mcp: {
+				params: { name: string; server: string; granted: boolean };
+				response: { ok: boolean; error?: string };
 			};
 
 			list_partners: {

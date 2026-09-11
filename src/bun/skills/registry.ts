@@ -6,6 +6,10 @@ import { parseSkillFile, SKILL_NAME_RE } from "./frontmatter";
 import type { SkillDefinition, SkillLookup, SkillSummary } from "./types";
 
 export async function listSkills(lookup: SkillLookup): Promise<SkillSummary[]> {
+	return filterVisible(await listSkillCandidates(lookup), lookup.granted);
+}
+
+export async function listSkillCandidates(lookup: Omit<SkillLookup, "granted">): Promise<SkillSummary[]> {
 	const dirs = lookup.skillsDirs.length > 0 ? lookup.skillsDirs : [".agents/skills"];
 	const candidates: SkillCandidate[] = [];
 	for (let i = 0; i < dirs.length; i++) {
@@ -16,7 +20,6 @@ export async function listSkills(lookup: SkillLookup): Promise<SkillSummary[]> {
 	}
 	const byName = new Map<string, SkillCandidate>();
 	for (const candidate of candidates) {
-		if (!filterVisible([candidate], lookup.granted).length) continue;
 		const existing = byName.get(candidate.name);
 		if (!existing) {
 			byName.set(candidate.name, candidate);

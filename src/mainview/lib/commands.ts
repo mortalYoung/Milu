@@ -4,15 +4,24 @@ import { useToast } from "./contexts/toast-context";
 import type { RPC } from "./rpc";
 
 export function filterCommands(commands: CommandDescriptor[], query: string): CommandDescriptor[] {
-	const q = query.toLowerCase();
+	const q = query.trim().toLowerCase();
 	if (!q) return commands;
+	const rank = (command: CommandDescriptor): number => {
+		const name = command.name.toLowerCase();
+		if (name.startsWith(q)) return 0;
+		if (name.includes(q)) return 1;
+		return command.description
+			.toLowerCase()
+			.split(/[^a-z0-9]+/)
+			.some((word) => word.startsWith(q))
+			? 2
+			: -1;
+	};
 	return commands
-		.filter((c) => c.name.startsWith(q) || c.name.includes(q))
-		.sort((a, b) => {
-			const ap = a.name.startsWith(q) ? 0 : 1;
-			const bp = b.name.startsWith(q) ? 0 : 1;
-			return ap - bp || a.name.localeCompare(b.name);
-		});
+		.map((command) => ({ command, at: rank(command) }))
+		.filter((hit) => hit.at >= 0)
+		.sort((a, b) => a.at - b.at || a.command.name.localeCompare(b.command.name))
+		.map((hit) => hit.command);
 }
 
 export function createCommandDirectory(rpc: RPC) {

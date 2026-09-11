@@ -59,26 +59,42 @@ export function PaletteList(props: { rows: PaletteRow[]; index: number; unread: 
 							</button>
 						);
 					}
-					return (
-						<button
-							type="button"
-							id={`palette-option-${index()}`}
-							class={rowClass(index())}
-							role="option"
-							aria-selected={isSelected(index())}
-							onMouseEnter={() => props.onHover(index())}
-							onClick={() => props.onPick(row)}
-						>
-							<span class="palette-row-command">/{row.command.name}</span>
-							<span class="palette-row-sub min-w-0 flex-1">{row.command.description}</span>
-							<Show when={row.command.hint}>
-								<span class="palette-row-hint">{row.command.hint}</span>
-							</Show>
-							<Show when={row.command.category === "skill"}>
-								<span class="palette-row-badge">skill</span>
-							</Show>
-						</button>
-					);
+					if (row.kind === "grant") {
+						const on = row.grant.granted || row.grant.alwaysOn;
+						const body = (
+							<>
+								<span class={on ? "palette-row-glyph on" : "palette-row-glyph"} aria-hidden="true">
+									{on ? "✓" : "·"}
+								</span>
+								<span class={on ? "palette-row-grant on" : "palette-row-grant"}>{row.grant.name}</span>
+								<Show when={row.grant.detail}>
+									<span class="palette-row-sub min-w-0 flex-1">{row.grant.detail}</span>
+								</Show>
+								<Show when={row.grant.meta}>
+									<span class="palette-row-meta">{row.grant.meta}</span>
+								</Show>
+							</>
+						);
+						if (row.grant.alwaysOn)
+							return (
+								<div class="palette-row static" role="presentation">
+									{body}
+								</div>
+							);
+						return (
+							<button
+								type="button"
+								id={`palette-option-${index()}`}
+								class={rowClass(index())}
+								role="option"
+								aria-selected={isSelected(index())}
+								onMouseEnter={() => props.onHover(index())}
+								onClick={() => props.onPick(row)}
+							>
+								{body}
+							</button>
+						);
+					}
 				}}
 			</For>
 		</div>
