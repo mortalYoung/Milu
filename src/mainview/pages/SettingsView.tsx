@@ -25,17 +25,15 @@ export interface SettingsData {
 	sendMessageIntervalSec?: number | null;
 	shellContinuous?: boolean;
 	memoryEnabled?: boolean;
-	memoryCronEnabled?: boolean;
-	memoryDailyTime?: string;
+	memoryIdleMinutes?: number;
+	memoryMaxScenes?: number;
 	commands_path?: string;
 	retry?: { maxRetries?: number; baseDelayMs?: number };
 	webFetch?: { timeoutMs?: number; maxBytes?: number; maxChars?: number; userAgent?: string };
 	compaction?: {
 		thresholdRatio?: number;
-		eventDigestCount?: number;
-		summaryCapChars?: number;
+		digestMaxItems?: number;
 		maxOverflowRetries?: number;
-		summarizer?: "local" | "llm";
 		prune?: { thresholdChars?: number; headChars?: number; tailChars?: number };
 	};
 	explorer?: { lineGap?: number };
@@ -54,6 +52,7 @@ export interface SaveResult {
 
 const CATS = [
 	{ id: "general", label: "General" },
+	{ id: "memory", label: "Memory" },
 	{ id: "skills", label: "Skills" },
 	{ id: "mcp", label: "MCP" },
 	{ id: "webFetch", label: "Web Fetch" },
@@ -82,8 +81,8 @@ const DEFAULTS = {
 	skills_watch_delay_ms: 300,
 	shellContinuous: true,
 	memoryEnabled: true,
-	memoryCronEnabled: true,
-	memoryDailyTime: "06:00",
+	memoryIdleMinutes: 5,
+	memoryMaxScenes: 15,
 	explorerLineGap: 0.2,
 };
 
@@ -214,9 +213,8 @@ export function SettingsView() {
 	const [webFetchMaxChars, setWebFetchMaxChars] = createSignal("50000");
 	const [webFetchUserAgent, setWebFetchUserAgent] = createSignal("Letters-web-fetch/0.1");
 	const [compactionThreshold, setCompactionThreshold] = createSignal("0.8");
-	const [compactionSummaryCap, setCompactionSummaryCap] = createSignal("2000");
+	const [compactionDigestMaxItems, setCompactionDigestMaxItems] = createSignal("10");
 	const [compactionOverflowRetries, setCompactionOverflowRetries] = createSignal("1");
-	const [compactionSummarizer, setCompactionSummarizer] = createSignal<"local" | "llm">("llm");
 	const [explorerLineGap, setExplorerLineGap] = createSignal("0.2");
 	const [paletteIgnoreDirs, setPaletteIgnoreDirs] = createSignal("");
 	const [instructionsFile, setInstructionsFile] = createSignal("");
@@ -230,8 +228,8 @@ export function SettingsView() {
 	const [skillsWatchDelay, setSkillsWatchDelay] = createSignal(String(initial?.skills_watch_delay_ms ?? 300));
 	const [shellContinuous, setShellContinuous] = createSignal(initial?.shellContinuous ?? true);
 	const [memoryEnabled, setMemoryEnabled] = createSignal(initial?.memoryEnabled ?? true);
-	const [memoryCronEnabled, setMemoryCronEnabled] = createSignal(initial?.memoryCronEnabled ?? true);
-	const [memoryDailyTime, setMemoryDailyTime] = createSignal(initial?.memoryDailyTime ?? "06:00");
+	const [memoryIdleMinutes, setMemoryIdleMinutes] = createSignal(String(initial?.memoryIdleMinutes ?? 5));
+	const [memoryMaxScenes, setMemoryMaxScenes] = createSignal(String(initial?.memoryMaxScenes ?? 15));
 
 	function persistSkillsDirs() {
 		const dirs = skillsDirs()
@@ -249,9 +247,8 @@ export function SettingsView() {
 		if (s.webFetch?.maxChars !== undefined) setWebFetchMaxChars(String(s.webFetch.maxChars));
 		if (s.webFetch?.userAgent !== undefined) setWebFetchUserAgent(s.webFetch.userAgent);
 		if (s.compaction?.thresholdRatio !== undefined) setCompactionThreshold(String(s.compaction.thresholdRatio));
-		if (s.compaction?.summaryCapChars !== undefined) setCompactionSummaryCap(String(s.compaction.summaryCapChars));
+		if (s.compaction?.digestMaxItems !== undefined) setCompactionDigestMaxItems(String(s.compaction.digestMaxItems));
 		if (s.compaction?.maxOverflowRetries !== undefined) setCompactionOverflowRetries(String(s.compaction.maxOverflowRetries));
-		if (s.compaction?.summarizer !== undefined) setCompactionSummarizer(s.compaction.summarizer);
 		if (s.explorer?.lineGap !== undefined) setExplorerLineGap(String(s.explorer.lineGap));
 	});
 	function updateSkillsDir(i: number, v: string) {
@@ -315,14 +312,11 @@ export function SettingsView() {
 	if (initial && initial.compaction?.thresholdRatio !== undefined && compactionThreshold() === "0.8") {
 		setCompactionThreshold(String(initial.compaction.thresholdRatio));
 	}
-	if (initial && initial.compaction?.summaryCapChars !== undefined && compactionSummaryCap() === "2000") {
-		setCompactionSummaryCap(String(initial.compaction.summaryCapChars));
+	if (initial && initial.compaction?.digestMaxItems !== undefined && compactionDigestMaxItems() === "10") {
+		setCompactionDigestMaxItems(String(initial.compaction.digestMaxItems));
 	}
 	if (initial && initial.compaction?.maxOverflowRetries !== undefined && compactionOverflowRetries() === "1") {
 		setCompactionOverflowRetries(String(initial.compaction.maxOverflowRetries));
-	}
-	if (initial && initial.compaction?.summarizer !== undefined && compactionSummarizer() === "llm") {
-		setCompactionSummarizer(initial.compaction.summarizer);
 	}
 	if (initial && initial.explorer?.lineGap !== undefined && explorerLineGap() === "0.2") {
 		setExplorerLineGap(String(initial.explorer.lineGap));
@@ -360,11 +354,11 @@ export function SettingsView() {
 	if (initial && typeof initial.memoryEnabled === "boolean" && initial.memoryEnabled !== memoryEnabled()) {
 		setMemoryEnabled(initial.memoryEnabled);
 	}
-	if (initial && typeof initial.memoryCronEnabled === "boolean" && initial.memoryCronEnabled !== memoryCronEnabled()) {
-		setMemoryCronEnabled(initial.memoryCronEnabled);
+	if (initial && typeof initial.memoryMaxScenes === "number" && String(initial.memoryMaxScenes) !== memoryMaxScenes()) {
+		setMemoryMaxScenes(String(initial.memoryMaxScenes));
 	}
-	if (initial && typeof initial.memoryDailyTime === "string" && initial.memoryDailyTime !== memoryDailyTime()) {
-		setMemoryDailyTime(initial.memoryDailyTime);
+	if (initial && typeof initial.memoryIdleMinutes === "number" && String(initial.memoryIdleMinutes) !== memoryIdleMinutes()) {
+		setMemoryIdleMinutes(String(initial.memoryIdleMinutes));
 	}
 
 	if (initial && typeof initial.sendMessageIntervalSec === "number" && deliveryMode() === "unlimited") {
@@ -412,8 +406,8 @@ export function SettingsView() {
 			sendMessageIntervalSec: deliveryMode() === "unlimited" ? null : parsedDeliverySec(),
 			shellContinuous: shellContinuous(),
 			memoryEnabled: memoryEnabled(),
-			memoryCronEnabled: memoryCronEnabled(),
-			memoryDailyTime: memoryDailyTime(),
+			memoryIdleMinutes: parsePositiveInt(memoryIdleMinutes(), DEFAULTS.memoryIdleMinutes),
+			memoryMaxScenes: parsePositiveInt(memoryMaxScenes(), DEFAULTS.memoryMaxScenes),
 			commands_path: commandsPath().trim() || undefined,
 			retry: {
 				maxRetries: parsePositiveInt(retryMaxRetries(), DEFAULTS.retryMaxRetries),
@@ -427,10 +421,8 @@ export function SettingsView() {
 			},
 			compaction: {
 				thresholdRatio: Number(compactionThreshold()) || 0.8,
-				eventDigestCount: current?.compaction?.eventDigestCount ?? 5,
-				summaryCapChars: parsePositiveInt(compactionSummaryCap(), 2000),
+				digestMaxItems: parsePositiveInt(compactionDigestMaxItems(), 10),
 				maxOverflowRetries: parsePositiveInt(compactionOverflowRetries(), 1),
-				summarizer: compactionSummarizer(),
 				...(current?.compaction?.prune ? { prune: current.compaction.prune } : {}),
 			},
 			explorer: {
@@ -903,9 +895,8 @@ export function SettingsView() {
 							void persist({
 								...currentSettings(),
 								compaction: {
-									summaryCapChars: parsePositiveInt(compactionSummaryCap(), 2000),
+									digestMaxItems: parsePositiveInt(compactionDigestMaxItems(), 10),
 									maxOverflowRetries: parsePositiveInt(compactionOverflowRetries(), 1),
-									summarizer: compactionSummarizer(),
 									...(compactionThreshold() ? { thresholdRatio: next } : {}),
 								},
 							});
@@ -918,29 +909,28 @@ export function SettingsView() {
 			),
 		},
 		{
-			id: "compactionSummaryCap",
-			title: "Summary cap (chars)",
-			desc: "Max length of a checkpoint summary.",
+			id: "compactionDigestMaxItems",
+			title: "Checkpoint digest items",
+			desc: "Max memories carried in a checkpoint digest; the newest events are always reserved.",
 			cats: ["compaction"],
-			modified: () => parsePositiveInt(compactionSummaryCap(), 2000) !== 2000,
+			modified: () => parsePositiveInt(compactionDigestMaxItems(), 10) !== 10,
 			control: () => (
-				<TextField class="w-[200px] shrink-0" value={compactionSummaryCap()} onChange={setCompactionSummaryCap}>
+				<TextField class="w-[200px] shrink-0" value={compactionDigestMaxItems()} onChange={setCompactionDigestMaxItems}>
 					<TextFieldInput
 						type="number"
 						min={0}
 						variant="compact"
-						title="Summary cap (chars)"
-						aria-label="Summary cap (chars)"
+						title="Checkpoint digest items"
+						aria-label="Checkpoint digest items"
 						onBlur={() => {
-							const next = parsePositiveInt(compactionSummaryCap(), 2000);
-							const saved = settingsData()?.compaction?.summaryCapChars ?? 2000;
+							const next = parsePositiveInt(compactionDigestMaxItems(), 10);
+							const saved = settingsData()?.compaction?.digestMaxItems ?? 10;
 							if (next === saved) return;
 							void persist({
 								...currentSettings(),
 								compaction: {
-									summaryCapChars: next,
+									digestMaxItems: next,
 									maxOverflowRetries: parsePositiveInt(compactionOverflowRetries(), 1),
-									summarizer: compactionSummarizer(),
 								},
 							});
 						}}
@@ -972,9 +962,8 @@ export function SettingsView() {
 							void persist({
 								...currentSettings(),
 								compaction: {
-									summaryCapChars: parsePositiveInt(compactionSummaryCap(), 2000),
+									digestMaxItems: parsePositiveInt(compactionDigestMaxItems(), 10),
 									maxOverflowRetries: next,
-									summarizer: compactionSummarizer(),
 								},
 							});
 						}}
@@ -985,39 +974,7 @@ export function SettingsView() {
 				</TextField>
 			),
 		},
-		{
-			id: "compactionSummarizer",
-			title: "Summarizer",
-			desc: "local is free and deterministic; llm produces cache-friendly checkpoints via a real model call.",
-			cats: ["compaction"],
-			modified: () => compactionSummarizer() !== "llm",
-			control: () => (
-				<Select
-					class="h-[32px] w-[200px] shrink-0 rounded-[10px] font-sans text-[12px]"
-					itemClass="font-sans text-[12px]"
-					contentClass="w-[200px] rounded-[10px]"
-					title="Summarizer"
-					ariaLabel="Summarizer"
-					portalMount={rootRef}
-					value={compactionSummarizer()}
-					onChange={(value) => {
-						const next = value as "local" | "llm";
-						void persist({
-							...currentSettings(),
-							compaction: {
-								summaryCapChars: parsePositiveInt(compactionSummaryCap(), 2000),
-								maxOverflowRetries: parsePositiveInt(compactionOverflowRetries(), 1),
-								summarizer: next,
-							},
-						});
-					}}
-					options={[
-						{ value: "local", label: "local" },
-						{ value: "llm", label: "llm" },
-					]}
-				/>
-			),
-		},
+
 		{
 			id: "retryMaxRetries",
 			title: "Retry max attempts",
@@ -1167,8 +1124,8 @@ export function SettingsView() {
 		{
 			id: "memoryEnabled",
 			title: "Memory",
-			desc: "Master switch for memory features: read_memory, /memory, and scheduled organization.",
-			cats: ["general"],
+			desc: "Master switch for memory features: the memory tool, /memory, and background organization.",
+			cats: ["memory"],
 			modified: () => memoryEnabled() !== DEFAULTS.memoryEnabled,
 			control: () => (
 				<SwitchToggle
@@ -1181,37 +1138,45 @@ export function SettingsView() {
 			),
 		},
 		{
-			id: "memoryCronEnabled",
-			title: "Automatic memory",
-			desc: "Enable scheduled automatic memory organization.",
-			cats: ["general"],
-			modified: () => memoryCronEnabled() !== DEFAULTS.memoryCronEnabled,
+			id: "memoryIdleMinutes",
+			title: "Memory idle delay",
+			desc: "Minutes of silence before background memory organization runs; 0 disables it.",
+			cats: ["memory"],
+			modified: () => memoryIdleMinutes() !== String(DEFAULTS.memoryIdleMinutes),
 			control: () => (
-				<SwitchToggle
-					checked={memoryCronEnabled()}
-					onChange={(on) => {
-						setMemoryCronEnabled(on);
-						void persist({ ...currentSettings(), memoryCronEnabled: on });
-					}}
-				/>
+				<TextField class="h-[32px] w-[110px] shrink-0 gap-0" value={memoryIdleMinutes()} onChange={setMemoryIdleMinutes}>
+					<TextFieldInput
+						variant="compact"
+						title="Memory idle delay (minutes)"
+						aria-label="Memory idle delay"
+						onBlur={() => {
+							const next = parsePositiveInt(memoryIdleMinutes(), DEFAULTS.memoryIdleMinutes);
+							setMemoryIdleMinutes(String(next));
+							void persist({ ...currentSettings(), memoryIdleMinutes: next });
+						}}
+						onKeyDown={(e) => {
+							if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
+						}}
+					/>
+				</TextField>
 			),
 		},
 		{
-			id: "memoryDailyTime",
-			title: "Daily memory time",
-			desc: "Time of day (HH:mm) when partner memory is organized automatically.",
-			cats: ["general"],
-			modified: () => memoryDailyTime() !== DEFAULTS.memoryDailyTime,
+			id: "memoryMaxScenes",
+			title: "Max scene documents",
+			desc: "Upper bound on active scene documents; at the limit the scene stage must merge existing scenes.",
+			cats: ["memory"],
+			modified: () => memoryMaxScenes() !== String(DEFAULTS.memoryMaxScenes),
 			control: () => (
-				<TextField class="h-[32px] w-[110px] shrink-0 gap-0" value={memoryDailyTime()} onChange={setMemoryDailyTime}>
+				<TextField class="h-[32px] w-[110px] shrink-0 gap-0" value={memoryMaxScenes()} onChange={setMemoryMaxScenes}>
 					<TextFieldInput
 						variant="compact"
-						title="Daily memory time (HH:mm)"
-						aria-label="Daily memory time"
+						title="Max scene documents"
+						aria-label="Max scene documents"
 						onBlur={() => {
-							const next = /^\d{2}:\d{2}$/.test(memoryDailyTime()) ? memoryDailyTime() : DEFAULTS.memoryDailyTime;
-							setMemoryDailyTime(next);
-							void persist({ ...currentSettings(), memoryDailyTime: next });
+							const next = parsePositiveInt(memoryMaxScenes(), DEFAULTS.memoryMaxScenes);
+							setMemoryMaxScenes(String(next));
+							void persist({ ...currentSettings(), memoryMaxScenes: next });
 						}}
 						onKeyDown={(e) => {
 							if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
@@ -1422,7 +1387,6 @@ export function SettingsView() {
 						title="File search ignore list"
 						aria-label="File search ignore list"
 						onBlur={() => {
-							// Empty clears the override, so the built-in list applies again.
 							void persist(parseIgnoreDirs().length > 0 ? currentSettings() : { ...currentSettings(), palette: undefined });
 						}}
 						onKeyDown={(e) => {

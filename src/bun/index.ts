@@ -1,12 +1,12 @@
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import { watch } from "node:fs";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { AgentMessage, Entry } from "@earendil-works/pi-agent-core";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import { getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
-import { Cron } from "croner";
 import { ApplicationMenu, BrowserView, BrowserWindow, Utils } from "electrobun/main";
 import { mcpChangedText } from "../shared/events";
 import { projectOrigin } from "../shared/origin";
@@ -32,8 +32,34 @@ import { askBtwThread, btwBaseContext, btwThreadsForAnchor, createBtwThread, rea
 import { applyCompaction, type CompactionPlan, hasOrphanCompactionStart, planMemoryCompaction } from "./core/compaction";
 import { Context } from "./core/context";
 import { projectSnapshot } from "./core/context-project";
-import { type MemoryRecord, organizeMemory, type QueryMemoryOptions, queryMemory, readMemoryLines } from "./core/memory";
+import {
+	checkpointCoversSession,
+	consolidateMemory,
+	type MemoryCheckpoint,
+	type MemoryRecord,
+	memoryCoveredIndex,
+	memoryPendingStatus,
+	organizeMemory,
+	type QueryMemoryOptions,
+	queryMemory,
+	readMemoryLines,
+	readMemoryRunSummaries,
+} from "./core/memory";
+import { buildMemoryOverview, readMemoryRunTrace } from "./core/memory-overview";
+import { latestPersona, organizePersona, personaTrigger, personaViewPath, readPersonaLines, rebuildPersonaView } from "./core/persona";
 import { loadRuntimeStats, saveRuntimeStats } from "./core/runtime-stats";
+import {
+	currentSceneNavigation,
+	foldScenes,
+	MEMORY_SCENE_BATCH,
+	organizeScenes,
+	readSceneLines,
+	rebuildSceneViews,
+	type SceneCheckpoint,
+	sceneNavigationPath,
+	scenePendingCount,
+	sceneViewsDir,
+} from "./core/scenes";
 import { aggregateUsage, dedupeRequestHeaders, fold, lastUsage } from "./core/trajectory";
 import { deleteApiKey, getApiKey, loadCredentials, setApiKey } from "./lib/credentials";
 import { ensureModel, ensureSandboxMode, ensureStoragePath, ensureWorkspace, hasInvalidPersistedWorkspace, isThinkingLevel, readSandboxMode } from "./lib/ensure";
@@ -62,7 +88,7 @@ import { copyPartner, createPartner, deletePartner, listPartners, PartnerError, 
 import type { EscalationDecision, EscalationRequest, SandboxMode } from "./permission";
 import { isSandboxMode, SandboxManager, validateWorkspace } from "./permission";
 import { createSessionStore, type SessionScope } from "./persist";
-import { type ContextChangedEventData, EVENTS, type MemoryRunEndEventData, type MemoryRunStartEventData } from "./persist/events";
+import { type ContextChangedEventData, EVENTS, type MemoryRunEndEventData, type MemoryRunStage, type MemoryRunStartEventData } from "./persist/events";
 import { scanSkillsRoot } from "./skills/filesystem";
 import { SKILL_NAME_RE } from "./skills/frontmatter";
 import { getSkill, listSkills } from "./skills/registry";
@@ -227,7 +253,6 @@ function rejectPendingEscalations(partner: string, reason: string) {
 	}
 }
 
-/** Absolute path of a workspace-relative Explorer entry, with the same containment guard as the tree. */
 async function explorerTarget(name: string, path: string): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
 	const entry = await agents.get(name);
 	if (!entry) return { ok: false, error: "no partner selected" };
@@ -312,6 +337,7 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 				rejectPendingEscalations(profile.name, "run ended while awaiting approval");
 				rpc.send.agent_end({ error, partner: profile.name });
 			},
+			afterRun: () => afterAgentRun(profile.name),
 		},
 		{
 			session: scope,
@@ -336,10 +362,7 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 				try {
 					const before = (await session.rawEntries(dir)).filter((e) => e.type === "custom" && e.customType === EVENTS.compaction).length;
 					const flush = await flushMemoryForCompact(target);
-					if (!flush.ok) return false;
-					const input = await compactionInput(target);
-					const events = await sessionMemoryEvents(target);
-					const plan = await planMemoryCompaction(input.entries, { ...input.opts, memoryEvents: events });
+					const plan = await planCompact(target, flush);
 					if (!plan) return false;
 					await runCompaction(target, plan);
 					const after = (await session.rawEntries(dir)).filter((e) => e.type === "custom" && e.customType === EVENTS.compaction).length;
@@ -389,14 +412,18 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 		await recordPrompt(dir, agent.systemPrompt);
 	}
 
+	const entry = { profile, dir, scope, agent };
 	await reconcileTerminalStates(dir);
+
+	await refreshMemoryContext(entry, { live: false });
 
 	agent.restore(await session.deriveMessages(dir));
 
 	if (await hasInvalidPersistedWorkspace(dir)) {
-		await applyWorkspace({ profile, dir, scope, agent }, null);
+		await applyWorkspace(entry, null);
 	}
-	return { profile, dir, scope, agent };
+	void ensureMemorySchedule(entry);
+	return entry;
 }
 
 type EscalationRequestRecord = NonNullable<Awaited<ReturnType<typeof session.escalationRequest>>>;
@@ -422,38 +449,61 @@ async function resumeApprovedEscalation(entry: PartnerAgent, request: Escalation
 	}
 }
 
-async function compactionInput(entry: PartnerAgent) {
+interface MemoryFlush {
+	memoryAvailable: boolean;
+	covered: boolean;
+	coveredIndex: number;
+	added: number;
+	error?: string;
+}
+
+async function flushMemoryForCompact(entry: PartnerAgent, signal?: AbortSignal): Promise<MemoryFlush> {
 	const settings = await ensureSettings();
-	const c = settings.compaction ?? {};
+	if (settings.memoryEnabled === false) return { memoryAvailable: false, covered: false, coveredIndex: -1, added: 0 };
+	let added = 0;
+	let error: string | undefined;
+	try {
+		const inFlight = memoryRuns.get(entry.profile.name);
+		if (inFlight) {
+			try {
+				await inFlight;
+			} catch {}
+		}
+		if (signal?.aborted) throw new Error("aborted");
+		added = await runMemoryOrganize(entry, signal);
+	} catch (flushError) {
+		error = flushError instanceof Error ? flushError.message : String(flushError);
+	}
 	const entries = await session.rawEntries(entry.dir);
+	const lines = await readMemoryLines(entry.dir);
+	const checkpoints = lines.filter((line): line is MemoryCheckpoint => line.kind === "checkpoint");
 	return {
-		entries,
-		opts: {
-			eventDigestCount: c.eventDigestCount ?? 5,
-		},
+		memoryAvailable: true,
+		covered: checkpointCoversSession(checkpoints, entries),
+		coveredIndex: memoryCoveredIndex(lines, entries),
+		added,
+		...(error ? { error } : {}),
 	};
 }
 
-async function flushMemoryForCompact(entry: PartnerAgent, signal?: AbortSignal): Promise<{ ok: boolean; error?: string; added: number; covered: boolean }> {
+async function planCompact(entry: PartnerAgent, flush: MemoryFlush): Promise<CompactionPlan | null> {
 	const settings = await ensureSettings();
-	if (settings.memoryEnabled === false) return { ok: false, error: "memory is disabled", added: 0, covered: false };
-	try {
-		const added = await runMemoryOrganize(entry, signal);
-		const [sessionFile, entries] = await Promise.all([session.currentSessionFile(entry.dir), session.rawEntries(entry.dir)]);
-		const lastDataEntry = [...entries].reverse().find((e) => !(e.type === "custom" && (e.customType === EVENTS.memoryRunStart || e.customType === EVENTS.memoryRunEnd)));
-		const target = lastDataEntry?.id ?? null;
-		const lines = await readMemoryLines(entry.dir);
-		const covered = target != null && lines.some((l) => l.kind === "checkpoint" && l.source.sessionFile === sessionFile && l.source.lastRawId === target);
-		return { ok: covered, error: covered ? undefined : "memory flush did not cover the session tail", added, covered };
-	} catch (error) {
-		return { ok: false, error: error instanceof Error ? error.message : String(error), added: 0, covered: false };
-	}
+	const entries = await session.rawEntries(entry.dir);
+	const memoryEvents = await sessionMemories(entry);
+	const digestMaxItems = settings.compaction?.digestMaxItems;
+	return planMemoryCompaction(entries, {
+		memoryEvents,
+		covered: flush.covered,
+		coveredIndex: flush.coveredIndex,
+		memoryAvailable: flush.memoryAvailable,
+		...(digestMaxItems ? { digestMaxItems } : {}),
+	});
 }
 
-async function sessionMemoryEvents(entry: PartnerAgent): Promise<MemoryRecord[]> {
-	const sessionFile = await session.currentSessionFile(entry.dir);
+async function sessionMemories(entry: PartnerAgent): Promise<MemoryRecord[]> {
+	const ids = new Set((await session.rawEntries(entry.dir)).map((e) => e.id));
 	const lines = await readMemoryLines(entry.dir);
-	return lines.filter((l): l is MemoryRecord => l.kind === "event" && l.source.sessionFile === sessionFile);
+	return lines.filter((l): l is MemoryRecord => l.kind !== "checkpoint" && l.source.rawIds.some((id) => ids.has(id)));
 }
 
 async function runCompaction(entry: PartnerAgent, plan: CompactionPlan): Promise<void> {
@@ -473,10 +523,7 @@ async function runManualCompact(entry: PartnerAgent, signal?: AbortSignal): Prom
 	if (entry.agent.isStreaming) return { ok: false, error: "agent is running" };
 	try {
 		const flush = await flushMemoryForCompact(entry, signal);
-		if (!flush.ok) return { ok: false, error: flush.error ?? "memory flush failed" };
-		const input = await compactionInput(entry);
-		const events = await sessionMemoryEvents(entry);
-		const plan = await planMemoryCompaction(input.entries, { ...input.opts, memoryEvents: events });
+		const plan = await planCompact(entry, flush);
 		if (!plan) return { ok: true, compacted: 0 };
 		await runCompaction(entry, plan);
 		return { ok: true, compacted: plan.shadowed };
@@ -500,16 +547,10 @@ async function autoCompactBeforeNextTurn(entry: PartnerAgent, signal?: AbortSign
 	if (used < window * (settings.compaction?.thresholdRatio ?? 0.8)) return null;
 	try {
 		const flush = await flushMemoryForCompact(entry, signal);
-		if (!flush.ok) {
-			console.warn("auto-compact skipped:", flush.error ?? "memory flush failed");
-			return null;
-		}
-		const input = await compactionInput(entry);
-		const events = await sessionMemoryEvents(entry);
-		const plan = await planMemoryCompaction(input.entries, { ...input.opts, memoryEvents: events });
+		const plan = await planCompact(entry, flush);
 		if (!plan) return null;
 		await runCompaction(entry, plan);
-		console.log(`auto-compacted ${plan.shadowed} entries`);
+		console.log(`auto-compacted ${plan.shadowed} entries (${plan.tier})`);
 		return session.deriveMessages(entry.dir);
 	} catch (error) {
 		await compactionFailure(entry, error);
@@ -527,88 +568,420 @@ async function withBackgroundAbort<T>(partner: string, run: (signal: AbortSignal
 	}
 }
 
-const memoryOrganizing = new Set<string>();
+// ——— memory schedule (idle timer · round counter) ———
+const MEMORY_PENDING_ROUNDS = 10;
+const DEFAULT_MEMORY_IDLE_MINUTES = 5;
 
-async function runMemoryOrganize(entry: PartnerAgent, signal?: AbortSignal): Promise<number> {
-	if ((await loadSettings()).memoryEnabled === false) return 0;
-	if (memoryOrganizing.has(entry.profile.name)) return 0;
-	memoryOrganizing.add(entry.profile.name);
-	try {
-		const [sessionFile, entries] = await Promise.all([session.currentSessionFile(entry.dir), session.rawEntries(entry.dir)]);
-		const model = entry.agent.model ? resolveModel(entry.agent.model) : undefined;
-		const logRun = {
-			async start(data: MemoryRunStartEventData) {
-				try {
-					await entry.scope.appendMemoryRunStart(data, data.startedAt);
-				} catch (error) {
-					console.error("memory run start log failed:", error);
-				}
-			},
-			async end(data: MemoryRunEndEventData) {
-				try {
-					await entry.scope.appendMemoryRunEnd(data, data.endedAt);
-				} catch (error) {
-					console.error("memory run end log failed:", error);
-				}
-			},
-		};
-		return await organizeMemory({ dir: entry.dir, sessionFile, entries, model, logRun, signal });
-	} finally {
-		memoryOrganizing.delete(entry.profile.name);
+interface MemorySchedule {
+	idleTimer: ReturnType<typeof setTimeout> | null;
+	rounds: number;
+}
+
+const memorySchedules = new Map<string, MemorySchedule>();
+const memoryRuns = new Map<string, Promise<number>>();
+const sceneRuns = new Map<string, Promise<number>>();
+const personaRuns = new Map<string, Promise<number>>();
+const consolidateRuns = new Map<string, Promise<number>>();
+
+function memoryScheduleFor(name: string): MemorySchedule {
+	let state = memorySchedules.get(name);
+	if (!state) {
+		state = { idleTimer: null, rounds: 0 };
+		memorySchedules.set(name, state);
+	}
+	return state;
+}
+
+function cancelMemoryIdleTimer(name: string): void {
+	const state = memorySchedules.get(name);
+	if (state?.idleTimer) {
+		clearTimeout(state.idleTimer);
+		state.idleTimer = null;
 	}
 }
 
-let memoryCronJob: Cron | null = null;
-let memoryCronPattern = "";
-
-function dailyTimeToCron(time: string): string {
-	const match = /^(\d{2}):(\d{2})$/.exec(time.trim());
-	if (!match) return "0 6 * * *";
-	const hour = Number(match[1]);
-	const minute = Number(match[2]);
-	if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return "0 6 * * *";
-	return `${String(minute).padStart(2, "0")} ${String(hour).padStart(2, "0")} * * *`;
+function armMemoryIdleTimerIn(name: string, delayMs: number): void {
+	cancelMemoryIdleTimer(name);
+	const state = memoryScheduleFor(name);
+	state.idleTimer = setTimeout(
+		() => {
+			state.idleTimer = null;
+			void triggerMemoryRun(name, "idle");
+		},
+		Math.max(1000, delayMs),
+	);
 }
 
-async function runMemoryOrganizeAll(): Promise<void> {
-	for (const promise of agents.values()) {
-		try {
-			const entry = await promise;
-			await withBackgroundAbort(entry.profile.name, (signal) => runMemoryOrganize(entry, signal));
-		} catch {}
-	}
-}
-
-async function scheduleMemoryDaily(): Promise<void> {
+async function armMemoryIdleTimer(name: string): Promise<void> {
 	const settings = await loadSettings();
-	if (settings.memoryEnabled === false || settings.memoryCronEnabled === false) {
-		memoryCronJob?.stop();
-		memoryCronJob = null;
-		memoryCronPattern = "";
-		console.log("memory daily scheduler: disabled");
+	if (settings.memoryEnabled === false) return;
+	const minutes = settings.memoryIdleMinutes ?? DEFAULT_MEMORY_IDLE_MINUTES;
+	if (minutes <= 0) {
+		cancelMemoryIdleTimer(name);
 		return;
 	}
-	const pattern = dailyTimeToCron(settings.memoryDailyTime ?? "06:00");
-	if (memoryCronJob && memoryCronPattern === pattern) return;
-	memoryCronJob?.stop();
-	memoryCronPattern = pattern;
-	memoryCronJob = new Cron(pattern, () => {
-		void runMemoryOrganizeAll();
+	armMemoryIdleTimerIn(name, minutes * 60_000);
+}
+
+async function triggerMemoryRun(name: string, reason: "idle" | "threshold" | "startup"): Promise<void> {
+	try {
+		const entry = await agents.get(name);
+		if (!entry) return;
+		await withBackgroundAbort(name, (signal) => runMemoryOrganize(entry, signal));
+		await rearmMemoryIdleTimerIfPending(entry);
+	} catch (error) {
+		console.error(`memory ${reason} run failed:`, error);
+	}
+}
+
+async function rearmMemoryIdleTimerIfPending(entry: PartnerAgent): Promise<void> {
+	const dir = entry.dir;
+	const entries = await session.rawEntries(entry.dir);
+	const { pending } = await memoryPendingStatus(dir, entries);
+	if (pending || (await pendingArchivedSessions(entry, dir)).length > 0) await armMemoryIdleTimer(entry.profile.name);
+}
+
+function afterAgentRun(name: string): void {
+	void (async () => {
+		try {
+			const settings = await loadSettings();
+			if (settings.memoryEnabled === false) return;
+			const entry = await agents.get(name);
+			if (!entry) return;
+			const state = memoryScheduleFor(name);
+			state.rounds += 1;
+			if (state.rounds >= MEMORY_PENDING_ROUNDS) {
+				state.rounds = 0;
+				cancelMemoryIdleTimer(name);
+				await triggerMemoryRun(name, "threshold");
+				return;
+			}
+			await armMemoryIdleTimer(name);
+			void refreshMemoryContext(entry, { live: true }).catch((error) => console.error("memory context refresh failed:", error));
+		} catch (error) {
+			console.error("memory schedule after run failed:", error);
+		}
+	})();
+}
+
+async function ensureMemorySchedule(entry: PartnerAgent): Promise<void> {
+	try {
+		const settings = await loadSettings();
+		const name = entry.profile.name;
+		if (settings.memoryEnabled === false) {
+			cancelMemoryIdleTimer(name);
+			return;
+		}
+		const dir = entry.dir;
+		const entries = await session.rawEntries(entry.dir);
+		const { pending: currentPending, rounds } = await memoryPendingStatus(dir, entries);
+		const pending = currentPending || (await pendingArchivedSessions(entry, dir)).length > 0;
+		const state = memoryScheduleFor(name);
+		state.rounds = rounds;
+		if (!pending) {
+			cancelMemoryIdleTimer(name);
+			return;
+		}
+		if (rounds >= MEMORY_PENDING_ROUNDS) {
+			state.rounds = 0;
+			cancelMemoryIdleTimer(name);
+			void triggerMemoryRun(name, "startup");
+			return;
+		}
+		const minutes = settings.memoryIdleMinutes ?? DEFAULT_MEMORY_IDLE_MINUTES;
+		if (minutes <= 0) {
+			cancelMemoryIdleTimer(name);
+			return;
+		}
+		const last = await session.lastMessage(entry.dir);
+		const elapsed = last ? Date.now() - last.time : Number.POSITIVE_INFINITY;
+		if (elapsed >= minutes * 60_000) {
+			void triggerMemoryRun(name, "startup");
+			return;
+		}
+		armMemoryIdleTimerIn(name, minutes * 60_000 - elapsed);
+	} catch (error) {
+		console.error("memory schedule init failed:", error);
+	}
+	void rebuildMemoryViewsIfMissing(entry.dir);
+	maybeRunSceneStage(entry);
+}
+
+function refreshMemorySchedules(): void {
+	void (async () => {
+		for (const name of agents.keys()) {
+			cancelMemoryIdleTimer(name);
+			const entry = await agents.get(name);
+			if (!entry) continue;
+			void ensureMemorySchedule(entry);
+		}
+	})();
+}
+
+// ——— memory pipeline (memory → scene → persona → consolidate) ———
+function captureMemorySnapshot(entry: PartnerAgent): Promise<{ entries: Entry[] }> {
+	return session.rawEntries(entry.dir).then((entries) => ({ entries }));
+}
+
+function runMemoryLog(entry: PartnerAgent): {
+	start(data: MemoryRunStartEventData): Promise<void>;
+	end(data: MemoryRunEndEventData): Promise<void>;
+} {
+	return {
+		async start(data) {
+			try {
+				await entry.scope.appendMemoryRunStart(data, data.startedAt);
+			} catch (error) {
+				console.error("memory run start log failed:", error);
+			}
+		},
+		async end(data) {
+			try {
+				await entry.scope.appendMemoryRunEnd(data, data.endedAt);
+			} catch (error) {
+				console.error("memory run end log failed:", error);
+			}
+		},
+	};
+}
+
+async function pendingArchivedSessions(entry: PartnerAgent, dir: string): Promise<Array<{ file: string; entries: Entry[] }>> {
+	const sessions = await session.listSessions(entry.dir);
+	if (sessions.length <= 1) return [];
+	const current = await session.currentSessionFile(entry.dir);
+	const checkpoints = (await readMemoryLines(dir)).filter((line) => line.kind === "checkpoint");
+	const out: Array<{ file: string; entries: Entry[] }> = [];
+	for (const s of sessions) {
+		if (!s.file || s.file === current) continue;
+		const entries = await session.sessionEntries(entry.dir, s.file);
+		if (checkpointCoversSession(checkpoints, entries)) continue;
+		const { pending } = await memoryPendingStatus(dir, entries);
+		if (pending) out.push({ file: s.file, entries });
+	}
+	return out;
+}
+
+async function drainArchivedSessions(
+	entry: PartnerAgent,
+	deps: { dir: string; model: NonNullable<ReturnType<typeof resolveModel>>; logRun: ReturnType<typeof runMemoryLog>; signal?: AbortSignal },
+): Promise<void> {
+	const pending = await pendingArchivedSessions(entry, deps.dir);
+	for (const s of pending) {
+		console.log(`memory drain: archived session ${s.file}`);
+		await organizeMemory({
+			dir: deps.dir,
+			entries: s.entries,
+			model: deps.model,
+			logRun: deps.logRun,
+			signal: deps.signal,
+		});
+	}
+}
+
+function runMemoryOrganize(entry: PartnerAgent, signal?: AbortSignal, snapshot?: { entries: Entry[] }): Promise<number> {
+	const name = entry.profile.name;
+	const running = memoryRuns.get(name);
+	if (running) {
+		if (snapshot) console.warn("memory organize already running; rotate snapshot will be drained later");
+		return running;
+	}
+	let guarded: Promise<number>;
+	const run = (async () => {
+		const settings = await loadSettings();
+		if (settings.memoryEnabled === false) return 0;
+		const model = entry.agent.model ? resolveModel(entry.agent.model) : undefined;
+		if (!model) return 0;
+		const dir = entry.dir;
+		const logRun = runMemoryLog(entry);
+		await drainArchivedSessions(entry, { dir, model, logRun, signal });
+		if (signal?.aborted) return 0;
+		const snap = snapshot ?? (await captureMemorySnapshot(entry));
+		const result = await organizeMemory({ dir, entries: snap.entries, model, logRun, signal });
+		maybeRunSceneStage(entry, signal);
+		return result;
+	})();
+	guarded = run.finally(() => {
+		if (memoryRuns.get(name) === guarded) memoryRuns.delete(name);
+		memoryScheduleFor(name).rounds = 0;
 	});
-	console.log(`memory daily scheduler: ${pattern}`);
+	memoryRuns.set(name, guarded);
+	return guarded;
 }
 
-async function runMemoryDailyIfDueNow(): Promise<void> {
-	const settings = await loadSettings();
-	if (settings.memoryEnabled === false || settings.memoryCronEnabled === false) return;
-	const target = settings.memoryDailyTime ?? "06:00";
-	const now = new Date();
-	const current = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-	if (current === target) await runMemoryOrganizeAll();
+function maybeRunSceneStage(entry: PartnerAgent, signal?: AbortSignal): void {
+	if (signal?.aborted) return;
+	void runSceneStage(entry, { signal }).catch((error) => console.error("scene stage failed:", error));
 }
 
-void scheduleMemoryDaily();
-void runMemoryDailyIfDueNow();
+function runSceneStage(entry: PartnerAgent, opts: { force?: boolean; signal?: AbortSignal } = {}): Promise<number> {
+	const name = entry.profile.name;
+	const running = sceneRuns.get(name);
+	if (running) return running;
+	let guarded: Promise<number>;
+	const run = (async () => {
+		const settings = await loadSettings();
+		if (settings.memoryEnabled === false) return 0;
+		const model = entry.agent.model ? resolveModel(entry.agent.model) : undefined;
+		if (!model) return 0;
+		const dir = entry.dir;
+		let added = 0;
+		if (opts.force || (await scenePendingCount(dir)) >= MEMORY_SCENE_BATCH) {
+			const logRun = runMemoryLog(entry);
+			added = await organizeScenes({ dir, model, signal: opts.signal, logRun, reason: opts.force ? "manual" : "threshold", maxScenes: settings.memoryMaxScenes });
+		}
+		await runPersonaStage(entry, { signal: opts.signal }).catch((error) => console.error("persona stage failed:", error));
+		return added;
+	})();
+	guarded = run.finally(() => {
+		if (sceneRuns.get(name) === guarded) sceneRuns.delete(name);
+	});
+	sceneRuns.set(name, guarded);
+	return guarded;
+}
+
+function runPersonaStage(entry: PartnerAgent, opts: { force?: boolean; signal?: AbortSignal } = {}): Promise<number> {
+	const name = entry.profile.name;
+	const running = personaRuns.get(name);
+	if (running) return running;
+	let guarded: Promise<number>;
+	const run = (async () => {
+		const settings = await loadSettings();
+		if (settings.memoryEnabled === false) return 0;
+		const model = entry.agent.model ? resolveModel(entry.agent.model) : undefined;
+		if (!model) return 0;
+		const dir = entry.dir;
+		let added = 0;
+		try {
+			const trigger = opts.force ? { run: true, reason: "manual" as const } : await personaTrigger(dir);
+			if (trigger.run && trigger.reason) {
+				added = await organizePersona({ dir, model, signal: opts.signal, logRun: runMemoryLog(entry), reason: trigger.reason, ...(opts.force ? { force: true } : {}) });
+			}
+		} finally {
+			await refreshMemoryContext(entry, { live: true }).catch((error) => console.error("memory context refresh failed:", error));
+		}
+		return added;
+	})();
+	guarded = run.finally(() => {
+		if (personaRuns.get(name) === guarded) personaRuns.delete(name);
+	});
+	personaRuns.set(name, guarded);
+	return guarded;
+}
+
+function runConsolidateStage(entry: PartnerAgent, signal?: AbortSignal): Promise<number> {
+	const name = entry.profile.name;
+	const running = consolidateRuns.get(name);
+	if (running) return running;
+	let guarded: Promise<number>;
+	const run = (async () => {
+		const settings = await loadSettings();
+		if (settings.memoryEnabled === false) return 0;
+		const model = entry.agent.model ? resolveModel(entry.agent.model) : undefined;
+		if (!model) return 0;
+		return await consolidateMemory({ dir: entry.dir, model, signal, logRun: runMemoryLog(entry) });
+	})();
+	guarded = run.finally(() => {
+		if (consolidateRuns.get(name) === guarded) consolidateRuns.delete(name);
+	});
+	consolidateRuns.set(name, guarded);
+	return guarded;
+}
+
+// ——— memory context & views ———
+async function buildMemoryContext(dir: string): Promise<{ text: string; digest: string } | null> {
+	const persona = latestPersona(await readPersonaLines(dir));
+	const navigation = await currentSceneNavigation(dir);
+	if (!persona && !navigation) return null;
+	const digest = createHash("sha256")
+		.update(JSON.stringify({ persona: persona?.id ?? null, navigation }))
+		.digest("hex")
+		.slice(0, 16);
+	const parts = [`<memory_context digest="${digest}">`];
+	if (persona) parts.push("# LONG-TERM PROFILE", "", persona.content);
+	if (navigation) parts.push("", navigation);
+	parts.push("</memory_context>");
+	return { text: parts.join("\n"), digest };
+}
+
+function lastMemoryContextDigest(messages: AgentMessage[]): string | null {
+	for (let i = messages.length - 1; i >= 0; i--) {
+		const content = (messages[i] as { content?: unknown }).content;
+		if (typeof content !== "string") continue;
+		const match = /<memory_context digest="([^"]+)">/.exec(content);
+		if (match) return match[1];
+	}
+	return null;
+}
+
+async function refreshMemoryContext(entry: PartnerAgent, opts: { live: boolean }): Promise<void> {
+	if ((await loadSettings()).memoryEnabled === false) return;
+	if (opts.live && entry.agent.isStreaming) return;
+	const next = await buildMemoryContext(entry.dir);
+	if (!next) return;
+	const messages = await session.deriveMessages(entry.dir);
+	if (lastMemoryContextDigest(messages) === next.digest) return;
+	await entry.scope.appendMemoryContext({ text: next.text, digest: next.digest }, Date.now());
+	if (opts.live && !entry.agent.isStreaming) entry.agent.notifySystemReminder(next.text);
+}
+
+async function rebuildMemoryViewsIfMissing(dir: string): Promise<void> {
+	try {
+		const scenes = foldScenes(await readSceneLines(dir));
+		if (scenes.length > 0) {
+			const missingViews = await stat(sceneViewsDir(dir)).then(
+				() => false,
+				() => true,
+			);
+			const missingNavigation = await stat(sceneNavigationPath(dir)).then(
+				() => false,
+				() => true,
+			);
+			if (missingViews || missingNavigation) await rebuildSceneViews(dir);
+		}
+		const persona = latestPersona(await readPersonaLines(dir));
+		if (persona) {
+			const missing = await stat(personaViewPath(dir)).then(
+				() => false,
+				() => true,
+			);
+			if (missing) await rebuildPersonaView(dir);
+		}
+	} catch (error) {
+		console.error("memory view rebuild failed:", error);
+	}
+}
+
+async function memoryStatusReport(entry: PartnerAgent): Promise<string> {
+	const dir = entry.dir;
+	const entries = await session.rawEntries(entry.dir);
+	const memoryLines = await readMemoryLines(dir);
+	const totalRecords = memoryLines.filter((line) => line.kind !== "checkpoint").length;
+	const active = queryMemory(memoryLines, { limit: Number.MAX_SAFE_INTEGER });
+	const extractedIds = new Set(entries.map((entry) => entry.id));
+	const checkpoint = [...memoryLines].reverse().find((line): line is MemoryCheckpoint => line.kind === "checkpoint" && extractedIds.has(line.source.lastRawId));
+	const pending = await memoryPendingStatus(dir, entries);
+	const sceneLines = await readSceneLines(dir);
+	const scenes = foldScenes(sceneLines);
+	const sceneRevisions = sceneLines.filter((line) => line.kind === "revision").length;
+	const sceneCheckpoint = [...sceneLines].reverse().find((line): line is SceneCheckpoint => line.kind === "checkpoint");
+	const scenePending = await scenePendingCount(dir);
+	const persona = latestPersona(await readPersonaLines(dir));
+	const trigger = await personaTrigger(dir);
+	const runs = (await readMemoryRunSummaries(dir, 5)).runs;
+	return [
+		`memory status · ${entry.profile.name}`,
+		`memory: ${totalRecords} records (${active.length} active) · checkpoint ${checkpoint?.source.lastRawId ?? "none"} · pending ${pending.pending ? `${pending.rounds} rounds` : "none"}`,
+		`scenes: ${scenes.length} active / ${sceneRevisions} revisions · checkpoint ${sceneCheckpoint?.throughMemoryId ?? "none"} · pending ${scenePending} memories`,
+		`persona: ${persona ? `v${persona.version} · ${new Date(persona.createdAt).toISOString().slice(0, 10)} · ${persona.sourceSceneIds.length} scenes` : "none"} · trigger ${trigger.run ? trigger.reason : "idle"}`,
+		"runs:",
+		...(runs.length
+			? runs.map(
+					(run) =>
+						`  [${new Date(run.startedAt).toISOString().replace("T", " ").slice(0, 16)}] ${run.stage} ${run.reason} added=${run.added} ${(run.durationMs / 1000).toFixed(1)}s`,
+				)
+			: ["  (none)"]),
+	].join("\n");
+}
 
 async function reconcileTerminalStates(dir: string): Promise<{ commands: number; shells: number; escalations: number; memoryRuns: number }> {
 	const entries = await session.rawEntries(dir);
@@ -634,7 +1007,15 @@ async function reconcileTerminalStates(dir: string): Promise<{ commands: number;
 		if (entry.type !== "custom") continue;
 		const custom = entry as {
 			customType?: string;
-			data?: { commandId?: unknown; shellId?: unknown; command?: unknown; escalationId?: unknown; runId?: unknown; sessionFile?: unknown; startedAt?: unknown };
+			data?: {
+				commandId?: unknown;
+				shellId?: unknown;
+				command?: unknown;
+				escalationId?: unknown;
+				runId?: unknown;
+				startedAt?: unknown;
+				stage?: unknown;
+			};
 		};
 		if (custom.customType === EVENTS.commandRun) {
 			const id = custom.data?.commandId != null ? String(custom.data.commandId) : null;
@@ -663,18 +1044,15 @@ async function reconcileTerminalStates(dir: string): Promise<{ commands: number;
 			const runId = custom.data?.runId != null ? String(custom.data.runId) : null;
 			if (runId && !memoryRunEnds.has(runId)) {
 				const startedAt = typeof custom.data?.startedAt === "number" ? custom.data.startedAt : ts;
-				const sessionFile = typeof custom.data?.sessionFile === "string" ? custom.data.sessionFile : dir;
+				const stage: MemoryRunStage = custom.data?.stage === "scene" || custom.data?.stage === "persona" || custom.data?.stage === "consolidate" ? custom.data.stage : "memory";
 				await scope.appendMemoryRunEnd(
 					{
 						runId,
-						sessionFile,
+						stage,
 						startedAt,
 						endedAt: ts,
-						durationMs: Math.max(0, ts - startedAt),
 						reason: "interrupted",
-						attempts: 0,
 						added: 0,
-						error: "previous memory run did not finish",
 					},
 					ts,
 				);
@@ -758,6 +1136,8 @@ async function ensureContextAfterCompact(entry: PartnerAgent): Promise<void> {
 	});
 	if (!hasInstructions) await entry.scope.appendInstructionsChanged(agentMd, Date.now());
 
+	await refreshMemoryContext(entry, { live: false });
+
 	entry.agent.restore(await session.deriveMessages(entry.dir));
 }
 
@@ -801,15 +1181,54 @@ function commandContextFor(entry: PartnerAgent): CommandContext {
 				return { ok: false, error: error instanceof Error ? error.message : String(error) };
 			}
 		},
+		organizeScenes: async (signal?: AbortSignal) => {
+			try {
+				if ((await loadSettings()).memoryEnabled === false) return { ok: false, error: "memory is disabled" };
+				const added = await runSceneStage(entry, { force: true, signal });
+				if (signal?.aborted) return { ok: false, error: "aborted" };
+				return { ok: true, added };
+			} catch (error) {
+				return { ok: false, error: error instanceof Error ? error.message : String(error) };
+			}
+		},
+		organizePersona: async (signal?: AbortSignal) => {
+			try {
+				if ((await loadSettings()).memoryEnabled === false) return { ok: false, error: "memory is disabled" };
+				const added = await runPersonaStage(entry, { force: true, signal });
+				if (signal?.aborted) return { ok: false, error: "aborted" };
+				return { ok: true, added };
+			} catch (error) {
+				return { ok: false, error: error instanceof Error ? error.message : String(error) };
+			}
+		},
+		memoryStatus: async () => {
+			try {
+				return { ok: true, text: await memoryStatusReport(entry) };
+			} catch (error) {
+				return { ok: false, error: error instanceof Error ? error.message : String(error) };
+			}
+		},
+		consolidateMemory: async (signal?: AbortSignal) => {
+			try {
+				if ((await loadSettings()).memoryEnabled === false) return { ok: false, error: "memory is disabled" };
+				const added = await runConsolidateStage(entry, signal);
+				if (signal?.aborted) return { ok: false, error: "aborted" };
+				return { ok: true, added };
+			} catch (error) {
+				return { ok: false, error: error instanceof Error ? error.message : String(error) };
+			}
+		},
 		resetSession: async (signal?: AbortSignal) => {
 			if (entry.agent.isStreaming) return { ok: false, error: "agent is running" };
 			try {
-				await runMemoryOrganize(entry, signal);
+				const snapshot = await captureMemorySnapshot(entry);
 				if (signal?.aborted) return { ok: false, error: "aborted" };
 				await session.rotateSession(entry.dir);
 				entry.agent.reset();
 				pendingShellIds.clear();
 				rpc.send.shell_update({});
+				cancelMemoryIdleTimer(entry.profile.name);
+				void runMemoryOrganize(entry, undefined, snapshot).catch((error) => console.error("memory rotate flush failed:", error));
 				return { ok: true };
 			} catch (error) {
 				return { ok: false, error: error instanceof Error ? error.message : String(error) };
@@ -830,7 +1249,15 @@ function commandContextFor(entry: PartnerAgent): CommandContext {
 
 async function isPartnerBusy(name: string): Promise<boolean> {
 	const entry = await agents.get(name);
-	return Boolean(entry?.agent.isStreaming || runningCommandPartners.has(name) || memoryOrganizing.has(name) || (name === viewPartner?.name && pendingShellIds.size > 0));
+	return Boolean(
+		entry?.agent.isStreaming ||
+			runningCommandPartners.has(name) ||
+			memoryRuns.has(name) ||
+			sceneRuns.has(name) ||
+			personaRuns.has(name) ||
+			consolidateRuns.has(name) ||
+			(name === viewPartner?.name && pendingShellIds.size > 0),
+	);
 }
 
 async function copyPartnerRpc(name: string, mode: "duplicate" | "fork") {
@@ -913,6 +1340,7 @@ async function editLastUserRpc(text: string) {
 
 		const agentEntry = await ensureAgent(viewPartner.profile);
 		agentEntry.agent.restore(await session.deriveMessages(dir));
+		cancelMemoryIdleTimer(agentEntry.profile.name);
 		agentEntry.agent.markUserMessage();
 		await agentEntry.agent.continue();
 		return { ok: true as const };
@@ -933,6 +1361,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 
 				rejectPendingEscalations(target.name, "superseded by a new user message");
 
+				cancelMemoryIdleTimer(target.name);
 				entry.agent.markUserMessage();
 				await entry.agent.chat(text);
 				return { accepted: true };
@@ -1036,6 +1465,20 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					model: model ? { provider: model.provider, ...(model.modelId ? { modelId: model.modelId } : {}) } : null,
 					thinking_level: model?.thinkingLevel ?? "high",
 				};
+			},
+
+			memory_overview: async ({ name }) => {
+				const settings = await loadSettings();
+				const profile = (await listPartners(settings)).find((p) => p.name === name);
+				if (!profile) return { overview: null };
+				return { overview: await buildMemoryOverview(session, getPartnerDir(settings, name)) };
+			},
+
+			memory_run_trace: async ({ name, runId }) => {
+				const settings = await loadSettings();
+				const profile = (await listPartners(settings)).find((p) => p.name === name);
+				if (!profile) return { run: null };
+				return { run: await readMemoryRunTrace(getPartnerDir(settings, name), runId) };
 			},
 			set_partner_model: async ({ model }) => {
 				if (!viewPartner) return { ok: false, error: "no partner selected" };
@@ -1548,8 +1991,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 						unregisterCustomProvider(gone.id);
 					}
 					await reloadCommands();
-					await scheduleMemoryDaily();
-					await runMemoryDailyIfDueNow();
+					refreshMemorySchedules();
 					return { ok: true };
 				} catch (error) {
 					console.error("update_settings failed:", error);
@@ -1753,16 +2195,24 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					const settings = await loadSettings();
 					const before = await listPartners(settings);
 					const affected = [name, ...before.filter((p) => p.forkedFrom === name).map((p) => p.name)];
-					await deletePartner(settings, name);
 
 					for (const target of affected) {
 						const dir = getPartnerDir(settings, target);
-						session.evictRoot(dir);
+						backgroundAborts.get(target)?.abort();
+						cancelMemoryIdleTimer(target);
 						agents.delete(target);
+						memorySchedules.delete(target);
+						memoryRuns.delete(target);
+						sceneRuns.delete(target);
+						personaRuns.delete(target);
+						consolidateRuns.delete(target);
+						session.evictRoot(dir);
 						for (const key of [...historyViewCache.keys()]) if (key === `history:${dir}`) historyViewCache.delete(key);
 						for (const key of [...trajectoryViewCache.keys()]) if (key.startsWith(`${dir}:`)) trajectoryViewCache.delete(key);
 						if (viewPartner?.name === target) viewPartner = null;
 					}
+
+					await deletePartner(settings, name);
 					return { ok: true };
 				} catch (error) {
 					if (error instanceof PartnerError) return { ok: false, error: error.message };

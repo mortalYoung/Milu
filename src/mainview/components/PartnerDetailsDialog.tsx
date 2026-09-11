@@ -1,14 +1,11 @@
-/**
- * PartnerDetailsDialog — a quiet developer dashboard for observing one partner:
- * identity + metrics + persona + 12-week heatmap + granted skills + granted MCP servers.
- * Colors use the app theme tokens so light/dark/system all stay coherent.
- */
 import { createMemo, createResource, For, Show } from "solid-js";
 import { renderMarkdown } from "../lib/markdown";
 import { mcpStateColor } from "../lib/mcp";
 import { rpc } from "../lib/rpc";
+import { formatTokens } from "../lib/utils";
 import { ActivityHeatmap, HEATMAP_WEEKS } from "./ActivityHeatmap";
 import type { PartnerItem } from "./ConversationList";
+import { MemorySection } from "./MemorySection";
 import { Dialog, DialogContent, DialogTitle } from "./ui/dialog";
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
@@ -16,12 +13,6 @@ const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "
 function formatDate(ts: number): string {
 	const d = new Date(ts);
 	return `${MONTHS[d.getMonth()]} ${d.getDate()}`;
-}
-
-function formatNumber(n: number): string {
-	if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-	if (n >= 1_000) return `${Math.round(n / 1_000)}k`;
-	return String(n);
 }
 
 function shortPath(path: string): string {
@@ -66,8 +57,8 @@ export function PartnerDetailsDialog(props: { partner: PartnerItem | null; onOpe
 
 	const metricCards = () => [
 		{ label: "Active days · 12w", value: String(metrics().activeDays), delta: "tokens > 0" },
-		{ label: "Turns · 12w", value: formatNumber(metrics().turns), delta: `${formatNumber(metrics().tools)} tools` },
-		{ label: "Tokens · 12w", value: formatNumber(metrics().tokens), delta: "last 12 weeks" },
+		{ label: "Turns · 12w", value: formatTokens(metrics().turns), delta: `${formatTokens(metrics().tools)} tools` },
+		{ label: "Tokens · 12w", value: formatTokens(metrics().tokens), delta: "last 12 weeks" },
 	];
 
 	return (
@@ -75,7 +66,7 @@ export function PartnerDetailsDialog(props: { partner: PartnerItem | null; onOpe
 			<DialogContent class="w-[820px] max-w-[820px] bg-paper text-ink p-0 gap-0 overflow-hidden">
 				<DialogTitle class="sr-only">{p()?.name ?? ""}</DialogTitle>
 				{p() && (
-					<div class="flex flex-col">
+					<div class="flex max-h-[min(86vh,900px)] flex-col overflow-y-auto">
 						<div class="flex items-center gap-3 px-5 pt-4 pb-3 pr-12">
 							<div class="size-10 rounded-md bg-ink text-paper flex items-center justify-center font-sans text-[18px] font-bold">{avatarInitial(p()!.name)}</div>
 							<div class="min-w-0">
@@ -101,7 +92,7 @@ export function PartnerDetailsDialog(props: { partner: PartnerItem | null; onOpe
 							</For>
 						</div>
 
-						<div class="grid grid-cols-[1fr_240px] gap-2.5 px-5 pt-2.5 pb-5">
+						<div class="grid grid-cols-[1fr_240px] gap-2.5 px-5 pt-2.5 pb-2.5">
 							<div class="border border-hairline bg-letter rounded-md p-3 min-w-0">
 								<p class="font-sans text-[9.5px] font-semibold uppercase tracking-[0.12em] text-muted mb-2">Persona</p>
 								{p()!.persona?.trim() ? (
@@ -180,6 +171,10 @@ export function PartnerDetailsDialog(props: { partner: PartnerItem | null; onOpe
 									</div>
 								</div>
 							</div>
+						</div>
+
+						<div class="px-5 pb-5">
+							<MemorySection partner={p()!.name} />
 						</div>
 					</div>
 				)}

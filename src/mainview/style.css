@@ -1438,6 +1438,9 @@ body::before {
 	.palette-row-command {
 		@apply font-mono text-[12.5px] text-seal shrink-0;
 	}
+	.palette-row-hint {
+		@apply shrink-0 font-mono text-[10.5px] text-muted whitespace-nowrap;
+	}
 	.palette-row-badge {
 		@apply shrink-0 font-sans text-[9px] uppercase tracking-[0.08em] text-seal border border-seal/30 rounded-[3px] px-1 py-[1px];
 	}
@@ -2456,8 +2459,23 @@ body::before {
 	.command-menu-empty {
 		@apply px-3 py-1.5 font-mono text-[10px] text-muted;
 	}
+	.composer-command-hint {
+		position: absolute;
+		bottom: calc(100% + 8px);
+		left: 50%;
+		transform: translateX(-50%);
+		@apply flex items-center gap-2 bg-letter border border-hairline rounded-[8px] px-3 py-1 z-40 font-mono text-[10px];
+		animation: composer-panel-in 180ms cubic-bezier(0.23, 1, 0.32, 1);
+	}
+	.composer-command-hint-name {
+		@apply text-seal shrink-0;
+	}
+	.composer-command-hint-args {
+		@apply text-muted shrink-0;
+	}
 	@media (prefers-reduced-motion: reduce) {
 		.composer-panel,
+		.composer-command-hint,
 		.command-menu {
 			animation: none;
 		}

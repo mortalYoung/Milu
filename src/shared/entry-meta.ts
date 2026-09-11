@@ -297,6 +297,17 @@ function contextChangedProject(entry: Entry): AgentMessage | null {
 	} as AgentMessage;
 }
 
+function memoryContextProject(entry: Entry): AgentMessage | null {
+	if (entry.type !== "custom") return null;
+	const data = (entry.data ?? {}) as { text?: unknown; timestamp?: unknown };
+	if (typeof data.text !== "string" || data.text.length === 0) return null;
+	return {
+		role: "user",
+		content: data.text,
+		timestamp: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
+	} as AgentMessage;
+}
+
 function pushProject(project: (entry: Entry) => AgentMessage | null): NonNullable<SliceMeta["visit"]> {
 	return (ctx) => {
 		const msg = project(ctx.entry);
@@ -310,6 +321,7 @@ const textUserVisit = pushProject(textUserProject);
 const mcpChangedVisit = pushProject(mcpChangedProject);
 const instructionsChangedVisit = pushProject(instructionsChangedProject);
 const contextChangedVisit = pushProject(contextChangedProject);
+const memoryContextVisit = pushProject(memoryContextProject);
 
 function assistantToolCallIds(entry: Entry): string[] {
 	if (entry.type !== "message" || entry.message.role !== "assistant") return [];
@@ -358,11 +370,19 @@ function sliceToolResult(ctx: SliceContext): void {
 function sliceCompaction(ctx: SliceContext): void {
 	if (ctx.entry.type !== "custom" || ctx.entry.customType !== EVENTS.compaction) return;
 	const d = (ctx.entry.data ?? {}) as CompactionEventData;
-	ctx.out.length = 0;
-	ctx.out.push({
+	const checkpoint: SliceItem = {
 		id: ctx.entry.id,
 		message: { role: "user", content: d.summary, timestamp: d.timestamp ?? ctx.entry.timestamp ?? 0 } as AgentMessage,
-	});
+	};
+	const shadowed = Array.isArray(d.shadowedIds) ? new Set(d.shadowedIds) : null;
+	if (!shadowed) {
+		ctx.out.length = 0;
+		ctx.out.push(checkpoint);
+		return;
+	}
+	const kept = ctx.out.filter((item) => !shadowed.has(item.id));
+	ctx.out.length = 0;
+	ctx.out.push(checkpoint, ...kept);
 }
 
 function sliceRewind(ctx: SliceContext): void {
@@ -413,6 +433,7 @@ export const EVENT_META: Record<string, EntryMeta> = {
 	[EVENTS.toolResult]: { slice: { visit: sliceToolResult } },
 	[EVENTS.timeGapReminder]: { slice: { visit: textUserVisit } },
 	[EVENTS.contextChanged]: { slice: { visit: contextChangedVisit } },
+	[EVENTS.memoryContext]: { slice: { visit: memoryContextVisit } },
 	[EVENTS.instructionsChanged]: { slice: { visit: instructionsChangedVisit } },
 	[EVENTS.mcpChanged]: { slice: { visit: mcpChangedVisit } },
 	[EVENTS.rewind]: { view: { visit: rewindVisit }, slice: { visit: sliceRewind } },

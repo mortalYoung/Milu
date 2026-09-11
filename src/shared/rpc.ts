@@ -3,6 +3,7 @@ import type { ElectrobunRPCSchema } from "electrobun/main";
 import type { CustomModel, CustomProvider, ThemeMode, ToastPlacement } from "../bun/lib/settings";
 import type { McpConfig, McpLifecycle, McpServerConfig, McpServerStatusState } from "../bun/mcp/types";
 import type { SandboxMode } from "../bun/permission/types";
+import type { MemoryRunEndReason, MemoryRunStage, MemoryRunTraceEvent } from "./events";
 
 export type { CustomModel, CustomProvider, McpServerStatusState, SandboxMode, ThemeMode, ToastPlacement };
 
@@ -65,7 +66,6 @@ export interface CommandHistoryItem {
 	text?: string;
 }
 
-/** One row of the user-facing chat view (the View projection of Origin). */
 export interface ViewItem {
 	id: string;
 	kind: "user" | "send_message" | "escalation" | "error" | "aborted" | "command" | "skill" | "shell";
@@ -266,6 +266,105 @@ export interface PartnerActivityDay {
 	tools: number;
 }
 
+// ——— memory panel ———
+export type MemoryKindView = "fact" | "decision" | "issue" | "reference" | "event" | "preference" | "instruction";
+
+export interface MemoryRecordView {
+	id: string;
+	kind: MemoryKindView;
+	createdAt: number;
+	summary: string;
+	detail?: string;
+	scene?: string;
+	superseded: boolean;
+	overRecallCap: boolean;
+	source: { rawCount: number };
+}
+
+export interface MemorySceneView {
+	sceneId: string;
+	name: string;
+	summary: string;
+	content: string;
+	heat: number;
+	updatedAt: number;
+	sourceCount: number;
+}
+
+export interface MemoryProfileView {
+	version: number;
+	createdAt: number;
+	content: string;
+	sourceCount: number;
+}
+
+export interface MemoryRunUsage {
+	calls: number;
+	input: number;
+	output: number;
+	cacheRead: number;
+	cacheWrite: number;
+}
+
+export interface MemoryRunView {
+	runId: string;
+	stage: MemoryRunStage;
+	reason: MemoryRunEndReason;
+	startedAt: number;
+	durationMs: number;
+	added: number;
+	bytes: number;
+	usage?: MemoryRunUsage;
+	error?: string;
+}
+
+export interface MemorySizeEntry {
+	label: string;
+	bytes: number;
+}
+
+export interface MemoryOverview {
+	totalBytes: number;
+	resultsBytes: number;
+	traceBytes: number;
+	results: MemorySizeEntry[];
+	trace: MemorySizeEntry[];
+	records: MemoryRecordView[];
+	supersededCount: number;
+	scenes: MemorySceneView[];
+	profile: MemoryProfileView | null;
+	runs: MemoryRunView[];
+	runsTotal: number;
+	pending: { pending: boolean; rounds: number };
+	agentDetailLimit: number;
+}
+
+export interface MemoryTrajectoryMessageView {
+	role: string;
+	toolName?: string;
+	isError?: boolean;
+	stopReason?: string;
+	errorMessage?: string;
+	text?: string;
+	thinking?: string;
+	toolCalls?: { name: string; args: string }[];
+}
+
+export interface MemoryTrajectoryAttemptView {
+	attempt: number;
+	messages: MemoryTrajectoryMessageView[];
+}
+
+export interface MemoryRunTraceView extends MemoryRunView {
+	model: string;
+	attempts: number;
+	targetRawId: string | null;
+	cursorRawId: string | null;
+	checkpoints?: string[];
+	trace: MemoryRunTraceEvent[];
+	attemptsView: MemoryTrajectoryAttemptView[];
+}
+
 type __schema<S extends ElectrobunRPCSchema> = S;
 
 export type AppRPCSchema = __schema<{
@@ -427,6 +526,16 @@ export type AppRPCSchema = __schema<{
 				};
 			};
 
+			memory_overview: {
+				params: { name: string };
+				response: { overview: MemoryOverview | null };
+			};
+
+			memory_run_trace: {
+				params: { name: string; runId: string };
+				response: { run: MemoryRunTraceView | null };
+			};
+
 			palette_search_files: {
 				params: { name: string; query: string };
 				response: {
@@ -518,18 +627,15 @@ export type AppRPCSchema = __schema<{
 						sendMessageIntervalSec?: number | null;
 						shellContinuous?: boolean;
 						memoryEnabled?: boolean;
-						memoryCronEnabled?: boolean;
-						memoryDailyTime?: string;
+						memoryIdleMinutes?: number;
+						memoryMaxScenes?: number;
 						commands_path?: string;
 						retry?: { maxRetries?: number; baseDelayMs?: number };
 						webFetch?: { timeoutMs?: number; maxBytes?: number; maxChars?: number; userAgent?: string };
 						compaction?: {
 							thresholdRatio?: number;
-							eventDigestCount?: number;
-							summaryCapChars?: number;
+							digestMaxItems?: number;
 							maxOverflowRetries?: number;
-							summarizer?: "local" | "llm";
-							summarizationModel?: string;
 							prune?: { thresholdChars?: number; headChars?: number; tailChars?: number };
 						};
 						explorer?: { lineGap?: number };
@@ -562,18 +668,15 @@ export type AppRPCSchema = __schema<{
 						sendMessageIntervalSec?: number | null;
 						shellContinuous?: boolean;
 						memoryEnabled?: boolean;
-						memoryCronEnabled?: boolean;
-						memoryDailyTime?: string;
+						memoryIdleMinutes?: number;
+						memoryMaxScenes?: number;
 						commands_path?: string;
 						retry?: { maxRetries?: number; baseDelayMs?: number };
 						webFetch?: { timeoutMs?: number; maxBytes?: number; maxChars?: number; userAgent?: string };
 						compaction?: {
 							thresholdRatio?: number;
-							eventDigestCount?: number;
-							summaryCapChars?: number;
+							digestMaxItems?: number;
 							maxOverflowRetries?: number;
-							summarizer?: "local" | "llm";
-							summarizationModel?: string;
 							prune?: { thresholdChars?: number; headChars?: number; tailChars?: number };
 						};
 						explorer?: { lineGap?: number };

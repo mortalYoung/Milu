@@ -3,13 +3,12 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import type { SandboxMode } from "../permission";
 
-/** UI theme: follow the system appearance, or force light/dark. */
 export type ThemeMode = "system" | "light" | "dark";
 
-/** Where transient toast notifications appear. */
 export type ToastPlacement = "topcenter" | "topright" | "bottomcenter" | "bottomright";
 
-/** Which side the Explorer / Git drawers dock to. */
+export const DEFAULT_MEMORY_MAX_SCENES = 15;
+
 export type DockSide = "left" | "right";
 
 export interface CustomModel {
@@ -28,47 +27,37 @@ export interface CustomProvider {
 }
 
 export interface Settings {
-	/** Root directory for Partner profile storage (where partners get created). */
 	partner_profile_path: string;
 	detect_instructions_file: string;
-	/** Default sandbox mode for newly created partners (the Permission setting). */
 	defaultSandboxMode?: SandboxMode;
 	providers?: string[];
 	customProviders?: CustomProvider[];
-	/** UI theme; the view applies it to color-scheme (light-dark() tokens do the rest). */
 	theme?: ThemeMode;
-	/** Where toast notifications appear. */
 	toastPlacement?: ToastPlacement;
 	dockSide?: DockSide;
 	toastDurationMs?: number;
 	skills_dirs?: string[];
 	skills_watch?: boolean;
 	skills_watch_delay_ms?: number;
-	/** Seconds between visible send_message heartbeats during a run; null/undefined = only first and last. */
 	sendMessageIntervalSec?: number | null;
 	shellContinuous?: boolean;
 	memoryEnabled?: boolean;
-	memoryCronEnabled?: boolean;
-	memoryDailyTime?: string;
+	memoryIdleMinutes?: number;
+	memoryMaxScenes?: number;
 	commands_path?: string;
 	mcp_config_path?: string;
 	retry?: { maxRetries?: number; baseDelayMs?: number };
 	webFetch?: { timeoutMs?: number; maxBytes?: number; maxChars?: number; userAgent?: string };
 	compaction?: {
 		thresholdRatio?: number;
-		eventDigestCount?: number;
-		summaryCapChars?: number;
+		digestMaxItems?: number;
 		maxOverflowRetries?: number;
-		summarizer?: "local" | "llm";
-		summarizationModel?: string;
 		prune?: { thresholdChars?: number; headChars?: number; tailChars?: number };
 	};
 	explorer?: { lineGap?: number };
-	/** Palette (Cmd+P) file search: names skipped during the workspace walk; unset = the built-in list. */
 	palette?: { searchIgnoreDirs?: string[] };
 }
 
-/** Directories (and stray files like .DS_Store) the palette file search skips when settings don't override the list. */
 export const DEFAULT_PALETTE_IGNORE_DIRS = [".git", ".DS_Store", "node_modules", "dist", "build", ".next", "out", "target", ".cache", "__pycache__", ".venv", "venv"];
 
 const DEFAULT_SETTINGS: Settings = {
@@ -86,8 +75,8 @@ const DEFAULT_SETTINGS: Settings = {
 	skills_watch_delay_ms: 300,
 	shellContinuous: true,
 	memoryEnabled: true,
-	memoryCronEnabled: true,
-	memoryDailyTime: "06:00",
+	memoryIdleMinutes: 5,
+	memoryMaxScenes: DEFAULT_MEMORY_MAX_SCENES,
 	explorer: { lineGap: 0.2 },
 };
 
@@ -108,19 +97,16 @@ export async function loadSettings(): Promise<Settings> {
 
 export async function saveSettings(settings: Settings): Promise<void> {
 	await mkdir(join(homedir(), ".config", "letters"), { recursive: true });
-	// The file holds the user's api key — never world-readable
 	await writeFile(SETTINGS_PATH, JSON.stringify(settings, null, 2) + "\n", { encoding: "utf8", mode: 0o600 });
 	await chmod(SETTINGS_PATH, 0o600);
 }
 
-/** Effective visible-message interval in ms: ∞ (first + last only) when unset or null, else clamped to ≥20s. */
 export function sendMessageIntervalMs(settings: Settings): number {
 	const sec = settings.sendMessageIntervalSec;
 	if (sec == null) return Number.POSITIVE_INFINITY;
 	return Math.max(20, sec) * 1000;
 }
 
-/** Expand a leading ~ into the user's home directory. */
 function expandHome(path: string): string {
 	return path.startsWith("~") ? join(homedir(), path.slice(1)) : path;
 }

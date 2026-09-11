@@ -1,7 +1,7 @@
 import type { AgentHarnessTool, AgentTool, ExecutionEnv, ExecutionToolContext } from "@earendil-works/pi-agent-core";
 import { createEditTool, createReadTool, createWriteTool } from "@earendil-works/pi-agent-core";
 import { type TSchema, Type } from "@earendil-works/pi-ai";
-import { createReadMemoryTool, type MemoryRecord, type QueryMemoryOptions } from "../core/memory";
+import { createMemoryTool, type MemoryRecord, type QueryMemoryOptions } from "../core/memory";
 import { loadSettings } from "../lib/settings";
 import type { SandboxMode } from "../permission";
 import { Permission } from "../permission";
@@ -218,10 +218,10 @@ function webFetchTool(): AgentTool<typeof webFetchSchema, WebFetchDetails> {
 	};
 }
 
-function readMemoryTool(deps: ToolDeps) {
-	return createReadMemoryTool({
+function memoryTool(deps: ToolDeps) {
+	return createMemoryTool({
 		description:
-			"Read durable memories for this partner. Use it when a task depends on prior project facts, decisions, issues, references, or objective user-driven events. Returns memories sorted newest first; superseded entries are hidden unless includeSuperseded is true.",
+			"Read durable memories for this partner. Use it when a task depends on prior project facts, decisions, issues, references, preferences, instructions, or objective user-driven events. Matches are ranked by relevance when a query is given (newest first otherwise); superseded entries are hidden unless includeSuperseded is true. Long detail is truncated and large result sets are capped by an output budget.",
 		read: deps.readMemory,
 	});
 }
@@ -292,7 +292,7 @@ export function createTools(deps: ToolDeps): AgentTool[] {
 		bindEnv(bashTool(deps), env),
 		skillTool(deps),
 		webFetchTool(),
-		readMemoryTool(deps),
+		memoryTool(deps),
 		mcpListTool(deps),
 		mcpCallTool(deps),
 	];

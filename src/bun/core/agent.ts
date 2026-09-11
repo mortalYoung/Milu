@@ -23,6 +23,7 @@ export interface AgentBridge {
 	onTurnStart: (turn: number) => void;
 	onMessage: (text: string) => void;
 	onEnd: (error?: string) => void;
+	afterRun: () => void;
 }
 
 export interface AgentHandle {
@@ -538,6 +539,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		} finally {
 			deferAgentEnd = false;
 			if (ctx.running && !deferredAgentEnd) ctx.setRunning(false);
+			bridge.afterRun();
 		}
 	}
 

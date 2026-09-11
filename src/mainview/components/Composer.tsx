@@ -1,17 +1,3 @@
-/**
- * Composer — the input area (direction D · workbench):
- * a bordered field with a seal focus ring; Enter sends (IME-safe: composition Enter confirms
- * the IME candidate, it must not send), Shift+Enter inserts a newline; the send button appears
- * only when there is something to send (text or a run to stop); it becomes a stop button while
- * running. Context occupancy ring sits inside the field. Runtime context — workspace/storage path,
- * model, sandbox mode, session metrics — live behind a quiet toggle left of the field: the
- * static composer shows only the pill, and the panel opens on demand (click / outside / Esc
- * to dismiss; sending closes it too).
- *
- * Slash commands share the same pill: a leading "/" opens the command menu above it; Enter or
- * Tab selects the highlighted command (unknown "/…" lines are blocked, never sent to the
- * model), and leadingInput commands (/workspace) claim the line until the argument is typed.
- */
 import { ArrowUp, ExternalLink, SlidersHorizontal, Square } from "lucide-solid";
 import { createEffect, createMemo, createSignal, For, type JSX, onCleanup, Show, untrack } from "solid-js";
 import type { CommandDescriptor, SandboxMode } from "../../shared/rpc";
@@ -25,6 +11,7 @@ import { useSession } from "../lib/contexts/session-context";
 import { useSettings } from "../lib/contexts/settings-context";
 import { useSkills } from "../lib/contexts/skills-context";
 import { detectTrigger, parseCommand } from "../lib/trigger";
+import { formatTokens } from "../lib/utils";
 import { Button } from "./Button";
 import { CommandMenu } from "./CommandMenu";
 import { ContextMeter } from "./ContextMeter";
@@ -42,22 +29,13 @@ import {
 } from "./ui/dropdown-menu";
 import { Select } from "./ui/select";
 
-/** Auto-grow ceiling (~5 lines); beyond that the textarea scrolls internally. */
 const MAX_HEIGHT = 120;
-
-/** 1,234 → "1.2k"; 1,234,567 → "1.2M" */
-function formatTokens(n: number): string {
-	if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-	if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-	return String(Math.round(n));
-}
 
 export function Composer(props: {
 	onSend: (text: string) => void;
 	onStop: () => void;
 	onShell?: (command: string) => Promise<{ ok: boolean; error?: string; shellId?: string }>;
 	onOpenPath?: (path: string, editorId?: string) => void;
-	/** Detected code editors (right-click menu on ws/st paths). */
 	editors?: { id: string; name: string }[];
 }) {
 	const metrics = useMetrics();
@@ -69,7 +47,6 @@ export function Composer(props: {
 	const skillDirectory = useSkills();
 	const shellContinuous = () => settings.data()?.settings?.shellContinuous ?? true;
 	const [text, setText] = createSignal("");
-	// A prefill (e.g. the palette handing over `/model `) writes straight into the live box and focuses it.
 	let handledPrefillId = 0;
 	createEffect(() => {
 		const request = composer.pendingPrefill();
@@ -87,7 +64,6 @@ export function Composer(props: {
 			resize();
 		});
 	});
-	// The draft is per-chat: switching chats loads the other chat's saved text and resets the box height.
 	createEffect(() => {
 		const name = session.data.selected;
 		void name;
@@ -103,9 +79,6 @@ export function Composer(props: {
 		});
 	});
 	let textareaRef: HTMLTextAreaElement | undefined;
-	// IME guard: composition Enter picks a candidate, it must not send. The flag outlives
-	// renders; clearing is deferred one tick because Safari delivers the closing keydown
-	// AFTER compositionend.
 	let composing = false;
 	let pendingImeFix: { data: string; fixed: string; cursor: number } | null = null;
 	const onCompositionStart = () => {
@@ -113,8 +86,6 @@ export function Composer(props: {
 	};
 	const onCompositionEnd = (e: CompositionEvent) => {
 		const data = e.data ?? "";
-		// WKWebView commits pinyin-mode English as the display string with syllable spaces
-		// ("hap p"); when no CJK was selected, restore the raw letters by dropping spaces.
 		if (/^[A-Za-z\s]+$/.test(data) && data !== data.replace(/\s/g, "")) {
 			const el = textareaRef;
 			if (el) {
@@ -171,16 +142,20 @@ export function Composer(props: {
 		return [...commands, ...skillItems];
 	});
 
-	// Runtime-context panel: closed by default; the toggle icon left of the field opens it on demand.
 	const [panelOpen, setPanelOpen] = createSignal(false);
+
+	const commandHint = createMemo(() => {
+		if (menuOpen() || panelOpen() || shellMode() || submitting()) return null;
+		const parsed = parseCommand(text());
+		if (!parsed || parsed.rawInput.trim()) return null;
+		const cmd = commandDirectory.commands().find((c) => c.name === parsed.name);
+		return cmd?.hint ? cmd : null;
+	});
 	let rootRef: HTMLFormElement | undefined;
-	// Outside click / Escape close the panel; clicks inside the composer (typing, changing a
-	// select) keep it open — only dismissal and the send action close it.
 	createEffect(() => {
 		if (!panelOpen()) return;
 		const onPointerDown = (e: PointerEvent) => {
 			if (e.target instanceof Node && rootRef?.contains(e.target)) return;
-			// Clicking a floating menu (e.g. the ws/st path context menu) is not "outside the panel".
 			if (e.target instanceof Element && e.target.closest('[role="menu"], [data-kb-menu-content]')) return;
 			setPanelOpen(false);
 		};
@@ -216,10 +191,8 @@ export function Composer(props: {
 		if (textareaRef) textareaRef.style.height = "";
 	};
 
-	/** Keep the menu / claimed state in sync with the draft + caret (pure detection, no async). */
 	function syncCommandState(value: string, pos: number) {
 		if (claimed()) {
-			// A claimed leadingInput command survives only while its prefix is intact.
 			if (!value.startsWith(`/${claimed()!.name} `)) setClaimed(null);
 			setMenuOpen(false);
 			return;
@@ -318,13 +291,11 @@ export function Composer(props: {
 		const parsed = parseCommand(trimmed);
 		const cmd = parsed ? commandDirectory.commands().find((c) => c.name === parsed.name) : undefined;
 
-		// Unknown "/…" is never a model message: keep the "no command found" state visible.
 		if (parsed && !cmd) {
 			setMenuOpen(true);
 			setMenuQuery(parsed.name);
 			return;
 		}
-		// A bare "/" (no parseable command name) is still a command attempt, not a message.
 		if (trimmed.startsWith("/") && !cmd) {
 			setMenuOpen(true);
 			setMenuQuery(trimmed.slice(1).split(/\s/)[0] ?? "");
@@ -344,7 +315,6 @@ export function Composer(props: {
 			return;
 		}
 
-		// Normal message: sending returns to the letter — the settings panel folds back.
 		setPanelOpen(false);
 		clearText();
 		props.onSend(trimmed);
@@ -409,11 +379,8 @@ export function Composer(props: {
 		}
 	};
 
-	// Send appears only when there is something to send (or a run to stop)
 	const showSend = () => text().trim() !== "" || agent.isBusyForSelected();
 
-	// Path line: workspace/storage are clickable to open in the user's code editor; right-click
-	// offers every installed editor, left-click uses the default (VS Code when present).
 	const openPath = (path: string, editorId?: string) => props.onOpenPath?.(path, editorId);
 	const pathButton = (label: string, path: string) => (
 		<ContextMenu>
@@ -473,11 +440,17 @@ export function Composer(props: {
 
 	return (
 		<form class="composer" id="composer" ref={rootRef} onSubmit={submitForm}>
-			{/* Command palette: opens above the pill for a leading "/" (paper language, no shadow) */}
 			<Show when={menuOpen()}>
 				<CommandMenu items={menuItems()} selectedIndex={selectedIndex()} onPick={pickCommand} onHover={setSelectedIndex} />
 			</Show>
-			{/* The pill, with the runtime-context toggle on its left (the send button stays alone on the right) */}
+			<Show when={commandHint()}>
+				{(cmd) => (
+					<div class="composer-command-hint">
+						<span class="composer-command-hint-name">/{cmd().name}</span>
+						<span class="composer-command-hint-args">{cmd().hint}</span>
+					</div>
+				)}
+			</Show>
 			<div class="composer-row">
 				<Button
 					variant="ghost"
@@ -545,8 +518,6 @@ export function Composer(props: {
 					)}
 				</div>
 			</div>
-			{/* Runtime-context panel: path line (read-only), model / sandbox controls, then status +
-			   session metrics as a quiet footnote; on-demand only — closed by outside click, Esc or sending */}
 			<Show when={panelOpen()}>
 				<div id="composer-panel" class="composer-panel" role="group" aria-label="Runtime context">
 					{(agent.data().workspace_path || agent.data().storage_path) && (

@@ -70,7 +70,10 @@ export function PaletteList(props: { rows: PaletteRow[]; index: number; unread: 
 							onClick={() => props.onPick(row)}
 						>
 							<span class="palette-row-command">/{row.command.name}</span>
-							<span class="palette-row-sub">{row.command.description}</span>
+							<span class="palette-row-sub min-w-0 flex-1">{row.command.description}</span>
+							<Show when={row.command.hint}>
+								<span class="palette-row-hint">{row.command.hint}</span>
+							</Show>
 							<Show when={row.command.category === "skill"}>
 								<span class="palette-row-badge">skill</span>
 							</Show>

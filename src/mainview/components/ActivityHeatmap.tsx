@@ -1,5 +1,6 @@
 import { For } from "solid-js";
 import type { PartnerActivityDay } from "../../shared/rpc";
+import { formatTokens } from "../lib/utils";
 import { Tooltip, TooltipContent, TooltipPortal, TooltipTrigger } from "./ui/tooltip";
 
 const CELL = 10;
@@ -27,12 +28,6 @@ function levelOf(load: number): number {
 	return passed + 1;
 }
 
-function fmtTokens(n: number): string {
-	if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-	if (n >= 1_000) return `${Math.round(n / 1_000)}k`;
-	return String(n);
-}
-
 function count(n: number, one: string, many: string): string {
 	return `${n} ${n === 1 ? one : many}`;
 }
@@ -40,7 +35,7 @@ function count(n: number, one: string, many: string): string {
 function tipFor(day: PartnerActivityDay): string {
 	const d = new Date(day.ts);
 	const date = `${MONTHS[d.getMonth()]} ${d.getDate()}`;
-	return `${date} · ${fmtTokens(day.freshTokens)} tok · ${count(day.turns, "turn", "turns")} · ${count(day.tools, "tool", "tools")}`;
+	return `${date} · ${formatTokens(day.freshTokens)} tok · ${count(day.turns, "turn", "turns")} · ${count(day.tools, "tool", "tools")}`;
 }
 
 interface MonthMark {

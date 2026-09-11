@@ -37,7 +37,7 @@ export function CommandMenu(props: { items: CommandDescriptor[]; selectedIndex: 
 						>
 							<span class="command-menu-name">/{row.item.name}</span>
 							<span class="command-menu-desc">{row.item.description}</span>
-							{row.item.kind === "leadingInput" && row.item.hint ? <span class="command-menu-hint">{row.item.hint}</span> : null}
+							{row.item.hint ? <span class="command-menu-hint">{row.item.hint}</span> : null}
 							{row.item.kind === "popupSelect" ? <span class="command-menu-hint">…</span> : null}
 							{row.item.category === "skill" ? <span class="command-menu-badge">skill</span> : null}
 						</button>

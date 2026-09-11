@@ -1,16 +1,13 @@
 import { access, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { ensureMemoryFile } from "./core/memory";
 import { getPartnerDir, partnerRoot, type Settings } from "./lib/settings";
 import type { SessionStore } from "./persist";
 
 // ————— Partner profiles —————
 export interface PartnerProfile {
 	name: string;
-	/** Persona (user-filled, no default): how the partner works and speaks. */
 	persona?: string;
 	createdAt: number;
-	/** Root chats omit this; fork chats point to the root chat they hang under. */
 	forkedFrom?: string;
 }
 
@@ -23,7 +20,6 @@ export type CopyMode = "duplicate" | "fork";
 
 const NAME_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
-/** OS-reserved names that must not become folders (case-insensitive). */
 const RESERVED_NAMES = new Set([
 	"con",
 	"prn",
@@ -51,10 +47,6 @@ const RESERVED_NAMES = new Set([
 
 export class PartnerError extends Error {}
 
-/**
- * Validate the partner name: required, letters/digits/underscore/hyphen only (folder-safe —
- * no slashes, dots, or spaces), not an OS-reserved name. The name becomes a folder path.
- */
 function validateName(name: string): void {
 	if (!name || !NAME_PATTERN.test(name)) {
 		throw new PartnerError("Name is required (letters, digits, '_', '-', max 64)");
@@ -73,7 +65,6 @@ async function pathExists(path: string): Promise<boolean> {
 	}
 }
 
-/** First free `${base}-2`, `${base}-3`, … against existing names (case-insensitive). */
 function nextAvailablePartnerName(base: string, existing: string[]): string {
 	const used = new Set(existing.map((name) => name.toLowerCase()));
 	for (let i = 2; ; i++) {
@@ -98,11 +89,9 @@ export async function createPartner(settings: Settings, input: PartnerInput): Pr
 	}
 	await mkdir(dir, { recursive: true });
 	await writeFile(profilePath, JSON.stringify(profile, null, 2) + "\n", "utf8");
-	await ensureMemoryFile(dir);
 	return profile;
 }
 
-/** Delete a root chat together with its fork chats (or a fork chat alone). */
 export async function deletePartner(settings: Settings, name: string): Promise<void> {
 	const profiles = await listPartners(settings);
 	const targets = [name, ...profiles.filter((p) => p.forkedFrom === name).map((p) => p.name)];
@@ -113,11 +102,6 @@ export async function deletePartner(settings: Settings, name: string): Promise<v
 	}
 }
 
-/**
- * Copy a chat:
- * - duplicate: same-level copy (root → root, fork → sibling fork under the same root);
- * - fork: root → a one-level fork leaf under it.
- */
 export async function copyPartner(settings: Settings, input: { sourceName: string; mode: CopyMode }, store: Pick<SessionStore, "forkTo" | "evictRoot">): Promise<PartnerProfile> {
 	const profiles = await listPartners(settings);
 	const existing = profiles.map((p) => p.name);
@@ -149,7 +133,6 @@ export async function copyPartner(settings: Settings, input: { sourceName: strin
 	return { name: targetName, persona: source.persona, createdAt, ...(forkedFrom ? { forkedFrom } : {}) };
 }
 
-/** Turn a fork chat into a root chat by removing its `forkedFrom` pointer. */
 export async function promotePartner(settings: Settings, name: string): Promise<PartnerProfile> {
 	const trimmed = name.trim();
 	validateName(trimmed);
@@ -161,7 +144,6 @@ export async function promotePartner(settings: Settings, name: string): Promise<
 	return raw as unknown as PartnerProfile;
 }
 
-/** List all partners (sorted by creation time). */
 export async function listPartners(settings: Settings): Promise<PartnerProfile[]> {
 	let entries;
 	try {
@@ -175,9 +157,7 @@ export async function listPartners(settings: Settings): Promise<PartnerProfile[]
 		try {
 			const profile = JSON.parse(await readFile(join(partnerRoot(settings), entry.name, "profile.json"), "utf8")) as PartnerProfile;
 			profiles.push(profile);
-		} catch {
-			// Directories without a profile.json are ignored
-		}
+		} catch {}
 	}
 	return profiles.sort((a, b) => a.createdAt - b.createdAt);
 }

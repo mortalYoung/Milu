@@ -8,11 +8,11 @@ import { cn } from "../../lib/utils";
 const Dialog = DialogPrimitive.Root;
 const DialogTrigger = DialogPrimitive.Trigger;
 
-const DialogPortal: Component<DialogPrimitive.DialogPortalProps> = (props) => {
-	const [, rest] = splitProps(props, ["children"]);
+const DialogPortal: Component<DialogPrimitive.DialogPortalProps & { layerClass?: string }> = (props) => {
+	const [, rest] = splitProps(props, ["children", "layerClass"]);
 	return (
 		<DialogPrimitive.Portal {...rest}>
-			<div class="fixed inset-0 z-50 flex items-start justify-center sm:items-center">{props.children}</div>
+			<div class={cn("fixed inset-0 z-50 flex items-start justify-center sm:items-center", props.layerClass)}>{props.children}</div>
 		</DialogPrimitive.Portal>
 	);
 };
@@ -32,18 +32,20 @@ const DialogOverlay = <T extends ValidComponent = "div">(props: PolymorphicProps
 type DialogContentProps<T extends ValidComponent = "div"> = DialogPrimitive.DialogContentProps<T> & {
 	class?: string | undefined;
 	children?: JSX.Element;
+	layerClass?: string;
+	overlayClass?: string;
 };
 
 const DialogContent = <T extends ValidComponent = "div">(props: PolymorphicProps<T, DialogContentProps<T>>) => {
-	const [, rest] = splitProps(props as DialogContentProps, ["class", "children"]);
+	const [, rest] = splitProps(props as DialogContentProps, ["class", "children", "layerClass", "overlayClass"]);
 	return (
-		<DialogPortal>
-			<DialogOverlay />
+		<DialogPortal layerClass={props.layerClass}>
+			<DialogOverlay class={cn(props.layerClass, props.overlayClass)} />
 			<DialogPrimitive.Content
 				class={cn(
-					// Dialog keeps a centered zoom entry (motion-craft: modal-centered origin, not anchored to the trigger; drops the slide-in-* top-left offset)
 					"fixed left-1/2 top-1/2 z-50 grid max-h-screen w-full max-w-lg -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto border bg-card p-6 shadow-none duration-200 data-[expanded]:animate-in data-[closed]:animate-out data-[closed]:fade-out-0 data-[expanded]:fade-in-0 data-[closed]:zoom-out-95 data-[expanded]:zoom-in-95 sm:rounded-lg",
 					props.class,
+					props.layerClass,
 				)}
 				{...rest}
 			>

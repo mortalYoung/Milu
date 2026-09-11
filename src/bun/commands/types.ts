@@ -45,9 +45,12 @@ export interface CommandContext {
 	applyWorkspace(path: string | null): Promise<{ ok: true; workspace: string | null } | { ok: false; error: string }>;
 	runManualCompact(signal?: AbortSignal): Promise<{ ok: boolean; error?: string; compacted?: number }>;
 	organizeMemory(signal?: AbortSignal): Promise<{ ok: boolean; error?: string; added?: number }>;
+	organizeScenes(signal?: AbortSignal): Promise<{ ok: boolean; error?: string; added?: number }>;
+	organizePersona(signal?: AbortSignal): Promise<{ ok: boolean; error?: string; added?: number }>;
+	memoryStatus(): Promise<{ ok: boolean; error?: string; text?: string }>;
+	consolidateMemory(signal?: AbortSignal): Promise<{ ok: boolean; error?: string; added?: number }>;
 	onCommandRun(commandId: string): void;
 	onCommandDone(commandId: string): void;
-	/** Rotate to a fresh session file (archives the current one) and reset agent memory. */
 	resetSession(signal?: AbortSignal): Promise<{ ok: boolean; error?: string }>;
 }
 

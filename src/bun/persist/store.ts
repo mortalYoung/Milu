@@ -1,4 +1,5 @@
-import { cp } from "node:fs/promises";
+import { cp, rm, stat } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 import type { AgentMessage, Entry } from "@earendil-works/pi-agent-core";
 import { JsonlSessionRepo, Session } from "@earendil-works/pi-agent-core";
 import { type AssistantMessage, type ToolResultMessage, type Usage, uuidv7 } from "@earendil-works/pi-ai";
@@ -16,6 +17,7 @@ import {
 	type ContextChangedEventData,
 	EVENTS,
 	type McpChangedEventData,
+	type MemoryContextEventData,
 	type MemoryRunEndEventData,
 	type MemoryRunStartEventData,
 	type RetryScheduledEventData,
@@ -88,6 +90,7 @@ export interface SessionScope {
 	appendCommandDone(details: CommandDoneEventData, timestamp: number): Promise<void>;
 	appendMemoryRunStart(details: MemoryRunStartEventData, timestamp: number): Promise<void>;
 	appendMemoryRunEnd(details: MemoryRunEndEventData, timestamp: number): Promise<void>;
+	appendMemoryContext(details: MemoryContextEventData, timestamp: number): Promise<void>;
 	appendContextChanged(details: ContextChangedEventData, timestamp: number): Promise<void>;
 	appendInstructionsChanged(agentMd: string | null, timestamp: number): Promise<void>;
 	appendMcpChanged(details: McpChangedEventData, timestamp: number): Promise<void>;
@@ -126,6 +129,8 @@ export interface SessionStore {
 	evictRoot(dir: string): void;
 	rawEntries(dir: string): Promise<Entry[]>;
 	allRawEntries(dir: string): Promise<Entry[]>;
+	listSessions(dir: string): Promise<Array<{ file: string; modifiedAt: number }>>;
+	sessionEntries(dir: string, file: string): Promise<Entry[]>;
 	currentSessionFile(dir: string): Promise<string>;
 	rotateSession(dir: string): Promise<string>;
 }
@@ -134,6 +139,13 @@ interface RootState {
 	repo: JsonlSessionRepo;
 	session: Session;
 	entries: Entry[];
+}
+
+async function dirExists(path: string): Promise<boolean> {
+	return stat(path).then(
+		() => true,
+		() => false,
+	);
 }
 
 export function createSessionStore(): SessionStore {
@@ -152,7 +164,8 @@ export function createSessionStore(): SessionStore {
 
 	async function openRootUncached(newRoot: string): Promise<RootState> {
 		const repo = new JsonlSessionRepo({ fs: createExecutionEnv(newRoot), sessionsRoot: newRoot });
-		const sessions = await repo.list();
+		const sessions = await repo.list({ cwd: newRoot });
+		if (sessions.length === 0 && !(await dirExists(newRoot))) throw new Error(`Session root is gone: ${newRoot}`);
 		const session = sessions.length > 0 ? await repo.open(sessions[0]) : await repo.create({ cwd: newRoot });
 		const state: RootState = { repo, session, entries: [] };
 		roots.set(newRoot, Promise.resolve(state));
@@ -268,6 +281,9 @@ export function createSessionStore(): SessionStore {
 			},
 			async appendMemoryRunEnd(details, timestamp) {
 				await appendCustom(dir, EVENTS.memoryRunEnd, { ...details, timestamp });
+			},
+			async appendMemoryContext(details, timestamp) {
+				await appendCustom(dir, EVENTS.memoryContext, { ...details, timestamp });
 			},
 			async appendContextChanged(details, timestamp) {
 				await appendCustom(dir, EVENTS.contextChanged, { ...details, timestamp });
@@ -418,8 +434,17 @@ export function createSessionStore(): SessionStore {
 			return buildResumeTurn(state.entries, toolCallId);
 		},
 		async forkTo(sourceDir, targetDir) {
-			await openRoot(sourceDir);
+			const source = await openRoot(sourceDir);
 			await cp(sourceDir, targetDir, { recursive: true, force: true, filter: (src) => !src.endsWith(".tmp") });
+			const sessions = await source.repo.list({ cwd: sourceDir });
+			for (const dir of new Set(sessions.map((session) => basename(dirname(session.path))))) {
+				await rm(join(targetDir, dir), { recursive: true, force: true });
+			}
+			const targetRepo = new JsonlSessionRepo({ fs: createExecutionEnv(targetDir), sessionsRoot: targetDir });
+			for (const session of sessions) {
+				await targetRepo.fork(session, { scope: "tree", cwd: targetDir });
+			}
+			roots.delete(targetDir);
 			await openRoot(targetDir);
 		},
 		evictRoot(dir) {
@@ -431,7 +456,7 @@ export function createSessionStore(): SessionStore {
 		},
 		async allRawEntries(dir) {
 			const state = await stateFor(dir);
-			const sessions = await state.repo.list();
+			const sessions = await state.repo.list({ cwd: dir });
 			const seen = new Set<string>();
 			const entries: Entry[] = [];
 			for (const meta of sessions) {
@@ -443,6 +468,21 @@ export function createSessionStore(): SessionStore {
 				}
 			}
 			return entries.sort((a, b) => a.timestamp - b.timestamp);
+		},
+		async listSessions(dir) {
+			const state = await stateFor(dir);
+			const sessions = await state.repo.list({ cwd: dir });
+			return sessions.map((meta) => ({ file: meta.path, modifiedAt: meta.modifiedAt })).filter((s) => Boolean(s.file));
+		},
+		async sessionEntries(dir, file) {
+			const state = await stateFor(dir);
+			const sessions = await state.repo.list({ cwd: dir });
+			const meta = sessions.find((m) => m.path === file);
+			if (!meta) return [];
+			const session = await state.repo.open(meta);
+			const leafId = await session.getLeafId();
+			const walked = leafId ? await session.findEntriesOnBranch({ start: leafId }) : [];
+			return walked.reverse();
 		},
 		async currentSessionFile(dir) {
 			const state = await stateFor(dir);

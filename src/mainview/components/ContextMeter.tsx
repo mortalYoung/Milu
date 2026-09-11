@@ -1,22 +1,9 @@
-/**
- * ContextMeter — composer context-occupancy meter (modeled on deepseek-harness):
- * a 14px ring beside the send button fed by the provider-reported prompt size vs the
- * model's context window; click opens a panel with the exact percent, a segmented bar
- * and the heuristic composition (system / tools / messages, labeled `~` — deliberately
- * never reconciled with the provider-exact number).
- */
 import { createEffect, createSignal, onCleanup, Show } from "solid-js";
 import type { ContextUsage } from "../../shared/rpc";
+import { formatTokens } from "../lib/utils";
 
 const RADIUS = 5.5;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
-
-/** 1,234 → "1.2k"; 1,234,567 → "1.2M" */
-function formatTokens(n: number): string {
-	if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-	if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-	return String(Math.round(n));
-}
 
 const ROWS = [
 	{ key: "systemTokens", label: "system", color: "meter-system" },
@@ -30,7 +17,6 @@ export function ContextMeter(props: { usage: ContextUsage }) {
 	const [open, setOpen] = createSignal(false);
 	let rootRef: HTMLSpanElement | undefined;
 
-	// Outside click / Escape close, one document listener while open.
 	createEffect(() => {
 		if (!open()) return;
 		const onPointerDown = (e: PointerEvent) => {
@@ -51,10 +37,7 @@ export function ContextMeter(props: { usage: ContextUsage }) {
 	const percent = () => props.usage.percent;
 	const usedTokens = () => props.usage.projectedTokens ?? props.usage.used;
 	const reading = () => `context ${percent()}% · ${formatTokens(usedTokens())} / ${formatTokens(props.usage.window)}`;
-	// Color levels: ≤60% brand seal, 60–90% amber, >90% red (visual warning near the ceiling).
 	const level = () => (percent() > 90 ? "meter-danger" : percent() > 60 ? "meter-warn" : "meter-ok");
-	// The ring always carries the reading; the numeric percent appears only past 60% (warn/danger
-	// levels) — below that the arc alone is enough and the exact number lives in the click panel.
 
 	const segments = () => {
 		const b = props.usage.breakdown;

@@ -29,6 +29,7 @@ export const EVENTS = {
 	rewind: "rewind",
 	memoryRunStart: "memory/run/start",
 	memoryRunEnd: "memory/run/end",
+	memoryContext: "memory/context",
 	skillRun: "skill/run",
 	skillDone: "skill/done",
 	shellRun: "shell/run",
@@ -128,6 +129,12 @@ export interface ContextChangedEventData {
 	skills: SkillDigestItem[];
 }
 
+export interface MemoryContextEventData {
+	text: string;
+	digest: string;
+	timestamp?: number;
+}
+
 export interface InstructionsChangedEventData {
 	agentMd: string | null;
 }
@@ -139,18 +146,15 @@ export interface McpChangedEventData {
 	timestamp?: number;
 }
 
-/** Compaction checkpoint: foldSlice starts from the summary and skips entries through throughEntryId. */
 export interface CompactionEventData {
-	/** First origin entry id covered by this compaction. Omit to compact from the current frontier. */
 	fromEntryId?: string;
-	/** Last origin entry id covered by this compaction (inclusive). */
 	throughEntryId: string;
-	/** Checkpoint text that replaces the compacted span in the slice. */
 	summary: string;
+	shadowedIds?: string[];
+	tier?: "full" | "shrunk" | "degraded";
 	timestamp?: number;
 }
 
-/** Rewind: foldSlice replaces the target user message and skips the shadowed entries. */
 export interface RewindEventData {
 	targetId: string;
 	text: string;
@@ -158,19 +162,18 @@ export interface RewindEventData {
 	timestamp?: number;
 }
 
-export type MemoryRunEndReason = "completed" | "attempts-exhausted" | "error" | "interrupted";
+export type MemoryRunStage = "memory" | "scene" | "persona" | "consolidate";
+
+export type MemoryRunEndReason = "completed" | "unfinished" | "error" | "interrupted";
 
 export interface MemoryRunStartEventData {
 	runId: string;
-	sessionFile: string;
+	stage: MemoryRunStage;
 	startedAt: number;
-	entries: number;
-	targetRawId: string;
-	cursorRawId: string | null;
 }
 
 export interface MemoryRunTraceEvent {
-	event: "read_raw" | "read_memory" | "write_memory" | "finish" | "attempt_end" | "checkpoint";
+	event: "read_raw" | "read_memory" | "write_memory" | "attempt_end" | "checkpoint";
 	at?: number;
 	from?: string;
 	limit?: number;
@@ -187,26 +190,13 @@ export interface MemoryRunTraceEvent {
 	lastRawId?: string;
 }
 
-export interface MemoryRunModelMessage {
-	attempt: number;
-	role: "assistant";
-	block: "thinking" | "text";
-	text: string;
-}
-
 export interface MemoryRunEndEventData {
 	runId: string;
-	sessionFile: string;
+	stage: MemoryRunStage;
 	startedAt: number;
 	endedAt: number;
-	durationMs: number;
 	reason: MemoryRunEndReason;
-	attempts: number;
 	added: number;
-	error?: string;
-	checkpoints?: string[];
-	trace?: MemoryRunTraceEvent[];
-	modelMessages?: MemoryRunModelMessage[];
 }
 
 export interface RetryScheduledEventData {
