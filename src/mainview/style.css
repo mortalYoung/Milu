@@ -1624,6 +1624,14 @@ body::before {
 	.explorer-file-body {
 		@apply relative flex-1 min-h-0;
 	}
+	.explorer-md-scroll {
+		@apply flex-1 min-h-0 overflow-auto px-5 py-4;
+	}
+	.explorer-md {
+		@apply mx-auto w-full;
+		max-width: 80ch;
+		word-break: normal;
+	}
 	.explorer-code-scroll {
 		@apply absolute inset-0 overflow-auto px-4 py-3;
 	}

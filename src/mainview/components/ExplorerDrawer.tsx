@@ -1,11 +1,11 @@
 import { CaseSensitive, ChevronDown, ChevronRight, ChevronUp, Folder, FolderOpen, FolderSymlink, Regex, WholeWord, X } from "lucide-solid";
-import { type Accessor, createEffect, createMemo, createResource, createSignal, For, Show, untrack } from "solid-js";
+import { type Accessor, createEffect, createMemo, createResource, createSignal, For, onCleanup, Show, untrack } from "solid-js";
 import type { ExplorerEntry } from "../../shared/rpc";
 import { useSettings } from "../lib/contexts/settings-context";
 import { useToast } from "../lib/contexts/toast-context";
 import type { RevealRange, RevealTarget } from "../lib/dock";
 import { fileGlyph, linkGlyph } from "../lib/file-icons";
-import { type HighlightToken, highlightCodeToLines, languageForPath } from "../lib/markdown";
+import { type HighlightToken, highlightCodeToLines, languageForPath, renderMarkdown, renderMarkdownReady } from "../lib/markdown";
 import { createPresence, DOCK_EXIT_MS, DOCK_POPOVER_EXIT_MS } from "../lib/presence";
 import { rpc } from "../lib/rpc";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "./ui/context-menu";
@@ -20,6 +20,7 @@ interface SelectedFile {
 	path: string;
 	name: string;
 	range?: RevealRange;
+	raw?: boolean;
 }
 
 interface FileData {
@@ -138,6 +139,23 @@ function buildPieces(tokens: HighlightToken[], ranges: { start: number; end: num
 
 const findHistory: string[] = [];
 const MAX_FIND_HISTORY = 50;
+
+function MarkdownFile(props: { content: string }) {
+	let ref: HTMLDivElement | undefined;
+	createEffect(() => {
+		const el = ref;
+		if (!el) return;
+		let cancelled = false;
+		el.innerHTML = renderMarkdown(props.content);
+		void renderMarkdownReady(props.content).then((html) => {
+			if (!cancelled && el.isConnected) el.innerHTML = html;
+		});
+		onCleanup(() => {
+			cancelled = true;
+		});
+	});
+	return <div ref={ref} class="md explorer-md" />;
+}
 
 function CodeViewer(props: { content: string; lang: string | null; foldable: boolean; path: string; locate?: RevealRange | null }) {
 	const [tokenData] = createResource(
@@ -560,15 +578,15 @@ function ExplorerNode(props: {
 	expanded: Accessor<Set<string>>;
 	selectedKey: Accessor<string | null>;
 	onToggle: (entry: ExplorerEntry) => void;
-	onSelect: (entry: ExplorerEntry) => void;
+	onSelect: (entry: ExplorerEntry, opts?: { raw?: boolean }) => void;
 }) {
 	const key = () => props.entry.path;
 	const isDir = () => props.entry.kind === "dir" || (props.entry.kind === "link" && props.entry.linkKind === "dir");
 	const isOpen = () => props.expanded().has(key());
 	const state = () => props.dirs()[key()];
 	const selected = () => props.selectedKey() === key();
+	const markdown = () => !isDir() && languageForPath(props.entry.path) === "markdown";
 	const [menuOpen, setMenuOpen] = createSignal(false);
-	/** Left click and the context menu's Open do the same thing: select a file, toggle a folder. */
 	const activate = () => (isDir() ? props.onToggle(props.entry) : props.onSelect(props.entry));
 
 	return (
@@ -602,9 +620,14 @@ function ExplorerNode(props: {
 					<ContextMenuItem size="sm" onSelect={() => props.menu.reveal(props.entry)}>
 						Reveal in Finder
 					</ContextMenuItem>
-					<ContextMenuItem size="sm" onSelect={activate}>
+					<ContextMenuItem size="sm" onSelect={() => (isDir() ? props.onToggle(props.entry) : props.onSelect(props.entry, { raw: false }))}>
 						Open
 					</ContextMenuItem>
+					<Show when={markdown()}>
+						<ContextMenuItem size="sm" onSelect={() => props.onSelect(props.entry, { raw: true })}>
+							Open as Raw
+						</ContextMenuItem>
+					</Show>
 					<ContextMenuSeparator />
 					<ContextMenuItem size="sm" onSelect={() => props.menu.copyPath(props.entry)}>
 						Copy Path
@@ -715,7 +738,7 @@ export function ExplorerDrawer(props: { open: boolean; partner: string | null; r
 		// unbatched flush would otherwise burn the request while the drawer is still closed.
 		if (!target || !props.open || target.seq === lastRevealSeq) return;
 		lastRevealSeq = target.seq;
-		void revealFile(target.path);
+		void revealFile(target.path, target.range);
 	});
 
 	async function revealFile(path: string, range?: RevealRange) {
@@ -730,7 +753,7 @@ export function ExplorerDrawer(props: { open: boolean; partner: string | null; r
 			await loadDir(dir);
 		}
 		setExpanded(next);
-		setSelected({ path, name: segments[segments.length - 1], ...(range ? { range } : {}) });
+		setSelected({ path, name: segments[segments.length - 1], ...(range ? { range, raw: true } : {}) });
 		scrollToRow(path);
 	}
 
@@ -782,10 +805,11 @@ export function ExplorerDrawer(props: { open: boolean; partner: string | null; r
 		setExpanded(next);
 	}
 
-	function selectFile(entry: ExplorerEntry) {
+	function selectFile(entry: ExplorerEntry, opts?: { raw?: boolean }) {
 		const current = selected();
-		if (current && current.path === entry.path) return;
-		setSelected({ path: entry.path, name: entry.name });
+		const raw = opts?.raw === true;
+		if (current?.path === entry.path && (opts === undefined || raw === (current.raw === true))) return;
+		setSelected({ path: entry.path, name: entry.name, ...(raw ? { raw: true } : {}) });
 	}
 
 	const workspaceRoot = () => dirReal()[""];
@@ -818,6 +842,10 @@ export function ExplorerDrawer(props: { open: boolean; partner: string | null; r
 		if (!path) return false;
 		const lang = languageForPath(path);
 		return lang === "json" || lang === "jsonc" || lang === "markdown";
+	};
+	const rendered = () => {
+		const file = shownFile();
+		return !!file && file.raw !== true && languageForPath(file.path) === "markdown";
 	};
 
 	const [fileData] = createResource(shownFile, async (sel: SelectedFile): Promise<FileData | null> => {
@@ -900,18 +928,27 @@ export function ExplorerDrawer(props: { open: boolean; partner: string | null; r
 										<div class="explorer-popover-note">{fileData()!.error}</div>
 									</Show>
 									<Show when={!fileData()?.binary && !fileData()?.error}>
-										<div
-											class="explorer-file-body"
-											style={`--explorer-line-gap: ${codeLineGap()}; --explorer-line-height: ${codeLineHeight()}; --explorer-line-height-em: ${codeLineHeight()}em`}
+										<Show
+											when={!rendered()}
+											fallback={
+												<div class="explorer-md-scroll">
+													<MarkdownFile content={fileData()?.content ?? ""} />
+												</div>
+											}
 										>
-											<CodeViewer
-												content={fileData()?.content ?? ""}
-												lang={languageForPath(file().path) ?? null}
-												foldable={foldable()}
-												path={file().path}
-												locate={file().range ?? null}
-											/>
-										</div>
+											<div
+												class="explorer-file-body"
+												style={`--explorer-line-gap: ${codeLineGap()}; --explorer-line-height: ${codeLineHeight()}; --explorer-line-height-em: ${codeLineHeight()}em`}
+											>
+												<CodeViewer
+													content={fileData()?.content ?? ""}
+													lang={languageForPath(file().path) ?? null}
+													foldable={foldable()}
+													path={file().path}
+													locate={file().range ?? null}
+												/>
+											</div>
+										</Show>
 										<Show when={fileData()?.truncated}>
 											<div class="explorer-popover-foot">truncated · file larger than preview limit</div>
 										</Show>
