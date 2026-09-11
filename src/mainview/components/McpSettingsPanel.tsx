@@ -56,7 +56,7 @@ export function McpSettingsPanel() {
 
 	return (
 		<div>
-			<div class="mb-3 font-serif text-[16px] font-medium text-ink">MCP</div>
+			<div class="mb-1 font-sans text-[10px] font-medium uppercase tracking-[0.6px] text-muted">MCP</div>
 			<div class="divide-y divide-hairline">
 				<div class="grid grid-cols-[minmax(0,1fr)_240px] items-center gap-6 py-3.5">
 					<div>

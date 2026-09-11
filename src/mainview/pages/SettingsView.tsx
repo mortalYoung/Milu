@@ -52,16 +52,13 @@ export interface SaveResult {
 
 const CATS = [
 	{ id: "general", label: "General" },
-	{ id: "memory", label: "Memory" },
+	{ id: "tools", label: "MCP & Tools" },
 	{ id: "skills", label: "Skills" },
-	{ id: "mcp", label: "MCP" },
-	{ id: "webFetch", label: "Web Fetch" },
-	{ id: "explorer", label: "Explorer" },
-	{ id: "palette", label: "Palette" },
+	{ id: "memory", label: "Memory" },
+	{ id: "retry", label: "Retry" },
 	{ id: "compaction", label: "Compaction" },
 	{ id: "permission", label: "Permission" },
 	{ id: "providers", label: "Providers" },
-	{ id: "retry", label: "Retry" },
 ] as const;
 type CatId = (typeof CATS)[number]["id"];
 
@@ -737,7 +734,7 @@ export function SettingsView() {
 			id: "webFetchTimeout",
 			title: "Web fetch timeout (ms)",
 			desc: "Max time a fetch may take before aborting.",
-			cats: ["webFetch"],
+			cats: ["tools"],
 			modified: () => parsePositiveInt(webFetchTimeout(), 15000) !== 15000,
 			control: () => (
 				<TextField class="w-[200px] shrink-0" value={webFetchTimeout()} onChange={setWebFetchTimeout}>
@@ -772,7 +769,7 @@ export function SettingsView() {
 			id: "webFetchMaxBytes",
 			title: "Web fetch max bytes",
 			desc: "Response body size cap in bytes; larger responses are rejected.",
-			cats: ["webFetch"],
+			cats: ["tools"],
 			modified: () => parsePositiveInt(webFetchMaxBytes(), 1_000_000) !== 1_000_000,
 			control: () => (
 				<TextField class="w-[200px] shrink-0" value={webFetchMaxBytes()} onChange={setWebFetchMaxBytes}>
@@ -807,7 +804,7 @@ export function SettingsView() {
 			id: "webFetchMaxChars",
 			title: "Web fetch max chars",
 			desc: "Character cap for the text returned to the model.",
-			cats: ["webFetch"],
+			cats: ["tools"],
 			modified: () => parsePositiveInt(webFetchMaxChars(), 50_000) !== 50_000,
 			control: () => (
 				<TextField class="w-[200px] shrink-0" value={webFetchMaxChars()} onChange={setWebFetchMaxChars}>
@@ -842,7 +839,7 @@ export function SettingsView() {
 			id: "webFetchUserAgent",
 			title: "Web fetch user agent",
 			desc: "User-Agent header sent with web_fetch requests.",
-			cats: ["webFetch"],
+			cats: ["tools"],
 			modified: () => webFetchUserAgent().trim() !== "Letters-web-fetch/0.1",
 			control: () => (
 				<TextField class="w-[200px] shrink-0" value={webFetchUserAgent()} onChange={setWebFetchUserAgent}>
@@ -943,7 +940,7 @@ export function SettingsView() {
 		},
 		{
 			id: "compactionOverflowRetries",
-			title: "Overflow retries",
+			title: "Compact-and-retry attempts",
 			desc: "Max compact-and-retry attempts after a context overflow.",
 			cats: ["compaction"],
 			modified: () => parsePositiveInt(compactionOverflowRetries(), 1) !== 1,
@@ -953,8 +950,8 @@ export function SettingsView() {
 						type="number"
 						min={0}
 						variant="compact"
-						title="Overflow retries"
-						aria-label="Overflow retries"
+						title="Compact-and-retry attempts"
+						aria-label="Compact-and-retry attempts"
 						onBlur={() => {
 							const next = parsePositiveInt(compactionOverflowRetries(), 1);
 							const saved = settingsData()?.compaction?.maxOverflowRetries ?? 1;
@@ -1346,7 +1343,7 @@ export function SettingsView() {
 			id: "explorerLineGap",
 			title: "File preview line gap",
 			desc: "Extra visual spacing between code lines; line-height is 1 + gap.",
-			cats: ["explorer"],
+			cats: ["general"],
 			modified: () => Number(explorerLineGap()) !== DEFAULTS.explorerLineGap,
 			control: () => (
 				<TextField class="h-[32px] w-[110px] shrink-0 gap-0" value={explorerLineGap()} onChange={setExplorerLineGap}>
@@ -1377,7 +1374,7 @@ export function SettingsView() {
 			id: "paletteSearchIgnoreDirs",
 			title: "File search ignore list",
 			desc: "Directories (and files like .DS_Store) the Cmd+P file search skips. Leave empty for the built-in list.",
-			cats: ["palette"],
+			cats: ["general"],
 			modified: () => parseIgnoreDirs().length > 0,
 			control: () => (
 				<TextField class="h-[32px] w-[280px] shrink-0 gap-0" value={paletteIgnoreDirs()} onChange={setPaletteIgnoreDirs}>
@@ -1562,9 +1559,12 @@ export function SettingsView() {
 					<Show when={!searching()}>
 						<For each={CATS}>
 							{(cat) => (
-								<Show when={tab() === cat.id && cat.id !== "providers" && cat.id !== "mcp"}>
+								<Show when={tab() === cat.id && cat.id !== "providers"}>
 									<div>
 										<div class="mb-3 font-serif text-[16px] font-medium text-ink">{cat.label}</div>
+										<Show when={cat.id === "tools"}>
+											<McpSettingsPanel />
+										</Show>
 										<div class="divide-y divide-hairline">
 											<For each={rows().filter((r) => r.cats.includes(cat.id))}>
 												{(row) => (
@@ -1803,9 +1803,6 @@ export function SettingsView() {
 									</Show>
 								</div>
 							</div>
-						</Show>
-						<Show when={tab() === "mcp"}>
-							<McpSettingsPanel />
 						</Show>
 					</Show>
 				</div>
