@@ -193,6 +193,11 @@ export function Composer(props: {
 	};
 
 	function syncCommandState(value: string, pos: number) {
+		if (shellMode()) {
+			setMenuOpen(false);
+			lastTriggerKey = null;
+			return;
+		}
 		if (claimed()) {
 			if (!value.startsWith(`/${claimed()!.name} `)) setClaimed(null);
 			setMenuOpen(false);
@@ -247,18 +252,15 @@ export function Composer(props: {
 
 	async function executeShell() {
 		if (submitting()) return;
-		const value = text();
-		const trimmed = value.trim();
+		const trimmed = text().trim();
 		if (!trimmed) return;
 		setSubmitting(true);
 		setMenuOpen(false);
 		setClaimed(null);
 		clearText();
+		if (!shellContinuous()) setShellMode(false);
 		try {
-			const res = await props.onShell?.(trimmed);
-			if (res && !shellContinuous()) {
-				setShellMode(false);
-			}
+			await props.onShell?.(trimmed);
 		} finally {
 			setSubmitting(false);
 		}
@@ -283,6 +285,10 @@ export function Composer(props: {
 		const value = text();
 		const trimmed = value.trim();
 		if (!trimmed) return;
+		if (shellMode()) {
+			await executeShell();
+			return;
+		}
 		const skillMatch = /^\/skill:([a-z0-9_-]+)(?:\s+(.*))?$/.exec(trimmed);
 		if (skillMatch) {
 			setPanelOpen(false);
@@ -365,10 +371,6 @@ export function Composer(props: {
 		}
 		if (shouldSendOnEnter({ keyCode: e.keyCode, shiftKey: e.shiftKey, repeat: e.repeat, composing, isComposing: e.isComposing })) {
 			e.preventDefault();
-			if (shellMode()) {
-				void executeShell();
-				return;
-			}
 			const parsed = parseCommand(text());
 			const exact = parsed ? commandDirectory.commands().find((c) => c.name === parsed.name) : undefined;
 			const canExecuteLine = exact && (exact.kind === "execute" || (exact.kind === "leadingInput" && parsed!.rawInput.trim()));

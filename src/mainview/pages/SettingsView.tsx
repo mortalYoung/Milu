@@ -1141,7 +1141,7 @@ export function SettingsView() {
 		{
 			id: "shellContinuous",
 			title: "Continuous shell input",
-			desc: "Keep shell mode active after sending; turn off to exit shell mode after each command.",
+			desc: "Keep shell mode active after sending; turn off to leave shell mode as soon as a command is sent.",
 			cats: ["general"],
 			modified: () => shellContinuous() !== DEFAULTS.shellContinuous,
 			control: () => (
