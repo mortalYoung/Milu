@@ -252,9 +252,8 @@ function DrawerContent(props: {
 	const rows = () => nodes().filter((n) => !n.positionOnly);
 	const turns = () => summary().turns;
 	const turnOf = (n: TimelineNode) => turns().find((t) => t.turn === n.turn);
-	// Only a call in the newest turn can still be in flight; an older call without a result
-	// was dropped (abort, crash) and stays interrupted.
 	const lastTurn = () => turns().at(-1)?.turn ?? 0;
+	const inFlight = (row: Extract<DisplayRow, { kind: "tool" }>) => props.running && row.node.turn === lastTurn();
 	const countText = () =>
 		props.mode === "slice"
 			? `slice · ${props.records.length} nodes shown · ${turns().length} turns`
@@ -606,7 +605,7 @@ function DrawerContent(props: {
 			<pre class="one-args">{stringifyArgs(row.block.arguments)}</pre>
 			{row.result ? (
 				<pre class={"one-args" + (row.result.isError ? " err" : "")}>{row.result.text}</pre>
-			) : props.running && row.node.turn === lastTurn() ? (
+			) : inFlight(row) ? (
 				<span class="traj-running">(running)</span>
 			) : (
 				<span class="traj-interrupted">(interrupted)</span>

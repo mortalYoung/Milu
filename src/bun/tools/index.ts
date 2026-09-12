@@ -42,7 +42,6 @@ function tail(text: string): { text: string; truncated: boolean } {
 
 const DEFAULT_BASH_TIMEOUT_SEC = 15;
 
-/** The call's own timeout wins; otherwise the bash timeout setting, else the default. */
 async function bashTimeoutSec(requested?: number): Promise<number> {
 	if (requested !== undefined && requested > 0) return requested;
 	const configured = (await loadSettings()).bash?.timeoutSec;

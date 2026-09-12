@@ -71,16 +71,13 @@ function hasChangingEdit(edits: unknown, oldText: unknown, newText: unknown): bo
 
 // ——— mention matching ———
 
-/** A mention's file plus the line range the reply pointed at, when it wrote one. */
 export interface MentionTarget {
 	path: string;
 	range?: { start: number; end: number };
 }
 
-/** `a.ts#74-80` / `a.ts:509` — both separators, last one wins, range must be a plain line list. */
-const MENTION_SPLIT = /^(.+?)[:#](\d+(?:-\d+)?)$/;
+const MENTION_WITH_RANGE = /^(.+?)[:#](\d+(?:-\d+)?)$/;
 
-/** Parse `509` / `509-518` into a 1-based inclusive range, or null when malformed. */
 export function parseLineRange(value: string | null | undefined): { start: number; end: number } | null {
 	if (!value) return null;
 	const match = /^(\d+)(?:-(\d+))?$/.exec(value);
@@ -90,13 +87,8 @@ export function parseLineRange(value: string | null | undefined): { start: numbe
 	return start >= 1 && end >= start ? { start, end } : null;
 }
 
-/**
- * Split a mention token into its path and optional line range: `src/a.ts:509-518`, `src/a.ts#509`.
- * A token whose tail is not a well-formed range (a drive letter, a path that merely contains a
- * colon, `12-5`) is kept whole — matching then fails and the mention stays inert, never mislinked.
- */
 export function parseMentionToken(token: string): MentionTarget {
-	const match = MENTION_SPLIT.exec(token);
+	const match = MENTION_WITH_RANGE.exec(token);
 	if (match === null) return { path: token };
 	const range = parseLineRange(match[2]);
 	return range === null ? { path: token } : { path: match[1], range };
@@ -130,10 +122,6 @@ export function workspaceRelativePath(path: string, root: string | null | undefi
 	return path.startsWith(base) ? path.slice(base.length) : path;
 }
 
-/**
- * Whether the in-app Explorer can reach the path: it only reads inside the workspace root, so
- * anything else (a file written elsewhere, or no workspace at all) stays plain code.
- */
 function insideWorkspace(path: string, baseDir: string | null): boolean {
 	return baseDir !== null && !isAbsolutePath(workspaceRelativePath(path, baseDir));
 }

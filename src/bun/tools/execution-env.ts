@@ -9,7 +9,6 @@ export interface SandboxedExecOptions extends ShellExecOptions {
 	sandboxMode?: SandboxMode;
 }
 
-/** Grace between SIGTERM and SIGKILL when tearing down a command's process group. */
 const KILL_ESCALATE_MS = 500;
 
 function mapFileError(path: string, cause: unknown): FileError {
@@ -276,8 +275,6 @@ export function createExecutionEnv(cwd: string, permission?: Permission): Execut
 			}
 			const env = opts.inheritEnv === false ? { ...(opts.env ?? {}) } : { ...process.env, ...(opts.env ?? {}) };
 			try {
-				// The command leads its own process group (detached), so a timeout or an abort can tear
-				// down the whole tree — killing the direct child alone leaves its grandchildren running.
 				const proc = Bun.spawn(argv, {
 					cwd: opts.cwd ? resolve(scratchBase(), opts.cwd) : scratchBase(),
 					env,
@@ -287,22 +284,17 @@ export function createExecutionEnv(cwd: string, permission?: Permission): Execut
 				});
 				const killGroup = (signal: "SIGTERM" | "SIGKILL") => {
 					const pgid = proc.pid;
-					// Never signal a non-pid: kill(0, …) hits the caller's own process group.
 					if (!Number.isInteger(pgid) || pgid <= 0 || pgid === process.pid) return;
 					try {
 						process.kill(-pgid, signal);
 					} catch {
 						try {
 							proc.kill(signal);
-						} catch {
-							// the command is already gone
-						}
+						} catch {}
 					}
 				};
 				const teardown = () => {
 					killGroup("SIGTERM");
-					// A group that ignores SIGTERM must not hold the tool call open — but only escalate
-					// while the leader is alive, so a recycled pid can never be signalled.
 					setTimeout(() => {
 						if (proc.exitCode === null) killGroup("SIGKILL");
 					}, KILL_ESCALATE_MS);
