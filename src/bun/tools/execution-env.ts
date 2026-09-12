@@ -9,6 +9,9 @@ export interface SandboxedExecOptions extends ShellExecOptions {
 	sandboxMode?: SandboxMode;
 }
 
+/** Grace between SIGTERM and SIGKILL when tearing down a command's process group. */
+const KILL_ESCALATE_MS = 500;
+
 function mapFileError(path: string, cause: unknown): FileError {
 	const error = cause as NodeJS.ErrnoException;
 	const code = error?.code;
@@ -273,23 +276,50 @@ export function createExecutionEnv(cwd: string, permission?: Permission): Execut
 			}
 			const env = opts.inheritEnv === false ? { ...(opts.env ?? {}) } : { ...process.env, ...(opts.env ?? {}) };
 			try {
+				// The command leads its own process group (detached), so a timeout or an abort can tear
+				// down the whole tree — killing the direct child alone leaves its grandchildren running.
 				const proc = Bun.spawn(argv, {
 					cwd: opts.cwd ? resolve(scratchBase(), opts.cwd) : scratchBase(),
 					env,
 					stdout: "pipe",
 					stderr: "pipe",
-					signal: opts.abortSignal,
+					detached: true,
 				});
+				const killGroup = (signal: "SIGTERM" | "SIGKILL") => {
+					const pgid = proc.pid;
+					// Never signal a non-pid: kill(0, …) hits the caller's own process group.
+					if (!Number.isInteger(pgid) || pgid <= 0 || pgid === process.pid) return;
+					try {
+						process.kill(-pgid, signal);
+					} catch {
+						try {
+							proc.kill(signal);
+						} catch {
+							// the command is already gone
+						}
+					}
+				};
+				const teardown = () => {
+					killGroup("SIGTERM");
+					// A group that ignores SIGTERM must not hold the tool call open — but only escalate
+					// while the leader is alive, so a recycled pid can never be signalled.
+					setTimeout(() => {
+						if (proc.exitCode === null) killGroup("SIGKILL");
+					}, KILL_ESCALATE_MS);
+				};
+				if (opts.abortSignal?.aborted) teardown();
+				opts.abortSignal?.addEventListener("abort", teardown, { once: true });
 				let timedOut = false;
 				const timer = opts.timeout
 					? setTimeout(() => {
 							timedOut = true;
-							proc.kill();
+							teardown();
 						}, opts.timeout * 1000)
 					: undefined;
 				const [stdout, stderr] = await Promise.all([readStream(proc.stdout, opts.onStdout), readStream(proc.stderr, opts.onStderr)]);
 				const exitCode = await proc.exited;
 				if (timer) clearTimeout(timer);
+				opts.abortSignal?.removeEventListener("abort", teardown);
 				if (timedOut) {
 					return err(new ExecutionError("timeout", `Command timed out after ${opts.timeout}s`));
 				}

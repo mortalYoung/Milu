@@ -47,6 +47,7 @@ export interface Settings {
 	commands_path?: string;
 	mcp_config_path?: string;
 	retry?: { maxRetries?: number; baseDelayMs?: number };
+	bash?: { timeoutSec?: number };
 	webFetch?: { timeoutMs?: number; maxBytes?: number; maxChars?: number; userAgent?: string };
 	compaction?: {
 		thresholdRatio?: number;

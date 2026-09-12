@@ -40,6 +40,15 @@ function tail(text: string): { text: string; truncated: boolean } {
 	return { text: `…${text.slice(-MAX_OUTPUT_CHARS)}`, truncated: true };
 }
 
+const DEFAULT_BASH_TIMEOUT_SEC = 15;
+
+/** The call's own timeout wins; otherwise the bash timeout setting, else the default. */
+async function bashTimeoutSec(requested?: number): Promise<number> {
+	if (requested !== undefined && requested > 0) return requested;
+	const configured = (await loadSettings()).bash?.timeoutSec;
+	return configured !== undefined && configured > 0 ? configured : DEFAULT_BASH_TIMEOUT_SEC;
+}
+
 async function runBash(
 	env: ExecutionEnv,
 	command: string,
@@ -64,7 +73,7 @@ type BashDetails = {
 function bashTool(deps: ToolDeps): AgentHarnessTool<ExecutionToolContext, TSchema, BashDetails> {
 	const baseProps = {
 		command: Type.String({ description: "Bash command to execute" }),
-		timeout: Type.Optional(Type.Number({ description: "Timeout in seconds (optional, no default timeout)" })),
+		timeout: Type.Optional(Type.Number({ description: "Timeout in seconds for this call; defaults to the bash timeout setting." })),
 	};
 	const schema = deps.permission?.isConfining()
 		? Type.Object({
@@ -88,6 +97,9 @@ function bashTool(deps: ToolDeps): AgentHarnessTool<ExecutionToolContext, TSchem
 		parameters: schema,
 		async execute(toolCallId, params, signal, _onUpdate, context) {
 			const { command, timeout, sandbox_mode, justification } = params as { command: string; timeout?: number; sandbox_mode?: SandboxMode; justification?: string };
+			if (timeout !== undefined && !(Number.isFinite(timeout) && timeout > 0)) {
+				return { content: [{ type: "text", text: `Invalid timeout: ${timeout} — pass a positive number of seconds.` }], details: {} };
+			}
 			let grantedMode: SandboxMode | undefined;
 			if (sandbox_mode) {
 				const decision = await deps.permission!.escalate({ command, to: sandbox_mode, justification: justification ?? "", toolCallId });
@@ -100,7 +112,7 @@ function bashTool(deps: ToolDeps): AgentHarnessTool<ExecutionToolContext, TSchem
 			}
 			const { env } = context;
 			try {
-				const { stdout, stderr, exitCode } = await runBash(env, command, { timeout, abortSignal: signal, sandboxMode: grantedMode });
+				const { stdout, stderr, exitCode } = await runBash(env, command, { timeout: await bashTimeoutSec(timeout), abortSignal: signal, sandboxMode: grantedMode });
 				const out = tail([stdout, stderr].filter((s) => s).join("\n"));
 				let text = out.text || "(no output)";
 				if (exitCode !== 0 && exitCode !== undefined) text += `\n\nCommand exited with code ${exitCode}`;
@@ -124,10 +136,14 @@ export async function runEscalatedBash(
 	command: string,
 	mode: SandboxMode,
 	deps: { permission: Permission },
-	timeout?: number,
+	options: { timeout?: number; signal?: AbortSignal } = {},
 ): Promise<{ text: string; exitCode?: number; truncated: boolean }> {
 	const env = createExecutionEnv("", deps.permission);
-	const { stdout, stderr, exitCode } = await runBash(env, command, { sandboxMode: mode, ...(timeout ? { timeout } : {}) });
+	const { stdout, stderr, exitCode } = await runBash(env, command, {
+		sandboxMode: mode,
+		timeout: await bashTimeoutSec(options.timeout),
+		abortSignal: options.signal,
+	});
 	const out = tail([stdout, stderr].filter((s) => s).join("\n"));
 	let text = out.text || "(no output)";
 	if (exitCode !== 0 && exitCode !== undefined) text += `\n\nCommand exited with code ${exitCode}`;

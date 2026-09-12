@@ -431,7 +431,9 @@ type ResumeTurn = NonNullable<Awaited<ReturnType<typeof session.resumeTurn>>>;
 
 async function resumeApprovedEscalation(entry: PartnerAgent, request: EscalationRequestRecord, turn: ResumeTurn) {
 	try {
-		const { text, exitCode } = await runEscalatedBash(request.command, request.to, { permission: entry.agent.permission });
+		const { text, exitCode } = await withBackgroundAbort(entry.profile.name, (signal) =>
+			runEscalatedBash(request.command, request.to, { permission: entry.agent.permission }, { signal }),
+		);
 		const result: ToolResultMessage = {
 			role: "toolResult",
 			toolCallId: request.toolCallId,
@@ -1424,7 +1426,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				const key = `history:${target.dir}`;
 				let cached = historyViewCache.get(key);
 				if (!cached || cached.signature !== signature) {
-					cached = { signature, items: await session.visibleHistory(target.dir) };
+					cached = { signature, items: await session.visibleHistory(target.dir, (await agents.get(target.name))?.agent.workspacePath ?? null) };
 					historyViewCache.set(key, cached);
 					if (historyViewCache.size > HISTORY_CACHE_MAX) {
 						const oldest = historyViewCache.keys().next().value;
@@ -1706,7 +1708,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					await entry.scope.appendShellRun({ shellId, command }, Date.now());
 					rpc.send.shell_update({});
 					const mode = entry.agent.permission.getMode();
-					const result = await runEscalatedBash(command, mode, { permission: entry.agent.permission }, timeout);
+					const result = await withBackgroundAbort(target.name, (signal) => runEscalatedBash(command, mode, { permission: entry.agent.permission }, { timeout, signal }));
 					const text = result.text;
 					await entry.scope.appendShellDone({ shellId, command, kind: "success", text, ...(typeof result.exitCode === "number" ? { exitCode: result.exitCode } : {}) }, Date.now());
 					await entry.agent.sendShellMessage(`$ ${command}\n\n${text}`, shellId).catch(() => {});

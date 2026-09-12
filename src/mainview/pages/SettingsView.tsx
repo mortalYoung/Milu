@@ -29,6 +29,7 @@ export interface SettingsData {
 	memoryMaxScenes?: number;
 	commands_path?: string;
 	retry?: { maxRetries?: number; baseDelayMs?: number };
+	bash?: { timeoutSec?: number };
 	webFetch?: { timeoutMs?: number; maxBytes?: number; maxChars?: number; userAgent?: string };
 	compaction?: {
 		thresholdRatio?: number;
@@ -68,6 +69,7 @@ const DEFAULTS = {
 	commandsPath: "~/.config/letters/commands",
 	retryMaxRetries: 2,
 	retryBaseDelayMs: 500,
+	bashTimeoutSec: 15,
 	theme: "system" as ThemeMode,
 	sandbox: "workspace-write" as SandboxMode,
 	toastPlacement: "bottomcenter" as ToastPlacement,
@@ -205,6 +207,7 @@ export function SettingsView() {
 	const [commandsPath, setCommandsPath] = createSignal("");
 	const [retryMaxRetries, setRetryMaxRetries] = createSignal("2");
 	const [retryBaseDelayMs, setRetryBaseDelayMs] = createSignal("500");
+	const [bashTimeoutSec, setBashTimeoutSec] = createSignal("15");
 	const [webFetchTimeout, setWebFetchTimeout] = createSignal("15000");
 	const [webFetchMaxBytes, setWebFetchMaxBytes] = createSignal("1000000");
 	const [webFetchMaxChars, setWebFetchMaxChars] = createSignal("50000");
@@ -293,6 +296,9 @@ export function SettingsView() {
 	}
 	if (initial && initial.retry?.baseDelayMs !== undefined && retryBaseDelayMs() === "500") {
 		setRetryBaseDelayMs(String(initial.retry.baseDelayMs));
+	}
+	if (initial && initial.bash?.timeoutSec !== undefined && bashTimeoutSec() === "15") {
+		setBashTimeoutSec(String(initial.bash.timeoutSec));
 	}
 	if (initial && initial.webFetch?.timeoutMs !== undefined && webFetchTimeout() === "15000") {
 		setWebFetchTimeout(String(initial.webFetch.timeoutMs));
@@ -409,6 +415,9 @@ export function SettingsView() {
 			retry: {
 				maxRetries: parsePositiveInt(retryMaxRetries(), DEFAULTS.retryMaxRetries),
 				baseDelayMs: parsePositiveInt(retryBaseDelayMs(), DEFAULTS.retryBaseDelayMs),
+			},
+			bash: {
+				timeoutSec: parsePositiveInt(bashTimeoutSec(), DEFAULTS.bashTimeoutSec),
 			},
 			webFetch: {
 				timeoutMs: parsePositiveInt(webFetchTimeout(), 15000),
@@ -728,6 +737,33 @@ export function SettingsView() {
 						void persist({ ...currentSettings(), commands_path: next });
 					}}
 				/>
+			),
+		},
+		{
+			id: "bashTimeout",
+			title: "Bash timeout (s)",
+			desc: "Max time a bash command may run before its process group is killed.",
+			cats: ["tools"],
+			modified: () => parsePositiveInt(bashTimeoutSec(), DEFAULTS.bashTimeoutSec) !== DEFAULTS.bashTimeoutSec,
+			control: () => (
+				<TextField class="w-[200px] shrink-0" value={bashTimeoutSec()} onChange={setBashTimeoutSec}>
+					<TextFieldInput
+						type="number"
+						min={1}
+						variant="compact"
+						title="Bash timeout (s)"
+						aria-label="Bash timeout (s)"
+						onBlur={() => {
+							const next = parsePositiveInt(bashTimeoutSec(), DEFAULTS.bashTimeoutSec);
+							const saved = settingsData()?.bash?.timeoutSec ?? DEFAULTS.bashTimeoutSec;
+							if (next === saved) return;
+							void persist({ ...currentSettings(), bash: { timeoutSec: next } });
+						}}
+						onKeyDown={(e) => {
+							if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
+						}}
+					/>
+				</TextField>
 			),
 		},
 		{

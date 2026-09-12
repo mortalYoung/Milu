@@ -652,6 +652,7 @@ export type AppRPCSchema = __schema<{
 						memoryMaxScenes?: number;
 						commands_path?: string;
 						retry?: { maxRetries?: number; baseDelayMs?: number };
+						bash?: { timeoutSec?: number };
 						webFetch?: { timeoutMs?: number; maxBytes?: number; maxChars?: number; userAgent?: string };
 						compaction?: {
 							thresholdRatio?: number;
@@ -693,6 +694,7 @@ export type AppRPCSchema = __schema<{
 						memoryMaxScenes?: number;
 						commands_path?: string;
 						retry?: { maxRetries?: number; baseDelayMs?: number };
+						bash?: { timeoutSec?: number };
 						webFetch?: { timeoutMs?: number; maxBytes?: number; maxChars?: number; userAgent?: string };
 						compaction?: {
 							thresholdRatio?: number;
