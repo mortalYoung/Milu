@@ -1,8 +1,8 @@
 /**
  * Unit tests for trajectory folding: Entry[] → TrajectoryRecord[].
  * Coverage: the total fold (every pi entry kind becomes a record, nothing dropped),
- * turn counting, toolResult passthrough, and the timelineNodes view model (turn
- * assignment, tool pairing by callId, interrupted detection, turn summaries).
+ * run/turn stamping, toolResult passthrough, and the timelineNodes view model (run and
+ * turn assignment, request dots, density summaries).
  */
 import { describe, expect, test } from "bun:test";
 import type { Entry } from "@earendil-works/pi-agent-core";
@@ -23,11 +23,23 @@ function assistantEntry(blocks: Record<string, unknown>[], usage?: { input: numb
 }
 
 function toolResultEntry(toolCallId: string, text: string, isError = false, extra: Record<string, unknown> = {}): Entry {
-	return entry({ message: { role: "toolResult", toolCallId, toolName: "bash", content: [{ type: "text", text }], isError, timestamp: 1000, ...extra } });
+	return entry({ type: "custom", customType: "tool/result", data: { toolCallId, toolName: "bash", content: [{ type: "text", text }], isError, timestamp: 1000, ...extra } });
 }
 
 function sendMessageEntry(text: string): Entry {
 	return entry({ type: "custom", customType: "send_message", data: { text, timestamp: 1000 } });
+}
+
+function agentStart(run: number): Entry {
+	return entry({ type: "custom", customType: "agent/start", data: { run, timestamp: 1000 } });
+}
+
+function agentEnd(run: number, reason = "completed"): Entry {
+	return entry({ type: "custom", customType: "agent/end", data: { run, reason, timestamp: 1000 } });
+}
+
+function turnStart(run: number, turn: number): Entry {
+	return entry({ type: "custom", customType: "turn/start", data: { run, turn, timestamp: 1000 } });
 }
 
 describe("aggregateUsage whole-session totals", () => {
@@ -126,25 +138,34 @@ describe("fold — total over the entry union", () => {
 		if (message.kind === "custom") expect(message.data).toEqual({ text: "task done", timestamp: 1000 });
 	});
 
-	test("toolResult is its own record, inherits the turn, keeps details", () => {
+	test("toolResult is its own record, stays in its turn, keeps details", () => {
 		const records = fold([
 			userEntry("list files"),
+			agentStart(1),
+			turnStart(1, 1),
 			assistantEntry([{ type: "toolCall", id: "toolu_1", name: "bash", arguments: { command: "ls" } }]),
 			toolResultEntry("toolu_1", "src\npackage.json", false, { details: { exitCode: 0 } }),
 		]);
-		expect(records.map((r) => r.kind)).toEqual(["user", "assistant", "toolResult"]);
-		const result = records[2];
-		expect(result).toMatchObject({ kind: "toolResult", turn: 1, toolCallId: "toolu_1", toolName: "bash", content: "src\npackage.json", isError: false });
+		expect(records.map((r) => r.kind)).toEqual(["user", "custom", "custom", "assistant", "toolResult"]);
+		const result = records[4];
+		expect(result).toMatchObject({ kind: "toolResult", run: 1, turn: 1, toolCallId: "toolu_1", toolName: "bash", content: "src\npackage.json", isError: false });
 		if (result.kind === "toolResult") expect(result.details).toEqual({ exitCode: 0 });
 		// Tool failure: isError passes through
-		const failed = fold([userEntry("x"), assistantEntry([{ type: "toolCall", id: "t2", name: "bash", arguments: "ls" }]), toolResultEntry("t2", "boom", true)]);
-		const result2 = failed[2];
+		const failed = fold([turnStart(1, 1), toolResultEntry("t2", "boom", true)]);
+		const result2 = failed[1];
 		if (result2.kind === "toolResult") expect(result2.isError).toBe(true);
 	});
 
-	test("multiple assistants → turn increments; a lost toolResult is visible by absence", () => {
-		const records = fold([userEntry("q"), assistantEntry([{ type: "text", text: "a" }]), assistantEntry([{ type: "toolCall", id: "t4", name: "read", arguments: {} }])]);
-		expect(records.map((r) => (r.kind === "assistant" || r.kind === "toolResult" ? r.turn : -1))).toEqual([-1, 1, 2]);
+	test("each model call carries the turn its marker opened; a missing toolResult is visible by absence", () => {
+		const records = fold([
+			userEntry("q"),
+			agentStart(1),
+			turnStart(1, 1),
+			assistantEntry([{ type: "text", text: "a" }]),
+			turnStart(1, 2),
+			assistantEntry([{ type: "toolCall", id: "t4", name: "read", arguments: {} }]),
+		]);
+		expect(records.map((r) => (r.kind === "assistant" ? r.turn : -1))).toEqual([-1, -1, -1, 1, -1, 2]);
 	});
 
 	test("structural entries (model_change / active_tools) fold with their fields", () => {
@@ -214,29 +235,68 @@ describe("fold — total over the entry union", () => {
 });
 
 describe("timelineNodes whole-log view model", () => {
-	test("one node per record; assistant starts a turn, earlier entries carry the turn that follows", () => {
+	test("a record carries the run and turn it was written in, and a question opens the run that follows", () => {
 		const { nodes } = timelineNodes(
 			fold([
 				entry({ type: "custom", customType: "system_prompt", data: { text: "# IDENTIFY", timestamp: 0 } }),
 				userEntry("q1"),
-				assistantEntry([{ type: "text", text: "a" }]),
+				agentStart(1),
+				turnStart(1, 1),
+				assistantEntry([{ type: "toolCall", id: "t1", name: "bash", arguments: "ls" }]),
 				toolResultEntry("t1", "out"),
+				turnStart(1, 2),
+				assistantEntry([{ type: "text", text: "done" }]),
 				sendMessageEntry("reply"),
+				agentEnd(1),
 				userEntry("q2"),
+				agentStart(2),
+				turnStart(2, 1),
 				assistantEntry([{ type: "text", text: "b" }]),
 			]),
 		);
-		// Block order within turn 1: system prompt → user → send_message → assistant → toolResult
-		expect(nodes.map((n) => n.record.kind)).toEqual(["custom", "user", "custom", "assistant", "toolResult", "user", "assistant"]);
-		// system prompt and user before the first assistant belong to turn 1; toolResult inherits its turn
-		expect(nodes.map((n) => n.turn)).toEqual([1, 1, 1, 1, 1, 2, 2]);
+		expect(nodes.map((n) => n.record.kind)).toEqual([
+			"custom",
+			"user",
+			"custom",
+			"custom",
+			"assistant",
+			"toolResult",
+			"custom",
+			"assistant",
+			"custom",
+			"custom",
+			"user",
+			"custom",
+			"custom",
+			"assistant",
+		]);
+		// the prompt and the question precede their run's markers, so they belong to the run they open
+		expect(nodes.map((n) => [n.record.run, n.record.turn])).toEqual([
+			[1, 1],
+			[1, 1],
+			[1, 1],
+			[1, 1],
+			[1, 1],
+			[1, 1],
+			[1, 2],
+			[1, 2],
+			[1, 2],
+			[1, 2],
+			[2, 1],
+			[2, 1],
+			[2, 1],
+			[2, 1],
+		]);
 	});
 
-	test("turn summaries: density, caption fallback, tools with args", () => {
+	test("turn summaries: one per assistant turn, bucketed by tokens", () => {
 		const { turns } = timelineNodes(
 			fold([
 				userEntry("analyse the project"),
+				agentStart(1),
+				turnStart(1, 1),
 				assistantEntry([{ type: "toolCall", id: "t1", name: "bash", arguments: "ls" }], { input: 500, output: 200, totalTokens: 700 }),
+				turnStart(1, 2),
 				assistantEntry(
 					[
 						{ type: "text", text: "progress" },
@@ -246,56 +306,52 @@ describe("timelineNodes whole-log view model", () => {
 				),
 				toolResultEntry("t2", "out"),
 				sendMessageEntry("first reply"),
+				agentEnd(1),
+				userEntry("and again"),
+				agentStart(2),
+				turnStart(2, 1),
 				assistantEntry([{ type: "toolCall", id: "t3", name: "read", arguments: {} }], { input: 6000, output: 400, totalTokens: 6400 }),
 			]),
 		);
-		expect(turns.map((t) => t.turn)).toEqual([1, 2, 3]);
-		expect(turns[0].tools.map((t) => t.name)).toEqual(["bash"]);
-		expect(turns[0].tools[0].args).toContain("ls");
-		expect(turns[1].tools.map((t) => t.name)).toEqual(["read"]);
-		expect(turns[1].text).toBe("progress");
-		expect(turns[1].hasMessage).toBe(true);
-		expect(turns[2].hasMessage).toBe(false);
+		expect(turns.map((t) => [t.run, t.turn])).toEqual([
+			[1, 1],
+			[1, 2],
+			[2, 1],
+		]);
 		expect(turns[0].density).toBe("l1"); // 700 total
 		expect(turns[1].density).toBe("l2"); // 3,100
 		expect(turns[2].density).toBe("l3"); // 6,400
-		expect(turns[1].caption).toBe("progress");
-		expect(turns[0].caption).toBe("bash");
 	});
 
-	test("tool results pair to their turn's call by callId; a missing result stays unpaired", () => {
-		const { turns } = timelineNodes(
-			fold([
-				userEntry("q"),
-				assistantEntry([{ type: "toolCall", id: "tk1", name: "bash", arguments: "ls" }]),
-				toolResultEntry("tk1", "out", true),
-				assistantEntry([{ type: "toolCall", id: "tk2", name: "bash", arguments: "rm -rf" }]),
-			]),
-		);
-		expect(turns[0].tools[0].result).toEqual({ text: "out", isError: true });
-		// interrupted: tk2 never got a toolResult → no result attached (the view marks it)
-		expect(turns[1].tools[0].result).toBeUndefined();
-	});
-
-	test("mid-turn records (request/header between assistant and its toolResults) never regress the turn", () => {
-		// Realistic inner-loop log: request/header is appended before each LLM call, so it lands
-		// between the assistant and its toolResults — turns must stay monotonic (no 1,2,1).
+	test("records between a turn's assistant and its tool results keep that turn", () => {
+		// request/header is appended before each model call, so it lands between the assistant and
+		// its toolResults — every record in the turn must carry the turn the marker opened.
 		const { nodes } = timelineNodes(
 			fold([
 				entry({ type: "custom", customType: "system_prompt", data: { text: "# IDENTIFY", timestamp: 0 } }),
 				userEntry("q"),
-				entry({ type: "custom", customType: "system_reminder", data: { text: "call send_message", timestamp: 1 } }),
+				agentStart(1),
+				turnStart(1, 1),
 				entry({ type: "custom", customType: "request/header", data: { toolNames: ["bash"], systemPrompt: "# IDENTIFY" } }),
 				sendMessageEntry("thinking…"),
 				assistantEntry([{ type: "toolCall", id: "tk1", name: "bash", arguments: "ls" }]),
-				entry({ type: "custom", customType: "request/header", data: { toolNames: ["bash"], systemPrompt: "# IDENTIFY" } }),
 				toolResultEntry("tk1", "out"),
+				turnStart(1, 2),
+				entry({ type: "custom", customType: "request/header", data: { toolNames: ["bash"], systemPrompt: "# IDENTIFY" } }),
 				assistantEntry([{ type: "text", text: "done" }]),
+				agentEnd(1),
 			]),
 		);
-		expect(nodes.map((n) => n.turn)).toEqual([1, 1, 1, 1, 1, 1, 1, 2]);
-		// strictly non-decreasing
-		for (let i = 1; i < nodes.length; i++) expect(nodes[i].turn).toBeGreaterThanOrEqual(nodes[i - 1].turn);
+		const stamped = nodes
+			.filter((n) => n.record.kind === "assistant" || n.record.kind === "toolResult" || (n.record.kind === "custom" && n.record.customType === "request/header"))
+			.map((n) => [n.record.run, n.record.turn]);
+		expect(stamped).toEqual([
+			[1, 1],
+			[1, 1],
+			[1, 1],
+			[1, 2],
+			[1, 2],
+		]);
 	});
 
 	test("turn blocks read system_prompt → request/header → question → reminder → send_message", () => {
@@ -365,8 +421,6 @@ describe("timelineNodes whole-log view model", () => {
 		);
 		const headers = nodes.filter((n) => n.record.kind === "custom" && n.record.customType === "request/header");
 		expect(headers).toHaveLength(2);
-		// request headers are list rows now (their expanded body shows the tool definitions)
-		for (const h of headers) expect(h.positionOnly).toBeFalsy();
 		// one request per question segment — the dot sits on the question row that starts it
 		const users = nodes.filter((n) => n.record.kind === "user");
 		expect(users).toHaveLength(2);

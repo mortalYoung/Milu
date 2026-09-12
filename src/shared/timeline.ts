@@ -6,6 +6,7 @@
  * with display-level request/header dedup applied at projection time.
  */
 import type { Entry } from "@earendil-works/pi-agent-core";
+import { entryKey } from "./entry-meta";
 import type { TrajectoryBlock, TrajectoryRecord, TrajectoryUsage } from "./rpc";
 
 interface ContentBlock {
@@ -68,14 +69,44 @@ export function contentText(content: unknown): string {
 		.join("\n");
 }
 
+function eventNumber(entry: Entry, field: string, fallback: number): number {
+	if (entry.type !== "custom") return fallback;
+	const value = (entry.data as Record<string, unknown> | undefined)?.[field];
+	return typeof value === "number" ? value : fallback;
+}
+
+function upcomingRuns(entries: Entry[]): number[] {
+	const upcoming = new Array<number>(entries.length).fill(0);
+	let next = 0;
+	for (let i = entries.length - 1; i >= 0; i -= 1) {
+		const entry = entries[i];
+		if (entry.type === "custom" && entry.customType === "agent/start") next = eventNumber(entry, "run", next);
+		upcoming[i] = next;
+	}
+	return upcoming;
+}
+
 export function fold(entries: Entry[]): TrajectoryRecord[] {
 	const records: TrajectoryRecord[] = [];
+	const upcoming = upcomingRuns(entries);
+	let run = 0;
 	let turn = 0;
+	let open = false;
 	const push = (record: TrajectoryRecord) => {
 		records.push({ ...record, seq: records.length });
 	};
-	for (const entry of entries) {
-		const base = { seq: 0, entryId: entry.id, time: entry.timestamp };
+	for (let i = 0; i < entries.length; i += 1) {
+		const entry = entries[i];
+		const custom = entry.type === "custom" ? entry.customType : null;
+		if (custom === "agent/start") {
+			run = eventNumber(entry, "run", run + 1);
+			turn = 0;
+			open = true;
+		} else if (custom === "turn/start") {
+			turn = eventNumber(entry, "turn", turn + 1);
+		}
+		const placement = open ? { run, turn: turn || 1 } : { run: upcoming[i] || run + 1, turn: 1 };
+		const base = { seq: 0, entryId: entry.id, metaKey: entryKey(entry), time: entry.timestamp, ...placement };
 
 		if (entry.type === "custom" && entry.customType === "tool/result") {
 			const data = (entry.data ?? {}) as {
@@ -90,7 +121,6 @@ export function fold(entries: Entry[]): TrajectoryRecord[] {
 			push({
 				...base,
 				kind: "toolResult",
-				turn,
 				toolCallId: String(data.toolCallId ?? ""),
 				toolName: String(data.toolName ?? ""),
 				content: contentText(data.content),
@@ -113,18 +143,16 @@ export function fold(entries: Entry[]): TrajectoryRecord[] {
 						...(typeof skill === "string" ? { skillName: skill } : {}),
 					});
 				} else if (m.role === "assistant") {
-					turn += 1;
 					push({
 						...base,
 						kind: "assistant",
-						turn,
 						blocks: (m.content as unknown as TrajectoryBlock[]) ?? [],
 						api: m.api,
 						provider: m.provider,
 						model: m.model,
 						responseModel: m.responseModel,
 						responseId: m.responseId,
-						timing: (m as { timing?: { stepStartTime: number; firstTokenTime: number | null; completedTime: number } }).timing,
+						timing: (m as { timing?: { turnStartTime: number; firstTokenTime: number | null; completedTime: number } }).timing,
 						usage: toTrajectoryUsage(m.usage),
 						stopReason: m.stopReason,
 						errorMessage: m.errorMessage,
@@ -157,6 +185,7 @@ export function fold(entries: Entry[]): TrajectoryRecord[] {
 				push({ ...base, kind: "custom", customType: entry.customType, data: entry.data });
 				break;
 		}
+		if (custom === "agent/end") open = false;
 	}
 	return records;
 }

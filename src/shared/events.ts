@@ -2,10 +2,10 @@ import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import type { SandboxMode } from "./rpc";
 
 export const EVENTS = {
+	agentStart: "agent/start",
+	agentEnd: "agent/end",
 	turnStart: "turn/start",
 	turnEnd: "turn/end",
-	stepStart: "step/start",
-	stepEnd: "step/end",
 	toolCall: "tool/call",
 	toolResult: "tool/result",
 	requestHeader: "request/header",
@@ -38,31 +38,31 @@ export const EVENTS = {
 	retryStarted: "retry/started",
 } as const;
 
-export type TurnEndReason = "completed" | "error" | "aborted" | "interrupted";
+export type AgentEndReason = "completed" | "error" | "aborted" | "interrupted";
+
+export interface AgentStartEventData {
+	run: number;
+}
+
+export interface AgentEndEventData {
+	run: number;
+	reason: AgentEndReason;
+	error?: string;
+}
 
 export interface TurnStartEventData {
+	run: number;
 	turn: number;
 }
 
 export interface TurnEndEventData {
+	run: number;
 	turn: number;
-	reason: TurnEndReason;
-	error?: string;
-}
-
-export interface StepStartEventData {
-	turn: number;
-	step: number;
-}
-
-export interface StepEndEventData {
-	turn: number;
-	step: number;
 }
 
 export interface ToolCallEventData {
+	run: number;
 	turn: number;
-	step: number;
 	callId: string;
 	name: string;
 	args: unknown;
@@ -201,8 +201,8 @@ export interface MemoryRunEndEventData {
 
 export interface RetryScheduledEventData {
 	retryId: string;
+	run: number;
 	turn: number;
-	step: number;
 	provider: string;
 	model: string;
 	retry: number;
@@ -213,8 +213,8 @@ export interface RetryScheduledEventData {
 
 export interface RetryStartedEventData {
 	retryId: string;
+	run: number;
 	turn: number;
-	step: number;
 	retry: number;
 }
 

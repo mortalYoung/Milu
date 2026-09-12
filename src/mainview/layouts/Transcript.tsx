@@ -344,7 +344,7 @@ export function Transcript(props: {
 			if (entry.type === "message" && entry.message.role === "user" && typeof (entry.message as { skill?: unknown }).skill !== "string") return null;
 			if (entry.type !== "custom") continue;
 			if (entry.customType === EVENTS.commandRun || entry.customType === EVENTS.skillRun || entry.customType === EVENTS.shellRun) return null;
-			if (entry.customType === EVENTS.turnEnd) {
+			if (entry.customType === EVENTS.agentEnd) {
 				const reason = (entry.data as { reason?: unknown } | undefined)?.reason;
 				if (reason === "completed") return null;
 				if (reason === "aborted") sawAborted = true;

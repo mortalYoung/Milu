@@ -86,7 +86,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	});
 
 	const runtime: RuntimeStatsSnapshot = {
-		runs: deps.runtimeStats?.runs ?? 0,
+		turns: deps.runtimeStats?.turns ?? 0,
 		ttfts: [...(deps.runtimeStats?.ttfts ?? [])],
 		speedOutputs: [...(deps.runtimeStats?.speedOutputs ?? [])],
 		speedDurationsMs: [...(deps.runtimeStats?.speedDurationsMs ?? [])],
@@ -106,10 +106,10 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		});
 	}
 
-	let stepStartAt = 0;
-	let stepStartWall = 0;
-	let stepFirstDeltaAt = 0;
-	let stepFirstDeltaWall = 0;
+	let turnStartAt = 0;
+	let turnStartWall = 0;
+	let turnFirstDeltaAt = 0;
+	let turnFirstDeltaWall = 0;
 
 	let skillCatalogDirty = false;
 	let contextDirty = true;
@@ -248,33 +248,33 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 
 	const logError = (error: unknown) => console.error("session append failed:", error);
 
-	let runTurn = 0;
-	let step = 0;
+	let run = 0;
+	let turn = 0;
 	const delivered = new Set<AssistantMessage>();
 	let runHasDelivered = false;
 
 	const handleEvent = (event: AgentEvent): Promise<void> | void => {
 		switch (event.type) {
 			case "agent_start":
-				runTurn += 1;
-				step = 0;
+				run += 1;
+				turn = 0;
 				runHasDelivered = false;
-				return deps.session.appendTurnStart(runTurn, Date.now()).catch(logError);
+				return deps.session.appendAgentStart(run, Date.now()).catch(logError);
 			case "turn_start":
-				step += 1;
+				turn += 1;
 				bridge.onTurnStart(ctx.beginTurn());
 				{
-					const stepStart = Date.now();
-					stepStartAt = performance.now();
-					stepStartWall = stepStart;
-					stepFirstDeltaAt = 0;
-					stepFirstDeltaWall = 0;
+					const turnStart = Date.now();
+					turnStartAt = performance.now();
+					turnStartWall = turnStart;
+					turnFirstDeltaAt = 0;
+					turnFirstDeltaWall = 0;
 					return Promise.all([
-						deps.session.appendStepStart(runTurn, step, stepStart),
+						deps.session.appendTurnStart(run, turn, turnStart),
 						deps.session.appendRequestHeader(
 							agent.state.systemPrompt,
 							agent.state.tools.map((t) => ({ name: t.name, label: t.label, description: t.description, parameters: t.parameters })),
-							stepStart,
+							turnStart,
 						),
 					])
 						.then(() => undefined)
@@ -283,9 +283,9 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			case "message_update": {
 				const update = event.assistantMessageEvent;
 				if ((update.type === "text_delta" || update.type === "thinking_delta" || update.type === "toolcall_delta") && update.delta.length > 0) {
-					if (stepFirstDeltaAt === 0) {
-						stepFirstDeltaAt = performance.now();
-						stepFirstDeltaWall = Date.now();
+					if (turnFirstDeltaAt === 0) {
+						turnFirstDeltaAt = performance.now();
+						turnFirstDeltaWall = Date.now();
 					}
 				}
 				break;
@@ -297,8 +297,8 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 					const assistant = event.message as AssistantMessage;
 					const completedWall = Date.now();
 					const timing = {
-						stepStartTime: stepStartWall,
-						firstTokenTime: stepFirstDeltaWall > 0 ? stepFirstDeltaWall : null,
+						turnStartTime: turnStartWall,
+						firstTokenTime: turnFirstDeltaWall > 0 ? turnFirstDeltaWall : null,
 						completedTime: completedWall,
 					};
 					return deps.session
@@ -317,11 +317,11 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 							assistant.timestamp ?? completedWall,
 						)
 						.then(() => {
-							if (stepFirstDeltaAt > 0) {
-								const ttft = stepFirstDeltaAt - stepStartAt;
+							if (turnFirstDeltaAt > 0) {
+								const ttft = turnFirstDeltaAt - turnStartAt;
 								runtime.ttfts.push(ttft);
 								runtime.lastTtft = ttft;
-								const durationMs = completedWall - stepFirstDeltaWall;
+								const durationMs = completedWall - turnFirstDeltaWall;
 								if (durationMs > 0) {
 									runtime.speedOutputs.push(assistant.usage?.output ?? 0);
 									runtime.speedDurationsMs.push(durationMs);
@@ -332,7 +332,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 						.catch(logError);
 				}
 			case "tool_execution_start":
-				return deps.session.appendToolCall(event.toolCallId, event.toolName, event.args, runTurn, step, Date.now()).catch(logError);
+				return deps.session.appendToolCall(event.toolCallId, event.toolName, event.args, run, turn, Date.now()).catch(logError);
 			case "tool_execution_end": {
 				const result: ToolResultMessage = {
 					role: "toolResult",
@@ -352,11 +352,11 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			}
 			case "turn_end":
 				ctx.endTurn();
-				runtime.runs += 1;
+				runtime.turns += 1;
 
 				persistRuntime();
 				{
-					const persisted = step > 0 ? deps.session.appendStepEnd(runTurn, step, Date.now()).catch(logError) : Promise.resolve();
+					const persisted = turn > 0 ? deps.session.appendTurnEnd(run, turn, Date.now()).catch(logError) : Promise.resolve();
 					return persisted;
 				}
 			case "agent_end":
@@ -369,14 +369,14 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 				}
 				const aborted = lastAssistant?.stopReason === "aborted";
 				if (deferAgentEnd) {
-					deferredAgentEnd = { message: lastAssistant ?? (event.messages[event.messages.length - 1] as AssistantMessage), turn: runTurn, aborted };
+					deferredAgentEnd = { message: lastAssistant ?? (event.messages[event.messages.length - 1] as AssistantMessage), run, aborted };
 					return;
 				}
 				ctx.setRunning(false);
 				enforceDelivery(event);
 
 				return deps.session
-					.appendTurnEnd(runTurn, aborted ? "aborted" : agent.state.errorMessage ? "error" : "completed", Date.now(), agent.state.errorMessage ?? undefined)
+					.appendAgentEnd(run, aborted ? "aborted" : agent.state.errorMessage ? "error" : "completed", Date.now(), agent.state.errorMessage ?? undefined)
 					.catch(logError)
 					.then(() => {
 						bridge.onEnd(agent.state.errorMessage);
@@ -439,7 +439,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 
 	let runAbort: AbortController | null = null;
 	let deferAgentEnd = false;
-	let deferredAgentEnd: { message: AssistantMessage; turn: number; aborted: boolean } | null = null;
+	let deferredAgentEnd: { message: AssistantMessage; run: number; aborted: boolean } | null = null;
 
 	function lastAssistantMessage(): AssistantMessage | null {
 		for (let i = agent.state.messages.length - 1; i >= 0; i--) {
@@ -465,11 +465,11 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		ctx.setRunning(false);
 		const end = deferredAgentEnd;
 		deferredAgentEnd = null;
-		const turn = end?.turn ?? runTurn;
+		const endedRun = end?.run ?? run;
 		const aborted = message.stopReason === "aborted";
 		const error = message.stopReason === "error" ? message.errorMessage : undefined;
 		enforceDelivery({ type: "agent_end", messages: agent.state.messages } as Extract<AgentEvent, { type: "agent_end" }>);
-		await deps.session.appendTurnEnd(turn, aborted ? "aborted" : error ? "error" : "completed", Date.now(), error).catch(logError);
+		await deps.session.appendAgentEnd(endedRun, aborted ? "aborted" : error ? "error" : "completed", Date.now(), error).catch(logError);
 		bridge.onEnd(error);
 	}
 
@@ -514,8 +514,8 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 									.appendRetryScheduled(
 										{
 											retryId,
-											turn: ctx.turn,
-											step,
+											run,
+											turn,
 											provider: ctx.model?.provider ?? "unknown",
 											model: ctx.model?.modelId ?? "unknown",
 											retry: attempt,
@@ -529,7 +529,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 							},
 							onRetryAttemptStart: () => {
 								if (!scheduled) return;
-								void deps.session.appendRetryStarted({ retryId: scheduled.retryId, turn: ctx.turn, step, retry: scheduled.retry }, Date.now()).catch(logError);
+								void deps.session.appendRetryStarted({ retryId: scheduled.retryId, run, turn, retry: scheduled.retry }, Date.now()).catch(logError);
 							},
 						},
 					)
@@ -601,7 +601,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			const totalOutput = runtime.speedOutputs.reduce((a, b) => a + b, 0);
 			const totalDurationMs = runtime.speedDurationsMs.reduce((a, b) => a + b, 0);
 			return {
-				runs: runtime.runs,
+				turns: runtime.turns,
 				avgTtftMs: avg(runtime.ttfts),
 				avgTps: totalDurationMs > 0 ? totalOutput / (totalDurationMs / 1000) : null,
 				lastTtftMs: runtime.lastTtft,

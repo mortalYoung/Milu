@@ -130,16 +130,16 @@ function insideWorkspace(path: string, baseDir: string | null): boolean {
 
 export function attachMentionFiles(entries: Entry[], items: ViewItem[], baseDir: string | null): void {
 	const callPath = new Map<string, string | null>();
-	const producedTurn = new Map<string, number>();
-	const produced: { turn: number; seq: number; path: string }[] = [];
+	const producedRun = new Map<string, number>();
+	const produced: { run: number; seq: number; path: string }[] = [];
 	const closing = new Map<number, { id: string; seq: number }>();
 	const closed = new Set<number>();
-	let turnKey = 0;
+	let runKey = 0;
 	for (const entry of entries) {
 		if (entry.type !== "custom") continue;
 		const data = (entry.data ?? {}) as EntryData;
-		if (entry.customType === EVENTS.turnStart) {
-			turnKey = entry.seq;
+		if (entry.customType === EVENTS.agentStart) {
+			runKey = entry.seq;
 			continue;
 		}
 		if (entry.customType === EVENTS.toolCall) {
@@ -147,7 +147,7 @@ export function attachMentionFiles(entries: Entry[], items: ViewItem[], baseDir:
 			if (callId === null) continue;
 			const name = nonEmptyString(data.name);
 			callPath.set(callId, name !== null ? (PRODUCERS[name]?.(data.args) ?? null) : null);
-			producedTurn.set(callId, turnKey);
+			producedRun.set(callId, runKey);
 		} else if (entry.customType === EVENTS.toolResult) {
 			if (data.isError === true) continue;
 			const callId = nonEmptyString(data.toolCallId);
@@ -155,13 +155,13 @@ export function attachMentionFiles(entries: Entry[], items: ViewItem[], baseDir:
 			if (callId === null || path === null) continue;
 			const absolute = workspacePath(path, baseDir);
 			if (!insideWorkspace(absolute, baseDir)) continue;
-			produced.push({ turn: producedTurn.get(callId) ?? turnKey, seq: entry.seq, path: absolute });
+			produced.push({ run: producedRun.get(callId) ?? runKey, seq: entry.seq, path: absolute });
 		} else if (entry.customType === EVENTS.sendMessage) {
 			if (nonEmptyString(data.toolCallId) !== DELIVERED_BY) continue;
 			if (nonEmptyString(data.text) === null) continue;
-			closing.set(turnKey, { id: entry.id, seq: entry.seq });
-		} else if (entry.customType === EVENTS.turnEnd) {
-			closed.add(turnKey);
+			closing.set(runKey, { id: entry.id, seq: entry.seq });
+		} else if (entry.customType === EVENTS.agentEnd) {
+			closed.add(runKey);
 		}
 	}
 
@@ -170,7 +170,7 @@ export function attachMentionFiles(entries: Entry[], items: ViewItem[], baseDir:
 		if (!closed.has(owner)) continue;
 		const files: string[] = [];
 		for (const item of produced) {
-			if (item.turn !== owner || item.seq > mark.seq || files.includes(item.path)) continue;
+			if (item.run !== owner || item.seq > mark.seq || files.includes(item.path)) continue;
 			files.push(item.path);
 		}
 		if (files.length > 0) byItem.set(mark.id, files);

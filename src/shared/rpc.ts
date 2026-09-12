@@ -129,6 +129,12 @@ export interface TrajectoryBase {
 
 	entryId: string;
 
+	metaKey: string;
+
+	run: number;
+
+	turn: number;
+
 	time: number;
 
 	sliceMessage?: AgentMessage;
@@ -165,15 +171,13 @@ export type TrajectoryRecord =
 	| (TrajectoryBase & {
 			kind: "assistant";
 
-			turn: number;
-
 			blocks: TrajectoryBlock[];
 			api: string;
 			provider: string;
 			model: string;
 			responseModel?: string;
 			responseId?: string;
-			timing?: { stepStartTime: number; firstTokenTime: number | null; completedTime: number };
+			timing?: { turnStartTime: number; firstTokenTime: number | null; completedTime: number };
 			usage?: TrajectoryUsage;
 			stopReason: string;
 			errorMessage?: string;
@@ -182,7 +186,6 @@ export type TrajectoryRecord =
 	| (TrajectoryBase & {
 			kind: "toolResult";
 
-			turn: number;
 			toolCallId: string;
 			toolName: string;
 			content: string;
@@ -216,7 +219,7 @@ export interface UsageTotals {
 export interface SessionStats {
 	usage: UsageTotals | null;
 	runtime: {
-		runs: number;
+		turns: number;
 		avgTtftMs: number | null;
 		avgTps: number | null;
 		lastTtftMs: number | null;
@@ -224,7 +227,7 @@ export interface SessionStats {
 }
 
 export interface RuntimeStatsSnapshot {
-	runs: number;
+	turns: number;
 	ttfts: number[];
 	speedOutputs: number[];
 	speedDurationsMs: number[];

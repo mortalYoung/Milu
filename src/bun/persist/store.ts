@@ -11,6 +11,7 @@ import { buildResumeTurn, foldSlice } from "../core/slice";
 import { createExecutionEnv } from "../tools/execution-env";
 import { projectView } from "./entry-meta";
 import {
+	type AgentEndReason,
 	type CommandDoneEventData,
 	type CommandRunEventData,
 	type CompactionEventData,
@@ -28,7 +29,6 @@ import {
 	type SkillDoneEventData,
 	type SkillRunEventData,
 	type ToolResultEventData,
-	type TurnEndReason,
 } from "./events";
 
 const EMPTY_USAGE: Usage = {
@@ -53,7 +53,7 @@ declare module "@earendil-works/pi-agent-core" {
 }
 
 export interface AssistantTiming {
-	stepStartTime: number;
+	turnStartTime: number;
 	firstTokenTime: number | null;
 	completedTime: number;
 }
@@ -79,11 +79,11 @@ export interface SessionScope {
 	appendFollowUp(timestamp: number): Promise<void>;
 	appendTimeGapReminder(text: string, timestamp: number): Promise<void>;
 	appendRequestHeader(systemPrompt: string, tools: RequestTool[], timestamp: number): Promise<void>;
-	appendTurnStart(turn: number, timestamp: number): Promise<void>;
-	appendTurnEnd(turn: number, reason: TurnEndReason, timestamp: number, error?: string): Promise<void>;
-	appendStepStart(turn: number, step: number, timestamp: number): Promise<void>;
-	appendStepEnd(turn: number, step: number, timestamp: number): Promise<void>;
-	appendToolCall(callId: string, name: string, args: unknown, turn: number, step: number, timestamp: number): Promise<void>;
+	appendAgentStart(run: number, timestamp: number): Promise<void>;
+	appendAgentEnd(run: number, reason: AgentEndReason, timestamp: number, error?: string): Promise<void>;
+	appendTurnStart(run: number, turn: number, timestamp: number): Promise<void>;
+	appendTurnEnd(run: number, turn: number, timestamp: number): Promise<void>;
+	appendToolCall(callId: string, name: string, args: unknown, run: number, turn: number, timestamp: number): Promise<void>;
 	appendToolResult(result: ToolResultMessage, timestamp: number): Promise<string>;
 	appendEscalationRecord(type: "escalation/request" | "escalation/decision", details: Record<string, unknown>, timestamp: number): Promise<void>;
 	appendCommandRun(details: CommandRunEventData, timestamp: number): Promise<void>;
@@ -245,20 +245,20 @@ export function createSessionStore(): SessionStore {
 			async appendRequestHeader(systemPrompt, tools, timestamp) {
 				await appendCustom(dir, EVENTS.requestHeader, stripUndefined({ systemPrompt, toolNames: tools.map((t) => t.name), tools, timestamp }) as Record<string, unknown>);
 			},
-			async appendTurnStart(turn, timestamp) {
-				await appendCustom(dir, EVENTS.turnStart, { turn, timestamp });
+			async appendAgentStart(run, timestamp) {
+				await appendCustom(dir, EVENTS.agentStart, { run, timestamp });
 			},
-			async appendTurnEnd(turn, reason, timestamp, error) {
-				await appendCustom(dir, EVENTS.turnEnd, { turn, reason, timestamp, ...(error !== undefined ? { error } : {}) });
+			async appendAgentEnd(run, reason, timestamp, error) {
+				await appendCustom(dir, EVENTS.agentEnd, { run, reason, timestamp, ...(error !== undefined ? { error } : {}) });
 			},
-			async appendStepStart(turn, step, timestamp) {
-				await appendCustom(dir, EVENTS.stepStart, { turn, step, timestamp });
+			async appendTurnStart(run, turn, timestamp) {
+				await appendCustom(dir, EVENTS.turnStart, { run, turn, timestamp });
 			},
-			async appendStepEnd(turn, step, timestamp) {
-				await appendCustom(dir, EVENTS.stepEnd, { turn, step, timestamp });
+			async appendTurnEnd(run, turn, timestamp) {
+				await appendCustom(dir, EVENTS.turnEnd, { run, turn, timestamp });
 			},
-			async appendToolCall(callId, name, args, turn, step, timestamp) {
-				await appendCustom(dir, EVENTS.toolCall, { callId, name, args, turn, step, timestamp });
+			async appendToolCall(callId, name, args, run, turn, timestamp) {
+				await appendCustom(dir, EVENTS.toolCall, { callId, name, args, run, turn, timestamp });
 			},
 			async appendToolResult(result, timestamp) {
 				await appendCustom(dir, EVENTS.toolResult, { ...toolResultEventData(result), timestamp });

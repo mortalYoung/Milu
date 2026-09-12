@@ -13,14 +13,14 @@ import type { RuntimeStatsSnapshot } from "../../shared/rpc";
 const FILE_NAME = "runtime-stats.json";
 
 export function emptyRuntimeStats(): RuntimeStatsSnapshot {
-	return { runs: 0, ttfts: [], speedOutputs: [], speedDurationsMs: [], lastTtft: null, savedAt: 0, sampling: "paired" };
+	return { turns: 0, ttfts: [], speedOutputs: [], speedDurationsMs: [], lastTtft: null, savedAt: 0, sampling: "paired" };
 }
 
 /** Load the persisted snapshot; missing/corrupt files fall back to empty (never crash startup). */
 export async function loadRuntimeStats(root: string): Promise<RuntimeStatsSnapshot> {
 	try {
 		const raw = JSON.parse(await readFile(join(root, FILE_NAME), "utf8")) as Partial<RuntimeStatsSnapshot>;
-		if (typeof raw.runs !== "number" || !Number.isFinite(raw.runs) || raw.runs < 0) return emptyRuntimeStats();
+		if (typeof raw.turns !== "number" || !Number.isFinite(raw.turns) || raw.turns < 0) return emptyRuntimeStats();
 		if (!Array.isArray(raw.ttfts) || !raw.ttfts.every((n: unknown) => typeof n === "number" && Number.isFinite(n))) {
 			return emptyRuntimeStats();
 		}
@@ -33,16 +33,16 @@ export async function loadRuntimeStats(root: string): Promise<RuntimeStatsSnapsh
 			!speedOutputs.every((n: unknown) => typeof n === "number" && Number.isFinite(n)) ||
 			!speedDurationsMs.every((n: unknown) => typeof n === "number" && Number.isFinite(n))
 		) {
-			return { ...emptyRuntimeStats(), runs: Math.floor(raw.runs) };
+			return { ...emptyRuntimeStats(), turns: Math.floor(raw.turns) };
 		}
 		if (raw.lastTtft !== null && (typeof raw.lastTtft !== "number" || !Number.isFinite(raw.lastTtft))) {
 			return emptyRuntimeStats();
 		}
 		if (raw.sampling !== "paired") {
-			return { ...emptyRuntimeStats(), runs: Math.floor(raw.runs) };
+			return { ...emptyRuntimeStats(), turns: Math.floor(raw.turns) };
 		}
 		return {
-			runs: Math.floor(raw.runs),
+			turns: Math.floor(raw.turns),
 			ttfts: raw.ttfts,
 			speedOutputs,
 			speedDurationsMs,

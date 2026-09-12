@@ -2073,45 +2073,49 @@ body::before {
 	.traj-marker button:hover {
 		transform: translateY(-2px);
 	}
-	.traj-marker .mq {
+	.traj-marker .traj-tone-plain {
+		background: var(--color-hairline);
+		border-radius: 2px 2px 0 0;
+	}
+	.traj-marker .traj-tone-user {
 		background: var(--color-seal);
 		border-radius: 2px 2px 0 0;
 	}
-	.traj-marker .mskill {
+	.traj-marker .traj-tone-skill {
 		background: var(--color-seal);
 		border: 1.5px solid var(--color-seal);
 		border-radius: 2px 2px 0 0;
 	}
-	.traj-marker .msys {
+	.traj-marker .traj-tone-system {
 		background: var(--color-ink);
 		border-radius: 2px 2px 0 0;
 	}
-	.traj-marker .mrm {
+	.traj-marker .traj-tone-reminder {
 		border: 1.5px dashed var(--color-seal);
 		border-radius: 2px 2px 0 0;
 	}
-	.traj-marker .mmsg {
+	.traj-marker .traj-tone-message {
 		background: var(--color-seal-soft);
 		border: 1px solid var(--color-seal);
 		border-radius: 2px 2px 0 0;
 	}
-	.traj-marker .mreq {
+	.traj-marker .traj-tone-request {
 		border: 1.5px solid var(--color-seal);
 		border-radius: 2px 2px 0 0;
 	}
-	.traj-marker .mres {
+	.traj-marker .traj-tone-result {
 		border: 1px solid var(--color-ink-soft);
 		border-radius: 2px 2px 0 0;
 	}
-	.traj-marker .mchange {
+	.traj-marker .traj-tone-change {
 		background: var(--color-ink-soft);
 		border-radius: 2px 2px 0 0;
 	}
-	.traj-marker .mcompact {
+	.traj-marker .traj-tone-compact {
 		border: 1.5px dashed var(--color-seal);
 		border-radius: 2px 2px 0 0;
 	}
-	.traj-marker .mcustom {
+	.traj-marker .traj-tone-custom {
 		border: 1.5px dotted var(--color-ink-soft);
 		border-radius: 2px 2px 0 0;
 	}
@@ -2380,14 +2384,10 @@ body::before {
 	.traj-body .traj-meta,
 	.traj-body .traj-id,
 	.traj-body .traj-op,
-	.traj-body .traj-interrupted,
-	.traj-body .traj-running,
 	.traj-popover-body .one-think-label,
 	.traj-popover-body .traj-meta,
 	.traj-popover-body .traj-id,
-	.traj-popover-body .traj-op,
-	.traj-popover-body .traj-interrupted,
-	.traj-popover-body .traj-running {
+	.traj-popover-body .traj-op {
 		@apply mt-2 font-mono text-[8.5px] text-muted;
 	}
 	.traj-body .one-think-label,

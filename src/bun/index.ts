@@ -1327,7 +1327,7 @@ async function editLastUserRpc(text: string) {
 				const data = (entry.data ?? {}) as { targetId?: unknown } | undefined;
 				if (data?.targetId === userEntry.id) continue;
 			}
-			if (entry.customType === EVENTS.turnEnd) {
+			if (entry.customType === EVENTS.agentEnd) {
 				const reason = (entry.data as { reason?: unknown } | undefined)?.reason;
 				if (reason === "completed") return { ok: false as const, error: "agent already replied" };
 				if (reason === "aborted") sawAborted = true;
@@ -1916,7 +1916,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				const dir = profile ? getPartnerDir(settings, name) : null;
 				const entry = profile ? await agents.get(name) : undefined;
 				const usage = dir ? aggregateUsage(await session.rawEntries(dir)) : null;
-				return { usage, runtime: entry?.agent.runtimeStats ?? { runs: 0, avgTtftMs: null, avgTps: null, lastTtftMs: null } };
+				return { usage, runtime: entry?.agent.runtimeStats ?? { turns: 0, avgTtftMs: null, avgTps: null, lastTtftMs: null } };
 			},
 
 			btw_threads: async ({ name, anchorEntryId }) => {

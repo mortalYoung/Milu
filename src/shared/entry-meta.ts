@@ -2,7 +2,7 @@ import type { AgentMessage, Entry } from "@earendil-works/pi-agent-core";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import { type CompactionEventData, contextChangedText, EVENTS, instructionsChangedText, mcpChangedText, type RewindEventData } from "./events";
 import { attachMentionFiles } from "./file-mentions";
-import type { SandboxMode, ViewItem } from "./rpc";
+import type { SandboxMode, TrajectoryRecord, TrajectoryUsage, ViewItem } from "./rpc";
 
 // ——— metadata types ———
 
@@ -31,15 +31,38 @@ export interface OriginMeta {
 	visit?(entry: Entry, out: Entry[]): void;
 }
 
-export interface TrajectoryMeta {
-	label: string;
+export type TrajectoryTone = "plain" | "user" | "skill" | "result" | "message" | "system" | "reminder" | "request" | "decision" | "change" | "compact" | "custom";
+
+export interface TrajectoryDetail {
+	label?: string;
+	description?: string;
+	content?: { kind: "text" | "code" | "json"; value: string };
+	meta?: string[];
+	error?: boolean;
+}
+
+export interface TrajectoryRow {
+	band?: "cell" | "tool" | "think";
+	chip?: string;
+	tone?: TrajectoryTone;
+	caption?: string;
+	details?: TrajectoryDetail[];
+}
+
+export interface TrajectoryNode {
+	band?: "cell" | "tool" | "think";
+	chip?: string;
+	tone?: TrajectoryTone;
+	caption?: string;
+	details?: TrajectoryDetail[];
+	rows?: TrajectoryRow[];
 }
 
 export interface EntryMeta {
 	origin?: OriginMeta;
 	view?: ViewMeta;
 	slice?: SliceMeta;
-	trajectory?: TrajectoryMeta;
+	trajectory?: (record: TrajectoryRecord) => TrajectoryNode;
 }
 
 // ——— view projection ———
@@ -72,7 +95,7 @@ function sendMessageVisit(entry: Entry, out: ViewItem[]): void {
 	out.push(row(entry.id, "send_message", data.text, typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0)));
 }
 
-function turnEndVisit(entry: Entry, out: ViewItem[]): void {
+function agentEndVisit(entry: Entry, out: ViewItem[]): void {
 	if (entry.type !== "custom") return;
 	const data = entry.data as { reason?: unknown; error?: unknown; timestamp?: unknown } | undefined;
 	const time = typeof data?.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0);
@@ -408,53 +431,315 @@ function requestHeaderOriginVisit(entry: Entry, out: Entry[]): void {
 	out.push(entry);
 }
 
+// ——— trajectory nodes ———
+
+const firstLine = (value: string): string => value.split("\n").find((line) => line.trim()) ?? "";
+
+function recordField(record: TrajectoryRecord, path: string): unknown {
+	let value: unknown = record;
+	for (const key of path.split(".")) {
+		if (value === null || typeof value !== "object") return undefined;
+		value = (value as Record<string, unknown>)[key];
+	}
+	return value;
+}
+
+const recordText = (record: TrajectoryRecord, path: string): string => {
+	const value = recordField(record, path);
+	return typeof value === "string" ? value : "";
+};
+
+const recordNumber = (record: TrajectoryRecord, path: string): number | undefined => {
+	const value = recordField(record, path);
+	return typeof value === "number" ? value : undefined;
+};
+
+export function stringifyArgs(args: unknown): string {
+	if (typeof args === "string") return args;
+	if (args == null) return "";
+	try {
+		return JSON.stringify(args, null, 2);
+	} catch {
+		return String(args);
+	}
+}
+
+const fmtTok = (value: number | undefined): string => (value && value > 0 ? value.toLocaleString() : "—");
+
+export function formatUsage(usage: TrajectoryUsage | undefined): string | undefined {
+	if (!usage) return undefined;
+	const reasoning = usage.reasoning ? ` · reasoning ${fmtTok(usage.reasoning)}` : "";
+	return `in ${fmtTok(usage.input)} · out ${fmtTok(usage.output)} · cacheRead ${fmtTok(usage.cacheRead)} · cacheWrite ${fmtTok(usage.cacheWrite)}${reasoning} tok`;
+}
+
+const textDetail = (value: string): TrajectoryDetail => ({ content: { kind: "text", value } });
+const codeDetail = (value: string, error?: boolean): TrajectoryDetail => ({ content: { kind: "code", value }, ...(error ? { error: true } : {}) });
+const jsonDetail = (value: unknown): TrajectoryDetail => {
+	let text: string;
+	try {
+		text = JSON.stringify(value, null, 2) ?? String(value);
+	} catch {
+		text = String(value);
+	}
+	return { content: { kind: "json", value: text } };
+};
+const metaDetail = (...facts: (string | undefined)[]): TrajectoryDetail => ({ meta: facts.filter((fact): fact is string => fact !== undefined && fact !== "") });
+
+export function defaultChip(metaKey: string): string {
+	const segment = metaKey.split(/[:/_-]/).find((part) => part !== "") ?? metaKey;
+	return segment
+		.replace(/[^a-zA-Z0-9]/g, "")
+		.slice(0, 3)
+		.toUpperCase();
+}
+
+export function trajectoryNode(record: TrajectoryRecord): TrajectoryNode & { chip: string; tone: TrajectoryTone; caption: string; details: TrajectoryDetail[] } {
+	const node = EVENT_META[record.metaKey]?.trajectory?.(record) ?? { details: [jsonDetail(record.kind === "custom" ? record.data : record)] };
+	return { ...node, chip: node.chip ?? defaultChip(record.metaKey), tone: node.tone ?? "custom", caption: node.caption ?? record.metaKey, details: node.details ?? [] };
+}
+
+function dataNode(
+	tone: TrajectoryTone,
+	options: { chip?: string; caption?: (record: TrajectoryRecord) => string; details?: (record: TrajectoryRecord) => TrajectoryDetail[] } = {},
+): EntryMeta {
+	return {
+		trajectory: (record) => ({
+			chip: options.chip,
+			tone,
+			caption: options.caption?.(record),
+			details: options.details?.(record) ?? [jsonDetail(recordField(record, "data"))],
+		}),
+	};
+}
+
+function assistantNode(record: TrajectoryRecord): TrajectoryNode {
+	if (record.kind !== "assistant") return {};
+	const rows: TrajectoryRow[] = [];
+	for (const block of record.blocks) {
+		if (block.type !== "thinking") continue;
+		const thinking = String(block.thinking ?? "");
+		rows.push({ band: "think", chip: "THINK", tone: "plain", caption: firstLine(thinking), details: [textDetail(thinking)] });
+	}
+	const texts = record.blocks.filter((block) => block.type === "text").map((block) => String(block.text ?? ""));
+	const others = record.blocks.filter((block) => block.type !== "text" && block.type !== "toolCall" && block.type !== "thinking");
+	const caption = firstLine(texts.join("\n")) || record.blocks.find((block) => block.type === "toolCall")?.name?.toString() || "assistant";
+	rows.push({
+		band: "cell",
+		chip: "MSG",
+		tone: "plain",
+		caption: firstLine(texts.join("\n")) || "assistant",
+		details: [
+			...texts.map((value) => textDetail(value)),
+			...others.map((block) => jsonDetail(block)),
+			metaDetail(
+				record.model,
+				`${record.provider} · ${record.api}`,
+				`stop: ${record.stopReason}`,
+				record.responseModel && `responseModel ${record.responseModel}`,
+				record.responseId && `response ${record.responseId}`,
+				formatUsage(record.usage),
+			),
+			...(record.errorMessage ? [{ meta: [record.errorMessage], error: true }] : []),
+		],
+	});
+	return { chip: "MSG", tone: "plain", caption, rows };
+}
+
+function toolResultNode(record: TrajectoryRecord): TrajectoryNode {
+	if (record.kind !== "toolResult") return {};
+	return {
+		chip: "RES",
+		tone: "result",
+		caption: firstLine(record.content) || record.toolName,
+		details: [
+			codeDetail(record.content || "(no output)", record.isError),
+			metaDetail(
+				`call ${record.toolCallId}`,
+				record.toolName,
+				record.isError ? "error" : "ok",
+				record.addedToolNames?.length ? `tools added: ${record.addedToolNames.join(", ")}` : undefined,
+				formatUsage(record.usage),
+			),
+			...(record.details != null ? [jsonDetail(record.details)] : []),
+		],
+	};
+}
+
+function toolCallNode(record: TrajectoryRecord): TrajectoryNode {
+	if (record.kind !== "custom") return {};
+	const name = recordText(record, "data.name");
+	const args = stringifyArgs(recordField(record, "data.args")).replace(/\s+/g, " ").trim();
+	return {
+		band: "tool",
+		chip: "TOOL",
+		tone: "plain",
+		caption: args ? `${name} · ${args}` : name,
+		details: [{ label: name, description: recordText(record, "data.callId") }, { content: { kind: "code", value: stringifyArgs(recordField(record, "data.args")) } }],
+	};
+}
+
+function modelChangeNode(record: TrajectoryRecord): TrajectoryNode {
+	if (record.kind === "modelChange")
+		return { chip: "MOD", tone: "change", caption: `${record.provider} → ${record.modelId}`, details: [metaDetail(record.provider, `→ ${record.modelId}`)] };
+	return { tone: "change", details: [jsonDetail(recordField(record, "data"))] };
+}
+
+function compactionNode(record: TrajectoryRecord): TrajectoryNode {
+	if (record.kind !== "compaction") return { tone: "compact", details: [jsonDetail(recordField(record, "data"))] };
+	return {
+		chip: "CMP",
+		tone: "compact",
+		caption: firstLine(record.summary) || "compaction",
+		details: [
+			textDetail(record.summary || "(empty summary)"),
+			metaDetail(`${fmtTok(record.tokensBefore)} tok before`, `${record.retainedTailCount} retained messages`, formatUsage(record.usage)),
+			...(record.details != null ? [jsonDetail(record.details)] : []),
+		],
+	};
+}
+
+function branchSummaryNode(record: TrajectoryRecord): TrajectoryNode {
+	if (record.kind !== "branchSummary") return {};
+	return {
+		chip: "BR",
+		tone: "compact",
+		caption: firstLine(record.summary) || "branch summary",
+		details: [
+			textDetail(record.summary || "(empty summary)"),
+			metaDetail(`from ${record.fromId}`, formatUsage(record.usage)),
+			...(record.details != null ? [jsonDetail(record.details)] : []),
+		],
+	};
+}
+
+function activeToolsNode(record: TrajectoryRecord): TrajectoryNode {
+	if (record.kind !== "activeTools") return {};
+	return { chip: "TOOLS", tone: "change", caption: record.activeToolNames.join(", "), details: record.activeToolNames.map((name) => ({ label: name })) };
+}
+
+function requestHeaderNode(record: TrajectoryRecord): TrajectoryNode {
+	const tools = Array.isArray(recordField(record, "data.tools"))
+		? (recordField(record, "data.tools") as { name?: unknown; label?: unknown; description?: unknown; parameters?: unknown }[])
+		: [];
+	const details: TrajectoryDetail[] = tools
+		.filter((tool) => tool !== null && typeof tool === "object")
+		.map((tool) => ({
+			label: String(tool.name ?? ""),
+			description: tool.description === undefined ? undefined : String(tool.description),
+			meta: tool.label === undefined ? [] : [String(tool.label)],
+			content: { kind: "json", value: stringifyArgs(tool.parameters) },
+		}));
+	const names = Array.isArray(recordField(record, "data.toolNames")) ? (recordField(record, "data.toolNames") as unknown[]).map(String) : [];
+	const caption = names.length > 0 ? `${names.join(", ")} · ${names.length} tool${names.length === 1 ? "" : "s"}` : "request header";
+	return { chip: "HDR", tone: "request", caption, details: details.length > 0 ? details : names.map((name) => ({ label: name })) };
+}
+
+function escalationRequestNode(record: TrajectoryRecord): TrajectoryNode {
+	const id = recordText(record, "data.escalationId");
+	const command = recordText(record, "data.command");
+	return {
+		chip: "ESC",
+		tone: "request",
+		caption: firstLine(command),
+		details: [
+			metaDetail("escalation", id),
+			codeDetail(command),
+			metaDetail(`${recordText(record, "data.from")} → ${recordText(record, "data.to")}`, recordText(record, "data.justification")),
+		],
+	};
+}
+
+function escalationDecisionNode(record: TrajectoryRecord): TrajectoryNode {
+	const approved = recordField(record, "data.approved") === true;
+	const id = recordText(record, "data.escalationId");
+	return { chip: "DEC", tone: "decision", caption: approved ? "approved" : "rejected", details: [metaDetail(approved ? "approved" : "rejected", id)] };
+}
+
+function agentEndNode(record: TrajectoryRecord): TrajectoryNode {
+	const reason = recordText(record, "data.reason") || "completed";
+	const error = recordText(record, "data.error");
+	return {
+		chip: "END",
+		tone: "plain",
+		caption: error ? `${reason} · ${error}` : reason,
+		details: [metaDetail(`run ${recordNumber(record, "data.run") ?? "?"}`, reason), ...(error ? [{ meta: [error], error: true }] : [])],
+	};
+}
+
 // ——— event registry ———
 
 export const EVENT_META: Record<string, EntryMeta> = {
-	"role:user": { view: { visit: userVisit }, slice: { visit: messageVisit } },
+	"role:user": {
+		view: { visit: userVisit },
+		slice: { visit: messageVisit },
+		trajectory: (record) =>
+			record.kind !== "user"
+				? {}
+				: {
+						chip: record.skillName ? "SKILL" : "Q",
+						tone: record.skillName ? "skill" : "user",
+						caption: firstLine(record.content),
+						details: [textDetail(record.content)],
+					},
+	},
 	"role:assistant": {
 		view: {},
 		slice: { visit: sliceAssistant },
+		trajectory: assistantNode,
 	},
+	[EVENTS.modelChange]: { trajectory: modelChangeNode },
+	[EVENTS.compaction]: { slice: { visit: sliceCompaction }, trajectory: compactionNode },
+	active_tools_change: { trajectory: activeToolsNode },
+	branch_summary: { trajectory: branchSummaryNode },
 
-	[EVENTS.sendMessage]: { view: { visit: sendMessageVisit }, slice: { visit: sendMessageSliceVisit } },
-	[EVENTS.turnEnd]: { view: { visit: turnEndVisit } },
-	[EVENTS.escalationRequest]: { view: { visit: escalationVisit } },
-	[EVENTS.commandRun]: { view: { visit: commandVisit } },
-	[EVENTS.skillRun]: { view: { visit: skillVisit } },
-	[EVENTS.shellRun]: { view: { visit: shellVisit } },
+	[EVENTS.sendMessage]: {
+		view: { visit: sendMessageVisit },
+		slice: { visit: sendMessageSliceVisit },
+		trajectory: (record) => ({ chip: "SEND", tone: "message", caption: firstLine(recordText(record, "data.text")), details: [textDetail(recordText(record, "data.text"))] }),
+	},
+	[EVENTS.agentEnd]: { view: { visit: agentEndVisit }, trajectory: agentEndNode },
+	[EVENTS.escalationRequest]: { view: { visit: escalationVisit }, trajectory: escalationRequestNode },
+	[EVENTS.escalationDecision]: { view: { visit: escalationDecisionVisit }, trajectory: escalationDecisionNode },
 
-	[EVENTS.commandDone]: { view: { visit: commandDoneVisit } },
-	[EVENTS.skillDone]: { view: { visit: skillDoneVisit } },
-	[EVENTS.shellDone]: { view: { visit: shellDoneVisit } },
-	[EVENTS.escalationDecision]: { view: { visit: escalationDecisionVisit } },
-	[EVENTS.memoryRunStart]: {},
-	[EVENTS.memoryRunEnd]: {},
+	[EVENTS.commandRun]: { view: { visit: commandVisit }, ...dataNode("custom", { chip: "CMD", caption: (record) => firstLine(recordText(record, "data.command")) }) },
+	[EVENTS.commandDone]: { view: { visit: commandDoneVisit }, ...dataNode("custom", { chip: "CMD", caption: (record) => recordText(record, "data.kind") }) },
+	[EVENTS.skillRun]: { view: { visit: skillVisit }, ...dataNode("skill", { chip: "SKILL", caption: (record) => recordText(record, "data.name") }) },
+	[EVENTS.skillDone]: { view: { visit: skillDoneVisit }, ...dataNode("skill", { chip: "SKILL", caption: (record) => recordText(record, "data.kind") }) },
+	[EVENTS.shellRun]: { view: { visit: shellVisit }, ...dataNode("custom", { chip: "SHLL", caption: (record) => firstLine(recordText(record, "data.command")) }) },
+	[EVENTS.shellDone]: { view: { visit: shellDoneVisit }, ...dataNode("custom", { chip: "SHLL", caption: (record) => recordText(record, "data.kind") }) },
+	[EVENTS.memoryRunStart]: dataNode("custom", { chip: "MEM", caption: (record) => recordText(record, "data.stage") }),
+	[EVENTS.memoryRunEnd]: dataNode("custom", { chip: "MEM", caption: (record) => recordText(record, "data.reason") }),
+	[EVENTS.memoryContext]: { slice: { visit: memoryContextVisit }, ...dataNode("custom", { chip: "MEM" }) },
 
-	[EVENTS.toolResult]: { slice: { visit: sliceToolResult } },
-	[EVENTS.timeGapReminder]: { slice: { visit: textUserVisit } },
-	[EVENTS.contextChanged]: { slice: { visit: contextChangedVisit } },
-	[EVENTS.memoryContext]: { slice: { visit: memoryContextVisit } },
-	[EVENTS.instructionsChanged]: { slice: { visit: instructionsChangedVisit } },
-	[EVENTS.mcpChanged]: { slice: { visit: mcpChangedVisit } },
-	[EVENTS.rewind]: { view: { visit: rewindVisit }, slice: { visit: sliceRewind } },
-
-	[EVENTS.compaction]: { slice: { visit: sliceCompaction } },
-	[EVENTS.compactionSummary]: { slice: { visit: textUserVisit } },
-
-	[EVENTS.turnStart]: {},
-	[EVENTS.stepStart]: {},
-	[EVENTS.stepEnd]: {},
-	[EVENTS.toolCall]: {},
-	[EVENTS.requestHeader]: { origin: { visit: requestHeaderOriginVisit } },
-	[EVENTS.systemPrompt]: {},
-	[EVENTS.followUp]: {},
-	[EVENTS.compactionStart]: {},
-	[EVENTS.compactionEnd]: {},
-	[EVENTS.compactionPrune]: {},
-	[EVENTS.modelChange]: {},
-	[EVENTS.retryScheduled]: {},
-	[EVENTS.retryStarted]: {},
+	[EVENTS.toolResult]: { slice: { visit: sliceToolResult }, trajectory: toolResultNode },
+	[EVENTS.toolCall]: { trajectory: toolCallNode },
+	[EVENTS.agentStart]: dataNode("change", { chip: "RUN", caption: (record) => `run ${recordNumber(record, "data.run") ?? "?"}` }),
+	[EVENTS.turnStart]: {
+		trajectory: (record) => ({ chip: "TURN", tone: "plain", caption: `turn ${recordNumber(record, "data.turn") ?? 0}` }),
+	},
+	[EVENTS.turnEnd]: dataNode("plain", { chip: "TURN", caption: (record) => `turn ${recordNumber(record, "data.turn") ?? "?"} end` }),
+	[EVENTS.requestHeader]: { origin: { visit: requestHeaderOriginVisit }, trajectory: requestHeaderNode },
+	[EVENTS.systemPrompt]: {
+		trajectory: (record) => ({ chip: "SYS", tone: "system", caption: "System prompt", details: [codeDetail(recordText(record, "data.text"))] }),
+	},
+	[EVENTS.timeGapReminder]: {
+		slice: { visit: textUserVisit },
+		trajectory: (record) => ({ chip: "GAP", tone: "reminder", caption: firstLine(recordText(record, "data.text")), details: [textDetail(recordText(record, "data.text"))] }),
+	},
+	[EVENTS.followUp]: dataNode("message", { chip: "QUE" }),
+	[EVENTS.contextChanged]: { slice: { visit: contextChangedVisit }, ...dataNode("reminder", { chip: "CTX" }) },
+	[EVENTS.instructionsChanged]: { slice: { visit: instructionsChangedVisit }, ...dataNode("reminder", { chip: "INS" }) },
+	[EVENTS.mcpChanged]: { slice: { visit: mcpChangedVisit }, ...dataNode("reminder", { chip: "MCP" }) },
+	[EVENTS.rewind]: { view: { visit: rewindVisit }, slice: { visit: sliceRewind }, ...dataNode("custom", { chip: "RWD" }) },
+	[EVENTS.compactionSummary]: {
+		slice: { visit: textUserVisit },
+		trajectory: (record) => ({ chip: "SUM", tone: "compact", caption: firstLine(recordText(record, "data.text")), details: [codeDetail(recordText(record, "data.text"))] }),
+	},
+	[EVENTS.compactionStart]: dataNode("compact", { chip: "START", caption: () => "compaction start" }),
+	[EVENTS.compactionEnd]: dataNode("compact", { chip: "END", caption: () => "compaction end" }),
+	[EVENTS.compactionPrune]: dataNode("compact", { chip: "PRN" }),
+	[EVENTS.retryScheduled]: dataNode("change", { chip: "RET", caption: (record) => `retry #${recordNumber(record, "data.retry") ?? "?"}` }),
+	[EVENTS.retryStarted]: dataNode("change", { chip: "RET", caption: (record) => `retry #${recordNumber(record, "data.retry") ?? "?"}` }),
 };
 
 // ——— public projection ———

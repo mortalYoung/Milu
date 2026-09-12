@@ -26,6 +26,13 @@ function assistantBlocks(content: unknown): TrajectoryBlock[] {
 	return content as unknown as TrajectoryBlock[];
 }
 
+function recordKey(m: AgentMessage): string {
+	if (m.role === "user") return "role:user";
+	if (m.role === "assistant") return "role:assistant";
+	if (m.role === "toolResult") return "tool/result";
+	return (m as { customType?: string }).customType ?? "send_message";
+}
+
 function messageContent(m: AgentMessage): unknown {
 	return (m as unknown as { content?: unknown }).content;
 }
@@ -35,6 +42,9 @@ function agentMessageToRecord(item: SliceItem, index: number, turn: number): Tra
 	const base = {
 		seq: index,
 		entryId: item.id,
+		metaKey: recordKey(m),
+		run: 1,
+		turn,
 		time: (m as { timestamp?: number }).timestamp ?? 0,
 		sliceMessage: m,
 	};
@@ -54,7 +64,6 @@ function agentMessageToRecord(item: SliceItem, index: number, turn: number): Tra
 		return {
 			...base,
 			kind: "assistant",
-			turn,
 			blocks: assistantBlocks(messageContent(m)),
 			api: raw.api ?? "",
 			provider: raw.provider ?? "",
@@ -75,7 +84,6 @@ function agentMessageToRecord(item: SliceItem, index: number, turn: number): Tra
 		return {
 			...base,
 			kind: "toolResult",
-			turn,
 			toolCallId: raw.toolCallId ?? "",
 			toolName: raw.toolName ?? "",
 			content: contentText(raw.content ?? messageContent(m)),
