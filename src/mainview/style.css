@@ -2381,11 +2381,13 @@ body::before {
 	.traj-body .traj-id,
 	.traj-body .traj-op,
 	.traj-body .traj-interrupted,
+	.traj-body .traj-running,
 	.traj-popover-body .one-think-label,
 	.traj-popover-body .traj-meta,
 	.traj-popover-body .traj-id,
 	.traj-popover-body .traj-op,
-	.traj-popover-body .traj-interrupted {
+	.traj-popover-body .traj-interrupted,
+	.traj-popover-body .traj-running {
 		@apply mt-2 font-mono text-[8.5px] text-muted;
 	}
 	.traj-body .one-think-label,
