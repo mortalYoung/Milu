@@ -75,6 +75,8 @@
 	--color-print: light-dark(#e2552d, #e0684a);
 	--color-print-line: light-dark(#d8d8d4, #40382e);
 	--color-print-tint: light-dark(#f4f4f2, #211d17);
+
+	--ease-out: cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 body::before {
@@ -406,6 +408,65 @@ body::before {
 	.md code {
 		@apply font-mono text-[12px] bg-print-tint border border-print-line rounded-[3px] px-[5px] py-[1px];
 	}
+	.md-inline-url svg {
+		display: inline-block;
+		margin-left: 3px;
+		vertical-align: -1px;
+		opacity: 0.6;
+		transition:
+			opacity 140ms var(--ease-out),
+			transform 140ms var(--ease-out);
+	}
+	.md a,
+	.md-inline-url {
+		color: var(--color-print);
+		text-decoration: underline;
+		text-decoration-thickness: 1px;
+		text-underline-offset: 2px;
+	}
+	.md-file-mention {
+		background: none;
+		border: 0;
+		padding: 0;
+		margin: 0;
+		font: inherit;
+		color: inherit;
+		cursor: pointer;
+		text-decoration: underline dotted;
+		text-decoration-color: color-mix(in srgb, var(--color-ink) 32%, transparent);
+		text-decoration-thickness: 1px;
+		text-underline-offset: 2px;
+		transition:
+			color 140ms var(--ease-out),
+			text-decoration-color 140ms var(--ease-out);
+	}
+	.md-file-mention:focus-visible,
+	.md-inline-url:focus-visible {
+		outline: 2px solid var(--color-ring);
+		outline-offset: 1px;
+	}
+	@media (hover: hover) and (pointer: fine) {
+		.md a:hover,
+		.md-file-mention:hover,
+		.md-inline-url:hover {
+			color: var(--color-seal);
+		}
+		.md-file-mention:hover {
+			text-decoration-style: solid;
+			text-decoration-color: var(--color-seal);
+		}
+		.md-inline-url:hover svg {
+			opacity: 1;
+			transform: translate(1px, -1px);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.md-inline-url svg,
+		.md-inline-url:hover svg {
+			transition: none;
+			transform: none;
+		}
+	}
 	.md table {
 		@apply my-2 w-full border-collapse text-[14px];
 		table-layout: fixed;
@@ -473,11 +534,6 @@ body::before {
 		padding: 10px 12px;
 		margin: 8px 0;
 	}
-	.md a {
-		color: var(--color-print);
-		text-decoration: underline;
-	}
-
 	.letter-sheet {
 		@apply relative flex flex-col gap-3.5 px-8 pt-7 pb-9 bg-letter rounded-[8px] h-full;
 		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncA type='linear' slope='0.042'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");

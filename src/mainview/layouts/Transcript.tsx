@@ -38,6 +38,7 @@ export interface Entry {
 	escalation?: EscalationInfo;
 	command?: CommandInfo;
 	skill?: CommandInfo;
+	files?: string[];
 
 	key?: string;
 }
@@ -51,8 +52,8 @@ export function makeUserEntry(text: string, time = Date.now()): Entry {
 	return { id: nextId++, kind: "user", text, time: fmtDateTime(new Date(time)) };
 }
 
-export function makeAgentEntry(text: string, time = Date.now()): Entry {
-	return { id: nextId++, kind: "agent", text, time: fmtDateTime(new Date(time)) };
+export function makeAgentEntry(text: string, time = Date.now(), files?: string[]): Entry {
+	return { id: nextId++, kind: "agent", text, time: fmtDateTime(new Date(time)), ...(files ? { files } : {}) };
 }
 
 export function makeEscalationEntry(item: { text: string; time: number; escalation: EscalationInfo }): Entry {
@@ -114,15 +115,16 @@ function hashString(s: string): number {
 	return h >>> 0;
 }
 
-function Markdown(props: { text: string; class?: string }) {
+function Markdown(props: { text: string; files?: string[]; class?: string }) {
 	let ref: HTMLDivElement | undefined;
 	createEffect(() => {
 		const el = ref;
+		const files = props.files;
 		if (!el) return;
 
 		let cancelled = false;
-		el.innerHTML = renderMarkdown(props.text);
-		void renderMarkdownReady(props.text).then((html) => {
+		el.innerHTML = renderMarkdown(props.text, files);
+		void renderMarkdownReady(props.text, files).then((html) => {
 			if (!cancelled && el.isConnected) el.innerHTML = html;
 		});
 
@@ -153,7 +155,7 @@ function letterBody(
 					<span>{stamp.time}</span>
 				</div>
 			)}
-			{rich ? <Markdown text={card.text} class="md msg-letter-text" /> : <div class="msg-letter-text">{card.text}</div>}
+			{rich ? <Markdown text={card.text} files={card.files} class="md msg-letter-text" /> : <div class="msg-letter-text">{card.text}</div>}
 			{worker && (
 				<div class="msg-sign">
 					— {worker} · {formatHistoryTime(card.time)}

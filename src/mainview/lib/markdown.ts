@@ -18,6 +18,7 @@
 import type { MarkdownItShikiSetupOptions } from "@shikijs/markdown-it/core";
 import type { HighlighterCore } from "@shikijs/types";
 import MarkdownIt, { type MarkdownIt as MarkdownItType, type Renderer, type RendererRule } from "markdown-it";
+import { resolveMentionToken } from "../../shared/file-mentions";
 
 // Dual shiki themes: with `defaultColor: "light-dark()"` every token color is emitted as an
 // inline `light-dark(#light, #dark)` pair, resolved by the app's color-scheme — so code blocks
@@ -88,6 +89,7 @@ function isHanCodePoint(code: number | undefined): boolean {
 /** Plain markdown-it (no highlighting) — the fallback while the highlighter warms up. */
 const mdPlain = new MarkdownIt({ html: false, linkify: true });
 patchLinkTarget(mdPlain);
+patchFileMentions(mdPlain);
 
 /** Cached singleton: markdown-it wired to the shiki highlighter. Built once, reused forever. */
 let mdShiki: MarkdownItType | null = null;
@@ -101,6 +103,47 @@ function patchLinkTarget(md: MarkdownItType) {
 		tokens[idx].attrSet("target", "_blank");
 		tokens[idx].attrSet("rel", "noreferrer");
 		return defaultRender(tokens, idx, options, env, self);
+	};
+}
+
+interface MentionEnv {
+	files?: readonly string[];
+}
+
+function inlineCodeHttpUrl(value: string): string | null {
+	return /^https?:\/\//i.test(value) ? value : null;
+}
+
+function insideLink(tokens: { type: string }[], index: number): boolean {
+	let depth = 0;
+	for (let i = index - 1; i >= 0; i--) {
+		const type = tokens[i].type;
+		if (type === "link_close") depth += 1;
+		else if (type === "link_open") {
+			if (depth === 0) return true;
+			depth -= 1;
+		}
+	}
+	return false;
+}
+
+function patchFileMentions(md: MarkdownItType) {
+	md.renderer.rules["code_inline"] = (tokens, idx, _options, env, self: Renderer) => {
+		const token = tokens[idx];
+		const value = token.content;
+		const open = `<code${self.renderAttrs(token)}>`;
+		const url = inlineCodeHttpUrl(value);
+		if (url !== null) return `${open}<a class="md-inline-url" href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(value)}${EXTERNAL_ICON_SVG}</a></code>`;
+		const files = (env as MentionEnv | undefined)?.files;
+		if (files !== undefined && !insideLink(tokens, idx)) {
+			const path = resolveMentionToken(value, files);
+			if (path !== undefined) {
+				const range = path.range === undefined ? "" : ` data-range="${path.range.start}-${path.range.end}"`;
+				const label = `Open ${escapeHtml(path.path)}${path.range === undefined ? "" : ` at line ${path.range.start}`}`;
+				return `${open}<button type="button" class="md-file-mention" data-path="${escapeHtml(path.path)}"${range} title="${escapeHtml(path.path)}" aria-label="${label}">${escapeHtml(value)}</button></code>`;
+			}
+		}
+		return `${open}${escapeHtml(value)}</code>`;
 	};
 }
 
@@ -200,6 +243,7 @@ async function buildShikiMd(): Promise<MarkdownItType> {
 	const md = new MarkdownIt({ html: false, linkify: true });
 	md.use(plugin);
 	patchLinkTarget(md);
+	patchFileMentions(md);
 	return md;
 }
 
@@ -302,24 +346,27 @@ export function warmUpMarkdown(): void {
  * Render markdown → HTML. Synchronous: uses the cached shiki instance once ready, otherwise the
  * plain markdown-it fallback (the async highlighter build never blocks rendering).
  */
-export function renderMarkdown(src: string): string {
-	return withCopyButtons((mdShiki ?? mdPlain).render(src));
+export function renderMarkdown(src: string, files?: readonly string[]): string {
+	return withCopyButtons((mdShiki ?? mdPlain).render(src, files === undefined ? undefined : { files }));
 }
 
 /** Plain markdown (no shiki code highlighting) — fast synchronous first paint. Callers upgrade
  * to `renderMarkdown` asynchronously when the browser is idle for the highlighted version. */
-export function renderMarkdownPlain(src: string): string {
-	return withCopyButtons(mdPlain.render(src));
+export function renderMarkdownPlain(src: string, files?: readonly string[]): string {
+	return withCopyButtons(mdPlain.render(src, files === undefined ? undefined : { files }));
 }
 
 /**
  * Render markdown → HTML, waiting for the highlighter if it is still warming up.
  * Use at mount/startup when you want highlighting guaranteed on first paint.
  */
-export async function renderMarkdownReady(src: string): Promise<string> {
+export async function renderMarkdownReady(src: string, files?: readonly string[]): Promise<string> {
 	const md = await getShikiMd();
-	return withCopyButtons(md.render(src));
+	return withCopyButtons(md.render(src, files === undefined ? undefined : { files }));
 }
+
+export const EXTERNAL_ICON_SVG =
+	'<svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>';
 
 /** Inline lucide icons for the code-copy button (innerHTML-safe). */
 export const COPY_ICON_SVG =

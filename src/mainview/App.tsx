@@ -1,4 +1,5 @@
 import { createEffect, createSignal, lazy, onCleanup, onMount, Suspense } from "solid-js";
+import { parseLineRange, workspacePath, workspaceRelativePath } from "../shared/file-mentions";
 import { AppRail } from "./components/AppRail";
 import type { PartnerItem } from "./components/ConversationList";
 import { ToastHost } from "./components/ToastHost";
@@ -311,6 +312,21 @@ function WorkspaceControllers() {
 			if (!href) return;
 			event.preventDefault();
 			if (/^(https?|mailto):/i.test(href)) void rpc.request.open_external({ url: href });
+		});
+
+		document.addEventListener("click", (event) => {
+			const mention = (event.target as HTMLElement | null)?.closest?.(".md-file-mention");
+			const path = mention?.getAttribute("data-path");
+			if (!path) return;
+			event.preventDefault();
+			const baseDir = session.data.origin.baseDir;
+			if (!event.metaKey) {
+				dock.revealInExplorer(workspaceRelativePath(path, baseDir), parseLineRange(mention?.getAttribute("data-range")));
+				return;
+			}
+			void rpc.request.open_path({ path: workspacePath(path, baseDir) }).then((res) => {
+				if (!res.ok) toast.push({ title: "Couldn't open file", body: res.error ?? "No supported editor found" }, "error");
+			});
 		});
 	});
 

@@ -1,6 +1,7 @@
 import type { AgentMessage, Entry } from "@earendil-works/pi-agent-core";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import { type CompactionEventData, contextChangedText, EVENTS, instructionsChangedText, mcpChangedText, type RewindEventData } from "./events";
+import { attachMentionFiles } from "./file-mentions";
 import type { SandboxMode, ViewItem } from "./rpc";
 
 // ——— metadata types ———
@@ -464,11 +465,16 @@ export function entryKey(entry: Entry): string {
 	return entry.type;
 }
 
-export function projectView(entries: Entry[]): ViewItem[] {
+export interface ProjectViewOptions {
+	baseDir?: string | null;
+}
+
+export function projectView(entries: Entry[], options: ProjectViewOptions = {}): ViewItem[] {
 	const out: ViewItem[] = [];
 	for (const entry of entries) {
 		EVENT_META[entryKey(entry)]?.view?.visit?.(entry, out);
 	}
+	attachMentionFiles(entries, out, options.baseDir ?? null);
 	return out;
 }
 

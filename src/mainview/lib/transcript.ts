@@ -78,7 +78,7 @@ function buildView(items: ViewItem[]): Entry[] {
 			const entry = makeShellEntry({ text: item.text, time: item.time, command: item.command });
 			pushItem(entry, item.id);
 		} else {
-			const entry = item.kind === "user" ? makeUserEntry(item.text, item.time) : makeAgentEntry(item.text, item.time);
+			const entry = item.kind === "user" ? makeUserEntry(item.text, item.time) : makeAgentEntry(item.text, item.time, item.files);
 			pushItem(entry, item.id);
 		}
 	}
@@ -95,6 +95,12 @@ function sameEscalation(a: Entry["escalation"], b: Entry["escalation"]): boolean
 	return a.id === b.id && a.command === b.command && a.from === b.from && a.to === b.to && a.justification === b.justification && a.status === b.status;
 }
 
+function sameFiles(a: string[] | undefined, b: string[] | undefined): boolean {
+	if (a === b) return true;
+	if (!a || !b) return false;
+	return a.length === b.length && a.every((path, i) => path === b[i]);
+}
+
 function sameEntry(a: Entry, b: Entry): boolean {
 	return (
 		a === b ||
@@ -104,6 +110,7 @@ function sameEntry(a: Entry, b: Entry): boolean {
 			a.error === b.error &&
 			a.aborted === b.aborted &&
 			a.key === b.key &&
+			sameFiles(a.files, b.files) &&
 			sameCommand(a.command, b.command) &&
 			sameCommand(a.skill, b.skill) &&
 			sameEscalation(a.escalation, b.escalation))
@@ -180,7 +187,7 @@ export function createTranscript(): TranscriptController {
 	let flashTimer: ReturnType<typeof setTimeout> | undefined;
 
 	const view = createMemo<Entry[]>((prev) => {
-		const next = buildView(projectView(data.origin.entries));
+		const next = buildView(projectView(data.origin.entries, { baseDir: data.origin.baseDir }));
 		return reconcileViews(prev, next);
 	}, []);
 

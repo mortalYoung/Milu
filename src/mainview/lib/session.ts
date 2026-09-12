@@ -12,6 +12,7 @@ interface OriginData {
 	hasMore: boolean;
 	total: number;
 	loading: boolean;
+	baseDir: string | null;
 }
 
 interface SessionData {
@@ -29,6 +30,7 @@ export function createSession(rpc: RPC) {
 			hasMore: false,
 			total: 0,
 			loading: false,
+			baseDir: null,
 		},
 	});
 
@@ -43,6 +45,7 @@ export function createSession(rpc: RPC) {
 			hasMore: false,
 			total: 0,
 			loading: false,
+			baseDir: null,
 		});
 	}
 
@@ -74,6 +77,7 @@ export function createSession(rpc: RPC) {
 					entries: res.entries,
 					hasMore: res.hasMore,
 					total: res.total,
+					baseDir: res.baseDir,
 				});
 				return;
 			}
@@ -83,6 +87,7 @@ export function createSession(rpc: RPC) {
 				entries: [...older, ...res.entries],
 				hasMore: data.origin.hasMore,
 				total: res.total,
+				baseDir: res.baseDir,
 			});
 		} catch (error) {
 			console.error("session_origin refresh failed:", error);
@@ -108,6 +113,7 @@ export function createSession(rpc: RPC) {
 					entries: res.entries,
 					hasMore: res.hasMore,
 					total: res.total,
+					baseDir: res.baseDir,
 				});
 				return;
 			}
@@ -117,6 +123,7 @@ export function createSession(rpc: RPC) {
 				entries: next,
 				hasMore: res.hasMore,
 				total: res.total,
+				baseDir: res.baseDir,
 			});
 		} finally {
 			setData("origin", "loading", false);

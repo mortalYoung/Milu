@@ -1381,8 +1381,9 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 			session_origin: async ({ name, mode, cursor, limit = 200 }) => {
 				const settings = await loadSettings();
 				const profile = (await listPartners(settings)).find((p) => p.name === name);
-				if (!profile) return { entries: [], total: 0, hasMore: false, reset: false };
+				if (!profile) return { entries: [], total: 0, hasMore: false, reset: false, baseDir: null };
 				const dir = getPartnerDir(settings, name);
+				const baseDir = (await agents.get(name))?.agent.workspacePath ?? null;
 				const origin = projectOrigin(await session.rawEntries(dir));
 				const total = origin.length;
 				let start: number;
@@ -1410,6 +1411,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					total,
 					hasMore: start > 0,
 					reset,
+					baseDir,
 				};
 			},
 

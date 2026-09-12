@@ -82,6 +82,7 @@ export interface ViewItem {
 	};
 	command?: CommandHistoryItem;
 	skill?: CommandHistoryItem;
+	files?: string[];
 }
 
 export interface SkillDescriptor {
@@ -462,6 +463,7 @@ export type AppRPCSchema = __schema<{
 					total: number;
 					hasMore: boolean;
 					reset: boolean;
+					baseDir: string | null;
 				};
 			};
 

@@ -110,7 +110,7 @@ export interface SessionScope {
 
 export interface SessionStore {
 	scope(dir: string): SessionScope;
-	visibleHistory(dir: string): Promise<ViewItem[]>;
+	visibleHistory(dir: string, baseDir?: string | null): Promise<ViewItem[]>;
 	lastMessage(dir: string): Promise<ViewItem | null>;
 	deriveMessages(dir: string): Promise<AgentMessage[]>;
 	escalationRequest(
@@ -374,9 +374,9 @@ export function createSessionStore(): SessionStore {
 			await refreshEntries(state);
 			return (await session.getMetadata()).id;
 		},
-		async visibleHistory(dir) {
+		async visibleHistory(dir, baseDir) {
 			const state = await stateFor(dir);
-			return projectView(state.entries);
+			return projectView(state.entries, { baseDir: baseDir ?? null });
 		},
 		async lastMessage(dir) {
 			const state = await stateFor(dir);
