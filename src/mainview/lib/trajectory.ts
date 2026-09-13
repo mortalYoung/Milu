@@ -1,6 +1,6 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { createEffect, createMemo, createSignal } from "solid-js";
-import { projectView, type SliceItem } from "../../shared/entry-meta";
+import { entryKey, projectView, type SliceItem } from "../../shared/entry-meta";
 import type { TrajectoryBlock, TrajectoryRecord } from "../../shared/rpc";
 import { foldSliceItems } from "../../shared/slice";
 import { fold } from "../../shared/timeline";
@@ -37,12 +37,12 @@ function messageContent(m: AgentMessage): unknown {
 	return (m as unknown as { content?: unknown }).content;
 }
 
-function agentMessageToRecord(item: SliceItem, index: number, turn: number): TrajectoryRecord {
+function agentMessageToRecord(item: SliceItem, index: number, turn: number, metaKey: string): TrajectoryRecord {
 	const m = item.message;
 	const base = {
 		seq: index,
 		entryId: item.id,
-		metaKey: recordKey(m),
+		metaKey,
 		run: 1,
 		turn,
 		time: (m as { timestamp?: number }).timestamp ?? 0,
@@ -106,10 +106,11 @@ export function createTrajectory() {
 	const sliceItems = createMemo<SliceItem[]>(() => foldSliceItems(session.origin.entries));
 
 	const sliceRecords = createMemo<TrajectoryRecord[]>(() => {
+		const metas = new Map(session.origin.entries.map((entry) => [entry.id, entryKey(entry)]));
 		let turn = 0;
 		return sliceItems().map((item, i) => {
 			if (item.message.role === "assistant") turn += 1;
-			return agentMessageToRecord(item, i, turn);
+			return agentMessageToRecord(item, i, turn || 1, metas.get(item.id) ?? recordKey(item.message));
 		});
 	});
 

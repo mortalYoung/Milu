@@ -56,7 +56,7 @@ export function timelineNodes(records: TrajectoryRecord[]): { nodes: TimelineNod
 	// Request segments: from a user question to the next user question (or the end) counts as one
 	// request — its dot renders on the question row that starts the segment.
 	for (const node of out) {
-		if (node.record.kind === "user") node.requestMarks = 1;
+		if (node.record.kind === "user" && node.record.metaKey === "role:user") node.requestMarks = 1;
 	}
 	return { nodes: out, turns };
 }

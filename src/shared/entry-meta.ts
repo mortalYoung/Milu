@@ -454,6 +454,8 @@ const recordNumber = (record: TrajectoryRecord, path: string): number | undefine
 	return typeof value === "number" ? value : undefined;
 };
 
+const recordBody = (record: TrajectoryRecord): string => (record.kind === "user" ? record.content : recordText(record, "data.text"));
+
 export function stringifyArgs(args: unknown): string {
 	if (typeof args === "string") return args;
 	if (args == null) return "";
@@ -507,7 +509,7 @@ function dataNode(
 			chip: options.chip,
 			tone,
 			caption: options.caption?.(record),
-			details: options.details?.(record) ?? [jsonDetail(recordField(record, "data"))],
+			details: options.details?.(record) ?? [record.kind === "user" ? textDetail(record.content) : jsonDetail(recordField(record, "data"))],
 		}),
 	};
 }
@@ -519,6 +521,20 @@ function assistantNode(record: TrajectoryRecord): TrajectoryNode {
 		if (block.type !== "thinking") continue;
 		const thinking = String(block.thinking ?? "");
 		rows.push({ band: "think", chip: "THINK", tone: "plain", caption: firstLine(thinking), details: [textDetail(thinking)] });
+	}
+	if (record.sliceMessage !== undefined) {
+		for (const block of record.blocks) {
+			if (block.type !== "toolCall") continue;
+			const name = String(block.name ?? "");
+			const args = stringifyArgs(block.arguments).replace(/\s+/g, " ").trim();
+			rows.push({
+				band: "tool",
+				chip: "TOOL",
+				tone: "plain",
+				caption: args ? `${name} · ${args}` : name,
+				details: [{ label: name, description: String(block.id ?? "") }, { content: { kind: "code", value: stringifyArgs(block.arguments) } }],
+			});
+		}
 	}
 	const texts = record.blocks.filter((block) => block.type === "text").map((block) => String(block.text ?? ""));
 	const others = record.blocks.filter((block) => block.type !== "text" && block.type !== "toolCall" && block.type !== "thinking");
@@ -724,7 +740,7 @@ export const EVENT_META: Record<string, EntryMeta> = {
 	},
 	[EVENTS.timeGapReminder]: {
 		slice: { visit: textUserVisit },
-		trajectory: (record) => ({ chip: "GAP", tone: "reminder", caption: firstLine(recordText(record, "data.text")), details: [textDetail(recordText(record, "data.text"))] }),
+		trajectory: (record) => ({ chip: "GAP", tone: "reminder", caption: firstLine(recordBody(record)), details: [textDetail(recordBody(record))] }),
 	},
 	[EVENTS.followUp]: dataNode("message", { chip: "QUE" }),
 	[EVENTS.contextChanged]: { slice: { visit: contextChangedVisit }, ...dataNode("reminder", { chip: "CTX" }) },
@@ -733,7 +749,7 @@ export const EVENT_META: Record<string, EntryMeta> = {
 	[EVENTS.rewind]: { view: { visit: rewindVisit }, slice: { visit: sliceRewind }, ...dataNode("custom", { chip: "RWD" }) },
 	[EVENTS.compactionSummary]: {
 		slice: { visit: textUserVisit },
-		trajectory: (record) => ({ chip: "SUM", tone: "compact", caption: firstLine(recordText(record, "data.text")), details: [codeDetail(recordText(record, "data.text"))] }),
+		trajectory: (record) => ({ chip: "SUM", tone: "compact", caption: firstLine(recordBody(record)), details: [codeDetail(recordBody(record))] }),
 	},
 	[EVENTS.compactionStart]: dataNode("compact", { chip: "START", caption: () => "compaction start" }),
 	[EVENTS.compactionEnd]: dataNode("compact", { chip: "END", caption: () => "compaction end" }),

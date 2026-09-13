@@ -85,7 +85,7 @@ function DrawerContent(props: {
 				for (let i = 0; i < presentation.rows.length; i += 1) {
 					const part = presentation.rows[i];
 					out.push({
-						key: `a:${n.seq}:${i}`,
+						key: `a:${n.record.entryId}:${i}`,
 						node: n,
 						marks: marksPending || undefined,
 						chip: part.chip ?? "MSG",
@@ -99,7 +99,7 @@ function DrawerContent(props: {
 				continue;
 			}
 			out.push({
-				key: `r:${n.seq}`,
+				key: `r:${n.record.entryId}`,
 				node: n,
 				marks: n.requestMarks,
 				chip: presentation.chip,
@@ -336,8 +336,7 @@ function DrawerContent(props: {
 
 	const rowBody = (row: DisplayRow) => <>{detailsBody(row.details)}</>;
 
-	const listRow = (row: FlatRow) => {
-		const selected = selectedKey() === row.key;
+	const listRow = (row: FlatRow, selected: boolean) => {
 		return (
 			<div
 				class={"traj-row" + (selected ? " selected" : "") + (row.runStart ? " run-start" : "")}
@@ -430,10 +429,10 @@ function DrawerContent(props: {
 							<div style={{ height: `${virtualizer.getTotalSize()}px`, position: "relative", width: "100%" }}>
 								<For each={virtualizer.getVirtualItems()}>
 									{(item) => {
-										const row = flatRows()[item.index];
+										const row = () => flatRows()[item.index];
 										return (
 											<div style={{ position: "absolute", top: 0, transform: `translateY(${item.start}px)`, width: "100%" }} data-index={item.index}>
-												{row ? listRow(row) : null}
+												{row() ? listRow(row()!, selectedKey() === row()!.key) : null}
 											</div>
 										);
 									}}
