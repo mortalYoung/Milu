@@ -1,128 +1,39 @@
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { createEffect, createMemo, createSignal } from "solid-js";
-import { entryKey, projectView, type SliceItem } from "../../shared/entry-meta";
-import type { TrajectoryBlock, TrajectoryRecord } from "../../shared/rpc";
+import { EVENT_META, projectView, type SliceItem } from "../../shared/entry-meta";
+import type { TrajectoryRecord } from "../../shared/rpc";
 import { foldSliceItems } from "../../shared/slice";
-import { fold } from "../../shared/timeline";
+import { buildData } from "../../shared/timeline";
 import { useSession } from "./contexts/session-context";
 
 export type TrajectoryMode = "origin" | "slice" | "view";
-
-function contentText(content: unknown): string {
-	if (typeof content === "string") return content;
-	if (!Array.isArray(content)) return "";
-	return content
-		.map((b) => {
-			const block = b as { type?: unknown; text?: unknown } | null;
-			if (!block || block.type !== "text") return "";
-			return String(block.text ?? "");
-		})
-		.join("\n");
-}
-
-function assistantBlocks(content: unknown): TrajectoryBlock[] {
-	if (typeof content === "string") return [{ type: "text", text: content }];
-	if (!Array.isArray(content)) return [];
-	return content as unknown as TrajectoryBlock[];
-}
-
-function recordKey(m: AgentMessage): string {
-	if (m.role === "user") return "role:user";
-	if (m.role === "assistant") return "role:assistant";
-	if (m.role === "toolResult") return "tool/result";
-	return (m as { customType?: string }).customType ?? "send_message";
-}
-
-function messageContent(m: AgentMessage): unknown {
-	return (m as unknown as { content?: unknown }).content;
-}
-
-function agentMessageToRecord(item: SliceItem, index: number, turn: number, metaKey: string): TrajectoryRecord {
-	const m = item.message;
-	const base = {
-		seq: index,
-		entryId: item.id,
-		metaKey,
-		run: 1,
-		turn,
-		time: (m as { timestamp?: number }).timestamp ?? 0,
-		sliceMessage: m,
-	};
-	if (m.role === "user") {
-		return { ...base, kind: "user", content: contentText(messageContent(m)) };
-	}
-	if (m.role === "assistant") {
-		const raw = m as unknown as {
-			api?: string;
-			provider?: string;
-			model?: string;
-			responseModel?: string;
-			responseId?: string;
-			stopReason?: string;
-			errorMessage?: string;
-		};
-		return {
-			...base,
-			kind: "assistant",
-			blocks: assistantBlocks(messageContent(m)),
-			api: raw.api ?? "",
-			provider: raw.provider ?? "",
-			model: raw.model ?? "",
-			responseModel: raw.responseModel,
-			responseId: raw.responseId,
-			stopReason: raw.stopReason ?? "stop",
-			errorMessage: raw.errorMessage,
-		};
-	}
-	if (m.role === "toolResult") {
-		const raw = m as unknown as {
-			toolCallId?: string;
-			toolName?: string;
-			content?: unknown;
-			isError?: boolean;
-		};
-		return {
-			...base,
-			kind: "toolResult",
-			toolCallId: raw.toolCallId ?? "",
-			toolName: raw.toolName ?? "",
-			content: contentText(raw.content ?? messageContent(m)),
-			isError: raw.isError === true,
-		};
-	}
-	const content = contentText(messageContent(m));
-	return {
-		...base,
-		kind: "custom",
-		customType: (m as { customType?: string }).customType ?? "send_message",
-		data: { text: content, timestamp: base.time },
-	};
-}
 
 export function createTrajectory() {
 	const { data: session, mutate: sessionMutate } = useSession();
 	const [open, setOpen] = createSignal(false);
 	const [mode, setMode] = createSignal<TrajectoryMode>("origin");
+	const all = createMemo<TrajectoryRecord[]>(() => buildData(session.origin.entries));
 	const sliceItems = createMemo<SliceItem[]>(() => foldSliceItems(session.origin.entries));
 
 	const sliceRecords = createMemo<TrajectoryRecord[]>(() => {
-		const metas = new Map(session.origin.entries.map((entry) => [entry.id, entryKey(entry)]));
-		let turn = 0;
-		return sliceItems().map((item, i) => {
-			if (item.message.role === "assistant") turn += 1;
-			return agentMessageToRecord(item, i, turn || 1, metas.get(item.id) ?? recordKey(item.message));
-		});
+		const byEntry = new Map(all().map((record) => [record.entryId, record]));
+		const out: TrajectoryRecord[] = [];
+		for (const item of sliceItems()) {
+			const record = byEntry.get(item.id);
+			if (record === undefined) continue;
+			out.push({ ...(EVENT_META[record.metaKey]?.slice?.as?.(record) ?? record), sliceMessage: item.message });
+		}
+		return out;
 	});
 
 	const records = createMemo<TrajectoryRecord[]>(() => {
 		const entries = session.origin.entries;
 		if (mode() === "slice") return sliceRecords();
-		const all = fold(entries);
+		const data = all();
 		if (mode() === "view") {
 			const viewIds = new Set(projectView(entries).map((v) => v.id));
-			return all.filter((r) => viewIds.has(r.entryId));
+			return data.filter((r) => viewIds.has(r.entryId));
 		}
-		return all;
+		return data;
 	});
 
 	function view() {

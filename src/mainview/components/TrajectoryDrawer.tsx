@@ -2,7 +2,7 @@ import { createVirtualizer } from "@tanstack/solid-virtual";
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js";
 import { stringifyArgs, type TrajectoryDetail, type TrajectoryTone, trajectoryNode } from "../../shared/entry-meta";
 import type { TrajectoryRecord } from "../../shared/rpc";
-import { type TimelineNode, timelineNodes } from "../../shared/trajectory";
+import { scan } from "../../shared/trajectory";
 import { useSession } from "../lib/contexts/session-context";
 import { useTrajectory } from "../lib/contexts/trajectory-context";
 import type { TrajectoryMode } from "../lib/trajectory";
@@ -16,7 +16,7 @@ const short = (s: string) => (s.length > 60 ? s.slice(0, 60) + "…" : s);
 
 type DisplayRow = {
 	key: string;
-	node: TimelineNode;
+	record: TrajectoryRecord;
 	marks?: number;
 	chip: string;
 	tone: TrajectoryTone;
@@ -63,11 +63,10 @@ function DrawerContent(props: {
 }) {
 	const [selectedKey, setSelectedKey] = createSignal<string | null>(null);
 
-	const summary = createMemo(() => timelineNodes(props.records));
-	const nodes = () => summary().nodes;
-	const rows = () => nodes();
+	const summary = createMemo(() => scan(props.records));
+	const rows = () => summary().data;
 	const turns = () => summary().turns;
-	const summaryFor = (n: TimelineNode) => turns().find((t) => t.run === n.record.run && t.turn === n.record.turn);
+	const summaryFor = (record: TrajectoryRecord) => turns().find((t) => t.run === record.run && t.turn === record.turn);
 	const countText = () =>
 		props.mode === "slice"
 			? `slice · ${props.records.length} nodes shown · ${turns().length} turns`
@@ -78,15 +77,15 @@ function DrawerContent(props: {
 
 	const flatRows = createMemo<FlatRow[]>(() => {
 		const out: DisplayRow[] = [];
-		for (const n of rows()) {
-			const presentation = trajectoryNode(n.record);
+		for (const record of rows()) {
+			const presentation = trajectoryNode(record);
 			if (presentation.rows !== undefined) {
-				let marksPending = n.requestMarks;
+				let marksPending = record.marks;
 				for (let i = 0; i < presentation.rows.length; i += 1) {
 					const part = presentation.rows[i];
 					out.push({
-						key: `a:${n.record.entryId}:${i}`,
-						node: n,
+						key: `a:${record.entryId}:${i}`,
+						record,
 						marks: marksPending || undefined,
 						chip: part.chip ?? "MSG",
 						tone: part.tone ?? presentation.tone,
@@ -99,9 +98,9 @@ function DrawerContent(props: {
 				continue;
 			}
 			out.push({
-				key: `r:${n.record.entryId}`,
-				node: n,
-				marks: n.requestMarks,
+				key: `r:${record.entryId}`,
+				record,
+				marks: record.marks,
 				chip: presentation.chip,
 				tone: presentation.tone,
 				caption: presentation.caption,
@@ -109,7 +108,7 @@ function DrawerContent(props: {
 				...(presentation.band === undefined ? {} : { band: presentation.band }),
 			});
 		}
-		return out.map((row, i) => ({ ...row, runStart: i === 0 || out[i - 1].node.record.run !== row.node.record.run }));
+		return out.map((row, i) => ({ ...row, runStart: i === 0 || out[i - 1].record.run !== row.record.run }));
 	});
 
 	let listRef: HTMLDivElement | undefined;
@@ -205,7 +204,7 @@ function DrawerContent(props: {
 	let suppressAutoScroll = false;
 
 	createEffect(() => {
-		nodes();
+		rows();
 		if (suppressAutoScroll) return;
 		if (bandRef) bandRef.scrollLeft = bandRef.scrollWidth;
 		checkFade();
@@ -249,17 +248,16 @@ function DrawerContent(props: {
 	};
 
 	const rowColumn = (row: DisplayRow, i: number) => {
-		const n = row.node;
-		const previous = i > 0 ? flatRows()[i - 1].node.record : null;
-		const boundary = previous !== null && (previous.run !== n.record.run || previous.turn !== n.record.turn) ? <span class="traj-boundary" /> : null;
+		const previous = i > 0 ? flatRows()[i - 1].record : null;
+		const boundary = previous !== null && (previous.run !== row.record.run || previous.turn !== row.record.turn) ? <span class="traj-boundary" /> : null;
 		const hot = selectedKey() === row.key;
-		const title = `R${n.record.run} T${n.record.turn} · ${short(row.caption)}`;
+		const title = `R${row.record.run} T${row.record.turn} · ${short(row.caption)}`;
 		if (row.band !== undefined) {
 			const part = row.band === "tool" ? " tool" : row.band === "think" ? " think" : "";
 			return (
 				<>
 					{boundary}
-					<button class={"traj-cell " + (summaryFor(n)?.density ?? "l1") + part + (hot ? " hot" : "")} data-row={row.key} title={title} onClick={() => locate(row.key)} />
+					<button class={"traj-cell " + (summaryFor(row.record)?.density ?? "l1") + part + (hot ? " hot" : "")} data-row={row.key} title={title} onClick={() => locate(row.key)} />
 				</>
 			);
 		}
@@ -273,9 +271,9 @@ function DrawerContent(props: {
 		);
 	};
 
-	const bodyMeta = (n: TimelineNode) => (
+	const bodyMeta = (record: TrajectoryRecord) => (
 		<div class="traj-id">
-			entry {n.record.entryId} · {fmtDateTime(n.record.time)}
+			entry {record.entryId} · {fmtDateTime(record.time)}
 		</div>
 	);
 
@@ -391,9 +389,9 @@ function DrawerContent(props: {
 					</button>
 				</div>
 
-				{props.loading && nodes().length === 0 ? (
+				{props.loading && rows().length === 0 ? (
 					<div class="traj-empty">loading…</div>
-				) : nodes().length === 0 ? (
+				) : rows().length === 0 ? (
 					<div class="traj-empty">no log entries yet — run a conversation first</div>
 				) : (
 					<>
@@ -459,18 +457,18 @@ function DrawerContent(props: {
 						</div>
 						<div class="traj-popover-body">
 							{rowBody(selectedRow()!)}
-							<Show when={selectedRow()!.node.record.sliceMessage}>
+							<Show when={selectedRow()!.record.sliceMessage}>
 								<div class="traj-raw-section">
 									<div class="traj-raw-head">AgentMessage</div>
 									<div class="traj-agent-meta">
-										<span class="traj-role-chip">{String(selectedRow()?.node.record.sliceMessage?.role ?? "")}</span>
-										<span class="traj-slice-id">{selectedRow()!.node.record.entryId}</span>
+										<span class="traj-role-chip">{String(selectedRow()?.record.sliceMessage?.role ?? "")}</span>
+										<span class="traj-slice-id">{selectedRow()!.record.entryId}</span>
 									</div>
-									<pre class="traj-raw">{stringifyArgs(selectedRow()!.node.record.sliceMessage)}</pre>
+									<pre class="traj-raw">{stringifyArgs(selectedRow()!.record.sliceMessage)}</pre>
 								</div>
 							</Show>
 						</div>
-						<div class="traj-popover-meta">{bodyMeta(selectedRow()!.node)}</div>
+						<div class="traj-popover-meta">{bodyMeta(selectedRow()!.record)}</div>
 					</div>
 				</Show>
 			</aside>

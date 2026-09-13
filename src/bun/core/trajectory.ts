@@ -1,16 +1,16 @@
 /**
  * Server-side trajectory metrics + compatibility re-export of the shared Timeline.
  *
- * Concept naming: Timeline folding (fold / dedupeRequestHeaders) lives in shared/timeline.ts so
+ * Concept naming: Entry → Data (buildData) lives in shared/timeline.ts so
  * both server and renderer use one implementation; this module keeps the server-only usage
  * aggregators (aggregateUsage / lastUsage / lastTrajectoryUsage) and re-exports the shared API.
  */
 import type { Entry } from "@earendil-works/pi-agent-core";
 import type { TrajectoryUsage, UsageTotals } from "../../shared/rpc";
-import { dedupeRequestHeaders, fold, toTrajectoryUsage, toUsage, type Usage } from "../../shared/timeline";
+import { buildData, toTrajectoryUsage, toUsage, type Usage } from "../../shared/timeline";
 
 export type { Usage };
-export { dedupeRequestHeaders, fold, toTrajectoryUsage, toUsage };
+export { buildData, toTrajectoryUsage, toUsage };
 
 export function aggregateUsage(entries: Entry[]): UsageTotals | null {
 	let totals: UsageTotals | null = null;

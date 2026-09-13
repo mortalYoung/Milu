@@ -137,6 +137,8 @@ export interface TrajectoryBase {
 
 	time: number;
 
+	marks?: number;
+
 	sliceMessage?: AgentMessage;
 }
 
@@ -166,9 +168,9 @@ export interface TrajectoryBlock {
 	[key: string]: unknown;
 }
 
-export type TrajectoryRecord =
-	| (TrajectoryBase & { kind: "user"; content: string; skillName?: string })
-	| (TrajectoryBase & {
+export type EntryPayload =
+	| { kind: "user"; content: string; skillName?: string }
+	| {
 			kind: "assistant";
 
 			blocks: TrajectoryBlock[];
@@ -182,8 +184,8 @@ export type TrajectoryRecord =
 			stopReason: string;
 			errorMessage?: string;
 			rawStopReason?: string;
-	  })
-	| (TrajectoryBase & {
+	  }
+	| {
 			kind: "toolResult";
 
 			toolCallId: string;
@@ -193,10 +195,10 @@ export type TrajectoryRecord =
 			usage?: TrajectoryUsage;
 			addedToolNames?: string[];
 			isError: boolean;
-	  })
-	| (TrajectoryBase & { kind: "modelChange"; provider: string; modelId: string })
-	| (TrajectoryBase & { kind: "activeTools"; activeToolNames: string[] })
-	| (TrajectoryBase & {
+	  }
+	| { kind: "modelChange"; provider: string; modelId: string }
+	| { kind: "activeTools"; activeToolNames: string[] }
+	| {
 			kind: "compaction";
 			summary: string;
 
@@ -204,9 +206,11 @@ export type TrajectoryRecord =
 			tokensBefore: number;
 			details?: unknown;
 			usage?: TrajectoryUsage;
-	  })
-	| (TrajectoryBase & { kind: "branchSummary"; fromId: string; summary: string; details?: unknown; usage?: TrajectoryUsage })
-	| (TrajectoryBase & { kind: "custom"; customType: string; data?: unknown });
+	  }
+	| { kind: "branchSummary"; fromId: string; summary: string; details?: unknown; usage?: TrajectoryUsage }
+	| { kind: "custom"; customType: string; data?: unknown };
+
+export type TrajectoryRecord = TrajectoryBase & EntryPayload;
 
 export interface UsageTotals {
 	messages: number;
@@ -612,10 +616,6 @@ export type AppRPCSchema = __schema<{
 				response: { thread: BtwThreadRpc };
 			};
 
-			trajectory: {
-				params: { name: string; before?: number; limit?: number };
-				response: { records: TrajectoryRecord[]; hasMore: boolean; total: number };
-			};
 			partner_activity: {
 				params: { name: string; weeks: number };
 				response: { days: PartnerActivityDay[] };

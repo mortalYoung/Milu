@@ -2,7 +2,8 @@ import type { AgentMessage, Entry } from "@earendil-works/pi-agent-core";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import { type CompactionEventData, contextChangedText, EVENTS, instructionsChangedText, mcpChangedText, type RewindEventData } from "./events";
 import { attachMentionFiles } from "./file-mentions";
-import type { SandboxMode, TrajectoryRecord, TrajectoryUsage, ViewItem } from "./rpc";
+import { contentText, eventNumber, type RawUsage, toTrajectoryUsage } from "./record";
+import type { EntryPayload, SandboxMode, TrajectoryBlock, TrajectoryRecord, TrajectoryUsage, ViewItem } from "./rpc";
 
 // ——— metadata types ———
 
@@ -23,8 +24,12 @@ export interface SliceContext {
 	keepDangling: boolean;
 }
 
-export interface SliceMeta {
+export interface ContextMeta {
 	visit?(ctx: SliceContext): void;
+}
+
+export interface SliceMeta {
+	as?(record: TrajectoryRecord): TrajectoryRecord;
 }
 
 export interface OriginMeta {
@@ -58,11 +63,24 @@ export interface TrajectoryNode {
 	rows?: TrajectoryRow[];
 }
 
+export interface Cursor {
+	run: number;
+	turn: number;
+	open: boolean;
+}
+
 export interface EntryMeta {
 	origin?: OriginMeta;
 	view?: ViewMeta;
+	context?: ContextMeta;
 	slice?: SliceMeta;
 	trajectory?: (record: TrajectoryRecord) => TrajectoryNode;
+	data?: (entry: Entry) => EntryPayload | null;
+	cursor?: (state: Cursor, entry: Entry) => void;
+	close?: boolean;
+	hidden?: boolean;
+	dedupe?: boolean;
+	pin?: string;
 }
 
 // ——— view projection ———
@@ -332,7 +350,7 @@ function memoryContextProject(entry: Entry): AgentMessage | null {
 	} as AgentMessage;
 }
 
-function pushProject(project: (entry: Entry) => AgentMessage | null): NonNullable<SliceMeta["visit"]> {
+function pushProject(project: (entry: Entry) => AgentMessage | null): NonNullable<ContextMeta["visit"]> {
 	return (ctx) => {
 		const msg = project(ctx.entry);
 		if (msg) ctx.out.push({ id: ctx.entry.id, message: msg });
@@ -455,6 +473,107 @@ const recordNumber = (record: TrajectoryRecord, path: string): number | undefine
 };
 
 const recordBody = (record: TrajectoryRecord): string => (record.kind === "user" ? record.content : recordText(record, "data.text"));
+
+const recordData = (record: TrajectoryRecord): Record<string, unknown> => {
+	const data = recordField(record, "data");
+	return data !== null && typeof data === "object" ? (data as Record<string, unknown>) : {};
+};
+
+const asSliceUser = (record: TrajectoryRecord, content: string): TrajectoryRecord => ({ ...record, kind: "user", content }) as TrajectoryRecord;
+
+const asProjected = (record: TrajectoryRecord, project: (entry: Entry) => AgentMessage | null): TrajectoryRecord => {
+	const entry = {
+		type: "custom",
+		customType: (record as { customType?: string }).customType ?? "",
+		data: recordData(record),
+		id: record.entryId,
+		timestamp: record.time,
+	} as unknown as Entry;
+	const message = project(entry);
+	if (message === null) return record;
+	const content = (message as { content?: unknown }).content;
+	return asSliceUser(record, typeof content === "string" ? content : "");
+};
+
+// ——— entry → data ———
+
+const userData = (entry: Entry): EntryPayload | null => {
+	if (entry.type !== "message" || entry.message.role !== "user") return null;
+	const m = entry.message;
+	const skill = (m as { skill?: unknown }).skill;
+	return { kind: "user", content: typeof m.content === "string" ? m.content : contentText(m.content), ...(typeof skill === "string" ? { skillName: skill } : {}) };
+};
+
+const assistantData = (entry: Entry): EntryPayload | null => {
+	if (entry.type !== "message" || entry.message.role !== "assistant") return null;
+	const m = entry.message;
+	return {
+		kind: "assistant",
+		blocks: (m.content as unknown as TrajectoryBlock[]) ?? [],
+		api: m.api,
+		provider: m.provider,
+		model: m.model,
+		responseModel: m.responseModel,
+		responseId: m.responseId,
+		timing: (m as { timing?: { turnStartTime: number; firstTokenTime: number | null; completedTime: number } }).timing,
+		usage: toTrajectoryUsage(m.usage),
+		stopReason: m.stopReason,
+		errorMessage: m.errorMessage,
+		rawStopReason: m.rawStopReason,
+	};
+};
+
+const toolResultData = (entry: Entry): EntryPayload | null => {
+	if (entry.type !== "custom" || entry.customType !== EVENTS.toolResult) return null;
+	const data = (entry.data ?? {}) as {
+		toolCallId?: unknown;
+		toolName?: unknown;
+		content?: unknown;
+		details?: unknown;
+		usage?: unknown;
+		addedToolNames?: unknown;
+		isError?: unknown;
+	};
+	return {
+		kind: "toolResult",
+		toolCallId: String(data.toolCallId ?? ""),
+		toolName: String(data.toolName ?? ""),
+		content: contentText(data.content),
+		details: data.details,
+		usage: toTrajectoryUsage(data.usage as RawUsage | undefined),
+		addedToolNames: Array.isArray(data.addedToolNames) ? data.addedToolNames.map(String) : undefined,
+		isError: data.isError === true,
+	};
+};
+
+const modelChangeData = (entry: Entry): EntryPayload | null => (entry.type === "model_change" ? { kind: "modelChange", provider: entry.provider, modelId: entry.modelId } : null);
+
+const activeToolsData = (entry: Entry): EntryPayload | null => (entry.type === "active_tools_change" ? { kind: "activeTools", activeToolNames: entry.activeToolNames } : null);
+
+const compactionData = (entry: Entry): EntryPayload | null =>
+	entry.type === "compaction"
+		? {
+				kind: "compaction",
+				summary: entry.summary,
+				retainedTailCount: entry.retainedTail.length,
+				tokensBefore: entry.tokensBefore,
+				details: entry.details,
+				usage: toTrajectoryUsage(entry.usage),
+			}
+		: null;
+
+const branchSummaryData = (entry: Entry): EntryPayload | null =>
+	entry.type === "branch_summary" ? { kind: "branchSummary", fromId: entry.fromId, summary: entry.summary, details: entry.details, usage: toTrajectoryUsage(entry.usage) } : null;
+
+const agentStartCursor = (state: Cursor, entry: Entry): void => {
+	state.run = eventNumber(entry, "run", state.run + 1);
+	state.turn = 0;
+	state.open = true;
+};
+
+const turnStartCursor = (state: Cursor, entry: Entry): void => {
+	state.turn = eventNumber(entry, "turn", state.turn + 1);
+};
 
 export function stringifyArgs(args: unknown): string {
 	if (typeof args === "string") return args;
@@ -687,7 +806,8 @@ function agentEndNode(record: TrajectoryRecord): TrajectoryNode {
 export const EVENT_META: Record<string, EntryMeta> = {
 	"role:user": {
 		view: { visit: userVisit },
-		slice: { visit: messageVisit },
+		context: { visit: messageVisit },
+		data: userData,
 		trajectory: (record) =>
 			record.kind !== "user"
 				? {}
@@ -700,20 +820,21 @@ export const EVENT_META: Record<string, EntryMeta> = {
 	},
 	"role:assistant": {
 		view: {},
-		slice: { visit: sliceAssistant },
+		context: { visit: sliceAssistant },
+		data: assistantData,
 		trajectory: assistantNode,
 	},
-	[EVENTS.modelChange]: { trajectory: modelChangeNode },
-	[EVENTS.compaction]: { slice: { visit: sliceCompaction }, trajectory: compactionNode },
-	active_tools_change: { trajectory: activeToolsNode },
-	branch_summary: { trajectory: branchSummaryNode },
+	[EVENTS.modelChange]: { data: modelChangeData, trajectory: modelChangeNode },
+	[EVENTS.compaction]: { context: { visit: sliceCompaction }, data: compactionData, trajectory: compactionNode },
+	active_tools_change: { data: activeToolsData, trajectory: activeToolsNode },
+	branch_summary: { data: branchSummaryData, trajectory: branchSummaryNode },
 
 	[EVENTS.sendMessage]: {
 		view: { visit: sendMessageVisit },
-		slice: { visit: sendMessageSliceVisit },
+		context: { visit: sendMessageSliceVisit },
 		trajectory: (record) => ({ chip: "SEND", tone: "message", caption: firstLine(recordText(record, "data.text")), details: [textDetail(recordText(record, "data.text"))] }),
 	},
-	[EVENTS.agentEnd]: { view: { visit: agentEndVisit }, trajectory: agentEndNode },
+	[EVENTS.agentEnd]: { view: { visit: agentEndVisit }, close: true, trajectory: agentEndNode },
 	[EVENTS.escalationRequest]: { view: { visit: escalationVisit }, trajectory: escalationRequestNode },
 	[EVENTS.escalationDecision]: { view: { visit: escalationDecisionVisit }, trajectory: escalationDecisionNode },
 
@@ -725,30 +846,43 @@ export const EVENT_META: Record<string, EntryMeta> = {
 	[EVENTS.shellDone]: { view: { visit: shellDoneVisit }, ...dataNode("custom", { chip: "SHLL", caption: (record) => recordText(record, "data.kind") }) },
 	[EVENTS.memoryRunStart]: dataNode("custom", { chip: "MEM", caption: (record) => recordText(record, "data.stage") }),
 	[EVENTS.memoryRunEnd]: dataNode("custom", { chip: "MEM", caption: (record) => recordText(record, "data.reason") }),
-	[EVENTS.memoryContext]: { slice: { visit: memoryContextVisit }, ...dataNode("custom", { chip: "MEM" }) },
+	[EVENTS.memoryContext]: { context: { visit: memoryContextVisit }, slice: { as: (record) => asProjected(record, memoryContextProject) }, ...dataNode("custom", { chip: "MEM" }) },
 
-	[EVENTS.toolResult]: { slice: { visit: sliceToolResult }, trajectory: toolResultNode },
+	[EVENTS.toolResult]: { context: { visit: sliceToolResult }, data: toolResultData, trajectory: toolResultNode },
 	[EVENTS.toolCall]: { trajectory: toolCallNode },
-	[EVENTS.agentStart]: dataNode("change", { chip: "RUN", caption: (record) => `run ${recordNumber(record, "data.run") ?? "?"}` }),
+	[EVENTS.agentStart]: { ...dataNode("change", { chip: "RUN", caption: (record) => `run ${recordNumber(record, "data.run") ?? "?"}` }), cursor: agentStartCursor },
 	[EVENTS.turnStart]: {
+		hidden: true,
+		cursor: turnStartCursor,
 		trajectory: (record) => ({ chip: "TURN", tone: "plain", caption: `turn ${recordNumber(record, "data.turn") ?? 0}` }),
 	},
-	[EVENTS.turnEnd]: dataNode("plain", { chip: "TURN", caption: (record) => `turn ${recordNumber(record, "data.turn") ?? "?"} end` }),
-	[EVENTS.requestHeader]: { origin: { visit: requestHeaderOriginVisit }, trajectory: requestHeaderNode },
+	[EVENTS.turnEnd]: { hidden: true, ...dataNode("plain", { chip: "TURN", caption: (record) => `turn ${recordNumber(record, "data.turn") ?? "?"} end` }) },
+	[EVENTS.requestHeader]: { origin: { visit: requestHeaderOriginVisit }, pin: "system_prompt", trajectory: requestHeaderNode },
 	[EVENTS.systemPrompt]: {
+		dedupe: true,
 		trajectory: (record) => ({ chip: "SYS", tone: "system", caption: "System prompt", details: [codeDetail(recordText(record, "data.text"))] }),
 	},
 	[EVENTS.timeGapReminder]: {
-		slice: { visit: textUserVisit },
+		context: { visit: textUserVisit },
+		slice: { as: (record) => asProjected(record, textUserProject) },
 		trajectory: (record) => ({ chip: "GAP", tone: "reminder", caption: firstLine(recordBody(record)), details: [textDetail(recordBody(record))] }),
 	},
 	[EVENTS.followUp]: dataNode("message", { chip: "QUE" }),
-	[EVENTS.contextChanged]: { slice: { visit: contextChangedVisit }, ...dataNode("reminder", { chip: "CTX" }) },
-	[EVENTS.instructionsChanged]: { slice: { visit: instructionsChangedVisit }, ...dataNode("reminder", { chip: "INS" }) },
-	[EVENTS.mcpChanged]: { slice: { visit: mcpChangedVisit }, ...dataNode("reminder", { chip: "MCP" }) },
-	[EVENTS.rewind]: { view: { visit: rewindVisit }, slice: { visit: sliceRewind }, ...dataNode("custom", { chip: "RWD" }) },
+	[EVENTS.contextChanged]: {
+		context: { visit: contextChangedVisit },
+		slice: { as: (record) => asProjected(record, contextChangedProject) },
+		...dataNode("reminder", { chip: "CTX" }),
+	},
+	[EVENTS.instructionsChanged]: {
+		context: { visit: instructionsChangedVisit },
+		slice: { as: (record) => asProjected(record, instructionsChangedProject) },
+		...dataNode("reminder", { chip: "INS" }),
+	},
+	[EVENTS.mcpChanged]: { context: { visit: mcpChangedVisit }, slice: { as: (record) => asProjected(record, mcpChangedProject) }, ...dataNode("reminder", { chip: "MCP" }) },
+	[EVENTS.rewind]: { view: { visit: rewindVisit }, context: { visit: sliceRewind }, ...dataNode("custom", { chip: "RWD" }) },
 	[EVENTS.compactionSummary]: {
-		slice: { visit: textUserVisit },
+		context: { visit: textUserVisit },
+		slice: { as: (record) => asProjected(record, textUserProject) },
 		trajectory: (record) => ({ chip: "SUM", tone: "compact", caption: firstLine(recordBody(record)), details: [codeDetail(recordBody(record))] }),
 	},
 	[EVENTS.compactionStart]: dataNode("compact", { chip: "START", caption: () => "compaction start" }),
@@ -787,7 +921,7 @@ export function projectSliceItems(entries: Entry[], options: ProjectSliceOptions
 	const out: SliceItem[] = [];
 	for (let i = 0; i < entries.length; i++) {
 		const entry = entries[i];
-		EVENT_META[entryKey(entry)]?.slice?.visit?.({
+		EVENT_META[entryKey(entry)]?.context?.visit?.({
 			entry,
 			index: i,
 			entries,

@@ -1,8 +1,10 @@
 /**
- * Display-layer logic for trajectory views (pure functions, contract layer, shared by view and bun):
- * - timelineNodes: one node per log record plus one summary per turn for the band, and the request
- *   dots that mark where a user question opens a segment.
+ * The scan: one pass that turns folded records into the rows the trajectory view shows, plus the
+ * per-turn summaries for the density band. Curation rules live on the event metadata — `hidden`
+ * drops the record, `dedupe` keeps the first of its kind, `pin` moves the first of its kind right
+ * after another key — so the scan applies them without knowing any event by name.
  */
+import { EVENT_META } from "./entry-meta";
 import type { TrajectoryRecord } from "./rpc";
 
 /** One turn's summary for the density band. */
@@ -12,53 +14,44 @@ export interface TurnSummary {
 	density: "l1" | "l2" | "l3";
 }
 
-/** One node of the timeline: a log record, plus the request dot its row shows. */
-export interface TimelineNode {
-	seq: number;
-	record: TrajectoryRecord;
-	requestMarks?: number;
+export interface ScanResult {
+	data: TrajectoryRecord[];
+	turns: TurnSummary[];
 }
 
-/** The whole-log view model: one node per record, plus per-turn summaries for the band. */
-export function timelineNodes(records: TrajectoryRecord[]): { nodes: TimelineNode[]; turns: TurnSummary[] } {
-	const nodes: TimelineNode[] = [];
+export function scan(records: TrajectoryRecord[]): ScanResult {
 	const turns: TurnSummary[] = [];
 	for (const record of records) {
-		if (record.kind === "assistant") {
-			turns.push({ run: record.run, turn: record.turn, density: tokensToDensity(record.usage?.totalTokens ?? 0) });
+		if (record.kind === "assistant") turns.push({ run: record.run, turn: record.turn, density: tokensToDensity(record.usage?.totalTokens ?? 0) });
+	}
+
+	const data: TrajectoryRecord[] = [];
+	const seen = new Set<string>();
+	for (const record of records) {
+		const meta = EVENT_META[record.metaKey];
+		if (meta?.hidden) continue;
+		if (meta?.dedupe) {
+			if (seen.has(record.metaKey)) continue;
+			seen.add(record.metaKey);
 		}
-		nodes.push({ seq: record.seq, record });
+		data.push(record);
 	}
-	// The log's append order is the display order, so turn assignment is non-decreasing along it —
-	// no sort, no intra-block reordering. Dedupe for readability: one system_prompt total (the
-	// first), and one request/header (the first, placed right under the system prompt — the tool
-	// definitions are static per partner, so repeating a header per turn would only add noise).
-	const promptNode = nodes.find((n) => n.record.kind === "custom" && n.record.customType === "system_prompt");
-	const headerNode = nodes.find((n) => n.record.kind === "custom" && n.record.customType === "request/header");
-	let sawPrompt = false;
-	const out: TimelineNode[] = [];
-	for (const node of nodes) {
-		const record = node.record;
-		if (record.kind === "custom" && record.customType === "system_prompt") {
-			if (sawPrompt) continue;
-			sawPrompt = true;
-		}
-		out.push(node);
+	for (const record of [...data]) {
+		const anchor = EVENT_META[record.metaKey]?.pin;
+		if (anchor === undefined) continue;
+		if (data.find((other) => other.metaKey === record.metaKey) !== record) continue;
+		const target = data.find((other) => other.metaKey === anchor);
+		if (target === undefined) continue;
+		const from = data.indexOf(record);
+		const to = data.indexOf(target);
+		if (from === to + 1) continue;
+		data.splice(from, 1);
+		data.splice(to + 1, 0, record);
 	}
-	if (promptNode && headerNode) {
-		const promptIdx = out.indexOf(promptNode);
-		const headerIdx = out.indexOf(headerNode);
-		if (promptIdx >= 0 && headerIdx >= 0 && headerIdx !== promptIdx + 1) {
-			out.splice(headerIdx, 1);
-			out.splice(promptIdx + 1, 0, headerNode);
-		}
+	for (const record of data) {
+		if (record.kind === "user" && record.metaKey === "role:user") record.marks = 1;
 	}
-	// Request segments: from a user question to the next user question (or the end) counts as one
-	// request — its dot renders on the question row that starts the segment.
-	for (const node of out) {
-		if (node.record.kind === "user" && node.record.metaKey === "role:user") node.requestMarks = 1;
-	}
-	return { nodes: out, turns };
+	return { data, turns };
 }
 
 /** Bucket by token workload: <1k light, <4k medium, else heavy (visual budget goes to what varies). */

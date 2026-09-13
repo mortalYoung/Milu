@@ -10,7 +10,7 @@ import { getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
 import { ApplicationMenu, BrowserView, BrowserWindow, Utils } from "electrobun/main";
 import { mcpChangedText } from "../shared/events";
 import { projectOrigin } from "../shared/origin";
-import type { AppRPCSchema, ChatPreviewKind, TrajectoryRecord } from "../shared/rpc";
+import type { AppRPCSchema, ChatPreviewKind } from "../shared/rpc";
 import { loadCustomCommands, mergeCommandDefinitions } from "./commands/custom";
 import { defaultCommands } from "./commands/defaults";
 import { createCommandRegistry } from "./commands/registry";
@@ -60,7 +60,7 @@ import {
 	scenePendingCount,
 	sceneViewsDir,
 } from "./core/scenes";
-import { aggregateUsage, dedupeRequestHeaders, fold, lastUsage } from "./core/trajectory";
+import { aggregateUsage, lastUsage } from "./core/trajectory";
 import { deleteApiKey, getApiKey, loadCredentials, setApiKey } from "./lib/credentials";
 import { ensureModel, ensureSandboxMode, ensureStoragePath, ensureWorkspace, hasInvalidPersistedWorkspace, isThinkingLevel, readSandboxMode } from "./lib/ensure";
 import { listChildren, readFilePreview } from "./lib/explorer";
@@ -213,14 +213,6 @@ const agents = new Map<string, Promise<PartnerAgent>>();
 let skillSeq = 0;
 let shellSeq = 0;
 
-interface TrajectoryViewCache {
-	signature: string;
-	records: TrajectoryRecord[];
-	total: number;
-}
-const trajectoryViewCache = new Map<string, TrajectoryViewCache>();
-const TRAJECTORY_CACHE_MAX = 64;
-
 type HistoryView = Awaited<ReturnType<typeof session.visibleHistory>>;
 interface HistoryViewCache {
 	signature: string;
@@ -228,16 +220,6 @@ interface HistoryViewCache {
 }
 const historyViewCache = new Map<string, HistoryViewCache>();
 const HISTORY_CACHE_MAX = 64;
-function firstSeqAtOrAfter(records: TrajectoryRecord[], before: number): number {
-	let lo = 0;
-	let hi = records.length;
-	while (lo < hi) {
-		const mid = (lo + hi) >>> 1;
-		if (records[mid].seq < before) lo = mid + 1;
-		else hi = mid;
-	}
-	return lo;
-}
 
 function rejectPendingEscalations(partner: string, reason: string) {
 	const timestamp = Date.now();
@@ -1875,35 +1857,6 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					tools: entry?.agent.tools,
 				});
 			},
-			trajectory: async ({ name, before, limit = 200 }) => {
-				const settings = await loadSettings();
-				const profile = (await listPartners(settings)).find((p) => p.name === name);
-				if (!profile) return { records: [], hasMore: false, total: 0 };
-				const dir = getPartnerDir(settings, name);
-				const entries = await session.rawEntries(dir);
-
-				const lastId = entries.length > 0 ? entries[entries.length - 1].id : "";
-				const signature = `${entries.length}:${lastId}`;
-				const cacheKey = dir;
-				let cached = trajectoryViewCache.get(cacheKey);
-				if (!cached || cached.signature !== signature) {
-					const records = dedupeRequestHeaders(fold(entries));
-					cached = { signature, records, total: records.length };
-					trajectoryViewCache.set(cacheKey, cached);
-					if (trajectoryViewCache.size > TRAJECTORY_CACHE_MAX) {
-						const oldest = trajectoryViewCache.keys().next().value;
-						if (oldest !== undefined) trajectoryViewCache.delete(oldest);
-					}
-				}
-
-				const { records, total } = cached;
-				const end = before == null ? records.length : firstSeqAtOrAfter(records, before);
-				let start = Math.max(0, end - limit);
-				while (start > 0 && records[start].kind !== "user" && records[start].kind !== "assistant") {
-					start--;
-				}
-				return { records: records.slice(start, end), hasMore: start > 0, total };
-			},
 			partner_activity: async ({ name, weeks }) => {
 				const settings = await loadSettings();
 				const profile = (await listPartners(settings)).find((p) => p.name === name);
@@ -2280,7 +2233,6 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 						consolidateRuns.delete(target);
 						session.evictRoot(dir);
 						for (const key of [...historyViewCache.keys()]) if (key === `history:${dir}`) historyViewCache.delete(key);
-						for (const key of [...trajectoryViewCache.keys()]) if (key.startsWith(`${dir}:`)) trajectoryViewCache.delete(key);
 						if (viewPartner?.name === target) viewPartner = null;
 					}
 
