@@ -140,21 +140,48 @@ function buildPieces(tokens: HighlightToken[], ranges: { start: number; end: num
 const findHistory: string[] = [];
 const MAX_FIND_HISTORY = 50;
 
+/** The preview is already readable while the highlighter works; the pill only fades in if the
+ * upgrade takes longer than a beat, so small files never flash it. */
+function PreviewBusy(props: { when: boolean }) {
+	return (
+		<Show when={props.when}>
+			<div class="explorer-busy">
+				<span class="work-dot" />
+				<span class="work-dot" />
+				<span class="work-dot" />
+			</div>
+		</Show>
+	);
+}
+
 function MarkdownFile(props: { content: string }) {
+	const [busy, setBusy] = createSignal(false);
 	let ref: HTMLDivElement | undefined;
 	createEffect(() => {
 		const el = ref;
 		if (!el) return;
 		let cancelled = false;
+		setBusy(true);
 		el.innerHTML = renderMarkdown(props.content);
-		void renderMarkdownReady(props.content).then((html) => {
-			if (!cancelled && el.isConnected) el.innerHTML = html;
-		});
+		void renderMarkdownReady(props.content)
+			.then((html) => {
+				if (!cancelled && el.isConnected) el.innerHTML = html;
+			})
+			.finally(() => {
+				if (!cancelled) setBusy(false);
+			});
 		onCleanup(() => {
 			cancelled = true;
 		});
 	});
-	return <div ref={ref} class="md explorer-md" />;
+	return (
+		<>
+			<div class="explorer-md-scroll">
+				<div ref={ref} class="md explorer-md" />
+			</div>
+			<PreviewBusy when={busy() && props.content !== ""} />
+		</>
+	);
 }
 
 function CodeViewer(props: { content: string; lang: string | null; foldable: boolean; path: string; locate?: RevealRange | null }) {
@@ -559,6 +586,7 @@ function CodeViewer(props: { content: string; lang: string | null; foldable: boo
 					</button>
 				</div>
 			</Show>
+			<PreviewBusy when={tokenData.loading && props.content !== ""} />
 		</>
 	);
 }
@@ -931,7 +959,7 @@ export function ExplorerDrawer(props: { open: boolean; partner: string | null; r
 										<Show
 											when={!rendered()}
 											fallback={
-												<div class="explorer-md-scroll">
+												<div class="explorer-file-body">
 													<MarkdownFile content={fileData()?.content ?? ""} />
 												</div>
 											}

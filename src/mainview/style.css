@@ -1708,11 +1708,32 @@ body::before {
 	.explorer-popover-note {
 		@apply flex-1 flex items-center justify-center gap-[3px] px-4 py-3 font-mono text-[11px] text-muted;
 	}
+	.explorer-popover-note .work-dot,
+	.explorer-busy .work-dot {
+		background: var(--color-seal);
+	}
+	.explorer-busy {
+		@apply pointer-events-none absolute right-4 bottom-3 z-10 flex items-center gap-[3px] rounded-full border border-hairline px-2.5 py-1.5;
+		background: var(--color-letter);
+		box-shadow: 0 2px 8px color-mix(in srgb, var(--color-ink) 12%, transparent);
+		animation: explorer-busy-in 200ms 180ms cubic-bezier(0.23, 1, 0.32, 1) both;
+	}
+	@keyframes explorer-busy-in {
+		from {
+			opacity: 0;
+			transform: translateY(3px);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.explorer-busy {
+			animation: none;
+		}
+	}
 	.explorer-file-body {
 		@apply relative flex-1 min-h-0;
 	}
 	.explorer-md-scroll {
-		@apply flex-1 min-h-0 overflow-auto px-5 py-4;
+		@apply absolute inset-0 overflow-auto px-5 py-4;
 	}
 	.explorer-md {
 		@apply mx-auto w-full;
