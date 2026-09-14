@@ -1,3 +1,4 @@
+import { imeGuard } from "../lib/ime";
 import { createPartnerForm, type PartnerFormData } from "../lib/partner-form";
 import { Button } from "./Button";
 import { PickFile } from "./PickFile";
@@ -14,46 +15,6 @@ export interface PartnerModalProps {
 function avatarInitial(name: string): string {
 	const trimmed = name.trim();
 	return trimmed ? trimmed[0].toUpperCase() : "?";
-}
-
-type EditableElement = HTMLInputElement | HTMLTextAreaElement;
-
-function imeGuard(set: (value: string) => void) {
-	let composing = false;
-	let pending: { data: string; fixed: string; cursor: number } | null = null;
-	const release = () =>
-		setTimeout(() => {
-			composing = false;
-		}, 10);
-	return {
-		onStart() {
-			composing = true;
-		},
-		onEnd(e: CompositionEvent, el: EditableElement | undefined) {
-			const data = e.data ?? "";
-			// WKWebView commits pinyin-mode English with syllable spaces ("hap p"); restore the raw letters.
-			if (/^[A-Za-z\s]+$/.test(data) && data !== data.replace(/\s/g, "")) {
-				if (el) pending = { data, fixed: data.replace(/\s/g, ""), cursor: el.selectionStart ?? el.value.length };
-				setTimeout(() => {
-					const fix = pending;
-					if (!fix || !el) return;
-					const value = el.value;
-					const start = Math.max(0, fix.cursor - fix.data.length);
-					if (value.slice(start, start + fix.data.length) !== fix.data) return;
-					const next = value.slice(0, start) + fix.fixed + value.slice(start + fix.data.length);
-					pending = null;
-					set(next);
-					el.value = next;
-					const pos = start + fix.fixed.length;
-					el.setSelectionRange(pos, pos);
-				}, 0);
-			}
-			release();
-		},
-		onKeyDown(e: KeyboardEvent) {
-			if (e.key === "Enter" && (composing || e.isComposing || e.keyCode === 229)) e.preventDefault();
-		},
-	};
 }
 
 export function PartnerModal(props: PartnerModalProps) {

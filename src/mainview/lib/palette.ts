@@ -82,16 +82,18 @@ export function sessionRows(partners: PartnerItem[], query: string): PaletteRow[
 	if (!q) {
 		return [...partners].sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0) || a.name.localeCompare(b.name)).map((partner) => ({ kind: "session" as const, partner }));
 	}
-	const hits: { partner: PartnerItem; name: number | null; persona: number | null }[] = [];
+	const hits: { partner: PartnerItem; name: number | null; persona: number | null; workspace: number | null }[] = [];
 	for (const partner of partners) {
 		const name = fuzzyScore(q, partner.name);
 		const persona = partner.persona ? fuzzyScore(q, partner.persona) : null;
-		if (name !== null || persona !== null) hits.push({ partner, name, persona });
+		const workspace = partner.workspace ? fuzzyScore(q, partner.workspace) : null;
+		if (name !== null || persona !== null || workspace !== null) hits.push({ partner, name, persona, workspace });
 	}
 	hits.sort(
 		(a, b) =>
 			Number(b.name !== null) - Number(a.name !== null) ||
 			(b.name ?? 0) - (a.name ?? 0) ||
+			(b.workspace ?? 0) - (a.workspace ?? 0) ||
 			(b.persona ?? 0) - (a.persona ?? 0) ||
 			(b.partner.lastMessageAt ?? 0) - (a.partner.lastMessageAt ?? 0),
 	);

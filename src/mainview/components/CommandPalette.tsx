@@ -1,6 +1,7 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, untrack } from "solid-js";
 import type { PartnerAccessServer, PartnerAccessSkill } from "../../shared/rpc";
 import type { RevealRange } from "../lib/dock";
+import { imeGuard } from "../lib/ime";
 import { fileRows, grantRows, type Palette, type PaletteGrant, type PaletteMode, type PaletteRow, parseFileQuery, pickableIndexes, sessionRows } from "../lib/palette";
 import { rpc } from "../lib/rpc";
 import type { PartnerItem } from "./ConversationList";
@@ -25,7 +26,7 @@ export function CommandPalette(props: {
 }) {
 	const palette = props.palette;
 	const [fileQuery, setFileQuery] = createSignal("");
-	const [composing, setComposing] = createSignal(false);
+	const ime = imeGuard(palette.setQuery);
 	let panelEl: HTMLDivElement | undefined;
 	let inputEl: HTMLInputElement | undefined;
 
@@ -56,6 +57,15 @@ export function CommandPalette(props: {
 	const [fileResults, setFileResults] = createSignal<{ ok: boolean; error?: string; items: { path: string; name: string }[]; truncated: boolean } | null>(null);
 	const [searching, setSearching] = createSignal(false);
 	let searchSeq = 0;
+
+	// The query drives the list, but the input must stay uncontrolled while an IME is composing:
+	// writing `value` during composition cancels the preedit in WebKit.
+	createEffect(() => {
+		if (!palette.open()) return;
+		const query = palette.query();
+		const input = inputEl;
+		if (input && !ime.composing && input.value !== query) input.value = query;
+	});
 
 	createEffect(() => {
 		if (!palette.open() || palette.mode() !== "files" || !filesAvailable() || fileQuery() !== parseFileQuery(palette.query()).path) return;
@@ -182,7 +192,7 @@ export function CommandPalette(props: {
 	}
 
 	function onKeyDown(e: KeyboardEvent) {
-		if (e.isComposing || composing()) return;
+		if (e.isComposing || ime.composing) return;
 		if (e.key === "Tab") {
 			e.preventDefault();
 			palette.cycleMode(e.shiftKey ? -1 : 1, availableModes());
@@ -304,7 +314,6 @@ export function CommandPalette(props: {
 							id="palette-input"
 							ref={inputEl}
 							class="palette-input"
-							value={palette.query()}
 							placeholder="search…"
 							autocomplete="off"
 							autocapitalize="off"
@@ -316,9 +325,12 @@ export function CommandPalette(props: {
 							aria-label="Search"
 							aria-activedescendant={palette.index() >= 0 ? `palette-option-${palette.index()}` : undefined}
 							onInput={(e) => palette.setQuery(e.currentTarget.value)}
-							onKeyDown={onKeyDown}
-							onCompositionStart={() => setComposing(true)}
-							onCompositionEnd={() => setComposing(false)}
+							onKeyDown={(e) => {
+								ime.onKeyDown(e);
+								onKeyDown(e);
+							}}
+							onCompositionStart={ime.onStart}
+							onCompositionEnd={(e) => ime.onEnd(e, e.currentTarget)}
 						/>
 					</div>
 					<Show when={rows().length > 0} fallback={<div class="palette-note">{emptyNote()}</div>}>

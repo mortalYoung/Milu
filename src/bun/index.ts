@@ -1357,6 +1357,17 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				void agents.get(name ?? "")?.then((e) => e.agent.stop());
 				return { accepted: true };
 			},
+			window_zoom_toggle: () => {
+				if (restoreFrame) {
+					mainWindow.unmaximize();
+					mainWindow.setFrame(restoreFrame.x, restoreFrame.y, restoreFrame.width, restoreFrame.height);
+					restoreFrame = null;
+					return { zoomed: false };
+				}
+				restoreFrame = mainWindow.getFrame();
+				mainWindow.maximize();
+				return { zoomed: true };
+			},
 			reset: () => {
 				void agents.get(viewPartner?.name ?? "")?.then((e) => e.agent.reset());
 				return { accepted: true };
@@ -2160,6 +2171,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 						return {
 							...profile,
 							path: getPartnerDir(settings, profile.name),
+							workspace: await ensureWorkspace(getPartnerDir(settings, profile.name)),
 							readAt,
 							writing,
 							...(last && lastMessageKind ? { lastMessage: last.text, lastMessageAt: last.time, lastMessageKind } : {}),
@@ -2290,10 +2302,13 @@ ApplicationMenu.setApplicationMenu([
 armCommandsWatch(commandsDir(startupSettings));
 void armSkillsWatchers();
 
-new BrowserWindow({
+let restoreFrame: { x: number; y: number; width: number; height: number } | null = null;
+
+const mainWindow: BrowserWindow = new BrowserWindow({
 	title: "Coding",
 
 	titleBarStyle: "hiddenInset",
+	trafficLightOffset: { x: 0, y: 10 },
 	url: "views://mainview/index.html",
 	rpc,
 	frame: {

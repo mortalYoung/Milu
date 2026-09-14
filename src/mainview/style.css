@@ -148,14 +148,10 @@ body::before {
 
 @layer components {
 	.rail {
-		@apply w-16 shrink-0 bg-paper border-r border-hairline flex flex-col items-center pt-4;
-	}
-
-	.rail-spacer {
-		@apply h-6 w-full shrink-0;
+		@apply w-16 shrink-0 select-none bg-paper border-r border-hairline flex flex-col items-center gap-3 pt-3;
 	}
 	.rail-tab {
-		@apply mt-3 size-10 flex items-center justify-center rounded-[10px] text-ink cursor-pointer transition-colors;
+		@apply size-10 flex items-center justify-center rounded-[10px] text-ink cursor-pointer transition-colors;
 	}
 	.rail-tab:hover {
 		background: var(--color-paper-deep);
@@ -304,14 +300,8 @@ body::before {
 		@apply h-16 shrink-0 bg-paper border-b border-hairline flex items-center px-6 eyebrow;
 	}
 
-	.conv-list-head {
-		@apply flex items-center justify-between pl-1 pr-3 mb-[14px];
-	}
-	.conv-list-title {
-		@apply font-serif text-[19px] font-semibold text-ink;
-	}
 	.conv-list-search {
-		@apply h-9 border border-hairline rounded-[8px] bg-letter flex items-center px-3 mr-3 mb-[14px];
+		@apply h-9 border border-hairline rounded-[8px] bg-letter flex items-center gap-2 pl-3 pr-1 mr-3 mb-[14px];
 	}
 	.conv-list-input {
 		@apply flex-1 min-w-0 bg-transparent border-none outline-none font-sans text-[13px] text-ink placeholder:text-muted;
@@ -811,10 +801,10 @@ body::before {
 	}
 
 	.chat-header {
-		@apply relative h-[72px] shrink-0 bg-paper border-t border-b border-hairline flex items-center justify-center;
+		@apply relative h-[52px] shrink-0 select-none bg-paper border-b border-hairline flex items-center justify-center;
 	}
 	.chat-worker {
-		@apply flex items-baseline gap-[9px] font-serif text-[18px] font-semibold text-ink whitespace-nowrap;
+		@apply flex items-center gap-[9px] font-serif text-[18px] font-semibold leading-none text-ink whitespace-nowrap;
 	}
 	.chat-worker-sep {
 		@apply font-sans text-[13px] text-body-muted;
@@ -823,12 +813,12 @@ body::before {
 		@apply font-sans text-[10px] tracking-[0.2em] text-body-muted;
 	}
 	.chat-toggle {
-		@apply absolute left-4 top-1/2 -translate-y-1/2;
+		@apply absolute left-[76px] top-1/2 -translate-y-1/2;
 		-webkit-app-region: no-drag;
 	}
 
 	.chat-tools-left {
-		@apply absolute left-14 top-1/2 -translate-y-1/2 flex items-center gap-1;
+		@apply absolute left-[116px] top-1/2 -translate-y-1/2 flex items-center gap-1;
 		-webkit-app-region: no-drag;
 	}
 
@@ -923,7 +913,8 @@ body::before {
 	}
 
 	.transcript-inner {
-		@apply w-[560px] max-w-full mx-auto flex flex-col;
+		width: clamp(560px, 46vw, 760px);
+		@apply max-w-full mx-auto flex flex-col;
 	}
 	.transcript-inner.btw-open {
 		position: relative;
@@ -2452,6 +2443,7 @@ body::before {
 		@apply relative shrink-0 min-h-[60px] border-t border-hairline flex items-center justify-center px-6 py-2 bg-paper;
 	}
 	.composer-row {
+		max-width: clamp(560px, 46vw, 760px);
 		@apply flex items-center gap-2 w-[60%] min-w-0;
 	}
 

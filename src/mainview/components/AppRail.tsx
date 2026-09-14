@@ -5,7 +5,6 @@ export type RailTabId = "chat" | "skills" | "settings";
 export function AppRail(props: { active: RailTabId; onSelect: (id: RailTabId) => void }) {
 	return (
 		<nav class="rail electrobun-webkit-app-region-drag">
-			<div class="rail-spacer" />
 			<button
 				type="button"
 				class={"rail-tab electrobun-webkit-app-region-no-drag" + (props.active === "chat" ? " active" : "")}

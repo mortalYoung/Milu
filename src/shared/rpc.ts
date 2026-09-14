@@ -463,6 +463,11 @@ export type AppRPCSchema = __schema<{
 				response: { accepted: boolean };
 			};
 
+			window_zoom_toggle: {
+				params: {};
+				response: { zoomed: boolean };
+			};
+
 			session_origin: {
 				params: { name: string; mode?: "older" | "newer"; cursor?: string; limit?: number };
 				response: {

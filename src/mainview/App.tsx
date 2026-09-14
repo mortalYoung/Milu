@@ -1,5 +1,6 @@
 import { createEffect, createSignal, lazy, onCleanup, onMount, Suspense } from "solid-js";
 import { parseLineRange, workspacePath, workspaceRelativePath } from "../shared/file-mentions";
+import { AppHeader } from "./components/AppHeader";
 import { AppRail } from "./components/AppRail";
 import type { PartnerItem } from "./components/ConversationList";
 import { ToastHost } from "./components/ToastHost";
@@ -336,109 +337,121 @@ function WorkspaceControllers() {
 				<CommandDirectoryProvider value={commands}>
 					<SettingsProvider value={settings}>
 						<SkillsProvider value={skills}>
-							<div class="relative flex flex-1 min-h-0">
-								<AppRail
-									active={view()}
-									onSelect={(tab) => {
-										if (tab === "settings") settings.mutate.setOpen(true);
-										else setView(tab);
-									}}
-								/>
-
-								<main class="flex-1 flex flex-col min-w-0 bg-qw-bg">
-									<AgentStatusProvider value={status}>
-										<MetricsProvider value={metrics.data}>
+							<AgentStatusProvider value={status}>
+								<MetricsProvider value={metrics.data}>
+									<TranscriptProvider value={transcript}>
+										<div class="flex flex-1 min-h-0 flex-col">
 											{view() === "skills" ? (
-												<Suspense fallback={null}>
-													<SkillsView />
-												</Suspense>
+												<div class="chat-header" onDblClick={() => void rpc.request.window_zoom_toggle({})} />
 											) : (
-												<TranscriptProvider value={transcript}>
-													<ConversationPage
-														dock={dock}
+												<AppHeader
+													dock={dock}
+													selected={session.data.selected}
+													onViewDetails={(name) => setDetailsPartner(session.data.partners.find((p) => p.name === name) ?? null)}
+													listCollapsed={listCollapsed()}
+													onToggleList={toggleList}
+												/>
+											)}
+											<div class="relative flex flex-1 min-h-0">
+												<AppRail
+													active={view()}
+													onSelect={(tab) => {
+														if (tab === "settings") settings.mutate.setOpen(true);
+														else setView(tab);
+													}}
+												/>
+
+												<main class="flex-1 flex flex-col min-w-0 bg-qw-bg">
+													{view() === "skills" ? (
+														<Suspense fallback={null}>
+															<SkillsView />
+														</Suspense>
+													) : (
+														<ConversationPage
+															dock={dock}
+															partners={session.data.partners}
+															selected={session.data.selected}
+															onSelect={(name) => {
+																transcript.reset();
+																selectPartner(session.data.partners.find((p) => p.name === name) ?? null);
+															}}
+															unread={unread.unread}
+															onAddPartner={() => setShowModal(true)}
+															onDelete={onDeletePartner}
+															onViewDetails={(name) => setDetailsPartner(session.data.partners.find((p) => p.name === name) ?? null)}
+															onDuplicate={(name) => void runCopy("duplicate", name)}
+															onFork={(name) => void runCopy("fork", name)}
+															onPromote={(name) => void onPromotePartner(name)}
+															listCollapsed={listCollapsed()}
+															historyLoading={session.historyLoading}
+															onSend={onSend}
+															onStop={() => void rpc.request.stop({})}
+															onEscalationRespond={(id, approved) => void rpc.request.sandbox_respond({ id, approved })}
+															toastHost={<ToastHost toasts={toast.toasts} placement={settings.data()?.settings?.toastPlacement ?? "bottomcenter"} onDismiss={toast.dismiss} />}
+															onShell={(command) => rpc.request.shell_execute({ command })}
+															onOpenPath={(path, editorId) =>
+																void rpc.request.open_path({ path, editorId }).then((res) => {
+																	if (!res.ok) toast.push({ title: "Couldn't open folder", body: res.error ?? "No supported editor found" }, "error");
+																})
+															}
+															editors={editors()}
+														/>
+													)}
+												</main>
+
+												<Dialog open={settings.open()} onOpenChange={settings.mutate.setOpen}>
+													<DialogContent class="w-[820px] max-w-none h-[640px] grid-rows-[auto_1fr] overflow-hidden bg-letter border-print-line p-0">
+														<DialogHeader class="px-4 pt-4">
+															<DialogTitle class="font-serif text-[15px]">Settings</DialogTitle>
+														</DialogHeader>
+														<Suspense fallback={null}>
+															<SettingsView />
+														</Suspense>
+													</DialogContent>
+												</Dialog>
+
+												<Suspense fallback={null}>
+													<PartnerModal open={showModal()} onOpenChange={setShowModal} onConfirm={onCreatePartner} existingNames={session.data.partners.map((p) => p.name)} />
+												</Suspense>
+
+												<Suspense fallback={null}>
+													<PartnerDetailsDialog partner={detailsPartner()} onOpenChange={(open) => !open && setDetailsPartner(null)} />
+												</Suspense>
+
+												<Suspense fallback={null}>
+													<TrajectoryDrawer />
+												</Suspense>
+
+												<Suspense fallback={null}>
+													<CommandPalette
+														palette={palette}
+														partner={session.data.selected}
 														partners={session.data.partners}
-														selected={session.data.selected}
-														onSelect={(name) => {
+														hasWorkspace={status.data().workspace_path != null}
+														unread={unread.unread}
+														onSelectPartner={(name) => {
+															settings.mutate.setOpen(false);
+															setView("chat");
 															transcript.reset();
 															selectPartner(session.data.partners.find((p) => p.name === name) ?? null);
 														}}
-														unread={unread.unread}
-														onAddPartner={() => setShowModal(true)}
-														onDelete={onDeletePartner}
-														onViewDetails={(name) => setDetailsPartner(session.data.partners.find((p) => p.name === name) ?? null)}
-														onDuplicate={(name) => void runCopy("duplicate", name)}
-														onFork={(name) => void runCopy("fork", name)}
-														onPromote={(name) => void onPromotePartner(name)}
-														listCollapsed={listCollapsed()}
-														onToggleList={toggleList}
-														historyLoading={session.historyLoading}
-														onSend={onSend}
-														onStop={() => void rpc.request.stop({})}
-														onEscalationRespond={(id, approved) => void rpc.request.sandbox_respond({ id, approved })}
-														toastHost={<ToastHost toasts={toast.toasts} placement={settings.data()?.settings?.toastPlacement ?? "bottomcenter"} onDismiss={toast.dismiss} />}
-														onShell={(command) => rpc.request.shell_execute({ command })}
-														onOpenPath={(path, editorId) =>
-															void rpc.request.open_path({ path, editorId }).then((res) => {
-																if (!res.ok) toast.push({ title: "Couldn't open folder", body: res.error ?? "No supported editor found" }, "error");
-															})
-														}
-														editors={editors()}
+														onRevealFile={(path, range) => {
+															settings.mutate.setOpen(false);
+															dock.revealInExplorer(path, range);
+														}}
+														onOpenFile={(path) => {
+															settings.mutate.setOpen(false);
+															void rpc.request.open_path({ path }).then((res) => {
+																if (!res.ok) toast.push({ title: "Couldn't open file", body: res.error ?? "No supported editor found" }, "error");
+															});
+														}}
 													/>
-												</TranscriptProvider>
-											)}
-										</MetricsProvider>
-									</AgentStatusProvider>
-								</main>
-
-								<Dialog open={settings.open()} onOpenChange={settings.mutate.setOpen}>
-									<DialogContent class="w-[820px] max-w-none h-[640px] grid-rows-[auto_1fr] overflow-hidden bg-letter border-print-line p-0">
-										<DialogHeader class="px-4 pt-4">
-											<DialogTitle class="font-serif text-[15px]">Settings</DialogTitle>
-										</DialogHeader>
-										<Suspense fallback={null}>
-											<SettingsView />
-										</Suspense>
-									</DialogContent>
-								</Dialog>
-
-								<Suspense fallback={null}>
-									<PartnerModal open={showModal()} onOpenChange={setShowModal} onConfirm={onCreatePartner} existingNames={session.data.partners.map((p) => p.name)} />
-								</Suspense>
-
-								<Suspense fallback={null}>
-									<PartnerDetailsDialog partner={detailsPartner()} onOpenChange={(open) => !open && setDetailsPartner(null)} />
-								</Suspense>
-
-								<Suspense fallback={null}>
-									<TrajectoryDrawer />
-								</Suspense>
-
-								<Suspense fallback={null}>
-									<CommandPalette
-										palette={palette}
-										partner={session.data.selected}
-										partners={session.data.partners}
-										hasWorkspace={status.data().workspace_path != null}
-										unread={unread.unread}
-										onSelectPartner={(name) => {
-											settings.mutate.setOpen(false);
-											setView("chat");
-											transcript.reset();
-											selectPartner(session.data.partners.find((p) => p.name === name) ?? null);
-										}}
-										onRevealFile={(path, range) => {
-											settings.mutate.setOpen(false);
-											dock.revealInExplorer(path, range);
-										}}
-										onOpenFile={(path) => {
-											settings.mutate.setOpen(false);
-											void rpc.request.open_path({ path }).then((res) => {
-												if (!res.ok) toast.push({ title: "Couldn't open file", body: res.error ?? "No supported editor found" }, "error");
-											});
-										}}
-									/>
-								</Suspense>
-							</div>
+												</Suspense>
+											</div>
+										</div>
+									</TranscriptProvider>
+								</MetricsProvider>
+							</AgentStatusProvider>
 						</SkillsProvider>
 					</SettingsProvider>
 				</CommandDirectoryProvider>

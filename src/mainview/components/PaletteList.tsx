@@ -34,6 +34,7 @@ export function PaletteList(props: { rows: PaletteRow[]; index: number; unread: 
 									<span class="palette-row-title">{row.partner.name}</span>
 									<span class="palette-row-sub">{previewFor(row.partner) || "—"}</span>
 								</span>
+								<Show when={row.partner.workspace}>{(workspace) => <span class="palette-row-dir">{splitPath(workspace()).name}</span>}</Show>
 								<Show when={props.unread(row.partner.name)}>
 									<span class="conv-unread-dot" title="new messages" />
 								</Show>

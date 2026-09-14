@@ -40,8 +40,12 @@ export interface PartnerItem {
 	lastMessageKind?: ChatPreviewKind;
 	/** Per-partner read watermark (persisted): messages after this timestamp are unread. */
 	readAt?: number;
+	/** The partner's working directory, when one is set. */
+	workspace?: string | null;
 	writing?: boolean;
 }
+
+const byRecency = (a: PartnerItem, b: PartnerItem) => (b.lastMessageAt ?? b.createdAt) - (a.lastMessageAt ?? a.createdAt);
 
 function copyText(text: string) {
 	const fallback = () => {
@@ -232,7 +236,7 @@ export function ConversationList(props: {
 		}
 	});
 
-	const roots = createMemo(() => props.partners.filter((p) => !p.forkedFrom));
+	const roots = createMemo(() => props.partners.filter((p) => !p.forkedFrom).sort(byRecency));
 	const leavesByRoot = createMemo(() => {
 		const map = new Map<string, PartnerItem[]>();
 		for (const partner of props.partners) {
@@ -242,28 +246,24 @@ export function ConversationList(props: {
 				map.set(partner.forkedFrom, list);
 			}
 		}
+		for (const list of map.values()) list.sort(byRecency);
 		return map;
 	});
 
 	const deleteForkCount = () => (confirmDelete() ? props.partners.filter((p) => p.forkedFrom === confirmDelete()).length : 0);
 
 	return (
-		<aside class="w-60 shrink-0 h-full bg-paper border-r border-hairline flex flex-col pl-3 pt-4">
-			{/* Directory header: Letters + round create button */}
-			<div class="conv-list-head">
-				<span class="conv-list-title">Letters</span>
+		<aside class="w-60 shrink-0 h-full bg-paper border-r border-hairline flex flex-col pl-3 pt-3">
+			<div class="conv-list-search">
+				<input class="conv-list-input" type="text" placeholder="Search correspondence…" spellcheck={false} />
 				<Tooltip>
 					<TooltipTrigger>
-						<Button variant="default" size="icon" class="size-[26px] rounded-full" title="Add Partner" onClick={props.onAddPartner}>
+						<Button variant="default" size="icon" class="size-[26px] rounded-full electrobun-webkit-app-region-no-drag" title="Add Partner" onClick={props.onAddPartner}>
 							<Plus size={13} />
 						</Button>
 					</TooltipTrigger>
 					<TooltipContent>Add Partner</TooltipContent>
 				</Tooltip>
-			</div>
-
-			<div class="conv-list-search">
-				<input class="conv-list-input" type="text" placeholder="Search correspondence…" spellcheck={false} />
 			</div>
 
 			{props.partners.length === 0 && <div class="px-1 py-3 text-[12px] text-muted">No partners yet</div>}
