@@ -4,7 +4,9 @@ import { AnimatePresence, Motion, MotionConfigProvider } from "solid-motion";
 import { EVENTS } from "../../shared/events";
 import type { EscalationStatus, SandboxMode } from "../../shared/rpc";
 import { BtwPanel } from "../components/BtwPanel";
+import { ScrollRegion } from "../components/ScrollRegion";
 import { Dialog, DialogContent, DialogTitle } from "../components/ui/dialog";
+import { useScroll } from "../lib/contexts/scroll-context";
 import { useSession } from "../lib/contexts/session-context";
 import { useSkills } from "../lib/contexts/skills-context";
 import { useTranscript } from "../lib/contexts/transcript-context";
@@ -248,7 +250,7 @@ function MessageStack(props: {
 	const prev = () => setCurrent(Math.max(0, current() - 1));
 	const next = () => setCurrent(Math.min(props.cards.length - 1, current() + 1));
 	return (
-		<div class="msg-stack" style={{ "padding-top": `${STACK_PEEK}px` }} data-chat-anchor-key={props.anchorKey} data-chat-flow-key={props.anchorKey}>
+		<div class="msg-stack" style={{ "padding-top": `${STACK_PEEK}px` }} data-chat-anchor-key={props.anchorKey}>
 			<For each={props.cards}>
 				{(card, i) => {
 					const depth = () => (current() - i() + props.cards.length) % props.cards.length;
@@ -264,6 +266,7 @@ function MessageStack(props: {
 						<div
 							class={"msg-letter msg-stack-card" + (depth() === 0 ? " on-top" : "") + (props.locateFlashId?.() === card.id ? " locate-flash" : "")}
 							id={"entry-" + card.id}
+							data-chat-anchor-key={card.key ?? String(card.id)}
 							style={{
 								transform: depth() === 0 ? undefined : `translate(${jitter * 3}px, ${-(peek() + jitter * 2)}px) rotate(${rotation}deg)`,
 								"z-index": 10 - depth(),
@@ -318,7 +321,7 @@ export function Transcript(props: {
 	const controller = useTranscript();
 	const session = useSession();
 	const skillDirectory = useSkills();
-	onCleanup(() => controller.detach());
+	const scroll = useScroll();
 	const [expandedCommand, setExpandedCommand] = createSignal<string | null>(null);
 	const [collapsedShells, setCollapsedShells] = createSignal<Set<string>>(new Set());
 	function toggleShellOutput(key: string) {
@@ -399,14 +402,13 @@ export function Transcript(props: {
 		if (el) requestAnimationFrame(() => el.focus());
 	});
 
-	let innerRef: HTMLDivElement | undefined;
 	let btwAnchorObserver: ResizeObserver | undefined;
 	createEffect(() => {
 		btwAnchorObserver?.disconnect();
 		btwAnchorObserver = undefined;
 
 		const anchor = props.activeBtwAnchor;
-		const inner = innerRef;
+		const inner = scroll.contentEl();
 		if (!anchor || !inner) return;
 
 		let anchorEl: HTMLElement | null = null;
@@ -421,10 +423,8 @@ export function Transcript(props: {
 		if (!anchorEl) return;
 
 		const update = () => {
-			const innerRect = inner.getBoundingClientRect();
-			const elRect = anchorEl!.getBoundingClientRect();
-			inner.style.setProperty("--btw-top", `${elRect.top - innerRect.top + inner.scrollTop}px`);
-			inner.style.setProperty("--btw-height", `${elRect.height}px`);
+			inner.style.setProperty("--btw-top", `${scroll.offsetInContent(anchorEl!)}px`);
+			inner.style.setProperty("--btw-height", `${anchorEl!.getBoundingClientRect().height}px`);
 		};
 		update();
 		btwAnchorObserver = new ResizeObserver(update);
@@ -435,275 +435,272 @@ export function Transcript(props: {
 
 	return (
 		<MotionConfigProvider reducedMotion="user">
-			<div class="relative flex-1 min-h-0 flex flex-col">
-				<section class="transcript flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-3" id="transcript" aria-live="polite" ref={controller.setContainer}>
-					<div class="transcript-inner" classList={{ "btw-open": !!props.activeBtwAnchor }} ref={(el) => (innerRef = el)}>
-						{controller.view().length === 0 && !props.working() && (
-							<div class="text-center pt-16">
-								{props.historyLoading() ? (
-									<>
-										<p class="font-serif text-[17px] text-ink-soft">— reading the archives… —</p>
-										<p class="eyebrow mt-3">restoring the conversation from disk</p>
-									</>
-								) : (
-									<>
-										<p class="font-serif text-[17px] text-ink-soft">— waiting for your first prompt —</p>
-										<p class="eyebrow mt-3">ask it to read a file, run a command, or just talk</p>
-									</>
-								)}
-							</div>
+			<ScrollRegion
+				scroll={scroll}
+				content={controller.blocks}
+				class="transcript flex-1 min-h-0 px-4 py-3"
+				id="transcript"
+				ariaLive="polite"
+				innerClass="transcript-inner"
+				innerClassList={{ "btw-open": !!props.activeBtwAnchor }}
+			>
+				{controller.view().length === 0 && !props.working() && (
+					<div class="text-center pt-16">
+						{props.historyLoading() ? (
+							<>
+								<p class="font-serif text-[17px] text-ink-soft">— reading the archives… —</p>
+								<p class="eyebrow mt-3">restoring the conversation from disk</p>
+							</>
+						) : (
+							<>
+								<p class="font-serif text-[17px] text-ink-soft">— waiting for your first prompt —</p>
+								<p class="eyebrow mt-3">ask it to read a file, run a command, or just talk</p>
+							</>
 						)}
+					</div>
+				)}
 
-						<Show when={session.data.origin.hasMore}>
-							<div class="load-earlier-wrap">
-								<button
-									class="load-earlier"
-									onClick={() => {
-										void session.mutate.loadOlderHistory().then(() => controller.persistAnchor());
-									}}
-									disabled={session.data.origin.loading}
-								>
-									{session.data.origin.loading ? "loading…" : "↑ load earlier"}
-								</button>
-							</div>
-						</Show>
-						<For each={controller.blocks()}>
-							{(block) => {
-								if (Array.isArray(block)) {
-									const card = block[0];
-									const key = blockKey(block);
+				<Show when={session.data.origin.hasMore}>
+					<div class="load-earlier-wrap">
+						<button
+							class="load-earlier"
+							onClick={() => {
+								scroll.hold();
+								void session.mutate.loadOlderHistory();
+							}}
+							disabled={session.data.origin.loading}
+						>
+							{session.data.origin.loading ? "loading…" : "↑ load earlier"}
+						</button>
+					</div>
+				</Show>
+				<For each={controller.blocks()}>
+					{(block) => {
+						if (Array.isArray(block)) {
+							const card = block[0];
+							const key = blockKey(block);
 
-									if (block.length === 1) {
-										if (card.kind === "escalation" && card.escalation) {
-											return (
-												<div class="msg-escalation" id={"entry-" + card.id} data-chat-anchor-key={key} data-chat-flow-key={key}>
-													{escalationBody(card.escalation, props.onEscalationRespond)}
-												</div>
-											);
-										}
-										return (
-											<Motion
-												as="div"
-												class={"msg-letter" + (controller.locateFlashId() === card.id ? " locate-flash" : "") + (props.activeBtwAnchor === key ? " btw-active" : "")}
-												id={"entry-" + card.id}
-												data-chat-anchor-key={key}
-												data-chat-flow-key={key}
-												initial={{ opacity: 0, scale: 0.96, rotate: 0.4 }}
-												animate={{ opacity: 1, scale: 1, rotate: 0 }}
-												transition={{ duration: 0.24, ease: [0.23, 1, 0.32, 1] }}
-											>
-												{letterBody(
-													card,
-													props.worker,
-													true,
-													true,
-													props.onBtw,
-													props.activeBtwAnchor === key,
-													true,
-													props.onBtwClose,
-													!!props.activeBtwAnchor && props.activeBtwAnchor !== key,
-												)}
-											</Motion>
-										);
-									}
+							if (block.length === 1) {
+								if (card.kind === "escalation" && card.escalation) {
 									return (
-										<MessageStack
-											cards={block}
-											anchorKey={key}
-											worker={props.worker}
-											locateFlashId={controller.locateFlashId}
-											onEscalationRespond={props.onEscalationRespond}
-											onBtw={props.onBtw}
-											onBtwClose={props.onBtwClose}
-											activeBtwAnchor={props.activeBtwAnchor}
-										/>
-									);
-								}
-								const e = block;
-								const key = blockKey(block);
-								if (e.kind === "user") {
-									const isEditing = () => editingUserKey() === key;
-									return (
-										<div class="msg-user-row group" data-chat-anchor-key={key} data-chat-flow-key={key}>
-											<div
-												class={"msg-user" + (isEditing() ? " msg-user-editing" : "") + (controller.locateFlashId() === e.id ? " locate-flash" : "")}
-												id={"entry-" + e.id}
-												contenteditable={isEditing() ? "plaintext-only" : undefined}
-												role={isEditing() ? "textbox" : undefined}
-												aria-multiline={isEditing() ? true : undefined}
-												ref={(el) => {
-													if (el) userEditEls.set(key, el as HTMLDivElement);
-												}}
-												onInput={(ev) => {
-													if (!isEditing()) return;
-													setEditDraft((ev.currentTarget as HTMLElement).innerText ?? "");
-												}}
-												onKeyDown={(ev) => {
-													if (!isEditing()) return;
-													if (ev.key === "Escape") cancelEdit();
-													if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing) {
-														ev.preventDefault();
-														void saveEdit();
-													}
-												}}
-											>
-												{e.text}
-											</div>
-											<span class="msg-user-meta">
-												{isEditing() ? (
-													<span class="msg-user-edit-hint">{editSaving() ? "resending…" : "enter save · esc cancel"}</span>
-												) : (
-													<>
-														<span class="msg-user-time">{formatHistoryTime(e.time)}</span>
-														{key === editableUserKey() && !props.working() && (
-															<button type="button" class="msg-user-edit-link" title="Edit message" aria-label="Edit message" onClick={() => startEdit(key, e.text)}>
-																<Pencil size={12} />
-															</button>
-														)}
-													</>
-												)}
-											</span>
-											<Show when={isEditing() && editError()}>
-												<p class="msg-user-edit-error">{editError()}</p>
-											</Show>
-										</div>
-									);
-								}
-								if (e.kind === "sys") {
-									if (e.error) {
-										return (
-											<div class="sys-error" data-chat-anchor-key={key} data-chat-flow-key={key}>
-												<span class="sys-error-tag">ERR</span>
-												<span class="sys-error-text">{e.text}</span>
-											</div>
-										);
-									}
-									if (e.aborted) {
-										return (
-											<div class="sys-stopped" data-chat-anchor-key={key} data-chat-flow-key={key}>
-												<CircleStop size={12} />
-												<span>{e.text}</span>
-											</div>
-										);
-									}
-									return (
-										<div class="sys" data-chat-anchor-key={key} data-chat-flow-key={key}>
-											{e.text}
-										</div>
-									);
-								}
-								if ((e.kind === "command" || e.kind === "skill" || e.kind === "shell") && (e.command ?? e.skill)) {
-									const info = e.kind === "skill" ? e.skill! : e.command!;
-									const args = info.args;
-									const output = info.text;
-									const foldable = e.kind === "command" ? !!args : e.kind === "shell" ? !!output : false;
-									const rowKey = e.key ?? String(e.id);
-									const isOpen = () => (e.kind === "shell" ? !collapsedShells().has(rowKey) : expandedCommand() === rowKey);
-									const onRowClick = () => {
-										if (hasTextSelection()) return;
-										if (e.kind === "shell") toggleShellOutput(rowKey);
-										else setExpandedCommand(isOpen() ? null : rowKey);
-									};
-									return (
-										<div
-											class={
-												"msg-command" +
-												(info.status === "success" ? " ok" : "") +
-												(info.status === "error" ? " is-error" : "") +
-												(e.kind === "skill" ? " is-skill" : "") +
-												(e.kind === "shell" ? " is-shell" : "")
-											}
-											id={"entry-" + e.id}
-											data-chat-anchor-key={key}
-											data-chat-flow-key={key}
-											onClick={e.kind === "skill" ? () => void inspectSkill(info.name) : undefined}
-											role={e.kind === "skill" ? "button" : undefined}
-										>
-											<div
-												class={"msg-command-head" + (foldable ? " is-foldable" : "")}
-												onClick={foldable ? onRowClick : undefined}
-												role={foldable ? "button" : undefined}
-												aria-expanded={foldable ? isOpen() : undefined}
-											>
-												{e.kind === "skill" ? (
-													<span class="msg-command-badge">skill</span>
-												) : e.kind === "shell" ? (
-													<span class="msg-command-badge">shell</span>
-												) : e.kind === "command" ? (
-													<span class="msg-command-badge">command</span>
-												) : null}
-												<span class="msg-command-name">{info.name}</span>
-												<span class={"msg-command-status " + info.status}>
-													{info.status === "success" ? <Check size={12} /> : null}
-													{info.status === "error" ? "error" : null}
-													{info.status === "interrupted" ? "interrupted" : null}
-													{info.status === "running" ? (
-														<span class="msg-command-running">
-															<span class="work-dot" />
-															<span class="work-dot" />
-															<span class="work-dot" />
-														</span>
-													) : null}
-												</span>
-											</div>
-											{e.kind === "skill" ? (
-												args ? (
-													<div class="msg-command-args">{args}</div>
-												) : null
-											) : e.kind === "shell" ? (
-												isOpen() && output ? (
-													<div class="msg-command-args is-shell-out">{output}</div>
-												) : null
-											) : info.status === "error" && output ? (
-												<div class="msg-command-args is-command-error">{output}</div>
-											) : isOpen() && args ? (
-												<div class="msg-command-args">{args}</div>
-											) : null}
+										<div class="msg-escalation" id={"entry-" + card.id} data-chat-anchor-key={key}>
+											{escalationBody(card.escalation, props.onEscalationRespond)}
 										</div>
 									);
 								}
 								return (
-									<div class="time-sep" data-chat-anchor-key={key} data-chat-flow-key={key}>
+									<Motion
+										as="div"
+										class={"msg-letter" + (scroll.locateFlashId() === card.id ? " locate-flash" : "") + (props.activeBtwAnchor === key ? " btw-active" : "")}
+										id={"entry-" + card.id}
+										data-chat-anchor-key={key}
+										initial={{ opacity: 0, scale: 0.96, rotate: 0.4 }}
+										animate={{ opacity: 1, scale: 1, rotate: 0 }}
+										transition={{ duration: 0.24, ease: [0.23, 1, 0.32, 1] }}
+									>
+										{letterBody(
+											card,
+											props.worker,
+											true,
+											true,
+											props.onBtw,
+											props.activeBtwAnchor === key,
+											true,
+											props.onBtwClose,
+											!!props.activeBtwAnchor && props.activeBtwAnchor !== key,
+										)}
+									</Motion>
+								);
+							}
+							return (
+								<MessageStack
+									cards={block}
+									anchorKey={key}
+									worker={props.worker}
+									locateFlashId={scroll.locateFlashId}
+									onEscalationRespond={props.onEscalationRespond}
+									onBtw={props.onBtw}
+									onBtwClose={props.onBtwClose}
+									activeBtwAnchor={props.activeBtwAnchor}
+								/>
+							);
+						}
+						const e = block;
+						const key = blockKey(block);
+						if (e.kind === "user") {
+							const isEditing = () => editingUserKey() === key;
+							return (
+								<div class="msg-user-row group" data-chat-anchor-key={key}>
+									<div
+										class={"msg-user" + (isEditing() ? " msg-user-editing" : "") + (scroll.locateFlashId() === e.id ? " locate-flash" : "")}
+										id={"entry-" + e.id}
+										contenteditable={isEditing() ? "plaintext-only" : undefined}
+										role={isEditing() ? "textbox" : undefined}
+										aria-multiline={isEditing() ? true : undefined}
+										ref={(el) => {
+											if (el) userEditEls.set(key, el as HTMLDivElement);
+										}}
+										onInput={(ev) => {
+											if (!isEditing()) return;
+											setEditDraft((ev.currentTarget as HTMLElement).innerText ?? "");
+										}}
+										onKeyDown={(ev) => {
+											if (!isEditing()) return;
+											if (ev.key === "Escape") cancelEdit();
+											if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing) {
+												ev.preventDefault();
+												void saveEdit();
+											}
+										}}
+									>
 										{e.text}
 									</div>
-								);
-							}}
-						</For>
-
-						<AnimatePresence>
-							{props.working() && (
-								<Motion
-									as="div"
-									class="msg-letter msg-speaking"
-									initial={{ opacity: 0, scale: 0.97 }}
-									animate={{ opacity: 1, scale: 1 }}
-									exit={{ opacity: 0 }}
-									transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
-								>
-									<div class="msg-speaking-dots">
-										<span class="work-dot" />
-										<span class="work-dot" />
-										<span class="work-dot" />
+									<span class="msg-user-meta">
+										{isEditing() ? (
+											<span class="msg-user-edit-hint">{editSaving() ? "resending…" : "enter save · esc cancel"}</span>
+										) : (
+											<>
+												<span class="msg-user-time">{formatHistoryTime(e.time)}</span>
+												{key === editableUserKey() && !props.working() && (
+													<button type="button" class="msg-user-edit-link" title="Edit message" aria-label="Edit message" onClick={() => startEdit(key, e.text)}>
+														<Pencil size={12} />
+													</button>
+												)}
+											</>
+										)}
+									</span>
+									<Show when={isEditing() && editError()}>
+										<p class="msg-user-edit-error">{editError()}</p>
+									</Show>
+								</div>
+							);
+						}
+						if (e.kind === "sys") {
+							if (e.error) {
+								return (
+									<div class="sys-error" data-chat-anchor-key={key}>
+										<span class="sys-error-tag">ERR</span>
+										<span class="sys-error-text">{e.text}</span>
 									</div>
-									{props.worker && <div class="msg-sign">— {props.worker} is writing…</div>}
-								</Motion>
-							)}
-						</AnimatePresence>
-
-						<Show when={props.activeBtwAnchor && props.worker}>
-							<div class="btw-cell">
-								<BtwPanel name={props.worker!} anchorEntryId={props.activeBtwAnchor!} onClose={() => props.onBtwClose?.()} />
+								);
+							}
+							if (e.aborted) {
+								return (
+									<div class="sys-stopped" data-chat-anchor-key={key}>
+										<CircleStop size={12} />
+										<span>{e.text}</span>
+									</div>
+								);
+							}
+							return (
+								<div class="sys" data-chat-anchor-key={key}>
+									{e.text}
+								</div>
+							);
+						}
+						if ((e.kind === "command" || e.kind === "skill" || e.kind === "shell") && (e.command ?? e.skill)) {
+							const info = e.kind === "skill" ? e.skill! : e.command!;
+							const args = info.args;
+							const output = info.text;
+							const foldable = e.kind === "command" ? !!args : e.kind === "shell" ? !!output : false;
+							const rowKey = e.key ?? String(e.id);
+							const isOpen = () => (e.kind === "shell" ? !collapsedShells().has(rowKey) : expandedCommand() === rowKey);
+							const onRowClick = () => {
+								if (hasTextSelection()) return;
+								if (e.kind === "shell") toggleShellOutput(rowKey);
+								else setExpandedCommand(isOpen() ? null : rowKey);
+							};
+							return (
+								<div
+									class={
+										"msg-command" +
+										(info.status === "success" ? " ok" : "") +
+										(info.status === "error" ? " is-error" : "") +
+										(e.kind === "skill" ? " is-skill" : "") +
+										(e.kind === "shell" ? " is-shell" : "")
+									}
+									id={"entry-" + e.id}
+									data-chat-anchor-key={key}
+									onClick={e.kind === "skill" ? () => void inspectSkill(info.name) : undefined}
+									role={e.kind === "skill" ? "button" : undefined}
+								>
+									<div
+										class={"msg-command-head" + (foldable ? " is-foldable" : "")}
+										onClick={foldable ? onRowClick : undefined}
+										role={foldable ? "button" : undefined}
+										aria-expanded={foldable ? isOpen() : undefined}
+									>
+										{e.kind === "skill" ? (
+											<span class="msg-command-badge">skill</span>
+										) : e.kind === "shell" ? (
+											<span class="msg-command-badge">shell</span>
+										) : e.kind === "command" ? (
+											<span class="msg-command-badge">command</span>
+										) : null}
+										<span class="msg-command-name">{info.name}</span>
+										<span class={"msg-command-status " + info.status}>
+											{info.status === "success" ? <Check size={12} /> : null}
+											{info.status === "error" ? "error" : null}
+											{info.status === "interrupted" ? "interrupted" : null}
+											{info.status === "running" ? (
+												<span class="msg-command-running">
+													<span class="work-dot" />
+													<span class="work-dot" />
+													<span class="work-dot" />
+												</span>
+											) : null}
+										</span>
+									</div>
+									{e.kind === "skill" ? (
+										args ? (
+											<div class="msg-command-args">{args}</div>
+										) : null
+									) : e.kind === "shell" ? (
+										isOpen() && output ? (
+											<div class="msg-command-args is-shell-out">{output}</div>
+										) : null
+									) : info.status === "error" && output ? (
+										<div class="msg-command-args is-command-error">{output}</div>
+									) : isOpen() && args ? (
+										<div class="msg-command-args">{args}</div>
+									) : null}
+								</div>
+							);
+						}
+						return (
+							<div class="time-sep" data-chat-anchor-key={key}>
+								{e.text}
 							</div>
-						</Show>
-					</div>
-				</section>
+						);
+					}}
+				</For>
 
-				<Show when={controller.showBackToBottom()}>
-					<button class="back-to-bottom" title="Back to latest" onClick={() => controller.scrollToBottom(true)}>
-						↓ latest
-					</button>
+				<AnimatePresence>
+					{props.working() && (
+						<Motion
+							as="div"
+							class="msg-letter msg-speaking"
+							initial={{ opacity: 0, scale: 0.97 }}
+							animate={{ opacity: 1, scale: 1 }}
+							exit={{ opacity: 0 }}
+							transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
+						>
+							<div class="msg-speaking-dots">
+								<span class="work-dot" />
+								<span class="work-dot" />
+								<span class="work-dot" />
+							</div>
+							{props.worker && <div class="msg-sign">— {props.worker} is writing…</div>}
+						</Motion>
+					)}
+				</AnimatePresence>
+
+				<Show when={props.activeBtwAnchor && props.worker}>
+					<div class="btw-cell">
+						<BtwPanel name={props.worker!} anchorEntryId={props.activeBtwAnchor!} onClose={() => props.onBtwClose?.()} />
+					</div>
 				</Show>
-			</div>
+			</ScrollRegion>
 			<Dialog open={skillDialog() != null} onOpenChange={(open) => !open && setSkillDialog(null)}>
 				<DialogContent class="w-[560px] max-w-[560px] bg-paper p-0 gap-0">
 					<DialogTitle class="sr-only">{skillDialog()?.name ?? ""}</DialogTitle>

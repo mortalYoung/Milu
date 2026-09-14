@@ -1,4 +1,4 @@
-import { type Accessor, createEffect, createMemo, createSignal, onCleanup } from "solid-js";
+import { type Accessor, createMemo } from "solid-js";
 import { projectView } from "../../shared/entry-meta";
 import type { ViewItem } from "../../shared/rpc";
 import {
@@ -13,19 +13,10 @@ import {
 	makeUserEntry,
 } from "../layouts/Transcript";
 import { useSession } from "./contexts/session-context";
-import { classifyReader, compensatedTop, distanceToBottom, floorTop, flowTop, isAtBottom, type ScrollAnchor } from "./scroll-anchor";
 
 export interface TranscriptController {
 	view: Accessor<Entry[]>;
 	blocks: Accessor<(Entry | Entry[])[]>;
-	showBackToBottom: Accessor<boolean>;
-	locateFlashId: Accessor<number | null>;
-	scrollToBottom: (force?: boolean) => void;
-	locate: (id: number) => void;
-	persistAnchor: () => void;
-	reset: () => void;
-	setContainer: (el: HTMLElement) => void;
-	detach: () => void;
 }
 
 const WEEKDAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
@@ -176,15 +167,6 @@ function reconcileBlocks(prev: ChatBlock[], fresh: ChatBlock[]): ChatBlock[] {
 
 export function createTranscript(): TranscriptController {
 	const { data } = useSession();
-	const [showBackToBottom, setShowBackToBottom] = createSignal(false);
-	const [locateFlashId, setLocateFlashId] = createSignal<number | null>(null);
-	const [container, setContainer] = createSignal<HTMLElement | null>(null);
-
-	let observedTop = 0;
-	let atBottom = true;
-	let anchor: ScrollAnchor | null = null;
-	let pinRaf: number | null = null;
-	let flashTimer: ReturnType<typeof setTimeout> | undefined;
 
 	const view = createMemo<Entry[]>((prev) => {
 		const next = buildView(projectView(data.origin.entries, { baseDir: data.origin.baseDir }));
@@ -193,121 +175,5 @@ export function createTranscript(): TranscriptController {
 
 	const blocks = createMemo<ChatBlock[]>((prev) => reconcileBlocks(prev, groupView(view())), []);
 
-	const writeScrollTop = (el: HTMLElement, top: number) => {
-		el.scrollTop = top;
-		observedTop = el.scrollTop;
-	};
-
-	const pinToBottom = (force = false) => {
-		if (pinRaf != null) cancelAnimationFrame(pinRaf);
-		pinRaf = requestAnimationFrame(() => {
-			pinRaf = null;
-			const el = container();
-			if (!el) return;
-			if (!force && !atBottom) return;
-			writeScrollTop(el, el.scrollHeight);
-			atBottom = true;
-			anchor = null;
-			setShowBackToBottom(false);
-		});
-	};
-
-	const pickAnchorRow = (el: HTMLElement): HTMLElement | null => {
-		const rect = el.getBoundingClientRect();
-		if (typeof document.elementsFromPoint === "function") {
-			const x = rect.left + rect.width / 2;
-			const y = rect.top + 1;
-			for (const node of document.elementsFromPoint(x, y)) {
-				const row = (node as HTMLElement).closest?.("[data-chat-anchor-key]");
-				if (row && el.contains(row)) return row as HTMLElement;
-			}
-		}
-		for (const row of Array.from(el.querySelectorAll<HTMLElement>("[data-chat-flow-key]"))) {
-			if (row.getBoundingClientRect().bottom > rect.top) return row;
-		}
-		return null;
-	};
-
-	const compensateAnchor = () => {
-		if (!anchor) return;
-		const el = container();
-		if (!el) return;
-		const row = el.querySelector<HTMLElement>(`[data-chat-anchor-key="${CSS.escape(anchor.key)}"]`);
-		if (!row) return;
-		writeScrollTop(el, compensatedTop(anchor, row.getBoundingClientRect().top, el.getBoundingClientRect().top));
-	};
-
-	const persistAnchor = () => requestAnimationFrame(compensateAnchor);
-
-	const detach = () => {
-		setContainer(null);
-	};
-
-	createEffect(() => {
-		const el = container();
-		if (!el) return;
-		const body = el.firstElementChild as HTMLElement | null;
-		if (!body) return;
-
-		const onScroll = () => {
-			const floor = floorTop(el.scrollHeight, el.clientHeight);
-			const movedByReader = classifyReader(el.scrollTop, observedTop, floor);
-			if (!movedByReader) return;
-			const dist = distanceToBottom(el.scrollHeight, el.scrollTop, el.clientHeight);
-			atBottom = isAtBottom(dist);
-			if (atBottom) {
-				anchor = null;
-				setShowBackToBottom(false);
-			} else {
-				const row = pickAnchorRow(el);
-				if (row?.dataset["chatAnchorKey"]) {
-					anchor = {
-						key: row.dataset["chatAnchorKey"],
-						anchorTop: flowTop(row.getBoundingClientRect().top, el.getBoundingClientRect().top),
-						scrollTop: el.scrollTop,
-					};
-				}
-				setShowBackToBottom(true);
-			}
-		};
-		el.addEventListener("scroll", onScroll, { passive: true });
-		const ro = new ResizeObserver(() => {
-			if (atBottom) pinToBottom(false);
-		});
-		ro.observe(body);
-		onCleanup(() => {
-			el.removeEventListener("scroll", onScroll);
-			ro.disconnect();
-		});
-	});
-
-	createEffect(() => {
-		const all = blocks();
-		if (all.length === 0) return;
-		if (atBottom) pinToBottom(false);
-	});
-
-	return {
-		view,
-		blocks,
-		showBackToBottom,
-		locateFlashId,
-		scrollToBottom: pinToBottom,
-		reset: () => {
-			setShowBackToBottom(false);
-			anchor = null;
-			atBottom = true;
-		},
-		locate: (id: number) => {
-			const ele = document.getElementById("entry-" + id);
-			if (!ele) return;
-			ele.scrollIntoView({ behavior: "smooth", block: "center" });
-			setLocateFlashId(id);
-			clearTimeout(flashTimer);
-			flashTimer = setTimeout(() => setLocateFlashId(null), 1200);
-		},
-		persistAnchor,
-		setContainer: setContainer,
-		detach,
-	};
+	return { view, blocks };
 }

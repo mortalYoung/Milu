@@ -57,16 +57,6 @@ export function ConversationPage(props: {
 
 	const hasConversation = () => props.selected != null && transcript.view().length > 0;
 	const dockSide = () => settings.data()?.settings?.dockSide ?? "right";
-	const preserveTranscriptScroll = (toggle: () => void) => {
-		const el = document.getElementById("transcript");
-		const prev = el?.scrollTop;
-		toggle();
-		if (el && prev != null) {
-			requestAnimationFrame(() => {
-				el.scrollTop = prev;
-			});
-		}
-	};
 	createEffect(() => {
 		if (!hasConversation()) {
 			props.dock.close();
@@ -116,17 +106,13 @@ export function ConversationPage(props: {
 									worker={props.selected}
 									onEscalationRespond={props.onEscalationRespond}
 									onBtw={(anchor) => {
-										preserveTranscriptScroll(() => {
-											setBtwAnchor(anchor);
-											setBtwOpen(true);
-										});
+										setBtwAnchor(anchor);
+										setBtwOpen(true);
 									}}
-									onBtwClose={() =>
-										preserveTranscriptScroll(() => {
-											setBtwAnchor(null);
-											setBtwOpen(false);
-										})
-									}
+									onBtwClose={() => {
+										setBtwAnchor(null);
+										setBtwOpen(false);
+									}}
 									activeBtwAnchor={btwOpen() ? btwAnchor() : null}
 								/>
 								<ExplorerDrawer open={panel() === "explorer"} partner={props.selected} reveal={props.dock.reveal()} side={dockSide()} onClose={() => props.dock.close()} />

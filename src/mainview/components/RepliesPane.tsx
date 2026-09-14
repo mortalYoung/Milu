@@ -1,5 +1,6 @@
 import { createEffect, createMemo, createSignal, For } from "solid-js";
 import { type Entry, formatHistoryTime } from "../layouts/Transcript";
+import { useScroll } from "../lib/contexts/scroll-context";
 import { useTranscript } from "../lib/contexts/transcript-context";
 
 interface ReplyRow {
@@ -18,6 +19,7 @@ const outlineLabel = (text: string) => {
 
 export function RepliesPane(props: { open: boolean }) {
 	const transcript = useTranscript();
+	const scroll = useScroll();
 	const rows = createMemo<ReplyRow[]>(() => {
 		const out: ReplyRow[] = [];
 		let lastQuestion = "";
@@ -58,7 +60,7 @@ export function RepliesPane(props: { open: boolean }) {
 
 	const locate = (row: ReplyRow) => {
 		setActiveReply(row.entry.id);
-		transcript.locate(row.entry.id);
+		scroll.locate(row.entry.id);
 	};
 
 	return (
