@@ -319,7 +319,20 @@ export function Transcript(props: {
 	const session = useSession();
 	const skillDirectory = useSkills();
 	onCleanup(() => controller.detach());
-	const [expandedCommand, setExpandedCommand] = createSignal<number | null>(null);
+	const [expandedCommand, setExpandedCommand] = createSignal<string | null>(null);
+	const [collapsedShells, setCollapsedShells] = createSignal<Set<string>>(new Set());
+	function toggleShellOutput(key: string) {
+		setCollapsedShells((prev) => {
+			const next = new Set(prev);
+			if (next.has(key)) next.delete(key);
+			else next.add(key);
+			return next;
+		});
+	}
+	function hasTextSelection(): boolean {
+		const selection = window.getSelection();
+		return selection != null && !selection.isCollapsed;
+	}
 	const [skillDialog, setSkillDialog] = createSignal<{ name: string; content: string } | null>(null);
 	async function inspectSkill(name: string) {
 		const res = await skillDirectory.mutate.inspect(name);
@@ -583,29 +596,35 @@ export function Transcript(props: {
 									const info = e.kind === "skill" ? e.skill! : e.command!;
 									const args = info.args;
 									const output = info.text;
-									const expandable = e.kind === "command" ? !!args : false;
-									const expanded = expandedCommand() === e.id;
+									const foldable = e.kind === "command" ? !!args : e.kind === "shell" ? !!output : false;
+									const rowKey = e.key ?? String(e.id);
+									const isOpen = () => (e.kind === "shell" ? !collapsedShells().has(rowKey) : expandedCommand() === rowKey);
+									const onRowClick = () => {
+										if (hasTextSelection()) return;
+										if (e.kind === "shell") toggleShellOutput(rowKey);
+										else setExpandedCommand(isOpen() ? null : rowKey);
+									};
 									return (
 										<div
 											class={
 												"msg-command" +
 												(info.status === "success" ? " ok" : "") +
 												(info.status === "error" ? " is-error" : "") +
-												(expandable ? " has-args" : "") +
-												(expanded ? " expanded" : "") +
 												(e.kind === "skill" ? " is-skill" : "") +
 												(e.kind === "shell" ? " is-shell" : "")
 											}
 											id={"entry-" + e.id}
 											data-chat-anchor-key={key}
 											data-chat-flow-key={key}
-											onClick={
-												e.kind === "skill" ? () => void inspectSkill(info.name) : e.kind === "command" && expandable ? () => setExpandedCommand(expanded ? null : e.id) : undefined
-											}
-											role={e.kind === "skill" || (e.kind === "command" && expandable) ? "button" : undefined}
-											aria-expanded={e.kind === "skill" ? undefined : e.kind === "command" && expandable ? expanded : undefined}
+											onClick={e.kind === "skill" ? () => void inspectSkill(info.name) : undefined}
+											role={e.kind === "skill" ? "button" : undefined}
 										>
-											<div class="msg-command-head">
+											<div
+												class={"msg-command-head" + (foldable ? " is-foldable" : "")}
+												onClick={foldable ? onRowClick : undefined}
+												role={foldable ? "button" : undefined}
+												aria-expanded={foldable ? isOpen() : undefined}
+											>
 												{e.kind === "skill" ? (
 													<span class="msg-command-badge">skill</span>
 												) : e.kind === "shell" ? (
@@ -632,12 +651,12 @@ export function Transcript(props: {
 													<div class="msg-command-args">{args}</div>
 												) : null
 											) : e.kind === "shell" ? (
-												output ? (
+												isOpen() && output ? (
 													<div class="msg-command-args is-shell-out">{output}</div>
 												) : null
 											) : info.status === "error" && output ? (
 												<div class="msg-command-args is-command-error">{output}</div>
-											) : expanded && args ? (
+											) : isOpen() && args ? (
 												<div class="msg-command-args">{args}</div>
 											) : null}
 										</div>

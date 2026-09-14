@@ -1069,7 +1069,7 @@ body::before {
 	.msg-command {
 		@apply self-end mt-6 max-w-full cursor-default rounded-[10px] border border-hairline bg-paper-hover px-[15px] py-[10px] font-mono text-[13px] leading-[1.5] text-ink transition-colors;
 	}
-	.msg-command.has-args {
+	.msg-command-head.is-foldable {
 		@apply cursor-pointer;
 	}
 	.msg-command:hover {
