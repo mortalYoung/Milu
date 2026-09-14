@@ -4,7 +4,7 @@
  * texts are byte-identical to what the model has always seen; each carries a code.
  */
 import { basename } from "node:path";
-import { isInside } from "./roots";
+import { gitRoots, isInside, isInsideAny } from "./roots";
 import type { PermissionCode, PermissionDecision, PermissionPolicy } from "./types";
 
 /** Sensitive filenames: never readable/writable outside the storage path. */
@@ -38,7 +38,7 @@ export function checkPath(target: string, op: "read" | "write", policy: Permissi
 	if (isSensitiveName(basename(target))) return deny("sensitive_file", "Sensitive file access is not allowed (except inside the storage path)");
 	if (op === "write") {
 		const workspace = policy.workspace ?? policy.storage;
-		if (workspace && !isInside(target, workspace)) {
+		if (workspace && !isInside(target, workspace) && !isInsideAny(target, gitRoots(policy.workspace))) {
 			return deny("outside_workspace", policy.workspace ? "Path is outside the working directory and the storage path" : "Path is outside the storage path");
 		}
 		if (sandboxMounted && policy.mode === "read-only") return deny("read_only_write", "[sandbox: write denied under read-only mode]");
