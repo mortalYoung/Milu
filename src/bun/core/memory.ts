@@ -3,7 +3,7 @@ import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { AgentMessage, Entry } from "@earendil-works/pi-agent-core";
 import { Agent, type AgentTool } from "@earendil-works/pi-agent-core";
-import { type Model, Type } from "@earendil-works/pi-ai";
+import { type Model, type Static, Type } from "@earendil-works/pi-ai";
 import { projectSlice } from "../../shared/entry-meta";
 import type { MemoryRunUsage, MemoryTrajectoryAttemptView, MemoryTrajectoryMessageView } from "../../shared/rpc";
 import { EVENTS, type MemoryRunEndEventData, type MemoryRunEndReason, type MemoryRunStage, type MemoryRunStartEventData, type MemoryRunTraceEvent } from "../persist/events";
@@ -269,10 +269,30 @@ export function memoryCoveredIndex(lines: MemoryLine[], entries: Entry[]): numbe
 
 export interface QueryMemoryOptions {
 	query?: string;
-	regex?: boolean;
 	kinds?: MemoryKind[];
 	limit?: number;
 	includeSuperseded?: boolean;
+}
+
+/**
+ * A query matches in two passes and the scores add: every separator-delimited term as a case-insensitive
+ * substring, and the untouched query as a regex. A record matching more terms — or the whole phrase —
+ * therefore ranks above one matching a single term, and one record is still one result.
+ */
+const QUERY_SEPARATORS = /[\s|,，、;；/／｜]+/;
+
+function compileQuery(query: string): (text: string) => number {
+	const terms = query
+		.split(QUERY_SEPARATORS)
+		.filter((term) => term !== "")
+		.map((term) => term.toLowerCase());
+	const phrase = safeRegex(query, "gi");
+	return (text) => {
+		let hits = 0;
+		for (const term of terms) hits += countOccurrences(text, term);
+		if (phrase !== null) hits += (text.match(phrase) ?? []).filter((hit) => hit !== "").length;
+		return hits;
+	};
 }
 
 export function queryMemory(lines: MemoryLine[], opts: QueryMemoryOptions = {}): MemoryRecord[] {
@@ -287,24 +307,17 @@ export function queryMemory(lines: MemoryLine[], opts: QueryMemoryOptions = {}):
 		}
 	}
 	const query = opts.query?.trim();
-	const re = query && opts.regex ? safeRegex(query) : null;
-	const needle = query && !opts.regex ? query.toLowerCase() : null;
+	const hits = query ? compileQuery(query) : null;
 	const matched: Array<{ record: MemoryRecord; score: number }> = [];
 	for (const line of lines) {
 		if (line.kind === "checkpoint") continue;
 		if (!opts.includeSuperseded && superseded.has(line.id)) continue;
 		if (opts.kinds?.length && !opts.kinds.includes(line.kind)) continue;
-		const summary = line.data.summary;
-		const detail = line.data.detail ?? "";
-		const text = `${summary}\n${detail}`;
-		if (needle && !text.toLowerCase().includes(needle)) continue;
-		if (re && !re.test(text)) continue;
-		let score = 0;
-		if (needle) score = countOccurrences(summary, needle) * 3 + countOccurrences(detail, needle);
-		else if (re) score = (re.test(summary) ? 3 : 0) + (re.test(detail) ? 1 : 0);
+		const score = hits === null ? 0 : hits(line.data.summary) * 3 + hits(line.data.detail ?? "");
+		if (hits !== null && score === 0) continue;
 		matched.push({ record: line, score });
 	}
-	if (needle || re) matched.sort((a, b) => b.score - a.score || b.record.createdAt - a.record.createdAt);
+	if (hits !== null) matched.sort((a, b) => b.score - a.score || b.record.createdAt - a.record.createdAt);
 	else matched.sort((a, b) => b.record.createdAt - a.record.createdAt);
 	return matched.slice(0, limit).map((m) => m.record);
 }
@@ -321,9 +334,9 @@ function countOccurrences(text: string, lowerNeedle: string): number {
 	}
 }
 
-function safeRegex(source: string): RegExp | null {
+function safeRegex(source: string, flags = "i"): RegExp | null {
 	try {
-		return new RegExp(source, "i");
+		return new RegExp(source, flags);
 	} catch {
 		return null;
 	}
@@ -373,15 +386,19 @@ const memoryKindSchema = Type.Union([
 	Type.Literal("instruction"),
 ]);
 
+/** The query half of the tool, shared by the read-only profile and the read/write one. */
+const memoryQueryFields = {
+	query: Type.Optional(Type.String({ description: "read: keywords matched against memory text, split on spaces, `|`, `,`, `/`; the whole query is also matched as a regex" })),
+	kinds: Type.Optional(Type.Array(memoryKindSchema, { description: "read: only return these kinds" })),
+	limit: Type.Optional(Type.Integer({ description: "read: maximum memories to return (default 20)" })),
+	includeSuperseded: Type.Optional(Type.Boolean({ description: "read: include memories that have been superseded (default false)" })),
+};
+
 export const memorySchema = Type.Object({
 	op: Type.Union([Type.Literal("read"), Type.Literal("write")], {
 		description: "read: search this partner's durable memories; write: append one new durable memory record",
 	}),
-	query: Type.Optional(Type.String({ description: "read: keyword or regex pattern to match against memory text" })),
-	regex: Type.Optional(Type.Boolean({ description: "read: treat query as a regular expression (default false)" })),
-	kinds: Type.Optional(Type.Array(memoryKindSchema, { description: "read: only return these kinds" })),
-	limit: Type.Optional(Type.Integer({ description: "read: maximum memories to return (default 20)" })),
-	includeSuperseded: Type.Optional(Type.Boolean({ description: "read: include memories that have been superseded (default false)" })),
+	...memoryQueryFields,
 	kind: Type.Optional(memoryKindSchema),
 	summary: Type.Optional(Type.String({ description: "write: short durable memory statement" })),
 	detail: Type.Optional(Type.String({ description: "write: optional supporting detail" })),
@@ -398,6 +415,15 @@ export const memorySchema = Type.Object({
 	scene: Type.Optional(Type.String({ description: "write: short theme name for grouping related memories (reuse across sessions)" })),
 	remember: Type.Optional(Type.Boolean({ description: "write: set true only when the user explicitly asks to remember this long-term" })),
 });
+
+/** What a tool without a write path exposes: the query half, and no `op` to pick between two of them. */
+const memoryQuerySchema = Type.Object(memoryQueryFields);
+
+type MemoryToolParams = Static<typeof memorySchema> | Static<typeof memoryQuerySchema>;
+
+function isWriteCall(params: MemoryToolParams): params is Static<typeof memorySchema> {
+	return "op" in params && params.op === "write";
+}
 
 const readRawSchema = Type.Object({
 	from: Type.String({ description: "Start reading from this raw id (inclusive); always pass the starting id from the prompt" }),
@@ -742,24 +768,24 @@ export interface MemoryToolOptions {
 export const RECALL_MAX_DETAIL_CHARS = 400;
 const RECALL_MAX_TOTAL_CHARS = 6000;
 
-export function createMemoryTool(opts: MemoryToolOptions): AgentTool<typeof memorySchema, { ok: boolean; error?: string }> {
+export function createMemoryTool(opts: MemoryToolOptions): AgentTool<typeof memorySchema | typeof memoryQuerySchema, { ok: boolean; error?: string }> {
+	const canWrite = opts.write !== undefined;
 	return {
 		name: "memory",
 		label: "Memory",
 		description:
 			opts.description ??
 			"Read or write this partner's durable memories. read: matches are ranked by relevance when a query is given, otherwise newest first; superseded entries are hidden unless includeSuperseded is true. write: append one record whose rawIds reference raw entries you have already read.",
-		parameters: memorySchema,
+		parameters: canWrite ? memorySchema : memoryQuerySchema,
 		executionMode: "sequential",
 		async execute(_toolCallId, params) {
 			const reject = (message: string) => ({ content: [{ type: "text" as const, text: `memory rejected: ${message}` }], details: { ok: false, error: message } });
 			const note = (text: string) => ({ content: [{ type: "text" as const, text }], details: { ok: true } });
 
-			if (params.op === "read") {
+			if (!isWriteCall(params)) {
 				if (!opts.read) return reject("read is not available");
 				const memories = await opts.read({
 					query: params.query,
-					regex: params.regex,
 					kinds: params.kinds,
 					limit: params.limit,
 					includeSuperseded: params.includeSuperseded,
@@ -767,7 +793,6 @@ export function createMemoryTool(opts: MemoryToolOptions): AgentTool<typeof memo
 				opts.pushTrace?.({
 					event: "read_memory",
 					...(params.query ? { query: params.query } : {}),
-					...(params.regex ? { regex: true } : {}),
 					returned: memories.length,
 				});
 				if (memories.length === 0) return note("No memories found.");

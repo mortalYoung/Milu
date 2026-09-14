@@ -179,7 +179,6 @@ export interface MemoryRunTraceEvent {
 	limit?: number;
 	returned?: number;
 	query?: string;
-	regex?: boolean;
 	kind?: string;
 	rawIds?: string[];
 	accepted?: boolean;
