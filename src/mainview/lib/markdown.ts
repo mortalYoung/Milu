@@ -91,10 +91,38 @@ const mdPlain = new MarkdownIt({ html: false, linkify: true });
 patchLinkTarget(mdPlain);
 patchFileMentions(mdPlain);
 
+/**
+ * shiki's per-line guards, wired to the `highlight` settings group. `tokenizeMaxLineLength` is in
+ * characters, not lines: anything longer is emitted as a plain token instead of being tokenized.
+ */
+export interface HighlightLimits {
+	tokenizeMaxLineLength: number;
+	tokenizeTimeLimit: number;
+}
+
+export const DEFAULT_HIGHLIGHT_LIMITS: HighlightLimits = { tokenizeMaxLineLength: 3000, tokenizeTimeLimit: 500 };
+
+/** shiki's markdown-it options omit the tokenize limits that `codeToHtml` accepts; the plugin
+ * spreads its options straight through per render, so they are declared here. */
+type ShikiPluginOptions = MarkdownItShikiSetupOptions & Partial<HighlightLimits>;
+
+let limits: HighlightLimits = { ...DEFAULT_HIGHLIGHT_LIMITS };
+/** The options the live markdown-it plugin holds by reference: the plugin spreads them per render,
+ * so mutating them is how a later `highlight` change reaches the next render. */
+let pluginOptions: ShikiPluginOptions | null = null;
+
 /** Cached singleton: markdown-it wired to the shiki highlighter. Built once, reused forever. */
 let mdShiki: MarkdownItType | null = null;
 let mdShikiPromise: Promise<MarkdownItType> | null = null;
 let highlighterPromise: Promise<HighlighterCore> | null = null;
+
+/** Apply the `highlight` settings. A no-op when the values are unchanged. */
+export function setHighlightLimits(next?: Partial<HighlightLimits> | null): void {
+	const merged = { ...DEFAULT_HIGHLIGHT_LIMITS, ...next };
+	if (merged.tokenizeMaxLineLength === limits.tokenizeMaxLineLength && merged.tokenizeTimeLimit === limits.tokenizeTimeLimit) return;
+	limits = merged;
+	if (pluginOptions) Object.assign(pluginOptions, merged);
+}
 
 /** Ensure links open in a new tab with noreferrer, like the old hand-rolled renderer. An external
  * http(s) link is dressed exactly like the one `code_inline` produces: the `md-inline-url` class
@@ -260,7 +288,7 @@ function getHighlighter(): Promise<HighlighterCore> {
 
 async function buildShikiMd(): Promise<MarkdownItType> {
 	const [{ fromHighlighter }, instance] = await Promise.all([import("@shikijs/markdown-it/core"), getHighlighter()]);
-	const plugin = fromHighlighter(instance, {
+	pluginOptions = {
 		themes: { light: "github-light", dark: "github-dark" },
 		// Token colors ride light-dark() pairs (see above); the surface comes from the app's
 		// print-tint token (style.css) instead of the themes' own backgrounds.
@@ -268,7 +296,9 @@ async function buildShikiMd(): Promise<MarkdownItType> {
 		defaultLanguage: TEXT_LANG,
 		// Unknown fence languages (```ruby etc.) degrade to plain text instead of throwing.
 		fallbackLanguage: TEXT_LANG,
-	});
+		...limits,
+	};
+	const plugin = fromHighlighter(instance, pluginOptions);
 	const md = new MarkdownIt({ html: false, linkify: true });
 	md.use(plugin);
 	patchLinkTarget(md);
@@ -344,6 +374,7 @@ export async function highlightCodeToLines(code: string, lang?: string | null): 
 		lang: lang ?? "text",
 		themes: { light: "github-light", dark: "github-dark" },
 		defaultColor: "light-dark()",
+		...limits,
 	});
 	return result.tokens.map((line) => ({
 		tokens: line.map((token) => ({ content: token.content, htmlStyle: token.htmlStyle })),
@@ -357,6 +388,7 @@ export async function highlightCode(code: string, lang?: string | null): Promise
 			lang: lang ?? "text",
 			themes: { light: "github-light", dark: "github-dark" },
 			defaultColor: "light-dark()",
+			...limits,
 		});
 	} catch {
 		return `<pre class="shiki" style="background-color:var(--color-print-tint)"><code>${escapeHtml(code)}</code></pre>`;

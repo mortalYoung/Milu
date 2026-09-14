@@ -38,6 +38,7 @@ export interface SettingsData {
 		prune?: { thresholdChars?: number; headChars?: number; tailChars?: number };
 	};
 	explorer?: { lineGap?: number };
+	highlight?: { tokenizeMaxLineLength?: number; tokenizeTimeLimit?: number };
 	palette?: { searchIgnoreDirs?: string[] };
 }
 
@@ -83,6 +84,8 @@ const DEFAULTS = {
 	memoryIdleMinutes: 5,
 	memoryMaxScenes: 15,
 	explorerLineGap: 0.2,
+	highlightMaxLineLength: 3000,
+	highlightTimeLimit: 500,
 };
 
 const EMPTY_CP = { id: "", name: "", baseUrl: "", models: [{ id: "", window: "" }], window: "", maxTokens: "" };
@@ -216,6 +219,8 @@ export function SettingsView() {
 	const [compactionDigestMaxItems, setCompactionDigestMaxItems] = createSignal("10");
 	const [compactionOverflowRetries, setCompactionOverflowRetries] = createSignal("1");
 	const [explorerLineGap, setExplorerLineGap] = createSignal("0.2");
+	const [highlightMaxLineLength, setHighlightMaxLineLength] = createSignal("3000");
+	const [highlightTimeLimit, setHighlightTimeLimit] = createSignal("500");
 	const [paletteIgnoreDirs, setPaletteIgnoreDirs] = createSignal("");
 	const [instructionsFile, setInstructionsFile] = createSignal("");
 	const [defaultSandboxMode, setDefaultSandboxMode] = createSignal<SandboxMode>("workspace-write");
@@ -250,6 +255,8 @@ export function SettingsView() {
 		if (s.compaction?.digestMaxItems !== undefined) setCompactionDigestMaxItems(String(s.compaction.digestMaxItems));
 		if (s.compaction?.maxOverflowRetries !== undefined) setCompactionOverflowRetries(String(s.compaction.maxOverflowRetries));
 		if (s.explorer?.lineGap !== undefined) setExplorerLineGap(String(s.explorer.lineGap));
+		if (s.highlight?.tokenizeMaxLineLength !== undefined) setHighlightMaxLineLength(String(s.highlight.tokenizeMaxLineLength));
+		if (s.highlight?.tokenizeTimeLimit !== undefined) setHighlightTimeLimit(String(s.highlight.tokenizeTimeLimit));
 	});
 	function updateSkillsDir(i: number, v: string) {
 		setSkillsDirs((prev) => prev.map((d, idx) => (idx === i ? v : d)));
@@ -323,6 +330,12 @@ export function SettingsView() {
 	}
 	if (initial && initial.explorer?.lineGap !== undefined && explorerLineGap() === "0.2") {
 		setExplorerLineGap(String(initial.explorer.lineGap));
+	}
+	if (initial && initial.highlight?.tokenizeMaxLineLength !== undefined && highlightMaxLineLength() === "3000") {
+		setHighlightMaxLineLength(String(initial.highlight.tokenizeMaxLineLength));
+	}
+	if (initial && initial.highlight?.tokenizeTimeLimit !== undefined && highlightTimeLimit() === "500") {
+		setHighlightTimeLimit(String(initial.highlight.tokenizeTimeLimit));
 	}
 	if (initial && initial.palette?.searchIgnoreDirs !== undefined && paletteIgnoreDirs() === "") {
 		setPaletteIgnoreDirs(initial.palette.searchIgnoreDirs.join(", "));
@@ -433,6 +446,10 @@ export function SettingsView() {
 			},
 			explorer: {
 				lineGap: Number(explorerLineGap()) || DEFAULTS.explorerLineGap,
+			},
+			highlight: {
+				tokenizeMaxLineLength: parsePositiveInt(highlightMaxLineLength(), DEFAULTS.highlightMaxLineLength),
+				tokenizeTimeLimit: parsePositiveInt(highlightTimeLimit(), DEFAULTS.highlightTimeLimit),
 			},
 			...(parseIgnoreDirs().length > 0 ? { palette: { searchIgnoreDirs: parseIgnoreDirs() } } : {}),
 		};
@@ -1398,6 +1415,64 @@ export function SettingsView() {
 							const saved = settingsData()?.explorer?.lineGap ?? DEFAULTS.explorerLineGap;
 							if (next === saved) return;
 							void persist({ ...currentSettings(), explorer: { lineGap: next } });
+						}}
+						onKeyDown={(e) => {
+							if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
+						}}
+					/>
+				</TextField>
+			),
+		},
+		{
+			id: "highlightMaxLineLength",
+			title: "Highlight line length limit",
+			desc: "Code lines longer than this many characters are shown unhighlighted; 0 lifts the limit.",
+			cats: ["general"],
+			modified: () => parsePositiveInt(highlightMaxLineLength(), DEFAULTS.highlightMaxLineLength) !== DEFAULTS.highlightMaxLineLength,
+			control: () => (
+				<TextField class="h-[32px] w-[110px] shrink-0 gap-0" value={highlightMaxLineLength()} onChange={setHighlightMaxLineLength}>
+					<TextFieldInput
+						type="number"
+						min={0}
+						step={500}
+						variant="compact"
+						title="Highlight line length limit (characters)"
+						aria-label="Highlight line length limit (characters)"
+						onBlur={() => {
+							const next = parsePositiveInt(highlightMaxLineLength(), DEFAULTS.highlightMaxLineLength);
+							setHighlightMaxLineLength(String(next));
+							const saved = settingsData()?.highlight?.tokenizeMaxLineLength ?? DEFAULTS.highlightMaxLineLength;
+							if (next === saved) return;
+							void persist(currentSettings());
+						}}
+						onKeyDown={(e) => {
+							if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
+						}}
+					/>
+				</TextField>
+			),
+		},
+		{
+			id: "highlightTimeLimit",
+			title: "Highlight time limit",
+			desc: "Milliseconds shiki may spend tokenizing one line before it gives up.",
+			cats: ["general"],
+			modified: () => parsePositiveInt(highlightTimeLimit(), DEFAULTS.highlightTimeLimit) !== DEFAULTS.highlightTimeLimit,
+			control: () => (
+				<TextField class="h-[32px] w-[110px] shrink-0 gap-0" value={highlightTimeLimit()} onChange={setHighlightTimeLimit}>
+					<TextFieldInput
+						type="number"
+						min={0}
+						step={100}
+						variant="compact"
+						title="Highlight time limit (ms)"
+						aria-label="Highlight time limit (ms)"
+						onBlur={() => {
+							const next = parsePositiveInt(highlightTimeLimit(), DEFAULTS.highlightTimeLimit);
+							setHighlightTimeLimit(String(next));
+							const saved = settingsData()?.highlight?.tokenizeTimeLimit ?? DEFAULTS.highlightTimeLimit;
+							if (next === saved) return;
+							void persist(currentSettings());
 						}}
 						onKeyDown={(e) => {
 							if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();

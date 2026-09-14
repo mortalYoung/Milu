@@ -20,7 +20,7 @@ import { TrajectoryProvider } from "./lib/contexts/trajectory-context";
 import { TranscriptProvider } from "./lib/contexts/transcript-context";
 import { createDock } from "./lib/dock";
 import { useKeybindings } from "./lib/keybindings";
-import { COPIED_ICON_SVG, COPY_ICON_SVG, warmUpMarkdown } from "./lib/markdown";
+import { COPIED_ICON_SVG, COPY_ICON_SVG, setHighlightLimits, warmUpMarkdown } from "./lib/markdown";
 import { createMetrics } from "./lib/metrics";
 import { createPalette } from "./lib/palette";
 import type { PartnerFormData } from "./lib/partner-form";
@@ -85,6 +85,7 @@ function WorkspaceControllers() {
 		const ms = settings.data()?.settings?.toastDurationMs;
 		if (ms != null) toast.setDurationMs(ms);
 	});
+	createEffect(() => setHighlightLimits(settings.data()?.settings?.highlight));
 
 	// ——— global keybindings ———
 	useKeybindings([

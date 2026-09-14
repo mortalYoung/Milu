@@ -56,6 +56,7 @@ export interface Settings {
 		prune?: { thresholdChars?: number; headChars?: number; tailChars?: number };
 	};
 	explorer?: { lineGap?: number };
+	highlight?: { tokenizeMaxLineLength?: number; tokenizeTimeLimit?: number };
 	palette?: { searchIgnoreDirs?: string[] };
 }
 
@@ -79,6 +80,7 @@ const DEFAULT_SETTINGS: Settings = {
 	memoryIdleMinutes: 5,
 	memoryMaxScenes: DEFAULT_MEMORY_MAX_SCENES,
 	explorer: { lineGap: 0.2 },
+	highlight: { tokenizeMaxLineLength: 3000, tokenizeTimeLimit: 500 },
 };
 
 const SETTINGS_PATH = join(homedir(), ".config", "letters", "settings.json");
