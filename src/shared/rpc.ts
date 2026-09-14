@@ -24,6 +24,13 @@ export interface GitChangeItem {
 	untracked?: boolean;
 }
 
+export interface GitWorktreeItem {
+	path: string;
+	/** Short branch name, or null when the worktree has a detached HEAD. */
+	branch: string | null;
+	head: string | null;
+}
+
 export interface ExplorerEntry {
 	name: string;
 	path: string;
@@ -529,6 +536,11 @@ export type AppRPCSchema = __schema<{
 			git_diff: {
 				params: { name: string; path: string; staged?: boolean };
 				response: { ok: boolean; error?: string; kind?: "diff" | "new"; diff?: string; content?: string };
+			};
+
+			git_worktrees: {
+				params: { name: string };
+				response: { ok: boolean; error?: string; worktrees?: GitWorktreeItem[]; current?: string | null };
 			};
 
 			get_status: {

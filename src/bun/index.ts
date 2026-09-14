@@ -64,7 +64,7 @@ import { aggregateUsage, lastUsage } from "./core/trajectory";
 import { deleteApiKey, getApiKey, loadCredentials, setApiKey } from "./lib/credentials";
 import { ensureModel, ensureSandboxMode, ensureStoragePath, ensureWorkspace, hasInvalidPersistedWorkspace, isThinkingLevel, readSandboxMode } from "./lib/ensure";
 import { listChildren, readFilePreview } from "./lib/explorer";
-import { gitChanges, gitDiff, isGitRepo } from "./lib/git-changes";
+import { gitChanges, gitDiff, gitWorktrees, isGitRepo } from "./lib/git-changes";
 import { listInstalledEditors, openInCodeEditor } from "./lib/open-in-editor";
 import {
 	partnerDirFor,
@@ -1761,6 +1761,17 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				try {
 					const result = await gitDiff(entry.agent.workspacePath, path, { staged });
 					return result.kind === "diff" ? { ok: true as const, kind: "diff" as const, diff: result.diff } : { ok: true as const, kind: "new" as const, content: result.content };
+				} catch (error) {
+					return { ok: false as const, error: error instanceof Error ? error.message : String(error) };
+				}
+			},
+
+			git_worktrees: async ({ name }) => {
+				const entry = await agents.get(name);
+				if (!entry) return { ok: false as const, error: "no partner selected" };
+				if (!entry.agent.workspacePath) return { ok: false as const, error: "workspace not set" };
+				try {
+					return { ok: true as const, ...(await gitWorktrees(entry.agent.workspacePath)) };
 				} catch (error) {
 					return { ok: false as const, error: error instanceof Error ? error.message : String(error) };
 				}

@@ -36,9 +36,13 @@ export function createTrajectory() {
 		return data;
 	});
 
-	function view() {
+	function toggle() {
 		const name = session.selected;
 		if (!name) return;
+		if (open()) {
+			setOpen(false);
+			return;
+		}
 		setMode("origin");
 		setOpen(true);
 		void sessionMutate.originRefresh();
@@ -55,6 +59,6 @@ export function createTrajectory() {
 
 	return {
 		data: { open, records, mode, sliceItems },
-		mutate: { setOpen, changeMode, view },
+		mutate: { setOpen, changeMode, toggle },
 	};
 }

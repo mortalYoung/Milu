@@ -7,6 +7,7 @@ import { useTranscript } from "../lib/contexts/transcript-context";
 import type { Dock } from "../lib/dock";
 import { rpc } from "../lib/rpc";
 import { Button } from "./Button";
+import { WorktreeMenu } from "./WorktreeMenu";
 
 const headerIconClass =
 	"size-8 rounded-full border-0 electrobun-webkit-app-region-no-drag flex items-center justify-center text-ink hover:bg-paper-hover disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-paper";
@@ -38,6 +39,19 @@ export function AppHeader(props: { dock: Dock; selected: string | null; onViewDe
 		</Show>
 	);
 
+	const worktreesButton = () => (
+		<Show when={gitAvailable()}>
+			<WorktreeMenu
+				partner={props.selected}
+				buttonClass={headerIconClass}
+				onSwitch={() => {
+					const panel = props.dock.panel();
+					if (panel === "explorer" || panel === "git") props.dock.close();
+				}}
+			/>
+		</Show>
+	);
+
 	const onDoubleClick = (event: MouseEvent) => {
 		if ((event.target as HTMLElement).closest("button, a, input, textarea, select, [contenteditable='true']")) return;
 		void rpc.request.window_zoom_toggle({});
@@ -60,6 +74,7 @@ export function AppHeader(props: { dock: Dock; selected: string | null; onViewDe
 					</Show>
 					{explorerButton()}
 					{gitButton()}
+					{worktreesButton()}
 				</div>
 			</Show>
 			<div class="chat-worker electrobun-webkit-app-region-no-drag cursor-pointer" title="View details" onClick={() => props.selected && props.onViewDetails(props.selected)}>
@@ -78,6 +93,7 @@ export function AppHeader(props: { dock: Dock; selected: string | null; onViewDe
 				<Show when={dockSide() === "right"}>
 					{explorerButton()}
 					{gitButton()}
+					{worktreesButton()}
 					<Show when={hasDockTools()}>
 						<span class="chat-tools-sep" />
 					</Show>
@@ -96,12 +112,12 @@ export function AppHeader(props: { dock: Dock; selected: string | null; onViewDe
 				<button
 					type="button"
 					class={headerIconClass}
-					title="Open trajectory"
-					aria-label="Open trajectory"
+					title={trajectory.data.open() ? "Close trajectory" : "Open trajectory"}
+					aria-label="Toggle trajectory"
 					disabled={!hasConversation()}
 					onClick={() => {
-						props.dock.close();
-						trajectory.mutate.view();
+						if (!trajectory.data.open()) props.dock.close();
+						trajectory.mutate.toggle();
 					}}
 				>
 					<Activity size={16} />

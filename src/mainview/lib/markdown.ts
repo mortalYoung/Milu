@@ -17,7 +17,7 @@
 
 import type { MarkdownItShikiSetupOptions } from "@shikijs/markdown-it/core";
 import type { HighlighterCore } from "@shikijs/types";
-import MarkdownIt, { type MarkdownIt as MarkdownItType, type Renderer, type RendererRule } from "markdown-it";
+import MarkdownIt, { type MarkdownIt as MarkdownItType, type Renderer, type RendererRule, type Token } from "markdown-it";
 import { resolveMentionToken } from "../../shared/file-mentions";
 
 // Dual shiki themes: with `defaultColor: "light-dark()"` every token color is emitted as an
@@ -96,21 +96,50 @@ let mdShiki: MarkdownItType | null = null;
 let mdShikiPromise: Promise<MarkdownItType> | null = null;
 let highlighterPromise: Promise<HighlighterCore> | null = null;
 
-/** Ensure links open in a new tab with noreferrer, like the old hand-rolled renderer. */
+/** Ensure links open in a new tab with noreferrer, like the old hand-rolled renderer. An external
+ * http(s) link is dressed exactly like the one `code_inline` produces: the `md-inline-url` class
+ * plus the trailing icon. */
 function patchLinkTarget(md: MarkdownItType) {
-	const defaultRender: RendererRule = md.renderer.rules["link_open"] ?? ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
+	const defaultOpen: RendererRule = md.renderer.rules["link_open"] ?? ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
 	md.renderer.rules["link_open"] = (tokens, idx, options, env, self: Renderer) => {
+		const href = tokens[idx].attrGet("href");
+		const external = href !== null && httpUrl(String(href)) !== null;
 		tokens[idx].attrSet("target", "_blank");
 		tokens[idx].attrSet("rel", "noreferrer");
-		return defaultRender(tokens, idx, options, env, self);
+		if (external) tokens[idx].attrSet("class", "md-inline-url");
+		return defaultOpen(tokens, idx, options, env, self);
 	};
+	const defaultClose: RendererRule = md.renderer.rules["link_close"] ?? ((tokens, idx, options, _env, self) => self.renderToken(tokens, idx, options));
+	md.renderer.rules["link_close"] = (tokens, idx, options, env, self: Renderer) => {
+		const href = enclosingLinkHref(tokens, idx);
+		const close = defaultClose(tokens, idx, options, env, self);
+		return href !== null && httpUrl(href) !== null ? `${EXTERNAL_ICON_SVG}${close}` : close;
+	};
+}
+
+/** The href of the `link_open` that a `link_close` at `index` closes, or null outside a link. */
+function enclosingLinkHref(tokens: Token[], index: number): string | null {
+	let depth = 0;
+	for (let i = index - 1; i >= 0; i--) {
+		const type = tokens[i].type;
+		if (type === "link_close") depth += 1;
+		else if (type === "link_open") {
+			if (depth === 0) {
+				const href = tokens[i].attrGet("href");
+				return href === null ? null : String(href);
+			}
+			depth -= 1;
+		}
+	}
+	return null;
 }
 
 interface MentionEnv {
 	files?: readonly string[];
 }
 
-function inlineCodeHttpUrl(value: string): string | null {
+/** The URL itself when it is an external http(s) one, else null — the one rule both link paths share. */
+function httpUrl(value: string): string | null {
 	return /^https?:\/\//i.test(value) ? value : null;
 }
 
@@ -132,7 +161,7 @@ function patchFileMentions(md: MarkdownItType) {
 		const token = tokens[idx];
 		const value = token.content;
 		const open = `<code${self.renderAttrs(token)}>`;
-		const url = inlineCodeHttpUrl(value);
+		const url = httpUrl(value);
 		if (url !== null) return `${open}<a class="md-inline-url" href="${escapeHtml(url)}" target="_blank" rel="noreferrer">${escapeHtml(value)}${EXTERNAL_ICON_SVG}</a></code>`;
 		const files = (env as MentionEnv | undefined)?.files;
 		if (files !== undefined && !insideLink(tokens, idx)) {

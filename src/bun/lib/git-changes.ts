@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
+import { canonicalPath, isInside } from "../permission/roots";
 
 export type GitChangeStatus = "M" | "A" | "D" | "R" | "U";
 
@@ -70,6 +71,47 @@ export async function gitChanges(workspace: string): Promise<GitChangesResult> {
 	const res = await runGit(repoRoot, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]);
 	if (res.code !== 0) throw new Error(res.stderr.trim() || "git status failed");
 	return { repoRoot, changes: parseStatus(res.stdout) };
+}
+
+export interface GitWorktree {
+	path: string;
+	/** Short branch name, or null when the worktree has a detached HEAD. */
+	branch: string | null;
+	head: string | null;
+}
+
+export interface GitWorktreesResult {
+	worktrees: GitWorktree[];
+	/** The worktree the workspace lives in — the row to mark as current. */
+	current: string | null;
+}
+
+function parseWorktrees(stdout: string): GitWorktree[] {
+	const worktrees: GitWorktree[] = [];
+	for (const block of stdout.split("\n\n")) {
+		let path: string | null = null;
+		let branch: string | null = null;
+		let head: string | null = null;
+		for (const line of block.split("\n")) {
+			if (line.startsWith("worktree ")) path = line.slice("worktree ".length);
+			else if (line.startsWith("HEAD ")) head = line.slice("HEAD ".length);
+			else if (line.startsWith("branch ")) branch = line.slice("branch ".length).replace(/^refs\/heads\//, "");
+		}
+		if (path !== null) worktrees.push({ path, branch, head });
+	}
+	return worktrees;
+}
+
+/** Every working tree of the repo `workspace` belongs to, main checkout first, plus the one it sits in. */
+export async function gitWorktrees(workspace: string): Promise<GitWorktreesResult> {
+	const repoRoot = await gitRepoRoot(workspace);
+	const res = await runGit(repoRoot, ["worktree", "list", "--porcelain"]);
+	if (res.code !== 0) throw new Error(res.stderr.trim() || "git worktree list failed");
+	const worktrees = parseWorktrees(res.stdout);
+	const here = canonicalPath(workspace);
+	const containing = worktrees.filter((worktree) => isInside(here, canonicalPath(worktree.path)));
+	containing.sort((a, b) => b.path.length - a.path.length);
+	return { worktrees, current: containing[0]?.path ?? null };
 }
 
 function ensureWithin(root: string, target: string): void {
