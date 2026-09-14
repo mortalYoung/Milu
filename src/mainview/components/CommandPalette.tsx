@@ -304,7 +304,7 @@ export function CommandPalette(props: {
 								)}
 							</For>
 						</div>
-						<span class="palette-key">⌘P</span>
+						<span class="palette-key">{palette.mode() === "access" ? "⌘⇧P" : "⌘P"}</span>
 					</div>
 					<div class="palette-input-row">
 						<span class="palette-caret" aria-hidden="true">

@@ -92,6 +92,7 @@ function WorkspaceControllers() {
 		{ key: ",", meta: true, handler: () => settings.mutate.setOpen(true) },
 		{ key: "b", meta: true, handler: toggleList },
 		{ key: "w", meta: true, handler: () => closeCurrentChat() },
+		{ key: "p", meta: true, shift: true, handler: () => palette.launch("access") },
 		{ key: "p", meta: true, handler: () => palette.launch() },
 	]);
 

@@ -32,7 +32,8 @@ export function createPalette() {
 	const [index, setIndex] = createSignal(0);
 	const [focusSeq, setFocusSeq] = createSignal(0);
 
-	function launch() {
+	function launch(mode: PaletteMode = "sessions") {
+		if (!open()) setMode(mode);
 		setOpen(true);
 		setFocusSeq((n) => n + 1);
 	}
