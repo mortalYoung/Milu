@@ -51,7 +51,7 @@ export function MemorySection(props: { partner: string }) {
 
 	return (
 		<div class={CARD}>
-			<button type="button" class="memory-head flex w-full items-center gap-2 rounded-t-[5px] px-3 py-2.5 text-left" aria-expanded={open()} onClick={() => setOpen(!open())}>
+			<button type="button" class="card-head flex w-full items-center gap-2 rounded-t-[5px] px-3 py-2.5 text-left" aria-expanded={open()} onClick={() => setOpen(!open())}>
 				<span class={EYEBROW}>Memory</span>
 				<span class="min-w-0 flex-1 truncate font-mono text-[10.5px] text-body-muted">{summary()}</span>
 				<Show when={open()} fallback={<ChevronRight size={14} class="shrink-0 text-muted" />}>
@@ -127,7 +127,7 @@ export function MemorySection(props: { partner: string }) {
 												<Show when={openRecord() === record.id}>
 													<div class="flex flex-col gap-1.5 px-3 pb-2.5">
 														<Show when={record.detail} fallback={<p class="font-mono text-[11px] text-muted">—</p>}>
-															<p class="whitespace-pre-wrap font-sans text-[11.5px] leading-[1.6] text-body-muted">{record.detail}</p>
+															<p class="whitespace-pre-wrap break-words font-sans text-[11.5px] leading-[1.6] text-body-muted">{record.detail}</p>
 														</Show>
 														<Show when={record.overRecallCap}>
 															<p class="font-sans text-[10px] text-seal">the agent only ever recalls the first {data().agentDetailLimit} chars of this detail</p>
@@ -179,7 +179,7 @@ export function MemorySection(props: { partner: string }) {
 													</button>
 												</Show>
 												<Show when={openScene() === scene.sceneId}>
-													<p class="whitespace-pre-wrap px-3 pb-2.5 font-sans text-[11.5px] leading-[1.6] text-body-muted">
+													<p class="whitespace-pre-wrap break-words px-3 pb-2.5 font-sans text-[11.5px] leading-[1.6] text-body-muted">
 														{scene.summary}
 														{scene.content ? `\n\n${scene.content}` : ""}
 													</p>
@@ -206,7 +206,7 @@ export function MemorySection(props: { partner: string }) {
 											</span>
 										</button>
 										<Show when={showProfile()}>
-											<p class="whitespace-pre-wrap rounded border border-hairline bg-paper px-2 py-1.5 font-sans text-[11.5px] leading-[1.6] text-body-muted">
+											<p class="whitespace-pre-wrap break-words rounded border border-hairline bg-paper px-2 py-1.5 font-sans text-[11.5px] leading-[1.6] text-body-muted">
 												{profile().content}
 											</p>
 										</Show>
@@ -223,7 +223,7 @@ export function MemorySection(props: { partner: string }) {
 								</span>
 							</div>
 							<Show when={data().runs.length > 0} fallback={<p class="font-mono text-[11px] text-muted">—</p>}>
-								<div class="flex flex-col divide-y divide-hairline rounded border border-hairline">
+								<div class="flex max-h-[260px] flex-col divide-y divide-hairline overflow-y-auto rounded border border-hairline">
 									<For each={data().runs}>
 										{(run) => (
 											<div class="flex items-baseline gap-2 px-3 py-1.5 font-mono text-[10.5px] tabular-nums">
