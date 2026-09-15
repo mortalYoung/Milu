@@ -202,6 +202,11 @@ function WorkspaceControllers() {
 		});
 	}
 
+	function onShell(command: string) {
+		scroll.pin(true);
+		return rpc.request.shell_execute({ command });
+	}
+
 	async function onDeletePartner(name: string) {
 		await rpc.request.delete_partner({ name });
 
@@ -389,7 +394,7 @@ function WorkspaceControllers() {
 																onStop={() => void rpc.request.stop({})}
 																onEscalationRespond={(id, approved) => void rpc.request.sandbox_respond({ id, approved })}
 																toastHost={<ToastHost toasts={toast.toasts} placement={settings.data()?.settings?.toastPlacement ?? "bottomcenter"} onDismiss={toast.dismiss} />}
-																onShell={(command) => rpc.request.shell_execute({ command })}
+																onShell={onShell}
 																onOpenPath={(path, editorId) =>
 																	void rpc.request.open_path({ path, editorId }).then((res) => {
 																		if (!res.ok) toast.push({ title: "Couldn't open folder", body: res.error ?? "No supported editor found" }, "error");

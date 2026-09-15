@@ -332,6 +332,18 @@ export function Transcript(props: {
 			return next;
 		});
 	}
+	const pinnedShellOutput = new Set<string>();
+	createEffect(() => {
+		for (const entry of controller.view()) {
+			if (entry.kind !== "shell" || !entry.command?.text) continue;
+			const box = document.getElementById("entry-" + entry.id)?.querySelector<HTMLElement>(".is-shell-out");
+			if (!box) continue;
+			const key = entry.key ?? String(entry.id);
+			if (pinnedShellOutput.has(key)) continue;
+			pinnedShellOutput.add(key);
+			box.scrollTop = box.scrollHeight;
+		}
+	});
 	function hasTextSelection(): boolean {
 		const selection = window.getSelection();
 		return selection != null && !selection.isCollapsed;
