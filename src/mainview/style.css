@@ -1242,6 +1242,11 @@ body::before {
 	.conv-unread-dot {
 		@apply inline-block size-[6px] shrink-0 rounded-full bg-seal;
 	}
+
+	.header-badge {
+		@apply pointer-events-none absolute right-0 bottom-0 flex h-[13px] min-w-[13px] items-center justify-center rounded-full bg-seal px-[3px] font-mono text-[8.5px] leading-none text-paper;
+		box-shadow: 0 0 0 1px var(--color-paper);
+	}
 	.toast-host {
 		@apply absolute z-50 flex flex-col gap-2 pointer-events-none;
 		--toast-ease: cubic-bezier(0.23, 1, 0.32, 1);

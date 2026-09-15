@@ -22,6 +22,11 @@ export function AppHeader(props: { dock: Dock; selected: string | null; onViewDe
 	const hasConversation = () => props.selected != null && transcript.view().length > 0;
 	const hasWorkspace = () => status.data().workspace_path != null;
 	const gitAvailable = () => hasWorkspace() && status.data().is_git_repo;
+	const hasChanges = () => gitAvailable() && status.data().change_count > 0;
+	const hasWorktrees = () => gitAvailable() && status.data().worktree_count > 1;
+	const changeCount = () => status.data().change_count;
+	const changeLabel = () => `${changeCount()} change${changeCount() === 1 ? "" : "s"}`;
+	const changeBadge = () => (changeCount() > 99 ? "99+" : String(changeCount()));
 	const hasDockTools = () => hasWorkspace() || gitAvailable();
 
 	const explorerButton = () => (
@@ -32,15 +37,22 @@ export function AppHeader(props: { dock: Dock; selected: string | null; onViewDe
 		</Show>
 	);
 	const gitButton = () => (
-		<Show when={gitAvailable()}>
-			<button type="button" class={headerIconClass} title="Git Changes" aria-label="Toggle git changes" onClick={() => props.dock.toggle("git")}>
+		<Show when={hasChanges()}>
+			<button
+				type="button"
+				class={headerIconClass + " relative"}
+				title={`Git Changes · ${changeLabel()}`}
+				aria-label={`Toggle git changes, ${changeLabel()}`}
+				onClick={() => props.dock.toggle("git")}
+			>
 				<GitBranch size={16} />
+				<span class="header-badge">{changeBadge()}</span>
 			</button>
 		</Show>
 	);
 
 	const worktreesButton = () => (
-		<Show when={gitAvailable()}>
+		<Show when={hasWorktrees()}>
 			<WorktreeMenu
 				partner={props.selected}
 				buttonClass={headerIconClass}

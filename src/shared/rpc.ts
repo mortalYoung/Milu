@@ -548,6 +548,8 @@ export type AppRPCSchema = __schema<{
 				response: {
 					workspace_path: string | null;
 					is_git_repo: boolean;
+					change_count: number;
+					worktree_count: number;
 
 					storage_path: string | null;
 					sandbox_mode: SandboxMode;
@@ -933,7 +935,7 @@ export type AppRPCSchema = __schema<{
 
 			origin_update: { partner: string };
 
-			context_changed: { partner?: string };
+			context_changed: { partner?: string; workspace?: string | null };
 
 			agent_end: { error?: string; partner: string };
 

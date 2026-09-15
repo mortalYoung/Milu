@@ -52,7 +52,7 @@ export function ConversationPage(props: {
 		if (!hasWorkspace() && panel() === "explorer") props.dock.close();
 	});
 	createEffect(() => {
-		if (!gitAvailable() && panel() === "git") props.dock.close();
+		if ((!gitAvailable() || status.data().change_count === 0) && panel() === "git") props.dock.close();
 	});
 
 	const hasConversation = () => props.selected != null && transcript.view().length > 0;

@@ -29,13 +29,6 @@ export async function gitRepoRoot(workspace: string): Promise<string> {
 	return res.stdout.trim();
 }
 
-export async function isGitRepo(workspace: string): Promise<boolean> {
-	return gitRepoRoot(workspace).then(
-		() => true,
-		() => false,
-	);
-}
-
 function statusLetter(code: string): GitChangeStatus {
 	if (code === "?") return "U";
 	if (code === "C") return "A";
@@ -71,6 +64,21 @@ export async function gitChanges(workspace: string): Promise<GitChangesResult> {
 	const res = await runGit(repoRoot, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]);
 	if (res.code !== 0) throw new Error(res.stderr.trim() || "git status failed");
 	return { repoRoot, changes: parseStatus(res.stdout) };
+}
+
+export interface GitOverview {
+	changeCount: number;
+	worktreeCount: number;
+}
+
+export async function gitOverview(workspace: string): Promise<GitOverview> {
+	const [status, worktrees] = await Promise.all([
+		runGit(workspace, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]),
+		runGit(workspace, ["worktree", "list", "--porcelain"]),
+	]);
+	if (status.code !== 0) throw new Error(status.stderr.trim() || "not a git repository");
+	if (worktrees.code !== 0) throw new Error(worktrees.stderr.trim() || "git worktree list failed");
+	return { changeCount: parseStatus(status.stdout).length, worktreeCount: parseWorktrees(worktrees.stdout).length };
 }
 
 export interface GitWorktree {

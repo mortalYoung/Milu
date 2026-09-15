@@ -124,6 +124,7 @@ function WorkspaceControllers() {
 	// ——— RPC event listeners ———
 	rpc.addMessageListener("agent_turn", ({ partner }) => {
 		status.beginTurn(partner);
+		status.calibrate();
 		void session.mutate.refreshPartners();
 	});
 

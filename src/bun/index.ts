@@ -64,7 +64,7 @@ import { aggregateUsage, lastUsage } from "./core/trajectory";
 import { deleteApiKey, getApiKey, loadCredentials, setApiKey } from "./lib/credentials";
 import { ensureModel, ensureSandboxMode, ensureStoragePath, ensureWorkspace, hasInvalidPersistedWorkspace, isThinkingLevel, readSandboxMode } from "./lib/ensure";
 import { listChildren, readFilePreview } from "./lib/explorer";
-import { gitChanges, gitDiff, gitWorktrees, isGitRepo } from "./lib/git-changes";
+import { gitChanges, gitDiff, gitOverview, gitWorktrees } from "./lib/git-changes";
 import { listInstalledEditors, openInCodeEditor } from "./lib/open-in-editor";
 import {
 	partnerDirFor,
@@ -1072,7 +1072,7 @@ async function applyWorkspace(entry: PartnerAgent, path: string | null): Promise
 	await entry.scope.appendInstructionsChanged(agentMd, Date.now());
 	entry.agent.restore(await session.deriveMessages(entry.dir));
 
-	rpc.send.context_changed({ partner: entry.profile.name });
+	rpc.send.context_changed({ partner: entry.profile.name, workspace: entry.agent.workspacePath });
 	void armSkillsWatchers();
 	return { ok: true, workspace: resolved };
 }
@@ -1436,9 +1436,12 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				const entry = profile ? await agents.get(name) : undefined;
 				const addedProviders = settings.providers ?? [];
 				const workspacePath = entry?.agent.workspacePath ?? null;
+				const git = workspacePath ? await gitOverview(workspacePath).catch(() => null) : null;
 				return {
 					workspace_path: workspacePath ? tildify(workspacePath) : null,
-					is_git_repo: workspacePath ? await isGitRepo(workspacePath) : false,
+					is_git_repo: git !== null,
+					change_count: git?.changeCount ?? 0,
+					worktree_count: git?.worktreeCount ?? 0,
 					storage_path: entry?.agent.storagePath ? tildify(entry.agent.storagePath) : null,
 					sandbox_mode: entry?.agent.sandboxMode ?? "workspace-write",
 					model: entry?.agent.model ?? null,
@@ -1503,7 +1506,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					thinkingLevel: ctx.thinkingLevel,
 				});
 				entry.agent.setThinkingLevel(ctx.thinkingLevel);
-				rpc.send.context_changed({ partner: entry.profile.name });
+				rpc.send.context_changed({ partner: entry.profile.name, workspace: entry.agent.workspacePath });
 				return { ok: true };
 			},
 			set_sandbox_mode: async ({ mode }) => {
@@ -2225,9 +2228,9 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				if (profile) {
 					const dir = await partnerDirFor(profile.name);
 					viewPartner = { name: profile.name, dir, profile };
-					await ensureAgent(profile);
+					const entry = await ensureAgent(profile);
 
-					rpc.send.context_changed({ partner: profile.name });
+					rpc.send.context_changed({ partner: profile.name, workspace: entry.agent.workspacePath });
 					void armSkillsWatchers();
 				} else {
 					viewPartner = null;

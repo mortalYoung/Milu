@@ -4,9 +4,13 @@ import type { SandboxMode, ThinkingLevel } from "../../shared/rpc";
 import { useSession } from "./contexts/session-context";
 import type { RPC } from "./rpc";
 
+const CALIBRATE_DEBOUNCE_MS = 400;
+
 const EMPTY_STATUS = {
 	workspace_path: null,
 	is_git_repo: false,
+	change_count: 0,
+	worktree_count: 0,
 	storage_path: null,
 	sandbox_mode: "workspace-write" as SandboxMode,
 	model: null,
@@ -25,8 +29,18 @@ export function createAgentStatus(rpc: RPC) {
 	);
 	const status = () => (data.selected ? snapshot() : EMPTY_STATUS);
 
-	rpc.addMessageListener("context_changed", () => void refetch());
-	rpc.addMessageListener("sandbox_mode_update", () => void refetch());
+	let workspaceKey: { partner: string | null; path: string | null } | null = null;
+	let calibrateTimer: ReturnType<typeof setTimeout> | undefined;
+
+	rpc.addMessageListener("context_changed", ({ workspace }) => {
+		const key = { partner: data.selected, path: workspace ?? null };
+		if (workspaceKey && workspaceKey.partner === key.partner && workspaceKey.path === key.path) return;
+		workspaceKey = key;
+		calibrate();
+	});
+
+	rpc.addMessageListener("agent_message", () => calibrate());
+	rpc.addMessageListener("shell_update", () => calibrate());
 
 	const partnerWriting = (name: string) => data.partners.find((p) => p.name === name)?.writing ?? false;
 
@@ -34,7 +48,9 @@ export function createAgentStatus(rpc: RPC) {
 	const workingFor = (name: string) => writing[name] ?? partnerWriting(name);
 
 	function calibrate() {
-		if (data.selected) void refetch();
+		if (!data.selected) return;
+		clearTimeout(calibrateTimer);
+		calibrateTimer = setTimeout(() => void refetch(), CALIBRATE_DEBOUNCE_MS);
 	}
 
 	async function mutateSandboxMode(mode: SandboxMode) {
