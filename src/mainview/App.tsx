@@ -6,6 +6,7 @@ import type { PartnerItem } from "./components/ConversationList";
 import { ToastHost } from "./components/ToastHost";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./components/ui/dialog";
 import { createAgentStatus } from "./lib/agent-status";
+import { toggleCitation } from "./lib/citation";
 import { createCommandDirectory } from "./lib/commands";
 import { createComposer } from "./lib/composer";
 import { AgentStatusProvider } from "./lib/contexts/agent-status-context";
@@ -345,18 +346,25 @@ function WorkspaceControllers() {
 		});
 
 		document.addEventListener("click", (event) => {
-			const mention = (event.target as HTMLElement | null)?.closest?.(".md-file-mention");
+			const mention = (event.target as HTMLElement | null)?.closest?.(".md-file-mention") as HTMLElement | null;
 			const path = mention?.getAttribute("data-path");
-			if (!path) return;
+			if (!mention || !path) return;
 			event.preventDefault();
 			const baseDir = session.data.origin.baseDir;
-			if (!event.metaKey) {
-				dock.revealInExplorer(workspaceRelativePath(path, baseDir), parseLineRange(mention?.getAttribute("data-range")));
+			const partner = session.data.selected;
+			if (event.metaKey) {
+				void rpc.request.open_path({ path: workspacePath(path, baseDir) }).then((res) => {
+					if (!res.ok) toast.push({ title: "Couldn't open file", body: res.error ?? "No supported editor found" }, "error");
+				});
 				return;
 			}
-			void rpc.request.open_path({ path: workspacePath(path, baseDir) }).then((res) => {
-				if (!res.ok) toast.push({ title: "Couldn't open file", body: res.error ?? "No supported editor found" }, "error");
-			});
+			const range = parseLineRange(mention.getAttribute("data-range"));
+			// A mention that names lines peeks in place first; escalating to the reader is one more click.
+			if (range && partner) {
+				void toggleCitation({ mention, partner, baseDir, onEscalate: (file, lines) => dock.revealInExplorer(file, lines) });
+				return;
+			}
+			dock.revealInExplorer(workspaceRelativePath(path, baseDir), range);
 		});
 	});
 

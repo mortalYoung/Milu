@@ -55,7 +55,7 @@ export interface Settings {
 		maxOverflowRetries?: number;
 		prune?: { thresholdChars?: number; headChars?: number; tailChars?: number };
 	};
-	explorer?: { lineGap?: number };
+	explorer?: { lineGap?: number; fold?: { braces?: boolean; markdown?: boolean } };
 	highlight?: { tokenizeMaxLineLength?: number; tokenizeTimeLimit?: number };
 	palette?: { searchIgnoreDirs?: string[] };
 }
@@ -79,7 +79,7 @@ const DEFAULT_SETTINGS: Settings = {
 	memoryEnabled: true,
 	memoryIdleMinutes: 5,
 	memoryMaxScenes: DEFAULT_MEMORY_MAX_SCENES,
-	explorer: { lineGap: 0.2 },
+	explorer: { lineGap: 0.2, fold: { braces: true, markdown: true } },
 	highlight: { tokenizeMaxLineLength: 3000, tokenizeTimeLimit: 500 },
 };
 

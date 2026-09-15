@@ -1,6 +1,8 @@
-import { CaseSensitive, ChevronDown, ChevronRight, ChevronUp, Folder, FolderOpen, FolderSymlink, Regex, WholeWord, X } from "lucide-solid";
+import { CaseSensitive, ChevronDown, ChevronRight, ChevronUp, Folder, FolderOpen, FolderSymlink, Pin, Regex, WholeWord, X } from "lucide-solid";
 import { type Accessor, createEffect, createMemo, createResource, createSignal, For, onCleanup, Show, untrack } from "solid-js";
 import type { ExplorerEntry } from "../../shared/rpc";
+import { useComposer } from "../lib/contexts/composer-context";
+import { useSession } from "../lib/contexts/session-context";
 import { useSettings } from "../lib/contexts/settings-context";
 import { useToast } from "../lib/contexts/toast-context";
 import type { RevealRange, RevealTarget } from "../lib/dock";
@@ -8,6 +10,7 @@ import { fileGlyph, linkGlyph } from "../lib/file-icons";
 import { type HighlightToken, highlightCodeToLines, languageForPath, renderMarkdown, renderMarkdownReady } from "../lib/markdown";
 import { createPresence, DOCK_EXIT_MS, DOCK_POPOVER_EXIT_MS } from "../lib/presence";
 import { rpc } from "../lib/rpc";
+import { clampPaneWidth, DockGrip, GRIP_WIDTH } from "./DockGrip";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "./ui/context-menu";
 
 interface DirState {
@@ -41,33 +44,72 @@ interface FoldRange {
 	end: number;
 }
 
-function findJsonFoldRanges(text: string): FoldRange[] {
+/**
+ * Folds bracket blocks that span more than one line. Quotes, template literals and both comment
+ * styles are skipped, so a brace inside a message cannot swallow the rest of the file. Regex
+ * literals are not recognised: a `}` inside one may close a block early.
+ */
+function findBracketFoldRanges(text: string, brackets: string): FoldRange[] {
+	const openers = new Set<string>();
+	const closers = new Map<string, string>();
+	if (brackets.includes("{")) {
+		openers.add("{");
+		closers.set("}", "{");
+	}
+	if (brackets.includes("[")) {
+		openers.add("[");
+		closers.set("]", "[");
+	}
 	const ranges: FoldRange[] = [];
 	const stack: { char: string; line: number }[] = [];
 	let line = 0;
-	let inString = false;
+	let quote: string | null = null;
 	let escaped = false;
+	let lineComment = false;
+	let blockComment = false;
 	for (let i = 0; i < text.length; i++) {
 		const ch = text[i];
 		if (ch === "\n") {
 			line += 1;
+			lineComment = false;
 			continue;
 		}
-		if (inString) {
+		if (lineComment) continue;
+		if (blockComment) {
+			if (ch === "*" && text[i + 1] === "/") {
+				blockComment = false;
+				i += 1;
+			}
+			continue;
+		}
+		if (quote) {
 			if (escaped) escaped = false;
 			else if (ch === "\\") escaped = true;
-			else if (ch === '"') inString = false;
+			else if (ch === quote) quote = null;
 			continue;
 		}
-		if (ch === '"') {
-			inString = true;
+		if (ch === "/" && text[i + 1] === "/") {
+			lineComment = true;
+			i += 1;
 			continue;
 		}
-		if (ch === "{" || ch === "[") stack.push({ char: ch, line });
-		else if (ch === "}" || ch === "]") {
-			const open = stack.pop();
-			if (open && ((open.char === "{" && ch === "}") || (open.char === "[" && ch === "]")) && line > open.line) ranges.push({ start: open.line, end: line });
+		if (ch === "/" && text[i + 1] === "*") {
+			blockComment = true;
+			i += 1;
+			continue;
 		}
+		if (ch === '"' || ch === "'" || ch === "`") {
+			quote = ch;
+			continue;
+		}
+		if (openers.has(ch)) {
+			stack.push({ char: ch, line });
+			continue;
+		}
+		const opener = closers.get(ch);
+		if (!opener) continue;
+		const open = stack.pop();
+		if (open && open.char === opener && line > open.line) ranges.push({ start: open.line, end: line });
 	}
 	return ranges;
 }
@@ -140,6 +182,76 @@ function buildPieces(tokens: HighlightToken[], ranges: { start: number; end: num
 const findHistory: string[] = [];
 const MAX_FIND_HISTORY = 50;
 
+const TREE_MIN = 148;
+const TREE_MAX = 320;
+const TREE_DEFAULT = 240;
+
+// Pinning gives the letter and the code pane their own columns, so it needs both of them to fit.
+const LETTER_MIN = 420;
+const CODE_MIN = 460;
+const PIN_MIN = LETTER_MIN + CODE_MIN + GRIP_WIDTH;
+
+const LANGUAGE_LABELS: Record<string, string> = {
+	ts: "TS",
+	tsx: "TSX",
+	js: "JS",
+	jsx: "JSX",
+	python: "PY",
+	html: "HTML",
+	css: "CSS",
+	json: "JSON",
+	jsonc: "JSONC",
+	markdown: "MD",
+	yaml: "YAML",
+	bash: "SH",
+	sql: "SQL",
+	toml: "TOML",
+	ini: "INI",
+	diff: "DIFF",
+	xml: "XML",
+};
+
+/** The tree width is a UI layout preference, so it lives with the other one (chatlist.collapsed). */
+function storedTreeWidth() {
+	const stored = Number(localStorage.getItem("explorer.treeWidth"));
+	return Number.isFinite(stored) && stored > 0 ? clampPaneWidth(stored, TREE_MIN, TREE_MAX) : TREE_DEFAULT;
+}
+
+function formatBytes(bytes: number) {
+	if (bytes < 1024) return `${bytes} B`;
+	return `${(bytes / 1024).toFixed(1)} KB`;
+}
+
+/** Which languages fold on brackets, and which brackets. */
+const BRACKET_FOLD_LANGS: Record<string, string> = {
+	ts: "{}",
+	tsx: "{}",
+	js: "{}",
+	jsx: "{}",
+	css: "{}",
+	json: "{}[]",
+	jsonc: "{}[]",
+};
+
+type FoldRule = { kind: "markdown" } | { kind: "brackets"; brackets: string };
+
+/** A trailing newline is not a line — the count and the gutter agree with what an editor shows. */
+function contentLines(content: string): string[] {
+	if (content === "") return [];
+	const lines = content.split("\n");
+	if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
+	return lines;
+}
+
+/** `TS · 143 lines · 4.2 KB` — the reader header's second row is the only place these live. */
+function fileMetrics(path: string, data: FileData | null | undefined): string {
+	if (data?.content == null) return "";
+	const lang = languageForPath(path);
+	const count = contentLines(data.content).length;
+	const label = lang ? (LANGUAGE_LABELS[lang] ?? lang.toUpperCase()) : null;
+	return [label, `${count} ${count === 1 ? "line" : "lines"}`, formatBytes(data.size ?? data.content.length)].filter(Boolean).join(" · ");
+}
+
 /** The preview is already readable while the highlighter works; the pill only fades in if the
  * upgrade takes longer than a beat, so small files never flash it. */
 function PreviewBusy(props: { when: boolean }) {
@@ -184,17 +296,23 @@ function MarkdownFile(props: { content: string }) {
 	);
 }
 
-function CodeViewer(props: { content: string; lang: string | null; foldable: boolean; path: string; locate?: RevealRange | null }) {
+function CodeViewer(props: {
+	content: string;
+	lang: string | null;
+	fold: FoldRule | null;
+	locate?: RevealRange | null;
+	metrics: string;
+	onSelection?: (range: { start: number; end: number } | null) => void;
+}) {
 	const [tokenData] = createResource(
 		() => ({ content: props.content, lang: props.lang }),
 		async ({ content, lang }) => highlightCodeToLines(content, lang),
 	);
-	const lines = createMemo(() => props.content.split("\n"));
+	const lines = createMemo(() => contentLines(props.content));
 	const folds = createMemo(() => {
-		if (!props.foldable) return [];
-		if (props.lang === "json" || props.lang === "jsonc") return findJsonFoldRanges(props.content);
-		if (props.lang === "markdown") return findMarkdownFoldRanges(props.content);
-		return [];
+		const rule = props.fold;
+		if (!rule) return [];
+		return rule.kind === "markdown" ? findMarkdownFoldRanges(props.content) : findBracketFoldRanges(props.content, rule.brackets);
 	});
 	const [collapsed, setCollapsed] = createSignal<Set<number>>(new Set());
 	const [selection, setSelection] = createSignal<{ anchor: number; head: number } | null>(null);
@@ -237,37 +355,54 @@ function CodeViewer(props: { content: string; lang: string | null; foldable: boo
 		if (range) for (let i = range.start; i <= range.end; i++) set.add(i);
 		return set;
 	});
-	const multiLine = () => {
-		const range = lineRange();
-		return !!range && range.end > range.start;
-	};
+	createEffect(() => props.onSelection?.(lineRange()));
 	function selectLine(index: number, extend: boolean) {
 		setSelection((prev) => (extend && prev ? { anchor: prev.anchor, head: index } : { anchor: index, head: index }));
 	}
-	function selectForContext(index: number) {
-		setSelection((prev) => {
-			if (prev) {
-				const start = Math.min(prev.anchor, prev.head);
-				const end = Math.max(prev.anchor, prev.head);
-				if (index >= start && index <= end) return prev;
-			}
-			return { anchor: index, head: index };
-		});
-	}
-	function copy(text: string) {
-		void navigator.clipboard?.writeText(text);
-	}
-	const copyLineNumber = () => {
+	const codeText = () => {
 		const range = lineRange();
-		if (range) copy(String(range.start + 1));
+		if (!range) return "";
+		return lines()
+			.slice(range.start, range.end + 1)
+			.join("\n");
 	};
-	const copyRelativePath = () => {
-		const range = lineRange();
-		if (!range) return;
-		const start = range.start + 1;
-		const end = range.end + 1;
-		copy(`${props.path}#${start === end ? start : `${start}-${end}`}`);
-	};
+	// Arrow keys walk the visible lines and carry the selection; Shift extends it from the anchor.
+	function onCodeKeyDown(e: KeyboardEvent) {
+		if (e.metaKey || e.ctrlKey || e.altKey) return;
+		if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+		const rows = visible();
+		if (rows.length === 0) return;
+		e.preventDefault();
+		const sel = selection();
+		const at = sel ? rows.findIndex((row) => row.index === sel.head) : -1;
+		const step = e.key === "ArrowDown" ? 1 : -1;
+		const next = at === -1 ? 0 : Math.max(0, Math.min(rows.length - 1, at + step));
+		const target = rows[next].index;
+		if (e.shiftKey && sel) setSelection({ anchor: sel.anchor, head: target });
+		else setSelection({ anchor: target, head: target });
+		revealMatch(target);
+	}
+	function inField(target: EventTarget | null) {
+		const el = target as HTMLElement | null;
+		return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+	}
+	// Cmd+A anywhere in the pane takes the whole file into the line selection; line numbers stay out.
+	function onReaderKeyDown(e: KeyboardEvent) {
+		if (!(e.metaKey || e.ctrlKey) || e.altKey || e.key.toLowerCase() !== "a") return;
+		if (inField(e.target)) return;
+		e.preventDefault();
+		const total = lines().length;
+		if (total > 0) setSelection({ anchor: 0, head: total - 1 });
+	}
+	// Cmd+C on a line selection copies the code; a drag-selection is still the browser's to copy.
+	function onReaderCopy(e: ClipboardEvent) {
+		const native = window.getSelection();
+		if (native && !native.isCollapsed && scrollEl?.contains(native.anchorNode)) return;
+		const text = codeText();
+		if (!text) return;
+		e.clipboardData?.setData("text/plain", text);
+		e.preventDefault();
+	}
 	function toggleFold(start: number) {
 		const next = new Set(collapsed());
 		if (next.has(start)) next.delete(start);
@@ -425,78 +560,38 @@ function CodeViewer(props: { content: string; lang: string | null; foldable: boo
 		return () => window.removeEventListener("keydown", onKeyDown);
 	});
 
+	// Esc peels the innermost layer first: the find row closes, then a line selection clears, then
+	// the reader itself. Same-node listeners run in registration order, so find registers first.
 	createEffect(() => {
 		const onKeyDown = (e: KeyboardEvent) => {
 			if (e.key !== "Escape" || !findOpen()) return;
-			e.stopPropagation();
+			e.stopImmediatePropagation();
 			closeFind();
 		};
 		window.addEventListener("keydown", onKeyDown, true);
 		return () => window.removeEventListener("keydown", onKeyDown, true);
 	});
+
+	createEffect(() => {
+		const onKeyDown = (e: KeyboardEvent) => {
+			if (e.key !== "Escape" || !lineRange()) return;
+			e.stopImmediatePropagation();
+			setSelection(null);
+		};
+		window.addEventListener("keydown", onKeyDown, true);
+		return () => window.removeEventListener("keydown", onKeyDown, true);
+	});
 	return (
-		<>
-			<div class="explorer-code-scroll" ref={scrollEl}>
-				<ContextMenu>
-					<ContextMenuTrigger as="div" class="explorer-code-lines">
-						<For each={visible()}>
-							{(line) => {
-								const tokens = createMemo(() => tokenData()?.[line.index]?.tokens ?? [{ content: line.text }]);
-								const ranges = createMemo(() => matchesByLine().get(line.index) ?? []);
-								const pieces = createMemo(() => buildPieces(tokens(), ranges()));
-								const end = foldEndByStart().get(line.index);
-								const isCollapsed = collapsed().has(line.index);
-								return (
-									<div
-										class={"explorer-code-line" + (selectedLines().has(line.index) ? " selected" : "")}
-										data-line={line.index}
-										onContextMenu={() => selectForContext(line.index)}
-									>
-										<button
-											type="button"
-											class={"explorer-code-fold" + (end == null ? " empty" : "")}
-											aria-label={end == null ? undefined : isCollapsed ? "Expand block" : "Collapse block"}
-											onClick={() => end != null && toggleFold(line.index)}
-											onContextMenu={(e) => e.stopPropagation()}
-										>
-											{end != null ? isCollapsed ? <ChevronRight size={12} /> : <ChevronDown size={12} /> : null}
-										</button>
-										<button type="button" class="explorer-code-no" onClick={(e) => selectLine(line.index, e.shiftKey)} title={`Select line ${line.index + 1}`}>
-											{line.index + 1}
-										</button>
-										<span class="explorer-code-text" onContextMenu={(e) => e.stopPropagation()}>
-											<Show when={ranges().length > 0} fallback={<For each={tokens()}>{(token) => <span style={token.htmlStyle}>{token.content}</span>}</For>}>
-												<For each={pieces()}>
-													{(piece) => (
-														<span
-															style={piece.htmlStyle}
-															classList={{ "explorer-find-match": piece.matchId !== undefined, current: piece.matchId !== undefined && piece.matchId === activeMatch() }}
-														>
-															{piece.content}
-														</span>
-													)}
-												</For>
-											</Show>
-										</span>
-									</div>
-								);
-							}}
-						</For>
-					</ContextMenuTrigger>
-					<ContextMenuContent size="sm">
-						<Show when={!multiLine()}>
-							<ContextMenuItem size="sm" disabled={!lineRange()} onSelect={copyLineNumber}>
-								Copy
-							</ContextMenuItem>
-						</Show>
-						<ContextMenuItem size="sm" disabled={!lineRange()} onSelect={copyRelativePath}>
-							Copy Relative Path
-						</ContextMenuItem>
-					</ContextMenuContent>
-				</ContextMenu>
-			</div>
-			<Show when={findOpen()}>
-				<div class="explorer-find" role="search" aria-label="Find in file">
+		<div class="explorer-code-pane" onKeyDown={onReaderKeyDown} onCopy={onReaderCopy}>
+			<div class="explorer-reader-tools" role="search" aria-label="Find in file">
+				<Show
+					when={findOpen()}
+					fallback={
+						<button type="button" class="explorer-tool" title="Find in file (⌘F)" aria-label="Find in file" onClick={openFind}>
+							⌕
+						</button>
+					}
+				>
 					<input
 						ref={findInputEl}
 						class={"explorer-find-input" + (search().valid ? "" : " invalid")}
@@ -584,15 +679,61 @@ function CodeViewer(props: { content: string; lang: string | null; foldable: boo
 					<button type="button" class="explorer-find-close" title="Close (Esc)" aria-label="Close find" onClick={closeFind}>
 						<X size={14} />
 					</button>
+				</Show>
+				<span class="explorer-metrics">{props.metrics}</span>
+			</div>
+			<div class="explorer-code-scroll" ref={scrollEl} tabIndex={0} onKeyDown={onCodeKeyDown}>
+				<div class="explorer-code-lines">
+					<For each={lines()}>
+						{(line, index) => {
+							const tokens = createMemo(() => tokenData()?.[index()]?.tokens ?? ([{ content: line, htmlStyle: undefined }] as HighlightToken[]));
+							const ranges = createMemo(() => matchesByLine().get(index()) ?? []);
+							const pieces = createMemo(() => buildPieces(tokens(), ranges()));
+							const end = createMemo(() => foldEndByStart().get(index()));
+							const isCollapsed = () => collapsed().has(index());
+							return (
+								<Show when={!hidden().has(index())}>
+									<div class={"explorer-code-line" + (selectedLines().has(index()) ? " selected" : "")} data-line={index()}>
+										<button
+											type="button"
+											class={"explorer-code-fold" + (end() == null ? " empty" : "")}
+											aria-label={end() == null ? undefined : isCollapsed() ? "Expand block" : "Collapse block"}
+											onClick={() => end() != null && toggleFold(index())}
+										>
+											{end() != null ? isCollapsed() ? <ChevronRight size={12} /> : <ChevronDown size={12} /> : null}
+										</button>
+										<button type="button" class="explorer-code-no" onClick={(e) => selectLine(index(), e.shiftKey)} title={`Select line ${index() + 1}`}>
+											{index() + 1}
+										</button>
+										<span class="explorer-code-text">
+											<Show when={ranges().length > 0} fallback={<For each={tokens()}>{(token) => <span style={token.htmlStyle}>{token.content}</span>}</For>}>
+												<For each={pieces()}>
+													{(piece) => (
+														<span
+															style={piece.htmlStyle}
+															classList={{ "explorer-find-match": piece.matchId !== undefined, current: piece.matchId !== undefined && piece.matchId === activeMatch() }}
+														>
+															{piece.content}
+														</span>
+													)}
+												</For>
+											</Show>
+										</span>
+									</div>
+								</Show>
+							);
+						}}
+					</For>
 				</div>
-			</Show>
+			</div>
 			<PreviewBusy when={tokenData.loading && props.content !== ""} />
-		</>
+		</div>
 	);
 }
 
 interface ExplorerRowMenu {
 	reveal: (entry: ExplorerEntry) => void;
+	copyName: (entry: ExplorerEntry) => void;
 	copyPath: (entry: ExplorerEntry) => void;
 	copyRelative: (entry: ExplorerEntry) => void;
 	collapseAll: () => void;
@@ -613,7 +754,6 @@ function ExplorerNode(props: {
 	const isOpen = () => props.expanded().has(key());
 	const state = () => props.dirs()[key()];
 	const selected = () => props.selectedKey() === key();
-	const markdown = () => !isDir() && languageForPath(props.entry.path) === "markdown";
 	const [menuOpen, setMenuOpen] = createSignal(false);
 	const activate = () => (isDir() ? props.onToggle(props.entry) : props.onSelect(props.entry));
 
@@ -651,12 +791,10 @@ function ExplorerNode(props: {
 					<ContextMenuItem size="sm" onSelect={() => (isDir() ? props.onToggle(props.entry) : props.onSelect(props.entry, { raw: false }))}>
 						Open
 					</ContextMenuItem>
-					<Show when={markdown()}>
-						<ContextMenuItem size="sm" onSelect={() => props.onSelect(props.entry, { raw: true })}>
-							Open as Raw
-						</ContextMenuItem>
-					</Show>
 					<ContextMenuSeparator />
+					<ContextMenuItem size="sm" onSelect={() => props.menu.copyName(props.entry)}>
+						Copy Name
+					</ContextMenuItem>
 					<ContextMenuItem size="sm" onSelect={() => props.menu.copyPath(props.entry)}>
 						Copy Path
 					</ContextMenuItem>
@@ -700,10 +838,62 @@ function ExplorerNode(props: {
 	);
 }
 
-export function ExplorerDrawer(props: { open: boolean; partner: string | null; reveal?: RevealTarget | null; side?: "left" | "right"; onClose: () => void }) {
+export function ExplorerDrawer(props: {
+	open: boolean;
+	partner: string | null;
+	reveal?: RevealTarget | null;
+	side?: "left" | "right";
+	pinned: boolean;
+	onTogglePin: () => void;
+	letterWidth: number | null;
+	setLetterWidth: (width: number | null) => void;
+	commitLetterWidth: () => void;
+	onClose: () => void;
+}) {
 	const settingsView = useSettings();
 	const toast = useToast();
+	const composer = useComposer();
+	const session = useSession();
 	const codeLineGap = () => settingsView.data()?.settings?.explorer?.lineGap ?? 0.2;
+	const [treeWidth, setTreeWidth] = createSignal(storedTreeWidth());
+	const [liveRange, setLiveRange] = createSignal<{ start: number; end: number } | null>(null);
+	const pinTitle = () => {
+		if (!canPin()) return `Pinning needs ${PIN_MIN} px of width`;
+		return props.pinned ? "Let the reader cover the letter again" : "Pin the letter beside the file";
+	};
+	const [rowWidth, setRowWidth] = createSignal(0);
+	const [pinnedTree, setPinnedTree] = createSignal(false);
+	let dockEl: HTMLDivElement | undefined;
+	let rowObserver: ResizeObserver | undefined;
+	const canPin = () => rowWidth() >= PIN_MIN;
+	// The split grip resizes the letter column, which lives outside this component: measure it from
+	// the row's edge to the dock's edge rather than reaching for its DOM.
+	const letterHost = () => dockEl?.parentElement ?? undefined;
+	function letterWidthNow() {
+		const row = letterHost();
+		if (!row || !dockEl) return props.letterWidth ?? 0;
+		const rowBox = row.getBoundingClientRect();
+		const dockBox = dockEl.getBoundingClientRect();
+		return (props.side ?? "right") === "right" ? dockBox.left - rowBox.left : rowBox.right - dockBox.right;
+	}
+	const letterMax = () => {
+		const tree = pinnedTree() ? treeWidth() + GRIP_WIDTH : 0;
+		return Math.max(LETTER_MIN, rowWidth() - CODE_MIN - GRIP_WIDTH - tree);
+	};
+	function bindDock(el: HTMLDivElement) {
+		dockEl = el;
+		rowObserver?.disconnect();
+		// A ref callback runs when the element is created, before it is appended — measure on the
+		// next microtask, once the row it lives in actually exists.
+		queueMicrotask(() => {
+			const row = el.parentElement;
+			if (!row || !el.isConnected) return;
+			rowObserver = new ResizeObserver(() => setRowWidth(row.clientWidth));
+			rowObserver.observe(row);
+			setRowWidth(row.clientWidth);
+		});
+	}
+	onCleanup(() => rowObserver?.disconnect());
 	const codeLineHeight = () => 1 + codeLineGap();
 	const [dirs, setDirs] = createSignal<Record<string, DirState>>({});
 	const [dirReal, setDirReal] = createSignal<Record<string, string>>({});
@@ -807,6 +997,10 @@ export function ExplorerDrawer(props: { open: boolean; partner: string | null; r
 		if (!props.open) setSelected(null);
 	});
 
+	createEffect(() => {
+		if (!props.open) setPinnedTree(false);
+	});
+
 	function hasCycleToAncestor(entry: ExplorerEntry): boolean {
 		if (!entry.realPath || !entry.path) return false;
 		const segments = entry.path.split("/");
@@ -857,6 +1051,7 @@ export function ExplorerDrawer(props: { open: boolean; partner: string | null; r
 	// Row context menu: Finder / clipboard paths, plus a tree-wide collapse for folders.
 	const rowMenu: ExplorerRowMenu = {
 		reveal: (entry) => void revealRow(entry.path),
+		copyName: (entry) => void navigator.clipboard?.writeText(entry.name),
 		copyPath: (entry) => void navigator.clipboard?.writeText(entryAbsPath(entry.path)),
 		copyRelative: (entry) => void navigator.clipboard?.writeText(entry.path),
 		collapseAll: () => setExpanded(new Set<string>()),
@@ -865,12 +1060,80 @@ export function ExplorerDrawer(props: { open: boolean; partner: string | null; r
 	const selectedKey = () => selected()?.path ?? null;
 	const rootState = () => dirs()[""];
 	const crumbs = () => (shownFile()?.path || shownFile()?.name || "").split("/").filter(Boolean);
-	const foldable = () => {
-		const path = shownFile()?.path;
-		if (!path) return false;
-		const lang = languageForPath(path);
-		return lang === "json" || lang === "jsonc" || lang === "markdown";
+	const dirSegments = () => crumbs().slice(0, -1);
+	const metrics = () => {
+		const file = shownFile();
+		return file ? fileMetrics(file.path, fileData()) : "";
 	};
+	const isRaw = () => shownFile()?.raw === true;
+	const rawToggle = () => {
+		const path = shownFile()?.path;
+		return !!path && languageForPath(path) === "markdown";
+	};
+	const stampLabel = () => {
+		const range = liveRange();
+		if (!range) return "";
+		// `liveRange` indexes lines from 0; the stamp speaks the 1-based `path#74-96` language.
+		const start = range.start + 1;
+		const end = range.end + 1;
+		return start === end ? `${start}` : `${start}–${end}`;
+	};
+
+	function toggleRaw() {
+		const file = selected();
+		if (!file) return;
+		setSelected({ ...file, raw: !(file.raw === true) });
+	}
+
+	function copyLiveRange() {
+		const file = selected();
+		if (!file || !liveRange()) return;
+		void navigator.clipboard?.writeText(`${file.path}#${stampLabel()}`);
+	}
+
+	// The reference the agent can act on is the same `path#74-96` the stamp copies.
+	function quoteInLetter() {
+		const file = selected();
+		if (!file || !liveRange()) return;
+		const ref = `${file.path}#${stampLabel()}`;
+		const draft = composer.drafts()[session.data.selected ?? ""] ?? "";
+		composer.prefill(draft ? `${draft} ${ref} ` : `${ref} `);
+	}
+
+	// Only walk down the chain for folders that are not open and loaded yet: clicking the crumb of
+	// a folder already on screen should not re-ask the workspace for its children.
+	async function focusDir(path: string) {
+		if (!props.partner) return;
+		const open = expanded();
+		const next = new Set(open);
+		const missing: string[] = [];
+		let current = "";
+		for (const segment of path.split("/").filter(Boolean)) {
+			current = current ? `${current}/${segment}` : segment;
+			next.add(current);
+			const state = dirs()[current];
+			if (!state || state.status === "error") missing.push(current);
+		}
+		if (next.size !== open.size) setExpanded(next);
+		for (const dir of missing) await loadDir(dir);
+		scrollToRow(path);
+	}
+
+	function commitTreeWidth() {
+		localStorage.setItem("explorer.treeWidth", String(treeWidth()));
+	}
+
+	const foldRule = createMemo<FoldRule | null>(() => {
+		const path = shownFile()?.path;
+		if (!path) return null;
+		const lang = languageForPath(path);
+		if (!lang) return null;
+		const fold = settingsView.data()?.settings?.explorer?.fold;
+		if (lang === "markdown") return fold?.markdown === false ? null : { kind: "markdown" as const };
+		if (fold?.braces === false) return null;
+		const brackets = BRACKET_FOLD_LANGS[lang];
+		return brackets ? { kind: "brackets" as const, brackets } : null;
+	});
 	const rendered = () => {
 		const file = shownFile();
 		return !!file && file.raw !== true && languageForPath(file.path) === "markdown";
@@ -887,6 +1150,9 @@ export function ExplorerDrawer(props: { open: boolean; partner: string | null; r
 		if (!props.open) return;
 		const onKey = (e: KeyboardEvent) => {
 			if (e.key !== "Escape") return;
+			// A pinned dock is closed on purpose — the pin button, `← partner`, the tree's × — not by Esc.
+			// Esc still gets as far as the find row and a line selection (CodeViewer handles those).
+			if (props.pinned) return;
 			if (selected()) setSelected(null);
 			else props.onClose();
 		};
@@ -895,9 +1161,163 @@ export function ExplorerDrawer(props: { open: boolean; partner: string | null; r
 	});
 
 	return (
-		<>
-			<Show when={drawer.visible()}>
-				<aside class={"explorer-drawer dock-panel side-" + (props.side ?? "right")} classList={{ leaving: drawer.leaving() }}>
+		<Show when={drawer.visible()}>
+			<div class={"explorer-dock side-" + (props.side ?? "right")} classList={{ leaving: drawer.leaving(), "show-tree": pinnedTree() }} ref={bindDock}>
+				<Show when={props.pinned && viewer.visible()}>
+					<DockGrip
+						class="dock-grip-split"
+						host={letterHost}
+						width={letterWidthNow}
+						min={LETTER_MIN}
+						max={letterMax()}
+						// The letter sits on the far side of the dock, so the pointer grows it the other way round.
+						side={(props.side ?? "right") === "right" ? "left" : "right"}
+						label="Resize the letter column"
+						onResize={props.setLetterWidth}
+						onCommit={props.commitLetterWidth}
+					/>
+				</Show>
+				<Show when={viewer.visible()}>
+					<Show when={shownFile()}>
+						{(file) => (
+							<div class="explorer-reader" classList={{ leaving: viewer.leaving() }}>
+								<div class="explorer-reader-head">
+									<button
+										type="button"
+										class="explorer-pin"
+										classList={{ on: props.pinned }}
+										aria-pressed={props.pinned}
+										disabled={!canPin()}
+										title={pinTitle()}
+										onClick={() => {
+											setPinnedTree(false);
+											props.onTogglePin();
+										}}
+									>
+										<Pin size={11} />
+									</button>
+									<Show when={props.pinned}>
+										<button
+											type="button"
+											class="explorer-tool"
+											classList={{ on: pinnedTree() }}
+											aria-pressed={pinnedTree()}
+											title={pinnedTree() ? "Hide the file tree" : "Show the file tree"}
+											onClick={() => setPinnedTree((value) => !value)}
+										>
+											☰
+										</button>
+									</Show>
+									<button type="button" class="explorer-back" title="Close this file" onClick={() => setSelected(null)}>
+										← {props.partner}
+									</button>
+									<span class="explorer-file-name">{file().name}</span>
+									<nav class="explorer-dir" aria-label="File path" title={file().path}>
+										<For each={dirSegments()}>
+											{(segment, index) => (
+												<button
+													type="button"
+													class="explorer-dir-seg"
+													onClick={() =>
+														void focusDir(
+															dirSegments()
+																.slice(0, index() + 1)
+																.join("/"),
+														)
+													}
+												>
+													{segment}/
+												</button>
+											)}
+										</For>
+									</nav>
+									<Show when={liveRange()}>
+										<button type="button" class="explorer-stamp" title={`Copy ${file().path}#${stampLabel()}`} onClick={copyLiveRange}>
+											⧉ {stampLabel()}
+										</button>
+										<button type="button" class="explorer-quote" title={`Quote ${file().path}#${stampLabel()} in the letter`} onClick={quoteInLetter}>
+											Quote
+										</button>
+									</Show>
+									<Show when={rawToggle()}>
+										<button
+											type="button"
+											class="explorer-raw"
+											classList={{ on: isRaw() }}
+											aria-pressed={isRaw()}
+											title={isRaw() ? "Show rendered markdown" : "Show raw markdown"}
+											onClick={toggleRaw}
+										>
+											Raw
+										</button>
+									</Show>
+								</div>
+								<Show
+									when={!fileData.loading}
+									fallback={
+										<div class="explorer-reader-note">
+											<span class="work-dot" />
+											<span class="work-dot" />
+											<span class="work-dot" />
+										</div>
+									}
+								>
+									<Show when={fileData()?.binary}>
+										<div class="explorer-reader-note">binary file · preview unavailable</div>
+									</Show>
+									<Show when={!fileData()?.binary && fileData()?.error}>
+										<div class="explorer-reader-note">{fileData()!.error}</div>
+									</Show>
+									<Show when={!fileData()?.binary && !fileData()?.error}>
+										<Show when={rendered()}>
+											<div class="explorer-reader-tools">
+												<span class="explorer-metrics">{metrics()}</span>
+											</div>
+										</Show>
+										<Show
+											when={!rendered()}
+											fallback={
+												<div class="explorer-file-body">
+													<MarkdownFile content={fileData()?.content ?? ""} />
+												</div>
+											}
+										>
+											<div
+												class="explorer-file-body"
+												style={`--explorer-line-gap: ${codeLineGap()}; --explorer-line-height: ${codeLineHeight()}; --explorer-line-height-em: ${codeLineHeight()}em`}
+											>
+												<CodeViewer
+													content={fileData()?.content ?? ""}
+													lang={languageForPath(file().path) ?? null}
+													fold={foldRule()}
+													locate={file().range ?? null}
+													metrics={metrics()}
+													onSelection={(range) => setLiveRange(range)}
+												/>
+											</div>
+										</Show>
+										<Show when={fileData()?.truncated}>
+											<div class="explorer-reader-foot">truncated · file larger than preview limit</div>
+										</Show>
+									</Show>
+								</Show>
+							</div>
+						)}
+					</Show>
+				</Show>
+				<Show when={viewer.visible()}>
+					<DockGrip
+						host={() => dockEl}
+						width={treeWidth}
+						min={TREE_MIN}
+						max={TREE_MAX}
+						side={props.side ?? "right"}
+						label="Resize the file tree"
+						onResize={setTreeWidth}
+						onCommit={commitTreeWidth}
+					/>
+				</Show>
+				<div class="explorer-tree-pane" style={{ width: `${treeWidth()}px` }}>
 					<div class="explorer-head">
 						<span class="explorer-title">Explorer</span>
 						<button type="button" class="explorer-close" title="Close" onClick={props.onClose}>
@@ -916,77 +1336,8 @@ export function ExplorerDrawer(props: { open: boolean; partner: string | null; r
 							</For>
 						</Show>
 					</div>
-				</aside>
-
-				<Show when={viewer.visible()}>
-					<Show when={shownFile()}>
-						{(file) => (
-							<div class={"explorer-popover dock-pop side-" + (props.side ?? "right")} classList={{ leaving: viewer.leaving() }}>
-								<div class="explorer-popover-head">
-									<nav class="explorer-popover-crumbs" aria-label="File path" title={file().path || file().name}>
-										<For each={crumbs()}>
-											{(segment, index) => (
-												<>
-													<Show when={index() > 0}>
-														<ChevronRight size={11} class="explorer-crumb-sep" />
-													</Show>
-													<span class={"explorer-crumb" + (index() === crumbs().length - 1 ? " current" : "")}>{segment}</span>
-												</>
-											)}
-										</For>
-									</nav>
-									<button type="button" class="explorer-popover-close" title="Close" onClick={() => setSelected(null)}>
-										×
-									</button>
-								</div>
-								<Show
-									when={!fileData.loading}
-									fallback={
-										<div class="explorer-popover-note">
-											<span class="work-dot" />
-											<span class="work-dot" />
-											<span class="work-dot" />
-										</div>
-									}
-								>
-									<Show when={fileData()?.binary}>
-										<div class="explorer-popover-note">binary file · preview unavailable</div>
-									</Show>
-									<Show when={!fileData()?.binary && fileData()?.error}>
-										<div class="explorer-popover-note">{fileData()!.error}</div>
-									</Show>
-									<Show when={!fileData()?.binary && !fileData()?.error}>
-										<Show
-											when={!rendered()}
-											fallback={
-												<div class="explorer-file-body">
-													<MarkdownFile content={fileData()?.content ?? ""} />
-												</div>
-											}
-										>
-											<div
-												class="explorer-file-body"
-												style={`--explorer-line-gap: ${codeLineGap()}; --explorer-line-height: ${codeLineHeight()}; --explorer-line-height-em: ${codeLineHeight()}em`}
-											>
-												<CodeViewer
-													content={fileData()?.content ?? ""}
-													lang={languageForPath(file().path) ?? null}
-													foldable={foldable()}
-													path={file().path}
-													locate={file().range ?? null}
-												/>
-											</div>
-										</Show>
-										<Show when={fileData()?.truncated}>
-											<div class="explorer-popover-foot">truncated · file larger than preview limit</div>
-										</Show>
-									</Show>
-								</Show>
-							</div>
-						)}
-					</Show>
-				</Show>
-			</Show>
-		</>
+				</div>
+			</div>
+		</Show>
 	);
 }

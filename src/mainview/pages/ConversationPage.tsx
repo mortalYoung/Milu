@@ -45,6 +45,16 @@ export function ConversationPage(props: {
 	const panel = () => props.dock.panel();
 	const [btwOpen, setBtwOpen] = createSignal(false);
 	const [btwAnchor, setBtwAnchor] = createSignal<string | null>(null);
+	// The unpinned dock stops above the composer instead of covering it, so it needs that height.
+	const [composerHeight, setComposerHeight] = createSignal(0);
+	let composerObserver: ResizeObserver | undefined;
+	function bindComposerSlot(el: HTMLDivElement) {
+		composerObserver?.disconnect();
+		composerObserver = new ResizeObserver(() => setComposerHeight(el.clientHeight));
+		composerObserver.observe(el);
+		setComposerHeight(el.clientHeight);
+	}
+	onCleanup(() => composerObserver?.disconnect());
 	const workspacePath = () => status.data().workspace_path;
 	const hasWorkspace = () => workspacePath() != null;
 	const gitAvailable = () => hasWorkspace() && status.data().is_git_repo;
@@ -98,27 +108,46 @@ export function ConversationPage(props: {
 			<div class="chat-window">
 				{props.selected ? (
 					<div class="chat-body" classList={{ "btw-open": btwOpen() }}>
-						<div class="chat-main">
-							<div class="chat-transcript-region">
-								<Transcript
-									working={status.isBusyForSelected}
-									historyLoading={props.historyLoading}
-									worker={props.selected}
-									onEscalationRespond={props.onEscalationRespond}
-									onBtw={(anchor) => {
-										setBtwAnchor(anchor);
-										setBtwOpen(true);
-									}}
-									onBtwClose={() => {
-										setBtwAnchor(null);
-										setBtwOpen(false);
-									}}
-									activeBtwAnchor={btwOpen() ? btwAnchor() : null}
-								/>
-								<ExplorerDrawer open={panel() === "explorer"} partner={props.selected} reveal={props.dock.reveal()} side={dockSide()} onClose={() => props.dock.close()} />
-								<GitChangesDrawer open={panel() === "git"} partner={props.selected} side={dockSide()} onClose={() => props.dock.close()} />
+						<div
+							class="chat-main"
+							classList={{ pinned: props.dock.pinned(), "side-left": dockSide() === "left" }}
+							style={{ "--dock-bottom": `${composerHeight()}px`, ...(props.dock.letterWidth() != null ? { "--letter-width": `${props.dock.letterWidth()}px` } : {}) }}
+						>
+							<div class="chat-letter">
+								<div class="chat-transcript-region">
+									<Transcript
+										working={status.isBusyForSelected}
+										historyLoading={props.historyLoading}
+										worker={props.selected}
+										onEscalationRespond={props.onEscalationRespond}
+										onBtw={(anchor) => {
+											setBtwAnchor(anchor);
+											setBtwOpen(true);
+										}}
+										onBtwClose={() => {
+											setBtwAnchor(null);
+											setBtwOpen(false);
+										}}
+										activeBtwAnchor={btwOpen() ? btwAnchor() : null}
+									/>
+								</div>
+								<div class="composer-slot" ref={bindComposerSlot}>
+									<Composer onSend={props.onSend} onStop={props.onStop} onShell={props.onShell} onOpenPath={props.onOpenPath} editors={props.editors} />
+								</div>
 							</div>
-							<Composer onSend={props.onSend} onStop={props.onStop} onShell={props.onShell} onOpenPath={props.onOpenPath} editors={props.editors} />
+							<ExplorerDrawer
+								open={panel() === "explorer"}
+								partner={props.selected}
+								reveal={props.dock.reveal()}
+								side={dockSide()}
+								pinned={props.dock.pinned()}
+								onTogglePin={props.dock.togglePinned}
+								letterWidth={props.dock.letterWidth()}
+								setLetterWidth={props.dock.setLetterWidth}
+								commitLetterWidth={props.dock.commitLetterWidth}
+								onClose={() => props.dock.close()}
+							/>
+							<GitChangesDrawer open={panel() === "git"} partner={props.selected} side={dockSide()} onClose={() => props.dock.close()} />
 						</div>
 					</div>
 				) : (

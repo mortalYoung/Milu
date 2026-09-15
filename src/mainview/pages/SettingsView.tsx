@@ -37,7 +37,7 @@ export interface SettingsData {
 		maxOverflowRetries?: number;
 		prune?: { thresholdChars?: number; headChars?: number; tailChars?: number };
 	};
-	explorer?: { lineGap?: number };
+	explorer?: { lineGap?: number; fold?: { braces?: boolean; markdown?: boolean } };
 	highlight?: { tokenizeMaxLineLength?: number; tokenizeTimeLimit?: number };
 	palette?: { searchIgnoreDirs?: string[] };
 }
@@ -84,6 +84,8 @@ const DEFAULTS = {
 	memoryIdleMinutes: 5,
 	memoryMaxScenes: 15,
 	explorerLineGap: 0.2,
+	explorerFoldBraces: true,
+	explorerFoldMarkdown: true,
 	highlightMaxLineLength: 3000,
 	highlightTimeLimit: 500,
 };
@@ -219,6 +221,8 @@ export function SettingsView() {
 	const [compactionDigestMaxItems, setCompactionDigestMaxItems] = createSignal("10");
 	const [compactionOverflowRetries, setCompactionOverflowRetries] = createSignal("1");
 	const [explorerLineGap, setExplorerLineGap] = createSignal("0.2");
+	const [explorerFoldBraces, setExplorerFoldBraces] = createSignal(true);
+	const [explorerFoldMarkdown, setExplorerFoldMarkdown] = createSignal(true);
 	const [highlightMaxLineLength, setHighlightMaxLineLength] = createSignal("3000");
 	const [highlightTimeLimit, setHighlightTimeLimit] = createSignal("500");
 	const [paletteIgnoreDirs, setPaletteIgnoreDirs] = createSignal("");
@@ -244,6 +248,13 @@ export function SettingsView() {
 		void persist({ ...currentSettings(), skills_dirs: dirs });
 	}
 
+	/** `explorer` is a nested group: patch one field without dropping lineGap or the other fold switch. */
+	function persistExplorer(patch: { lineGap?: number; fold?: { braces?: boolean; markdown?: boolean } }) {
+		const current = currentSettings();
+		const explorer = current.explorer ?? {};
+		void persist({ ...current, explorer: { ...explorer, ...patch, fold: { ...explorer.fold, ...patch.fold } } });
+	}
+
 	createEffect(() => {
 		const s = settingsData();
 		if (!s) return;
@@ -255,6 +266,8 @@ export function SettingsView() {
 		if (s.compaction?.digestMaxItems !== undefined) setCompactionDigestMaxItems(String(s.compaction.digestMaxItems));
 		if (s.compaction?.maxOverflowRetries !== undefined) setCompactionOverflowRetries(String(s.compaction.maxOverflowRetries));
 		if (s.explorer?.lineGap !== undefined) setExplorerLineGap(String(s.explorer.lineGap));
+		if (s.explorer?.fold?.braces !== undefined) setExplorerFoldBraces(s.explorer.fold.braces);
+		if (s.explorer?.fold?.markdown !== undefined) setExplorerFoldMarkdown(s.explorer.fold.markdown);
 		if (s.highlight?.tokenizeMaxLineLength !== undefined) setHighlightMaxLineLength(String(s.highlight.tokenizeMaxLineLength));
 		if (s.highlight?.tokenizeTimeLimit !== undefined) setHighlightTimeLimit(String(s.highlight.tokenizeTimeLimit));
 	});
@@ -446,6 +459,7 @@ export function SettingsView() {
 			},
 			explorer: {
 				lineGap: Number(explorerLineGap()) || DEFAULTS.explorerLineGap,
+				fold: { braces: explorerFoldBraces(), markdown: explorerFoldMarkdown() },
 			},
 			highlight: {
 				tokenizeMaxLineLength: parsePositiveInt(highlightMaxLineLength(), DEFAULTS.highlightMaxLineLength),
@@ -1414,13 +1428,45 @@ export function SettingsView() {
 							setExplorerLineGap(String(next));
 							const saved = settingsData()?.explorer?.lineGap ?? DEFAULTS.explorerLineGap;
 							if (next === saved) return;
-							void persist({ ...currentSettings(), explorer: { lineGap: next } });
+							void persistExplorer({ lineGap: next });
 						}}
 						onKeyDown={(e) => {
 							if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
 						}}
 					/>
 				</TextField>
+			),
+		},
+		{
+			id: "explorerFoldBraces",
+			title: "Brace folding",
+			desc: "Fold {…} blocks in the file preview for ts, tsx, js, jsx, css and json.",
+			cats: ["general"],
+			modified: () => explorerFoldBraces() !== DEFAULTS.explorerFoldBraces,
+			control: () => (
+				<SwitchToggle
+					checked={explorerFoldBraces()}
+					onChange={(on) => {
+						setExplorerFoldBraces(on);
+						void persistExplorer({ fold: { braces: on } });
+					}}
+				/>
+			),
+		},
+		{
+			id: "explorerFoldMarkdown",
+			title: "Markdown folding",
+			desc: "Fold the sections and fenced blocks of a markdown preview.",
+			cats: ["general"],
+			modified: () => explorerFoldMarkdown() !== DEFAULTS.explorerFoldMarkdown,
+			control: () => (
+				<SwitchToggle
+					checked={explorerFoldMarkdown()}
+					onChange={(on) => {
+						setExplorerFoldMarkdown(on);
+						void persistExplorer({ fold: { markdown: on } });
+					}}
+				/>
 			),
 		},
 		{

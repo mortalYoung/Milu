@@ -1,7 +1,13 @@
-import { createEffect, createMemo, createResource, createSignal, For, Show } from "solid-js";
+import { createEffect, createMemo, createResource, createSignal, For, onCleanup, Show } from "solid-js";
 import type { GitChangeItem } from "../../shared/rpc";
 import { createPresence, DOCK_EXIT_MS, DOCK_POPOVER_EXIT_MS } from "../lib/presence";
 import { rpc } from "../lib/rpc";
+import { clampPaneWidth, DockGrip } from "./DockGrip";
+
+const LIST_MIN = 220;
+const LIST_MAX = 420;
+const LIST_DEFAULT = 320;
+const LIST_WIDTH_KEY = "git.listWidth";
 
 interface GitData {
 	repoRoot: string;
@@ -13,6 +19,20 @@ interface DiffData {
 	diff?: string;
 	content?: string;
 	error?: string;
+}
+
+function storedListWidth() {
+	const stored = Number(localStorage.getItem(LIST_WIDTH_KEY));
+	return Number.isFinite(stored) && stored > 0 ? clampPaneWidth(stored, LIST_MIN, LIST_MAX) : LIST_DEFAULT;
+}
+
+function basename(path: string) {
+	return path.slice(path.lastIndexOf("/") + 1);
+}
+
+function dirname(path: string) {
+	const cut = path.lastIndexOf("/");
+	return cut <= 0 ? "" : path.slice(0, cut + 1);
 }
 
 function DiffLineView(props: { text: string }) {
@@ -31,9 +51,15 @@ export function GitChangesDrawer(props: { open: boolean; partner: string | null;
 	const [error, setError] = createSignal<string | null>(null);
 	const [loading, setLoading] = createSignal(false);
 	const [selected, setSelected] = createSignal<GitChangeItem | null>(null);
+	const [listWidth, setListWidth] = createSignal(storedListWidth());
 	const drawer = createPresence(() => props.open, DOCK_EXIT_MS);
 	const viewer = createPresence(() => props.open && selected() != null, DOCK_POPOVER_EXIT_MS);
 	const shownChange = createMemo<GitChangeItem | null>((prev) => selected() ?? prev, null);
+	let dockEl: HTMLDivElement | undefined;
+
+	function commitWidth() {
+		localStorage.setItem(LIST_WIDTH_KEY, String(listWidth()));
+	}
 
 	async function refresh() {
 		if (!props.partner) return;
@@ -71,6 +97,20 @@ export function GitChangesDrawer(props: { open: boolean; partner: string | null;
 		},
 	);
 
+	// The size of the change, before the diff itself: `+12 −4`.
+	const stats = createMemo(() => {
+		const diff = diffData();
+		if (!diff) return { add: 0, del: 0 };
+		if (diff.kind === "new") return { add: (diff.content ?? "").split("\n").length, del: 0 };
+		let add = 0;
+		let del = 0;
+		for (const line of (diff.diff ?? "").split("\n")) {
+			if (line.startsWith("+") && !line.startsWith("+++")) add += 1;
+			else if (line.startsWith("-") && !line.startsWith("---")) del += 1;
+		}
+		return { add, del };
+	});
+
 	const staged = () => (data()?.changes ?? []).filter((c) => c.staged);
 	const unstaged = () => (data()?.changes ?? []).filter((c) => !c.staged);
 	const shortRoot = () => {
@@ -88,7 +128,7 @@ export function GitChangesDrawer(props: { open: boolean; partner: string | null;
 			else props.onClose();
 		};
 		window.addEventListener("keydown", onKey);
-		return () => window.removeEventListener("keydown", onKey);
+		onCleanup(() => window.removeEventListener("keydown", onKey));
 	});
 
 	const renderGroup = (title: string, items: GitChangeItem[]) => (
@@ -112,9 +152,73 @@ export function GitChangesDrawer(props: { open: boolean; partner: string | null;
 	);
 
 	return (
-		<>
-			<Show when={drawer.visible()}>
-				<aside class={"git-drawer dock-panel side-" + (props.side ?? "right")} classList={{ leaving: drawer.leaving() }}>
+		<Show when={drawer.visible()}>
+			<div class={"git-dock side-" + (props.side ?? "right")} classList={{ leaving: drawer.leaving() }} ref={dockEl}>
+				<Show when={viewer.visible()}>
+					<Show when={shownChange()}>
+						{(change) => (
+							<div class="git-diff" classList={{ leaving: viewer.leaving() }}>
+								<div class="git-diff-head">
+									<button type="button" class="git-back" title="Close this diff" onClick={() => setSelected(null)}>
+										← Changes
+									</button>
+									<span class="git-file-name">{basename(change().path)}</span>
+									<span class="git-dir" title={change().path}>
+										{dirname(change().path)}
+									</span>
+									<Show when={stats().add > 0 || stats().del > 0}>
+										<span class="git-diff-stats">
+											<Show when={stats().add > 0}>
+												<span class="add">+{stats().add}</span>
+											</Show>
+											<Show when={stats().del > 0}>
+												<span class="del">−{stats().del}</span>
+											</Show>
+										</span>
+									</Show>
+									<Show when={diffData()?.error}>
+										<span class="git-diff-error">{diffData()!.error}</span>
+									</Show>
+								</div>
+								<Show
+									when={!diffData.loading}
+									fallback={
+										<div class="git-diff-note">
+											<span class="work-dot" />
+											<span class="work-dot" />
+											<span class="work-dot" />
+										</div>
+									}
+								>
+									<Show when={diffData()?.kind === "new"}>
+										<div class="git-diff-body">
+											<div class="git-diff-new-note">new file</div>
+											<For each={(diffData()?.content ?? "").split("\n")}>{(line) => <div class="git-diff-line add">{line || " "}</div>}</For>
+										</div>
+									</Show>
+									<Show when={diffData()?.kind === "diff"}>
+										<div class="git-diff-body">
+											<For each={(diffData()?.diff ?? "").split("\n")}>{(line) => <DiffLineView text={line} />}</For>
+										</div>
+									</Show>
+								</Show>
+							</div>
+						)}
+					</Show>
+				</Show>
+				<Show when={viewer.visible()}>
+					<DockGrip
+						host={() => dockEl}
+						width={listWidth}
+						min={LIST_MIN}
+						max={LIST_MAX}
+						side={props.side ?? "right"}
+						label="Resize the change list"
+						onResize={setListWidth}
+						onCommit={commitWidth}
+					/>
+				</Show>
+				<div class="git-list-pane" style={{ width: `${listWidth()}px` }}>
 					<div class="git-head">
 						<span class="git-title">Git Changes</span>
 						<span class="git-root">{shortRoot()}</span>
@@ -145,39 +249,8 @@ export function GitChangesDrawer(props: { open: boolean; partner: string | null;
 							</>
 						)}
 					</div>
-				</aside>
-
-				<Show when={viewer.visible()}>
-					<Show when={shownChange()}>
-						{(change) => (
-							<div class={"git-popover dock-pop side-" + (props.side ?? "right")} classList={{ leaving: viewer.leaving() }}>
-								<div class="git-popover-head">
-									<span class="git-popover-path">{change().path}</span>
-									<Show when={diffData()?.error}>
-										<span class="git-popover-error">{diffData()!.error}</span>
-									</Show>
-									<button type="button" class="git-popover-close" title="Close" onClick={() => setSelected(null)}>
-										×
-									</button>
-								</div>
-								<Show when={!diffData.loading} fallback={<div class="git-popover-note">loading…</div>}>
-									<Show when={diffData()?.kind === "new"}>
-										<div class="git-diff-body">
-											<div class="git-diff-new-note">new file</div>
-											<For each={(diffData()?.content ?? "").split("\n")}>{(line) => <div class="git-diff-line add">{line || " "}</div>}</For>
-										</div>
-									</Show>
-									<Show when={diffData()?.kind === "diff"}>
-										<div class="git-diff-body">
-											<For each={(diffData()?.diff ?? "").split("\n")}>{(line) => <DiffLineView text={line} />}</For>
-										</div>
-									</Show>
-								</Show>
-							</div>
-						)}
-					</Show>
-				</Show>
-			</Show>
-		</>
+				</div>
+			</div>
+		</Show>
 	);
 }

@@ -704,7 +704,7 @@ export type AppRPCSchema = __schema<{
 							maxOverflowRetries?: number;
 							prune?: { thresholdChars?: number; headChars?: number; tailChars?: number };
 						};
-						explorer?: { lineGap?: number };
+						explorer?: { lineGap?: number; fold?: { braces?: boolean; markdown?: boolean } };
 						highlight?: { tokenizeMaxLineLength?: number; tokenizeTimeLimit?: number };
 						palette?: { searchIgnoreDirs?: string[] };
 						dockSide?: "left" | "right";
@@ -747,7 +747,7 @@ export type AppRPCSchema = __schema<{
 							maxOverflowRetries?: number;
 							prune?: { thresholdChars?: number; headChars?: number; tailChars?: number };
 						};
-						explorer?: { lineGap?: number };
+						explorer?: { lineGap?: number; fold?: { braces?: boolean; markdown?: boolean } };
 						highlight?: { tokenizeMaxLineLength?: number; tokenizeTimeLimit?: number };
 						palette?: { searchIgnoreDirs?: string[] };
 						dockSide?: "left" | "right";
