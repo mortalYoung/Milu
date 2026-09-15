@@ -7,6 +7,7 @@ import { useAgentStatus } from "../lib/contexts/agent-status-context";
 import { useCommandDirectory } from "../lib/contexts/commands-context";
 import { useComposer } from "../lib/contexts/composer-context";
 import { useMetrics } from "../lib/contexts/metrics-context";
+import { useScroll } from "../lib/contexts/scroll-context";
 import { useSession } from "../lib/contexts/session-context";
 import { useSettings } from "../lib/contexts/settings-context";
 import { useSkills } from "../lib/contexts/skills-context";
@@ -45,6 +46,7 @@ export function Composer(props: {
 	const composer = useComposer();
 	const session = useSession();
 	const settings = useSettings();
+	const scroll = useScroll();
 	const toast = useToast();
 	const commandDirectory = useCommandDirectory();
 	const skillDirectory = useSkills();
@@ -224,9 +226,11 @@ export function Composer(props: {
 		setSubmitting(true);
 		setMenuOpen(false);
 		setClaimed(null);
+		scroll.pin(true);
+		if (consumed) clearText();
 		try {
 			const execution = await commandDirectory.execute(line);
-			if (execution.ok || consumed) clearText();
+			if (execution.ok) clearText();
 			if (!execution.ok) toast.push({ title: "Couldn't run the command", body: execution.error ?? "Unknown error" }, "error");
 		} finally {
 			setSubmitting(false);
@@ -246,9 +250,10 @@ export function Composer(props: {
 		setSubmitting(true);
 		setMenuOpen(false);
 		setClaimed(null);
+		clearText();
+		scroll.pin(true);
 		try {
 			const res = await skillDirectory.mutate.execute(name, hint);
-			if (res.ok || hint?.trim()) clearText();
 			if (!res.ok) toast.push({ title: "Couldn't run the skill", body: res.error ?? "Unknown error" }, "error");
 		} finally {
 			setSubmitting(false);
