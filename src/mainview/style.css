@@ -398,6 +398,12 @@ body::before {
 	.md code {
 		@apply font-mono text-[12px] bg-print-tint border border-print-line rounded-[3px] px-[5px] py-[1px];
 	}
+	/* mention 是 code 里的 inline-block 按钮：内容换行时按钮会变成多行高的原子盒，而 inline 的 code 只按字体内容区画背景。
+	   chip 自己 inline-block 才能包住它；line-height 压回 normal 是为了让单行时的高度仍然等于普通 code。 */
+	.md code.md-mention-chip {
+		display: inline-block;
+		line-height: normal;
+	}
 	.md-inline-url svg {
 		display: inline-block;
 		margin-left: 3px;
@@ -421,6 +427,7 @@ body::before {
 		margin: 0;
 		font: inherit;
 		color: inherit;
+		text-align: inherit;
 		cursor: pointer;
 		text-decoration: underline dotted;
 		text-decoration-color: color-mix(in srgb, var(--color-ink) 32%, transparent);

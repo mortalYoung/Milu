@@ -197,7 +197,8 @@ function patchFileMentions(md: MarkdownItType) {
 			if (path !== undefined) {
 				const range = path.range === undefined ? "" : ` data-range="${path.range.start}-${path.range.end}"`;
 				const label = `Open ${escapeHtml(path.path)}${path.range === undefined ? "" : ` at line ${path.range.start}`}`;
-				return `${open}<button type="button" class="md-file-mention" data-path="${escapeHtml(path.path)}"${range} title="${escapeHtml(path.path)}" aria-label="${label}">${escapeHtml(value)}</button></code>`;
+				token.attrJoin("class", "md-mention-chip");
+				return `<code${self.renderAttrs(token)}><button type="button" class="md-file-mention" data-path="${escapeHtml(path.path)}"${range} title="${escapeHtml(path.path)}" aria-label="${label}">${escapeHtml(value)}</button></code>`;
 			}
 		}
 		return `${open}${escapeHtml(value)}</code>`;
