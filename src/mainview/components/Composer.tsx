@@ -10,6 +10,7 @@ import { useMetrics } from "../lib/contexts/metrics-context";
 import { useSession } from "../lib/contexts/session-context";
 import { useSettings } from "../lib/contexts/settings-context";
 import { useSkills } from "../lib/contexts/skills-context";
+import { useToast } from "../lib/contexts/toast-context";
 import { detectTrigger, parseCommand } from "../lib/trigger";
 import { formatTokens } from "../lib/utils";
 import { Button } from "./Button";
@@ -43,6 +44,7 @@ export function Composer(props: {
 	const composer = useComposer();
 	const session = useSession();
 	const settings = useSettings();
+	const toast = useToast();
 	const commandDirectory = useCommandDirectory();
 	const skillDirectory = useSkills();
 	const shellContinuous = () => settings.data()?.settings?.shellContinuous ?? true;
@@ -216,14 +218,15 @@ export function Composer(props: {
 		}
 	}
 
-	async function executeCommand(line: string) {
+	async function executeCommand(line: string, consumed = false) {
 		if (submitting()) return;
 		setSubmitting(true);
 		setMenuOpen(false);
 		setClaimed(null);
-		clearText();
 		try {
-			await commandDirectory.execute(line);
+			const execution = await commandDirectory.execute(line);
+			if (execution.ok || consumed) clearText();
+			if (!execution.ok) toast.push({ title: "Couldn't run the command", body: execution.error ?? "Unknown error" }, "error");
 		} finally {
 			setSubmitting(false);
 		}
@@ -242,9 +245,10 @@ export function Composer(props: {
 		setSubmitting(true);
 		setMenuOpen(false);
 		setClaimed(null);
-		clearText();
 		try {
-			await skillDirectory.mutate.execute(name, hint);
+			const res = await skillDirectory.mutate.execute(name, hint);
+			if (res.ok || hint?.trim()) clearText();
+			if (!res.ok) toast.push({ title: "Couldn't run the skill", body: res.error ?? "Unknown error" }, "error");
 		} finally {
 			setSubmitting(false);
 		}
@@ -318,7 +322,7 @@ export function Composer(props: {
 				claimLeading(cmd);
 				return;
 			}
-			await executeCommand(trimmed);
+			await executeCommand(trimmed, Boolean(parsed?.rawInput.trim()));
 			return;
 		}
 
