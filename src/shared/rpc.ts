@@ -573,6 +573,11 @@ export type AppRPCSchema = __schema<{
 				};
 			};
 
+			partner_usage: {
+				params: { name: string };
+				response: { bytes: number; parts: { label: string; bytes: number }[] };
+			};
+
 			memory_overview: {
 				params: { name: string };
 				response: { overview: MemoryOverview | null };

@@ -605,6 +605,10 @@ body::before {
 	.activity-heatmap {
 		@apply flex-1 flex flex-col gap-[5px] select-none min-w-0;
 	}
+	/* 占位：activity 数据到达前不要把卡片顶起来（月份行 10 + gap 5 + 7 行 ×10 + 6 个 gap ×2） */
+	.activity-slot {
+		min-height: 97px;
+	}
 	.activity-months {
 		@apply font-sans text-[8.5px] leading-[10px] text-muted;
 	}
@@ -862,7 +866,7 @@ body::before {
 		outline-offset: -2px;
 	}
 	/* 卡片内整宽的展开头 / 行：focus 圈必须内嵌，外扩的 ring 会溢到卡片边框之外，看起来像"外框变红" */
-	.memory-head:focus-visible,
+	.card-head:focus-visible,
 	.memory-row:focus-visible {
 		outline: 2px solid var(--color-seal);
 		outline-offset: -2px;
@@ -2616,25 +2620,25 @@ body::before {
 	.composer-path {
 		@apply font-mono text-[10px] text-body-muted truncate min-w-0;
 	}
-	.composer-path-label {
+	.path-label {
 		@apply text-muted;
 	}
-	.composer-path-open {
-		@apply inline-flex select-none items-baseline gap-1 rounded-[4px] -mx-1 px-1 cursor-pointer transition-colors;
+	.path-open {
+		@apply inline-flex select-none items-baseline gap-1 rounded-[4px] cursor-pointer transition-colors;
 	}
-	.composer-path-external {
+	.path-external {
 		opacity: 0.55;
 		transform: translateY(1px);
 	}
-	.composer-path-open:hover .composer-path-external {
+	.path-open:hover .path-external {
 		opacity: 1;
 	}
-	.composer-path-open:hover {
+	.path-open:hover {
 		@apply text-seal;
 		text-decoration: underline;
 		text-underline-offset: 2px;
 	}
-	.composer-path-open:focus-visible {
+	.path-open:focus-visible {
 		outline: 2px solid var(--color-seal);
 		outline-offset: 1px;
 	}

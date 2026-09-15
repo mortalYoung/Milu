@@ -1,8 +1,8 @@
-import { ArrowUp, ExternalLink, SlidersHorizontal, Square } from "lucide-solid";
+import { ArrowUp, SlidersHorizontal, Square } from "lucide-solid";
 import { createEffect, createMemo, createSignal, For, type JSX, onCleanup, Show, untrack } from "solid-js";
 import type { CommandDescriptor, SandboxMode } from "../../shared/rpc";
 import { filterCommands } from "../lib/commands";
-import { formatWorkspacePath, shouldSendOnEnter } from "../lib/composer-input";
+import { shouldSendOnEnter } from "../lib/composer-input";
 import { useAgentStatus } from "../lib/contexts/agent-status-context";
 import { useCommandDirectory } from "../lib/contexts/commands-context";
 import { useComposer } from "../lib/contexts/composer-context";
@@ -15,7 +15,7 @@ import { formatTokens } from "../lib/utils";
 import { Button } from "./Button";
 import { CommandMenu } from "./CommandMenu";
 import { ContextMeter } from "./ContextMeter";
-import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "./ui/context-menu";
+import { EditorPathButton } from "./EditorPathButton";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -385,33 +385,13 @@ export function Composer(props: {
 	const showSend = () => text().trim() !== "" || agent.isBusyForSelected();
 
 	const openPath = (path: string, editorId?: string) => props.onOpenPath?.(path, editorId);
-	const pathButton = (label: string, path: string) => (
-		<ContextMenu>
-			<ContextMenuTrigger as="button" type="button" class="composer-path-open" title="Open folder in code editor" onClick={() => openPath(path)}>
-				<span class="composer-path-label">{label}</span> {formatWorkspacePath(path, 36)}
-				<ExternalLink size={10} class="composer-path-external" />
-			</ContextMenuTrigger>
-			<ContextMenuContent size="sm" portal={false}>
-				<For each={props.editors ?? []}>
-					{(editor) => (
-						<ContextMenuItem size="sm" onSelect={() => openPath(path, editor.id)}>
-							Open in {editor.name}
-						</ContextMenuItem>
-					)}
-				</For>
-				<ContextMenuItem size="sm" onSelect={() => openPath(path)}>
-					Open with default
-				</ContextMenuItem>
-			</ContextMenuContent>
-		</ContextMenu>
-	);
 	const pathLine = () => {
 		const parts: JSX.Element[] = [];
 		const ws = agent.data().workspace_path;
 		const storage = agent.data().storage_path;
-		if (ws) parts.push(pathButton("ws", ws));
+		if (ws) parts.push(<EditorPathButton label="ws" path={ws} class="-mx-1 px-1" editors={props.editors} onOpenPath={openPath} />);
 		if (ws && storage) parts.push(<span class="composer-path-sep">·</span>);
-		if (storage) parts.push(pathButton("st", storage));
+		if (storage) parts.push(<EditorPathButton label="st" path={storage} class="-mx-1 px-1" editors={props.editors} onOpenPath={openPath} />);
 		return parts;
 	};
 	const pathTitle = () => {

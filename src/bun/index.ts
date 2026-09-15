@@ -80,6 +80,7 @@ import {
 	readPartnerReadAt,
 	recordPrompt,
 } from "./lib/partner-files";
+import { partnerUsage } from "./lib/partner-usage";
 import { searchFiles } from "./lib/search";
 import { commandsDir, DEFAULT_MCP_CONFIG_PATH, DEFAULT_PALETTE_IGNORE_DIRS, getPartnerDir, loadSettings, type Settings, saveSettings, sendMessageIntervalMs } from "./lib/settings";
 import { loadMcpConfig, saveMcpConfig } from "./mcp/config";
@@ -1465,6 +1466,11 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					model: model ? { provider: model.provider, ...(model.modelId ? { modelId: model.modelId } : {}) } : null,
 					thinking_level: model?.thinkingLevel ?? "high",
 				};
+			},
+
+			partner_usage: async ({ name }) => {
+				const settings = await loadSettings();
+				return partnerUsage(getPartnerDir(settings, name));
 			},
 
 			memory_overview: async ({ name }) => {

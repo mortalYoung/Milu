@@ -95,6 +95,7 @@ function WorkspaceControllers() {
 		{ key: ",", meta: true, handler: () => settings.mutate.setOpen(true) },
 		{ key: "b", meta: true, handler: toggleList },
 		{ key: "w", meta: true, handler: () => closeCurrentChat() },
+		{ key: "e", meta: true, handler: () => openCurrentDetails() },
 		{ key: "p", meta: true, shift: true, handler: () => palette.launch("access") },
 		{ key: "p", meta: true, handler: () => palette.launch() },
 	]);
@@ -110,6 +111,10 @@ function WorkspaceControllers() {
 		if (!session.data.selected) return;
 
 		selectPartner(null);
+	};
+	const openCurrentDetails = () => {
+		const item = session.data.partners.find((x) => x.name === session.data.selected);
+		if (item) setDetailsPartner(item);
 	};
 	const openPartner = (name: string) => {
 		const p = session.data.partners.find((x) => x.name === name);
@@ -205,6 +210,12 @@ function WorkspaceControllers() {
 	function onShell(command: string) {
 		scroll.pin(true);
 		return rpc.request.shell_execute({ command });
+	}
+
+	function onOpenPath(path: string, editorId?: string) {
+		void rpc.request.open_path({ path, editorId }).then((res) => {
+			if (!res.ok) toast.push({ title: "Couldn't open folder", body: res.error ?? "No supported editor found" }, "error");
+		});
 	}
 
 	async function onDeletePartner(name: string) {
@@ -395,11 +406,7 @@ function WorkspaceControllers() {
 																onEscalationRespond={(id, approved) => void rpc.request.sandbox_respond({ id, approved })}
 																toastHost={<ToastHost toasts={toast.toasts} placement={settings.data()?.settings?.toastPlacement ?? "bottomcenter"} onDismiss={toast.dismiss} />}
 																onShell={onShell}
-																onOpenPath={(path, editorId) =>
-																	void rpc.request.open_path({ path, editorId }).then((res) => {
-																		if (!res.ok) toast.push({ title: "Couldn't open folder", body: res.error ?? "No supported editor found" }, "error");
-																	})
-																}
+																onOpenPath={onOpenPath}
 																editors={editors()}
 															/>
 														)}
@@ -421,7 +428,12 @@ function WorkspaceControllers() {
 													</Suspense>
 
 													<Suspense fallback={null}>
-														<PartnerDetailsDialog partner={detailsPartner()} onOpenChange={(open) => !open && setDetailsPartner(null)} />
+														<PartnerDetailsDialog
+															partner={detailsPartner()}
+															onOpenChange={(open) => !open && setDetailsPartner(null)}
+															onOpenPath={onOpenPath}
+															editors={editors()}
+														/>
 													</Suspense>
 
 													<Suspense fallback={null}>

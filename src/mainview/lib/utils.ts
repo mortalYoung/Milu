@@ -10,3 +10,10 @@ export function formatTokens(n: number): string {
 	if (n >= 1_000) return `${Math.round(n / 1_000)}k`;
 	return String(n);
 }
+
+export function formatBytes(n: number): string {
+	if (n >= 1024 ** 3) return `${(n / 1024 ** 3).toFixed(1)} GB`;
+	if (n >= 1024 ** 2) return `${(n / 1024 ** 2).toFixed(1)} MB`;
+	if (n >= 1024) return `${Math.round(n / 1024)} KB`;
+	return `${n} B`;
+}
