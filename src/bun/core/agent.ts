@@ -230,7 +230,8 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	function autoDeliver(assistant: AssistantMessage) {
 		const text = assistantText(assistant);
 		if (!text) return;
-		if (runHasDelivered && ctx.visibleElapsedMs() < (deps.deliverIntervalMs?.() ?? Number.POSITIVE_INFINITY)) return;
+		const hasToolCalls = assistant.content.some((block) => block.type === "toolCall");
+		if (hasToolCalls && runHasDelivered && ctx.visibleElapsedMs() < (deps.deliverIntervalMs?.() ?? Number.POSITIVE_INFINITY)) return;
 		runHasDelivered = true;
 		delivered.add(assistant);
 		deliverText(text);
