@@ -63,7 +63,7 @@ export function PartnerDetailsDialog(props: { partner: PartnerItem | null; onOpe
 
 	return (
 		<Dialog open={p() != null} onOpenChange={props.onOpenChange}>
-			<DialogContent class="w-[820px] max-w-[820px] bg-paper text-ink p-0 gap-0 overflow-hidden">
+			<DialogContent focusClose class="w-[820px] max-w-[820px] bg-paper text-ink p-0 gap-0 overflow-hidden">
 				<DialogTitle class="sr-only">{p()?.name ?? ""}</DialogTitle>
 				{p() && (
 					<div class="flex max-h-[min(86vh,900px)] flex-col overflow-y-auto">

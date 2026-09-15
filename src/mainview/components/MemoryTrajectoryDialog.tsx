@@ -74,6 +74,7 @@ export function MemoryTrajectoryDialog(props: { partner: string; run: MemoryRunV
 	return (
 		<Dialog open={props.run != null} onOpenChange={(open) => !open && props.onClose()}>
 			<DialogContent
+				focusClose
 				layerClass="z-[60]"
 				overlayClass="bg-background/45"
 				class="z-[60] w-[1040px] max-w-[min(1040px,92vw)] h-[min(720px,84vh)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden border-print-line bg-letter text-ink p-0"

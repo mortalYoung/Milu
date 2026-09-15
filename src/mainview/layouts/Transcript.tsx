@@ -702,7 +702,7 @@ export function Transcript(props: {
 				</Show>
 			</ScrollRegion>
 			<Dialog open={skillDialog() != null} onOpenChange={(open) => !open && setSkillDialog(null)}>
-				<DialogContent class="w-[560px] max-w-[560px] bg-paper p-0 gap-0">
+				<DialogContent focusClose class="w-[560px] max-w-[560px] bg-paper p-0 gap-0">
 					<DialogTitle class="sr-only">{skillDialog()?.name ?? ""}</DialogTitle>
 					<div class="flex max-h-[70vh] flex-col gap-3 p-5">
 						<div class="font-mono text-[13px] font-medium text-ink">skill · {skillDialog()?.name}</div>
