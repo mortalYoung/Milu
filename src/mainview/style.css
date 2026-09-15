@@ -1199,7 +1199,7 @@ body::before {
 	}
 
 	.msg-stack {
-		@apply relative mt-6 self-start w-[560px] max-w-full;
+		@apply relative mt-6 self-start w-full max-w-full;
 	}
 	.msg-stack-card {
 		@apply absolute left-0 right-0;
