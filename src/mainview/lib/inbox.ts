@@ -10,7 +10,8 @@ export function createInbox(rpc: RPC) {
 		seq += 1;
 		const list = queued[event.partner] ?? [];
 		if (event.kind === "inserted") {
-			setQueued(event.partner, [...list.filter((item) => item.id !== event.item.id), event.item]);
+			const index = list.findIndex((item) => item.id === event.item.id);
+			setQueued(event.partner, index < 0 ? [...list, event.item] : list.map((item, i) => (i === index ? event.item : item)));
 			return;
 		}
 		if (event.kind === "cleared") {

@@ -452,8 +452,11 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	function enqueue(text: string): QueuedMessage {
 		const item = { id: uuidv7(), content: text, timestamp: Date.now() };
 		inbox.push(item);
-		bridge.onQueueChange({ kind: "inserted", item });
 		return item;
+	}
+
+	function announceQueued(item: QueuedMessage) {
+		bridge.onQueueChange({ kind: "inserted", item });
 	}
 
 	function tagged(item: QueuedMessage): AgentMessage {
@@ -490,6 +493,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		void runWithRetry(tagged(first)).catch(() => {
 			prompting = null;
 			wakeRequested = true;
+			announceQueued(first);
 			ctx.setRunning(false);
 		});
 	}
@@ -708,12 +712,15 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			const item = enqueue(text);
 			if (runSettling) {
 				wakeRequested = true;
+				announceQueued(item);
 				return { queued: true, messageId: item.id };
 			}
 			if (ctx.running) {
 				syncQueues();
+				announceQueued(item);
 				return { queued: true, messageId: item.id };
 			}
+			if (inbox[0] !== item) announceQueued(item);
 			wake();
 			return { queued: inbox[0] !== item, messageId: item.id };
 		},
