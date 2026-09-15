@@ -2262,20 +2262,38 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					const settings = await loadSettings();
 					const before = await listPartners(settings);
 					const affected = [name, ...before.filter((p) => p.forkedFrom === name).map((p) => p.name)];
+					const runMaps = [memoryRuns, sceneRuns, personaRuns, consolidateRuns];
+					const trackedRuns = (targets: string[]) =>
+						runMaps.flatMap((runs) => targets.map((target) => runs.get(target))).filter((run): run is Promise<number> => run !== undefined);
 
+					const draining: Promise<unknown>[] = [];
 					for (const target of affected) {
 						const dir = getPartnerDir(settings, target);
+						const entry = agents.get(target);
+						if (entry) {
+							draining.push(
+								entry.then(async (partner) => {
+									partner.agent.stop();
+									await partner.agent.waitForIdle();
+								}),
+							);
+						}
+						draining.push(...trackedRuns([target]));
 						backgroundAborts.get(target)?.abort();
 						cancelMemoryIdleTimer(target);
 						agents.delete(target);
 						memorySchedules.delete(target);
-						memoryRuns.delete(target);
-						sceneRuns.delete(target);
-						personaRuns.delete(target);
-						consolidateRuns.delete(target);
+						for (const runs of runMaps) runs.delete(target);
 						session.evictRoot(dir);
 						for (const key of [...historyViewCache.keys()]) if (key === `history:${dir}`) historyViewCache.delete(key);
 						if (viewPartner?.name === target) viewPartner = null;
+					}
+
+					// 在飞的后台收尾会写回已删目录（memory 的 ensureMemoryDir 会把 .memory/ 建回来），先等它们落地再 rm
+					let inFlight = draining;
+					for (let round = 0; inFlight.length > 0 && round < 3; round += 1) {
+						await Promise.allSettled(inFlight);
+						inFlight = trackedRuns(affected);
 					}
 
 					await deletePartner(settings, name);
