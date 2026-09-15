@@ -196,6 +196,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			agent.state.messages = messages;
 			return { context: { ...context, messages } };
 		},
+		shouldStopAfterTurn: () => stopRequested,
 	});
 
 	function deliverVisible(text: string, timestamp: number) {
@@ -503,6 +504,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	let deferAgentEnd = false;
 	let runSettling = false;
 	let wakeRequested = false;
+	let stopRequested = false;
 	let prompting: QueuedMessage | null = null;
 	const inbox: QueuedMessage[] = [];
 	let deferredAgentEnd: { message: AssistantMessage; run: number; aborted: boolean } | null = null;
@@ -532,8 +534,8 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		const end = deferredAgentEnd;
 		deferredAgentEnd = null;
 		const endedRun = end?.run ?? run;
-		const aborted = message.stopReason === "aborted";
-		const error = message.stopReason === "error" ? message.errorMessage : undefined;
+		const aborted = message.stopReason === "aborted" || stopRequested;
+		const error = aborted || message.stopReason !== "error" ? undefined : message.errorMessage;
 		for (const item of inbox) item.failed = Boolean(error);
 		enforceDelivery({ type: "agent_end", messages: agent.state.messages } as Extract<AgentEvent, { type: "agent_end" }>);
 		await deps.session.appendAgentEnd(endedRun, aborted ? "aborted" : error ? "error" : "completed", Date.now(), error).catch(logError);
@@ -559,6 +561,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		if (input) await prepareRun();
 		const policy = resolveRetryPolicy(await loadSettings());
 		runAbort = new AbortController();
+		stopRequested = false;
 		deferAgentEnd = true;
 		let lastFailed: AssistantMessage | null = null;
 		let scheduled: { retryId: string; retry: number } | null = null;
@@ -726,6 +729,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			deliverVisible(text, timestamp);
 		},
 		stop() {
+			stopRequested = true;
 			agent.abort();
 			runAbort?.abort();
 			clearQueues();
