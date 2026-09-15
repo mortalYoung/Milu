@@ -17,6 +17,7 @@ import { Button } from "./Button";
 import { CommandMenu } from "./CommandMenu";
 import { ContextMeter } from "./ContextMeter";
 import { EditorPathButton } from "./EditorPathButton";
+import { FollowUpDock } from "./FollowUpDock";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -438,6 +439,7 @@ export function Composer(props: {
 					</div>
 				)}
 			</Show>
+			<FollowUpDock />
 			<div class="composer-row">
 				<Button
 					variant="ghost"

@@ -2560,28 +2560,23 @@ body::before {
 	}
 
 	.followup-dock {
-		@apply shrink-0 bg-paper border-t border-hairline pb-1;
-
-		animation: followup-dock-in 120ms cubic-bezier(0.23, 1, 0.32, 1);
-	}
-	@keyframes followup-dock-in {
-		from {
-			opacity: 0;
-			transform: translateY(6px);
-		}
-		to {
-			opacity: 1;
-			transform: translateY(0);
-		}
+		position: absolute;
+		bottom: calc(100% + 8px);
+		left: 50%;
+		transform: translateX(-50%);
+		width: 60%;
+		max-width: clamp(560px, 46vw, 760px);
+		@apply bg-letter border border-hairline rounded-[8px] py-1 max-h-[200px] overflow-y-auto z-40;
+		animation: composer-panel-in 180ms cubic-bezier(0.23, 1, 0.32, 1);
 	}
 	.followup-dock-head {
-		@apply px-6 pt-2 pb-1.5;
+		@apply px-3 pt-1 pb-1;
 	}
 	.followup-dock-stamp {
 		@apply inline-block px-[7px] pt-[1px] pb-[2px] border border-dashed border-seal rounded-[2px] font-mono text-[9.5px] tracking-[0.06em] text-seal;
 	}
 	.followup-dock-row {
-		@apply relative flex items-baseline py-1 pl-[30px] pr-6 border-t border-hairline-soft;
+		@apply relative flex items-baseline py-1 pl-[26px] pr-3 border-t border-hairline-soft;
 	}
 	.followup-dock-edit {
 		@apply flex flex-1 min-w-0 items-baseline gap-2.5 text-left;
@@ -2595,7 +2590,7 @@ body::before {
 		@apply shrink-0 font-mono text-[9.5px] text-seal;
 	}
 	.followup-dock-x {
-		@apply absolute left-[7px] top-1/2 grid size-4 -translate-y-1/2 place-items-center text-muted opacity-0;
+		@apply absolute left-2 top-1/2 grid size-4 -translate-y-1/2 place-items-center text-muted opacity-0;
 
 		transition: opacity 130ms cubic-bezier(0.23, 1, 0.32, 1);
 	}
@@ -2623,11 +2618,6 @@ body::before {
 		@apply shrink-0 font-mono text-[10px] text-muted;
 
 		font-variant-numeric: tabular-nums;
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.followup-dock {
-			animation: none;
-		}
 	}
 
 	.command-menu {
@@ -2680,7 +2670,8 @@ body::before {
 	@media (prefers-reduced-motion: reduce) {
 		.composer-panel,
 		.composer-command-hint,
-		.command-menu {
+		.command-menu,
+		.followup-dock {
 			animation: none;
 		}
 	}

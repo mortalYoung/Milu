@@ -3,7 +3,6 @@ import { AnimatePresence, Motion } from "solid-motion";
 import { Composer } from "../components/Composer";
 import { ConversationList, type PartnerItem } from "../components/ConversationList";
 import { ExplorerDrawer } from "../components/ExplorerDrawer";
-import { FollowUpDock } from "../components/FollowUpDock";
 import { GitChangesDrawer } from "../components/GitChangesDrawer";
 import { RepliesPane } from "../components/RepliesPane";
 import { Transcript } from "../layouts/Transcript";
@@ -119,7 +118,6 @@ export function ConversationPage(props: {
 								<ExplorerDrawer open={panel() === "explorer"} partner={props.selected} reveal={props.dock.reveal()} side={dockSide()} onClose={() => props.dock.close()} />
 								<GitChangesDrawer open={panel() === "git"} partner={props.selected} side={dockSide()} onClose={() => props.dock.close()} />
 							</div>
-							<FollowUpDock />
 							<Composer onSend={props.onSend} onStop={props.onStop} onShell={props.onShell} onOpenPath={props.onOpenPath} editors={props.editors} />
 						</div>
 					</div>
