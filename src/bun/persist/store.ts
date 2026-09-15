@@ -76,7 +76,6 @@ export interface SessionScope {
 	appendAssistant(meta: AssistantMeta, timestamp: number): Promise<void>;
 	appendSendMessage(content: string, details: Record<string, unknown>, timestamp: number): Promise<void>;
 	appendSystemPrompt(text: string, timestamp: number): Promise<void>;
-	appendFollowUp(timestamp: number): Promise<void>;
 	appendTimeGapReminder(text: string, timestamp: number): Promise<void>;
 	appendRequestHeader(systemPrompt: string, tools: RequestTool[], timestamp: number): Promise<void>;
 	appendAgentStart(run: number, timestamp: number): Promise<void>;
@@ -235,9 +234,6 @@ export function createSessionStore(): SessionStore {
 			},
 			async appendSystemPrompt(text, timestamp) {
 				await appendCustom(dir, EVENTS.systemPrompt, { text, timestamp });
-			},
-			async appendFollowUp(timestamp) {
-				await appendCustom(dir, EVENTS.followUp, { timestamp });
 			},
 			async appendTimeGapReminder(text, timestamp) {
 				await appendCustom(dir, EVENTS.timeGapReminder, { text, timestamp });

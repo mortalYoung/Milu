@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { Agent, type AgentEvent, type AgentMessage } from "@earendil-works/pi-agent-core";
-import { type AssistantMessage, isContextOverflow, retryAssistantCall, type ToolResultMessage } from "@earendil-works/pi-ai";
+import { type AssistantMessage, isContextOverflow, retryAssistantCall, type ToolResultMessage, uuidv7 } from "@earendil-works/pi-ai";
 import { contextChangedText } from "../../shared/events";
 import type { RequestTool, RuntimeStatsSnapshot, SessionStats, ThinkingLevel } from "../../shared/rpc";
 import { newRetryId, resolveRetryPolicy } from "../lib/retry";
@@ -23,7 +23,22 @@ export interface AgentBridge {
 	onTurnStart: (turn: number) => void;
 	onMessage: (text: string) => void;
 	onEnd: (error?: string) => void;
+	onQueueChange: (event: QueueEvent) => void;
 	afterRun: () => void;
+}
+
+export type QueueEvent = { kind: "inserted"; item: QueuedMessage } | { kind: "claimed"; id: string } | { kind: "discarded"; id: string } | { kind: "cleared" };
+
+export interface QueuedMessage {
+	id: string;
+	content: string;
+	timestamp: number;
+	failed?: boolean;
+}
+
+export interface ChatOutcome {
+	queued: boolean;
+	messageId?: string;
 }
 
 export interface AgentHandle {
@@ -40,7 +55,10 @@ export interface AgentHandle {
 	setThinkingLevel: (level: ThinkingLevel) => void;
 	readonly runtimeStats: SessionStats["runtime"];
 	readonly tools: RequestTool[];
-	chat: (text: string) => Promise<void>;
+	chat: (text: string) => Promise<ChatOutcome>;
+	waitForIdle: () => Promise<void>;
+	queued: () => QueuedMessage[];
+	cancelQueued: (id: string) => boolean;
 	chatAndWait: (text: string, skill?: string) => Promise<{ ok: boolean; error?: string }>;
 	sendMessage: (text: string) => Promise<void>;
 	sendShellMessage: (text: string, shellId: string) => Promise<void>;
@@ -280,6 +298,12 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 						.then(() => undefined)
 						.catch(logError);
 				}
+			case "message_start": {
+				const claimed = claimQueued(event.message);
+				if (!claimed) break;
+				if (prompting === claimed) prompting = null;
+				return persistUser(claimed.content, { timestamp: claimed.timestamp }).then(() => bridge.onQueueChange({ kind: "claimed", id: claimed.id }));
+			}
 			case "message_update": {
 				const update = event.assistantMessageEvent;
 				if ((update.type === "text_delta" || update.type === "thinking_delta" || update.type === "toolcall_delta") && update.delta.length > 0) {
@@ -360,6 +384,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 					return persisted;
 				}
 			case "agent_end":
+				runSettling = true;
 				let lastAssistant: AssistantMessage | undefined;
 				for (let i = event.messages.length - 1; i >= 0; i--) {
 					if (event.messages[i].role === "assistant") {
@@ -388,9 +413,9 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 
 	agent.subscribe(handleEvent);
 
-	async function persistUser(text: string, skill?: string) {
+	async function persistUser(text: string, meta?: { skill?: string; timestamp?: number }) {
 		try {
-			await deps.session.appendUser(text, Date.now(), skill ? { skill } : undefined);
+			await deps.session.appendUser(text, meta?.timestamp ?? Date.now(), meta?.skill ? { skill: meta.skill } : undefined);
 		} catch (error) {
 			console.error("session appendUser failed:", error);
 		}
@@ -422,12 +447,48 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		}
 	}
 
-	function queueFollowUp(text: string) {
-		void deps.session.appendFollowUp(Date.now()).catch(logError);
-		agent.followUp({
-			role: "user",
-			content: text,
-			timestamp: Date.now(),
+	function enqueue(text: string): QueuedMessage {
+		const item = { id: uuidv7(), content: text, timestamp: Date.now() };
+		inbox.push(item);
+		bridge.onQueueChange({ kind: "inserted", item });
+		return item;
+	}
+
+	function tagged(item: QueuedMessage): AgentMessage {
+		return { role: "user", content: item.content, timestamp: item.timestamp, dockId: item.id } as AgentMessage;
+	}
+
+	function syncQueues() {
+		agent.clearFollowUpQueue();
+		for (const item of inbox) if (item !== prompting) agent.followUp(tagged(item));
+	}
+
+	function claimQueued(message: AgentMessage): QueuedMessage | null {
+		const id = (message as { dockId?: unknown }).dockId;
+		if (typeof id !== "string") return null;
+		const index = inbox.findIndex((item) => item.id === id);
+		if (index < 0) return null;
+		return inbox.splice(index, 1)[0] ?? null;
+	}
+
+	function clearQueues() {
+		const cleared = inbox.length > 0;
+		inbox.length = 0;
+		agent.clearFollowUpQueue();
+		wakeRequested = false;
+		if (cleared) bridge.onQueueChange({ kind: "cleared" });
+	}
+
+	function wake() {
+		const first = inbox[0];
+		if (!first) return;
+		prompting = first;
+		ctx.setRunning(true);
+		syncQueues();
+		void runWithRetry(tagged(first)).catch(() => {
+			prompting = null;
+			wakeRequested = true;
+			ctx.setRunning(false);
 		});
 	}
 
@@ -439,6 +500,10 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 
 	let runAbort: AbortController | null = null;
 	let deferAgentEnd = false;
+	let runSettling = false;
+	let wakeRequested = false;
+	let prompting: QueuedMessage | null = null;
+	const inbox: QueuedMessage[] = [];
 	let deferredAgentEnd: { message: AssistantMessage; run: number; aborted: boolean } | null = null;
 
 	function lastAssistantMessage(): AssistantMessage | null {
@@ -453,8 +518,8 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		agent.state.messages = agent.state.messages.filter((m) => m !== message);
 	}
 
-	async function runAttempt(text: string | null): Promise<AssistantMessage> {
-		if (text != null) await agent.prompt(text);
+	async function runAttempt(input: AgentMessage | null): Promise<AssistantMessage> {
+		if (input) await agent.prompt(input);
 		else await agent.continue();
 		const message = lastAssistantMessage();
 		if (!message) throw new Error("run ended without an assistant message");
@@ -468,16 +533,17 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		const endedRun = end?.run ?? run;
 		const aborted = message.stopReason === "aborted";
 		const error = message.stopReason === "error" ? message.errorMessage : undefined;
+		for (const item of inbox) item.failed = Boolean(error);
 		enforceDelivery({ type: "agent_end", messages: agent.state.messages } as Extract<AgentEvent, { type: "agent_end" }>);
 		await deps.session.appendAgentEnd(endedRun, aborted ? "aborted" : error ? "error" : "completed", Date.now(), error).catch(logError);
 		bridge.onEnd(error);
 	}
 
-	async function runAttemptWithOverflowRecovery(text: string | null): Promise<AssistantMessage> {
+	async function runAttemptWithOverflowRecovery(input: AgentMessage | null): Promise<AssistantMessage> {
 		let overflowAttempts = 0;
 		const maxOverflow = (await loadSettings()).compaction?.maxOverflowRetries ?? 1;
 		for (;;) {
-			const message = await runAttempt(text);
+			const message = await runAttempt(input);
 			if (!isContextOverflow(message, agent.state.model?.contextWindow) || overflowAttempts >= maxOverflow || !deps.onContextOverflow) {
 				return message;
 			}
@@ -488,8 +554,8 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		}
 	}
 
-	async function runWithRetry(text: string | null): Promise<AssistantMessage> {
-		if (text != null) await prepareRun();
+	async function runWithRetry(input: AgentMessage | null): Promise<AssistantMessage> {
+		if (input) await prepareRun();
 		const policy = resolveRetryPolicy(await loadSettings());
 		runAbort = new AbortController();
 		deferAgentEnd = true;
@@ -500,7 +566,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 				? await retryAssistantCall(
 						async () => {
 							if (lastFailed) removeMessage(lastFailed);
-							const message = await runAttemptWithOverflowRecovery(text);
+							const message = await runAttemptWithOverflowRecovery(input);
 							if (message.stopReason === "error") lastFailed = message;
 							return message;
 						},
@@ -533,25 +599,33 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 							},
 						},
 					)
-				: await runAttemptWithOverflowRecovery(text);
+				: await runAttemptWithOverflowRecovery(input);
 			await finalizeRun(message);
 			return message;
 		} finally {
 			deferAgentEnd = false;
 			if (ctx.running && !deferredAgentEnd) ctx.setRunning(false);
+			runSettling = false;
 			bridge.afterRun();
+			if (wakeRequested) {
+				wakeRequested = false;
+				wake();
+			} else if (inbox.length > 0) {
+				syncQueues();
+			}
 		}
 	}
 
 	async function promptAndWait(text: string, skill?: string): Promise<{ ok: boolean; error?: string }> {
 		if (text.trim() === "") return { ok: false, error: "empty message" };
-		await pushTimeGapReminderIfNeeded();
-		await persistUser(text, skill);
-		ctx.markUserMessage();
 		if (ctx.running) return { ok: false, error: "agent is running" };
+		await pushTimeGapReminderIfNeeded();
+		const timestamp = Date.now();
+		await persistUser(text, { skill, timestamp });
+		ctx.markUserMessage();
 		ctx.setRunning(true);
 		try {
-			const message = await runWithRetry(text);
+			const message = await runWithRetry({ role: "user", content: text, timestamp });
 			return { ok: message.stopReason !== "error", error: message.stopReason === "error" ? message.errorMessage : undefined };
 		} catch (error) {
 			return { ok: false, error: error instanceof Error ? error.message : String(error) };
@@ -623,17 +697,21 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 				console.error("agent.continue failed:", error);
 			}
 		},
-		async chat(text: string) {
-			if (text.trim() === "") return;
+		async chat(text: string): Promise<ChatOutcome> {
+			if (text.trim() === "") return { queued: false };
 			await pushTimeGapReminderIfNeeded();
-			await persistUser(text);
 			ctx.markUserMessage();
-			if (ctx.running) {
-				queueFollowUp(text);
-				return;
+			const item = enqueue(text);
+			if (runSettling) {
+				wakeRequested = true;
+				return { queued: true, messageId: item.id };
 			}
-			ctx.setRunning(true);
-			void runWithRetry(text).catch(() => queueFollowUp(text));
+			if (ctx.running) {
+				syncQueues();
+				return { queued: true, messageId: item.id };
+			}
+			wake();
+			return { queued: inbox[0] !== item, messageId: item.id };
 		},
 		chatAndWait: promptAndWait,
 		async sendMessage(text: string) {
@@ -649,6 +727,21 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		stop() {
 			agent.abort();
 			runAbort?.abort();
+			clearQueues();
+		},
+		async waitForIdle() {
+			await agent.waitForIdle();
+		},
+		queued() {
+			return inbox.map((item) => ({ ...item }));
+		},
+		cancelQueued(id: string) {
+			const index = inbox.findIndex((item) => item.id === id);
+			if (index < 0) return false;
+			inbox.splice(index, 1);
+			syncQueues();
+			bridge.onQueueChange({ kind: "discarded", id });
+			return true;
 		},
 		markUserMessage() {
 			ctx.markUserMessage();

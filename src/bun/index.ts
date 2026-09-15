@@ -316,6 +316,7 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 		{
 			onTurnStart: (turn) => rpc.send.agent_turn({ turn, partner: profile.name }),
 			onMessage: () => rpc.send.agent_message({}),
+			onQueueChange: (event) => rpc.send.inbox_update({ partner: profile.name, ...event }),
 			onEnd: (error) => {
 				rejectPendingEscalations(profile.name, "run ended while awaiting approval");
 				rpc.send.agent_end({ error, partner: profile.name });
@@ -1340,7 +1341,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 		requests: {
 			chat: async ({ text }) => {
 				const target = viewPartner;
-				if (!target) return { accepted: false };
+				if (!target) return { accepted: false, queued: false };
 				const entry = await ensureAgent(target.profile);
 				await ensureWorkspaceValid(entry);
 
@@ -1348,8 +1349,17 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 
 				cancelMemoryIdleTimer(target.name);
 				entry.agent.markUserMessage();
-				await entry.agent.chat(text);
-				return { accepted: true };
+				const outcome = await entry.agent.chat(text);
+				return { accepted: true, ...outcome };
+			},
+			follow_up_list: async ({ name }) => {
+				const entry = await agents.get(name);
+				return { items: entry?.agent.queued() ?? [] };
+			},
+			cancel_follow_up: async ({ id }) => {
+				const entry = await agents.get(viewPartner?.name ?? "");
+				if (entry?.agent.cancelQueued(id)) return { ok: true };
+				return { ok: false, error: "queue-item-not-found" };
 			},
 			edit_last_user: async ({ text }) => editLastUserRpc(text),
 			stop: () => {

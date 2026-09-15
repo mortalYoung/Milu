@@ -73,6 +73,13 @@ export interface CommandHistoryItem {
 	text?: string;
 }
 
+export interface QueuedMessageRpc {
+	id: string;
+	content: string;
+	timestamp: number;
+	failed?: boolean;
+}
+
 export interface ViewItem {
 	id: string;
 	kind: "user" | "send_message" | "escalation" | "error" | "aborted" | "command" | "skill" | "shell";
@@ -402,7 +409,17 @@ export type AppRPCSchema = __schema<{
 			chat: {
 				params: { text: string };
 
-				response: { accepted: boolean };
+				response: { accepted: boolean; queued: boolean; messageId?: string };
+			};
+
+			follow_up_list: {
+				params: { name: string };
+				response: { items: QueuedMessageRpc[] };
+			};
+
+			cancel_follow_up: {
+				params: { id: string };
+				response: { ok: boolean; error?: string };
 			};
 
 			edit_last_user: {
@@ -939,6 +956,13 @@ export type AppRPCSchema = __schema<{
 			agent_message: {};
 
 			origin_update: { partner: string };
+
+			inbox_update: { partner: string } & (
+				| { kind: "inserted"; item: QueuedMessageRpc }
+				| { kind: "claimed"; id: string }
+				| { kind: "discarded"; id: string }
+				| { kind: "cleared" }
+			);
 
 			context_changed: { partner?: string; workspace?: string | null };
 

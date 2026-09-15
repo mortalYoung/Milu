@@ -11,6 +11,7 @@ import { createComposer } from "./lib/composer";
 import { AgentStatusProvider } from "./lib/contexts/agent-status-context";
 import { CommandDirectoryProvider } from "./lib/contexts/commands-context";
 import { ComposerProvider } from "./lib/contexts/composer-context";
+import { InboxProvider } from "./lib/contexts/inbox-context";
 import { MetricsProvider } from "./lib/contexts/metrics-context";
 import { ScrollProvider } from "./lib/contexts/scroll-context";
 import { SessionProvider, useSession } from "./lib/contexts/session-context";
@@ -20,6 +21,7 @@ import { ToastProvider, useToast } from "./lib/contexts/toast-context";
 import { TrajectoryProvider } from "./lib/contexts/trajectory-context";
 import { TranscriptProvider } from "./lib/contexts/transcript-context";
 import { createDock } from "./lib/dock";
+import { createInbox } from "./lib/inbox";
 import { useKeybindings } from "./lib/keybindings";
 import { COPIED_ICON_SVG, COPY_ICON_SVG, setHighlightLimits, warmUpMarkdown } from "./lib/markdown";
 import { createMetrics } from "./lib/metrics";
@@ -74,6 +76,7 @@ function WorkspaceControllers() {
 
 	// ——— feature controllers ———
 	const status = createAgentStatus(rpc);
+	const inbox = createInbox(rpc);
 	const metrics = createMetrics(rpc);
 	const trajectory = createTrajectory();
 	const dock = createDock({ onOpen: () => trajectory.mutate.setOpen(false) });
@@ -84,6 +87,10 @@ function WorkspaceControllers() {
 	const commands = createCommandDirectory(rpc);
 	const settings = createSettings(rpc);
 	const skills = createSkills(rpc);
+	createEffect(() => {
+		const partner = session.data.selected;
+		if (partner) void inbox.refresh(partner);
+	});
 	createEffect(() => {
 		const ms = settings.data()?.settings?.toastDurationMs;
 		if (ms != null) toast.setDurationMs(ms);
@@ -171,6 +178,11 @@ function WorkspaceControllers() {
 		void session.mutate.refreshHistory();
 
 		void session.mutate.refreshPartners();
+	});
+
+	rpc.addMessageListener("inbox_update", ({ partner, kind }) => {
+		if (kind !== "claimed" || partner !== session.data.selected) return;
+		void session.mutate.refreshHistory();
 	});
 
 	rpc.addMessageListener("origin_update", ({ partner }) => {
@@ -355,120 +367,122 @@ function WorkspaceControllers() {
 					<SettingsProvider value={settings}>
 						<SkillsProvider value={skills}>
 							<AgentStatusProvider value={status}>
-								<MetricsProvider value={metrics.data}>
-									<TranscriptProvider value={transcript}>
-										<ScrollProvider value={scroll}>
-											<div class="flex flex-1 min-h-0 flex-col">
-												{view() === "skills" ? (
-													<div class="chat-header" onDblClick={() => void rpc.request.window_zoom_toggle({})} />
-												) : (
-													<AppHeader
-														dock={dock}
-														selected={session.data.selected}
-														onViewDetails={(name) => setDetailsPartner(session.data.partners.find((p) => p.name === name) ?? null)}
-														listCollapsed={listCollapsed()}
-														onToggleList={toggleList}
-													/>
-												)}
-												<div class="relative flex flex-1 min-h-0">
-													<AppRail
-														active={view()}
-														onSelect={(tab) => {
-															if (tab === "settings") settings.mutate.setOpen(true);
-															else setView(tab);
-														}}
-													/>
+								<InboxProvider value={inbox}>
+									<MetricsProvider value={metrics.data}>
+										<TranscriptProvider value={transcript}>
+											<ScrollProvider value={scroll}>
+												<div class="flex flex-1 min-h-0 flex-col">
+													{view() === "skills" ? (
+														<div class="chat-header" onDblClick={() => void rpc.request.window_zoom_toggle({})} />
+													) : (
+														<AppHeader
+															dock={dock}
+															selected={session.data.selected}
+															onViewDetails={(name) => setDetailsPartner(session.data.partners.find((p) => p.name === name) ?? null)}
+															listCollapsed={listCollapsed()}
+															onToggleList={toggleList}
+														/>
+													)}
+													<div class="relative flex flex-1 min-h-0">
+														<AppRail
+															active={view()}
+															onSelect={(tab) => {
+																if (tab === "settings") settings.mutate.setOpen(true);
+																else setView(tab);
+															}}
+														/>
 
-													<main class="flex-1 flex flex-col min-w-0 bg-qw-bg">
-														{view() === "skills" ? (
-															<Suspense fallback={null}>
-																<SkillsView />
-															</Suspense>
-														) : (
-															<ConversationPage
-																dock={dock}
-																partners={session.data.partners}
-																selected={session.data.selected}
-																onSelect={(name) => {
-																	selectPartner(session.data.partners.find((p) => p.name === name) ?? null);
-																}}
-																unread={unread.unread}
-																onAddPartner={() => setShowModal(true)}
-																onDelete={onDeletePartner}
-																onViewDetails={(name) => setDetailsPartner(session.data.partners.find((p) => p.name === name) ?? null)}
-																onDuplicate={(name) => void runCopy("duplicate", name)}
-																onFork={(name) => void runCopy("fork", name)}
-																onPromote={(name) => void onPromotePartner(name)}
-																listCollapsed={listCollapsed()}
-																historyLoading={session.historyLoading}
-																onSend={onSend}
-																onStop={() => void rpc.request.stop({})}
-																onEscalationRespond={(id, approved) => void rpc.request.sandbox_respond({ id, approved })}
-																toastHost={<ToastHost toasts={toast.toasts} placement={settings.data()?.settings?.toastPlacement ?? "bottomcenter"} onDismiss={toast.dismiss} />}
-																onShell={onShell}
+														<main class="flex-1 flex flex-col min-w-0 bg-qw-bg">
+															{view() === "skills" ? (
+																<Suspense fallback={null}>
+																	<SkillsView />
+																</Suspense>
+															) : (
+																<ConversationPage
+																	dock={dock}
+																	partners={session.data.partners}
+																	selected={session.data.selected}
+																	onSelect={(name) => {
+																		selectPartner(session.data.partners.find((p) => p.name === name) ?? null);
+																	}}
+																	unread={unread.unread}
+																	onAddPartner={() => setShowModal(true)}
+																	onDelete={onDeletePartner}
+																	onViewDetails={(name) => setDetailsPartner(session.data.partners.find((p) => p.name === name) ?? null)}
+																	onDuplicate={(name) => void runCopy("duplicate", name)}
+																	onFork={(name) => void runCopy("fork", name)}
+																	onPromote={(name) => void onPromotePartner(name)}
+																	listCollapsed={listCollapsed()}
+																	historyLoading={session.historyLoading}
+																	onSend={onSend}
+																	onStop={() => void rpc.request.stop({})}
+																	onEscalationRespond={(id, approved) => void rpc.request.sandbox_respond({ id, approved })}
+																	toastHost={<ToastHost toasts={toast.toasts} placement={settings.data()?.settings?.toastPlacement ?? "bottomcenter"} onDismiss={toast.dismiss} />}
+																	onShell={onShell}
+																	onOpenPath={onOpenPath}
+																	editors={editors()}
+																/>
+															)}
+														</main>
+
+														<Dialog open={settings.open()} onOpenChange={settings.mutate.setOpen}>
+															<DialogContent class="w-[820px] max-w-none h-[640px] grid-rows-[auto_1fr] overflow-hidden bg-letter border-print-line p-0">
+																<DialogHeader class="px-4 pt-4">
+																	<DialogTitle class="font-serif text-[15px]">Settings</DialogTitle>
+																</DialogHeader>
+																<Suspense fallback={null}>
+																	<SettingsView />
+																</Suspense>
+															</DialogContent>
+														</Dialog>
+
+														<Suspense fallback={null}>
+															<PartnerModal open={showModal()} onOpenChange={setShowModal} onConfirm={onCreatePartner} existingNames={session.data.partners.map((p) => p.name)} />
+														</Suspense>
+
+														<Suspense fallback={null}>
+															<PartnerDetailsDialog
+																partner={detailsPartner()}
+																onOpenChange={(open) => !open && setDetailsPartner(null)}
 																onOpenPath={onOpenPath}
 																editors={editors()}
 															/>
-														)}
-													</main>
+														</Suspense>
 
-													<Dialog open={settings.open()} onOpenChange={settings.mutate.setOpen}>
-														<DialogContent class="w-[820px] max-w-none h-[640px] grid-rows-[auto_1fr] overflow-hidden bg-letter border-print-line p-0">
-															<DialogHeader class="px-4 pt-4">
-																<DialogTitle class="font-serif text-[15px]">Settings</DialogTitle>
-															</DialogHeader>
-															<Suspense fallback={null}>
-																<SettingsView />
-															</Suspense>
-														</DialogContent>
-													</Dialog>
+														<Suspense fallback={null}>
+															<TrajectoryDrawer />
+														</Suspense>
 
-													<Suspense fallback={null}>
-														<PartnerModal open={showModal()} onOpenChange={setShowModal} onConfirm={onCreatePartner} existingNames={session.data.partners.map((p) => p.name)} />
-													</Suspense>
-
-													<Suspense fallback={null}>
-														<PartnerDetailsDialog
-															partner={detailsPartner()}
-															onOpenChange={(open) => !open && setDetailsPartner(null)}
-															onOpenPath={onOpenPath}
-															editors={editors()}
-														/>
-													</Suspense>
-
-													<Suspense fallback={null}>
-														<TrajectoryDrawer />
-													</Suspense>
-
-													<Suspense fallback={null}>
-														<CommandPalette
-															palette={palette}
-															partner={session.data.selected}
-															partners={session.data.partners}
-															hasWorkspace={status.data().workspace_path != null}
-															unread={unread.unread}
-															onSelectPartner={(name) => {
-																settings.mutate.setOpen(false);
-																setView("chat");
-																selectPartner(session.data.partners.find((p) => p.name === name) ?? null);
-															}}
-															onRevealFile={(path, range) => {
-																settings.mutate.setOpen(false);
-																dock.revealInExplorer(path, range);
-															}}
-															onOpenFile={(path) => {
-																settings.mutate.setOpen(false);
-																void rpc.request.open_path({ path }).then((res) => {
-																	if (!res.ok) toast.push({ title: "Couldn't open file", body: res.error ?? "No supported editor found" }, "error");
-																});
-															}}
-														/>
-													</Suspense>
+														<Suspense fallback={null}>
+															<CommandPalette
+																palette={palette}
+																partner={session.data.selected}
+																partners={session.data.partners}
+																hasWorkspace={status.data().workspace_path != null}
+																unread={unread.unread}
+																onSelectPartner={(name) => {
+																	settings.mutate.setOpen(false);
+																	setView("chat");
+																	selectPartner(session.data.partners.find((p) => p.name === name) ?? null);
+																}}
+																onRevealFile={(path, range) => {
+																	settings.mutate.setOpen(false);
+																	dock.revealInExplorer(path, range);
+																}}
+																onOpenFile={(path) => {
+																	settings.mutate.setOpen(false);
+																	void rpc.request.open_path({ path }).then((res) => {
+																		if (!res.ok) toast.push({ title: "Couldn't open file", body: res.error ?? "No supported editor found" }, "error");
+																	});
+																}}
+															/>
+														</Suspense>
+													</div>
 												</div>
-											</div>
-										</ScrollProvider>
-									</TranscriptProvider>
-								</MetricsProvider>
+											</ScrollProvider>
+										</TranscriptProvider>
+									</MetricsProvider>
+								</InboxProvider>
 							</AgentStatusProvider>
 						</SkillsProvider>
 					</SettingsProvider>

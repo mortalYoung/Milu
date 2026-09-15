@@ -867,7 +867,6 @@ export const EVENT_META: Record<string, EntryMeta> = {
 		slice: { as: (record) => asProjected(record, textUserProject) },
 		trajectory: (record) => ({ chip: "GAP", tone: "reminder", caption: firstLine(recordBody(record)), details: [textDetail(recordBody(record))] }),
 	},
-	[EVENTS.followUp]: dataNode("message", { chip: "QUE" }),
 	[EVENTS.contextChanged]: {
 		context: { visit: contextChangedVisit },
 		slice: { as: (record) => asProjected(record, contextChangedProject) },
