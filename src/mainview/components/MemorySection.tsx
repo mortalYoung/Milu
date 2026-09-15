@@ -9,8 +9,7 @@ import { MemoryTrajectoryDialog } from "./MemoryTrajectoryDialog";
 const EYEBROW = "font-sans text-[9.5px] font-semibold uppercase tracking-[0.12em] text-muted";
 const CARD = "border border-hairline bg-letter rounded-md";
 const KIND_CHIP = "shrink-0 rounded-[3px] border border-hairline px-1 py-[1px] font-mono text-[9.5px] uppercase tracking-[0.06em] text-body-muted";
-const ROW_BUTTON =
-	"flex w-full items-baseline gap-2 px-3 py-1.5 text-left hover:bg-paper-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-letter";
+const ROW_BUTTON = "memory-row flex w-full items-baseline gap-2 px-3 py-1.5 text-left hover:bg-paper-hover";
 
 function formatBytes(bytes: number): string {
 	if (bytes <= 0) return "—";
@@ -52,12 +51,7 @@ export function MemorySection(props: { partner: string }) {
 
 	return (
 		<div class={CARD}>
-			<button
-				type="button"
-				class="flex w-full items-center gap-2 px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-paper"
-				aria-expanded={open()}
-				onClick={() => setOpen(!open())}
-			>
+			<button type="button" class="memory-head flex w-full items-center gap-2 rounded-t-[5px] px-3 py-2.5 text-left" aria-expanded={open()} onClick={() => setOpen(!open())}>
 				<span class={EYEBROW}>Memory</span>
 				<span class="min-w-0 flex-1 truncate font-mono text-[10.5px] text-body-muted">{summary()}</span>
 				<Show when={open()} fallback={<ChevronRight size={14} class="shrink-0 text-muted" />}>

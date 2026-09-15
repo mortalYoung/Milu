@@ -133,7 +133,7 @@ export function MemoryTrajectoryDialog(props: { partner: string; run: MemoryRunV
 															>
 																<button
 																	type="button"
-																	class="flex w-full items-baseline gap-2 py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-letter"
+																	class="memory-row flex w-full items-baseline gap-2 py-1.5 text-left"
 																	aria-expanded={openMessage() === key}
 																	onClick={() => setOpenMessage(openMessage() === key ? null : key)}
 																>
