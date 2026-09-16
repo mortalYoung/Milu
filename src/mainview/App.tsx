@@ -45,6 +45,7 @@ const CommandPalette = lazy(() => import("./components/CommandPalette").then((m)
 const TrajectoryDrawer = lazy(() => import("./components/TrajectoryDrawer").then((m) => ({ default: m.TrajectoryDrawer })));
 const SettingsView = lazy(() => import("./pages/SettingsView").then((m) => ({ default: m.SettingsView })));
 const SkillsView = lazy(() => import("./pages/SkillsView").then((m) => ({ default: m.SkillsView })));
+const DashboardView = lazy(() => import("./pages/DashboardView").then((m) => ({ default: m.DashboardView })));
 
 export function App() {
 	const session = createSession(rpc);
@@ -64,7 +65,7 @@ function WorkspaceControllers() {
 	const toast = useToast();
 
 	// ——— UI chrome / local window state ———
-	const [view, setView] = createSignal<"chat" | "skills">("chat");
+	const [view, setView] = createSignal<"chat" | "skills" | "dashboard">("chat");
 	const [showModal, setShowModal] = createSignal(false);
 	const [detailsPartner, setDetailsPartner] = createSignal<PartnerItem | null>(null);
 	const [listCollapsed, setListCollapsed] = createSignal(localStorage.getItem("chatlist.collapsed") === "1");
@@ -373,7 +374,7 @@ function WorkspaceControllers() {
 										<TranscriptProvider value={transcript}>
 											<ScrollProvider value={scroll}>
 												<div class="flex flex-1 min-h-0 flex-col">
-													{view() === "skills" ? (
+													{view() !== "chat" ? (
 														<div class="chat-header" onDblClick={() => void rpc.request.window_zoom_toggle({})} />
 													) : (
 														<AppHeader
@@ -397,6 +398,10 @@ function WorkspaceControllers() {
 															{view() === "skills" ? (
 																<Suspense fallback={null}>
 																	<SkillsView />
+																</Suspense>
+															) : view() === "dashboard" ? (
+																<Suspense fallback={null}>
+																	<DashboardView unread={unread.unread} />
 																</Suspense>
 															) : (
 																<ConversationPage

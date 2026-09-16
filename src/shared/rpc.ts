@@ -288,6 +288,65 @@ export interface PartnerActivityDay {
 	tools: number;
 }
 
+export interface DashboardMemorySizes {
+	memories: number;
+	scenes: number;
+	persona: number;
+	runs: number;
+	total: number;
+}
+
+export interface DashboardLastRun {
+	stage: MemoryRunStage;
+	reason: MemoryRunEndReason;
+	added: number;
+	startedAt: number;
+	durationMs: number;
+}
+
+/** Per-letter rollup. Counts come from one activity scan, so the rows sum to the totals. */
+export interface DashboardPartnerStats {
+	name: string;
+	turns: number;
+	freshTokens: number;
+	totalTokens: number;
+	tools: number;
+	ttftMedianMs: number | null;
+	lastTtftMs: number | null;
+	ttftSamples: number;
+	tps: number | null;
+	memory: DashboardMemorySizes;
+	lastRun: DashboardLastRun | null;
+	/** Turns per day, index-aligned to `DashboardOverview.days`. */
+	days: number[];
+}
+
+export interface DashboardTotals {
+	letters: number;
+	turns: number;
+	freshTokens: number;
+	cacheTokens: number;
+	totalTokens: number;
+	tools: number;
+	ttftMedianMs: number | null;
+	ttftP90Ms: number | null;
+	ttftSamples: number;
+	tps: number | null;
+	memory: DashboardMemorySizes;
+	/** First day with recorded activity — the window label is derived from this. */
+	since: number | null;
+}
+
+export interface DashboardOverview {
+	partners: DashboardPartnerStats[];
+	totals: DashboardTotals;
+	/** The trailing day window the curve draws; its label is derived from `windowDays`. */
+	days: PartnerActivityDay[];
+	windowDays: number;
+	/** Dense calendar series (Monday-aligned through today) for the heatmap. */
+	heatmap: PartnerActivityDay[];
+}
+
 export interface PartnerAccessSkill {
 	name: string;
 	description: string;
@@ -598,6 +657,11 @@ export type AppRPCSchema = __schema<{
 			memory_overview: {
 				params: { name: string };
 				response: { overview: MemoryOverview | null };
+			};
+
+			dashboard_overview: {
+				params: {};
+				response: { overview: DashboardOverview };
 			};
 
 			memory_run_trace: {

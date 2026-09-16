@@ -239,3 +239,81 @@ header 抬头不换行;输入区保持衬线 16px。
   仅主题变化期间由 `.theme-flip` 临时挂载,不干扰日常交互;reduced-motion 下无过渡。
 - `prefers-reduced-motion: reduce` 时移除位移类动画,保留 opacity 过渡。
 - hover 效果包在 `@media (hover: hover) and (pointer: fine)`。
+
+## 10. Dashboard(Ledger 方向,由 Phase 2 四方向预览选定 A)
+
+第三个全窗口视图(rail: Chat / Skills / Dashboard / Settings),与 Skills 同族:
+`flex-1 overflow-y-auto` + `px-6 py-6` 满宽内容列(不是 §5 的 60% 信流栏——那是对话列的解剖,
+视图族沿用 Skills 的解剖)。
+
+### 视觉主题与氛围
+
+**一本摊开的往来账簿**:先看本期合计,再往下翻到每封信那一行。
+全页**无衬线数据**(§3 的数据 UI 规则在这里被推到极端:A 方向连视图标题之外一个衬线都没有)、
+无卡片、无阴影,只用横贯满宽的三段条带 + 发丝线分行。唯一重音仍是封印红,且只出现在
+**量尺填充**与**曲线柱**上——红在这页的语义是"量",不是"警告"。
+
+**视角例外声明**:视图标题 `Ledger` 用 Newsreader 20px semibold(与 Skills 的 `Skills` 一致),
+属"视图族标题"语境;表格与数字一律 Public Sans / JetBrains Mono,不破 §3。
+
+### 结构(先综合、后个体)
+
+| 段 | 内容 | 编码 |
+|---|---|---|
+| 抬头的 meta 行 | letters · forks · unread · since | mono 9px uppercase |
+| **合计栏** | Turns / Fresh / Cache / TTFT / Memory 五格,上下 2px ink 重规线 | 数字 mono 20px weight 500 tracking −0.02em |
+| **每日柱列** | 最近 7 天 turns | 柱高线性,**不做高度动画**(只动 transform/opacity 的规则优先) |
+| **逐信表** | name+last written / fresh 量尺 / turns / TTFT / memory / last run | 量尺带 4 格刻度线,填充 28% 透明度的 seal |
+
+### 数据纪律(本模块特有,优先级高于通用规则)
+
+- **量纲必须与真实语义一致**:"用量"一律用 **fresh tokens**(input + output + cacheWrite)。
+  本机实测 total tokens 的 **99.1% 是 prompt-cache 重读**,画 total 等于画缓存;cache 只以
+  `<百分比>% of <total>` 的形式出现在注脚里。禁止把 lifetime 平均(如 tokens/s)冒充实时指标。
+- **窗口文案必须从常量或数据推导**:曲线窗口 = `DASHBOARD_WINDOW_DAYS`(7),标签由它生成;
+  "since" 由第一条有记录的日期推导。禁止手写 "last 12 weeks" 这类字符串。
+- **合计必须等于各行之和**:逐信 turns / fresh / tools 与合计同源(同一次 activity 扫描),
+  不允许两个来源各算一遍。
+- 数据源只读每封信自己的文件(`runtime-stats.json`、memory 文件体积、`runs.jsonl` 尾部)
+  + 一次 activity 扫描;实测 6 封信 282ms。
+
+### 签名交互(全页仅一个)
+
+**悬停/聚焦一行信 → 每日柱列改画这封信的当日起伏**,其余列降噪到 28% 透明度,
+该行名转 seal 红;移开恢复全量。目的是让"这封信最近动过吗"这个问题的答案落在同一根轴上。
+包在 `(hover: hover) and (pointer: fine)` 内;`tabIndex=0` + `focus-visible` 让键盘同样可用;
+`onFocus/onBlur` 与指针事件并存,不靠 hover 独占。
+
+### Do's / Don'ts
+
+- Do:合计栏用 2px ink 重规线夹住(账簿的分期总账感);刻度线画在量尺轨道上。
+- Don't:不要给柱高/宽度加 transition(非 GPU 属性);不要用左侧竖线标记聚焦行(P-38);
+  不要给这页加模型轨迹那种彩色密度格点(红只表示"量")。
+
+### DNA(从 references/design-systems/stripe 偷的具体值)
+
+1. 表格里的数字一律 `font-variant-numeric: tabular-nums`(Stripe 对账目数字用 `tnum`);
+2. "密集数据 + 宽松外壳":数据行 py-2 / 字号 9–20px 密集小端,段与段之间 mt-5/mt-6 拉开;
+3. 圆角保守:单元格不做药丸,量尺/柱/格一律直角或 1–2px;
+4. 大数字不靠字重吼:20px 只用 weight 500 + 负字距(−0.02em),靠等宽与尺寸建层级;
+5. 字阶密集在小端:9 / 9.5 / 10.5 / 11 / 12 / 13.5 / 20。
+
+### Motion
+
+动效强度 2/10:全页唯一过渡是行底色 `120ms`(background-color)。柱高、量尺宽度一律**瞬变**。
+`prefers-reduced-motion: reduce` 时移除行底色过渡。
+
+### 日历 heatmap(与 §4 的 partner 面板共用组件与量纲)
+
+- **组件复用**:`ActivityHeatmap`(partner 详情面板同一个)。它只吃一串**周一对齐**的连续日
+  序列,月份尺按实际列数排布(所以传入的周数可以变,尺子不会错位);partner 面板传
+  37 周,本页传 52 周 + 当前不完整的一周 = 53 列。
+- **窗口派生**:后端 `DASHBOARD_HEATMAP_WEEKS` 给出周一对齐的密集序列(到 today),
+  前端的 `HEATMAP_WEEKS = 52` 只用于**生成标签**(`Math.round(52 / 4.345) = "12 months"`),
+  从不手写。两者必须满足 前端周数 ≤ 后端 horizon。
+- **量纲**:沿用 partner 面板的 `turns + freshTokens / 3000`,四档 [100, 300, 900]。它**不含
+  cache**(P-60),所以本页三个时间物件的量纲是:曲线 = turns;日历 = turns + fresh/3000;
+  表格量尺 = fresh。每一处都在标签或图例里写明,不靠读者猜。
+- **不变量**:序列必须从周一开始、逐日密集(空格子也要占位),否则列会错位。后端用
+  `setDate(+1)` 推进(跨夏令时安全),不用 `+86400000` 累加。
+- **窄窗**:日历固定 53×12px ≈ 636px,外层 `overflow-x-auto` 兜底,避免把页面撑出横向滚动。

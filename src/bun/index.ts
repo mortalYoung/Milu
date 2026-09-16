@@ -32,6 +32,7 @@ import { askBtwThread, btwBaseContext, btwThreadsForAnchor, createBtwThread, rea
 import { applyCompaction, type CompactionPlan, hasOrphanCompactionStart, planMemoryCompaction } from "./core/compaction";
 import { Context } from "./core/context";
 import { projectSnapshot } from "./core/context-project";
+import { buildDashboardOverview } from "./core/dashboard";
 import {
 	checkpointCoversSession,
 	consolidateMemory,
@@ -1500,6 +1501,8 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				if (!profile) return { overview: null };
 				return { overview: await buildMemoryOverview(session, getPartnerDir(settings, name)) };
 			},
+
+			dashboard_overview: async () => ({ overview: await buildDashboardOverview(session) }),
 
 			memory_run_trace: async ({ name, runId }) => {
 				const settings = await loadSettings();

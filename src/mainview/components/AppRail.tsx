@@ -1,6 +1,6 @@
-import { Feather, MessageSquare, Settings } from "lucide-solid";
+import { Activity, Feather, MessageSquare, Settings } from "lucide-solid";
 
-export type RailTabId = "chat" | "skills" | "settings";
+export type RailTabId = "chat" | "skills" | "dashboard" | "settings";
 
 export function AppRail(props: { active: RailTabId; onSelect: (id: RailTabId) => void }) {
 	return (
@@ -22,6 +22,16 @@ export function AppRail(props: { active: RailTabId; onSelect: (id: RailTabId) =>
 				onClick={() => props.onSelect("skills")}
 			>
 				<Feather size={18} />
+			</button>
+
+			<button
+				type="button"
+				class={"rail-tab electrobun-webkit-app-region-no-drag" + (props.active === "dashboard" ? " active" : "")}
+				title="Dashboard"
+				aria-label="Dashboard"
+				onClick={() => props.onSelect("dashboard")}
+			>
+				<Activity size={18} />
 			</button>
 
 			<div class="rail-footer">

@@ -45,6 +45,8 @@ interface MonthMark {
 }
 
 export function ActivityHeatmap(props: { days: PartnerActivityDay[] }) {
+	// The series is always Monday-aligned; the last column is partial up to today.
+	// Both the grid and the month rule are laid out from that same column count.
 	const columns = () => {
 		const out: PartnerActivityDay[][] = [];
 		for (let i = 0; i < props.days.length; i += 7) out.push(props.days.slice(i, i + 7));
@@ -69,7 +71,7 @@ export function ActivityHeatmap(props: { days: PartnerActivityDay[] }) {
 				style={{
 					"margin-left": `${GUTTER}px`,
 					display: "grid",
-					"grid-template-columns": `repeat(${HEATMAP_WEEKS}, ${CELL}px)`,
+					"grid-template-columns": `repeat(${columns().length}, ${CELL}px)`,
 					gap: `${GAP}px`,
 				}}
 			>
