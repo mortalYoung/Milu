@@ -98,10 +98,19 @@ function WorkspaceControllers() {
 	});
 	createEffect(() => setHighlightLimits(settings.data()?.settings?.highlight));
 
+	/** True while a focus-trapping modal owns the window — never stack a second one on top. */
+	const modalOpen = () => settings.open() || detailsPartner() != null;
+	/** Open the add-partner modal: ⌘N from the chat view, and the directory's + button. */
+	const openAddPartner = () => {
+		if (view() !== "chat" || modalOpen()) return;
+		setShowModal(true);
+	};
+
 	// ——— global keybindings ———
 	useKeybindings([
 		{ key: ",", meta: true, handler: () => settings.mutate.setOpen(true) },
 		{ key: "b", meta: true, handler: toggleList },
+		{ key: "n", meta: true, handler: openAddPartner },
 		{ key: "w", meta: true, handler: () => closeCurrentChat() },
 		{ key: "e", meta: true, handler: () => openCurrentDetails() },
 		{ key: "p", meta: true, shift: true, handler: () => palette.launch("access") },
@@ -412,7 +421,7 @@ function WorkspaceControllers() {
 																		selectPartner(session.data.partners.find((p) => p.name === name) ?? null);
 																	}}
 																	unread={unread.unread}
-																	onAddPartner={() => setShowModal(true)}
+																	onAddPartner={openAddPartner}
 																	onDelete={onDeletePartner}
 																	onViewDetails={(name) => setDetailsPartner(session.data.partners.find((p) => p.name === name) ?? null)}
 																	onDuplicate={(name) => void runCopy("duplicate", name)}

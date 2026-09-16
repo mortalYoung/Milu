@@ -258,11 +258,11 @@ export function ConversationList(props: {
 				<input class="conv-list-input" type="text" placeholder="Search correspondence…" spellcheck={false} />
 				<Tooltip>
 					<TooltipTrigger>
-						<Button variant="default" size="icon" class="size-[26px] rounded-full electrobun-webkit-app-region-no-drag" title="Add Partner" onClick={props.onAddPartner}>
+						<Button variant="default" size="icon" class="size-[26px] rounded-full electrobun-webkit-app-region-no-drag" title="Add Partner (⌘N)" onClick={props.onAddPartner}>
 							<Plus size={13} />
 						</Button>
 					</TooltipTrigger>
-					<TooltipContent>Add Partner</TooltipContent>
+					<TooltipContent>Add Partner (⌘N)</TooltipContent>
 				</Tooltip>
 			</div>
 
