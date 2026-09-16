@@ -352,6 +352,11 @@ function WorkspaceControllers() {
 			if (!href) return;
 			event.preventDefault();
 			if (/^(https?|mailto):/i.test(href)) void rpc.request.open_external({ url: href });
+			else if (href.startsWith("#")) {
+				// A document's own table of contents: jump to the anchor inside the rendered markdown.
+				const target = document.getElementById(href.slice(1));
+				if (target) target.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+			}
 		});
 
 		document.addEventListener("click", (event) => {

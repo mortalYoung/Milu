@@ -601,7 +601,21 @@ export type AppRPCSchema = __schema<{
 
 			explorer_read_file: {
 				params: { name: string; root: ExplorerRoot; path: string };
-				response: { ok: boolean; error?: string; content?: string; binary?: boolean; truncated?: boolean; size?: number };
+				response: {
+					ok: boolean;
+					error?: string;
+					content?: string;
+					binary?: boolean;
+					truncated?: boolean;
+					size?: number;
+					/** Markdown only: the head split off so the preview can draw it instead of dumping raw YAML. */
+					frontmatter?: { end: number; raw: string; data: Record<string, unknown> | null };
+				};
+			};
+
+			explorer_read_image: {
+				params: { name: string; root: ExplorerRoot; from: string; path: string };
+				response: { ok: boolean; dataUrl?: string; error?: string };
 			};
 
 			git_changes: {

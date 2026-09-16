@@ -1,9 +1,21 @@
 import { lstat, open, readdir, readFile, readlink, realpath, stat } from "node:fs/promises";
-import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { ExplorerEntry } from "../../shared/rpc";
+import { type Frontmatter, parseFrontmatter } from "./frontmatter";
 
 const HIDDEN = new Set([".git", ".DS_Store"]);
 const MAX_PREVIEW_BYTES = 512 * 1024;
+/** Documents whose preview shows a YAML head as a header instead of raw text. */
+const MARKDOWN_EXTENSIONS = new Set([".md", ".mdx", ".markdown"]);
+
+/** What the reader needs to draw a file: the text, and — for markdown — its parsed head. */
+export interface FilePreview {
+	content: string;
+	binary: boolean;
+	truncated: boolean;
+	size: number;
+	frontmatter?: Frontmatter;
+}
 const BINARY_EXTENSIONS = new Set([
 	".avif",
 	".bmp",
@@ -193,7 +205,55 @@ export async function listChildren(rootPath: string, relativePath: string): Prom
 	return { realPath: targetReal, entries: out.sort(sortEntries) };
 }
 
-export async function readFilePreview(rootPath: string, relativePath: string): Promise<{ content: string; binary: boolean; truncated: boolean; size: number }> {
+/** Images the preview may inline. SVG is safe here only because it is drawn inside an <img>, which does not run script. */
+const IMAGE_TYPES: Record<string, string> = {
+	".png": "image/png",
+	".jpg": "image/jpeg",
+	".jpeg": "image/jpeg",
+	".gif": "image/gif",
+	".webp": "image/webp",
+	".avif": "image/avif",
+	".svg": "image/svg+xml",
+};
+const MAX_IMAGE_BYTES = 24 * 1024 * 1024;
+
+/** A refusal that says why, so a preview can explain itself instead of showing a bare chip. */
+export interface InlineImage {
+	ok: boolean;
+	dataUrl?: string;
+	error?: string;
+}
+
+const megabytes = (bytes: number): string => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+
+/**
+ * Read an image beside a previewed document and hand it back as a data URL.
+ *
+ * The view cannot read the filesystem, and a relative `src` in a document resolves against a
+ * directory the view knows nothing about — so the main process resolves `src` against the
+ * document's own folder, keeps it inside the root, and returns bytes only for known image types.
+ *
+ * The size ceiling exists to stop a mislabelled giant file from being slurped into a data URL
+ * (base64 costs a third more again), not to budget transfer — a desktop app can inline a whole
+ * documentation set's worth of screenshots, and this README's animated GIF is 9 MB on its own.
+ */
+export async function readImageDataUrl(rootPath: string, documentPath: string, src: string): Promise<InlineImage> {
+	let decoded = src;
+	try {
+		decoded = decodeURIComponent(src);
+	} catch {}
+	if (decoded === "" || isAbsolute(decoded) || /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(decoded)) return { ok: false, error: "not a path inside this root" };
+	const relativeTarget = join(dirname(documentPath), decoded);
+	const { targetReal } = await containedRealPath(rootPath, relativeTarget);
+	const mime = IMAGE_TYPES[extname(targetReal).toLowerCase()];
+	if (!mime) return { ok: false, error: `not an image the preview inlines (${extname(targetReal) || "no extension"})` };
+	const info = await stat(targetReal);
+	if (!info.isFile()) return { ok: false, error: "not a file" };
+	if (info.size > MAX_IMAGE_BYTES) return { ok: false, error: `${megabytes(info.size)} — too large to inline (limit ${megabytes(MAX_IMAGE_BYTES)})` };
+	return { ok: true, dataUrl: `data:${mime};base64,${(await readFile(targetReal)).toString("base64")}` };
+}
+
+export async function readFilePreview(rootPath: string, relativePath: string): Promise<FilePreview> {
 	const { targetReal } = await containedRealPath(rootPath, relativePath);
 	const info = await stat(targetReal);
 	if (!info.isFile()) throw new Error("not a file");
@@ -216,5 +276,6 @@ export async function readFilePreview(rootPath: string, relativePath: string): P
 	} catch {
 		return { content: "", binary: true, truncated: info.size > MAX_PREVIEW_BYTES, size: info.size };
 	}
-	return { content, binary: false, truncated: info.size > MAX_PREVIEW_BYTES, size: info.size };
+	const frontmatter = MARKDOWN_EXTENSIONS.has(ext) ? parseFrontmatter(content) : null;
+	return { content, binary: false, truncated: info.size > MAX_PREVIEW_BYTES, size: info.size, ...(frontmatter ? { frontmatter } : {}) };
 }

@@ -17,8 +17,9 @@
 
 import type { MarkdownItShikiSetupOptions } from "@shikijs/markdown-it/core";
 import type { HighlighterCore } from "@shikijs/types";
-import MarkdownIt, { type MarkdownIt as MarkdownItType, type Renderer, type RendererRule, type Token } from "markdown-it";
+import MarkdownIt, { type Env, type MarkdownIt as MarkdownItType, type Renderer, type RendererRule, type Token } from "markdown-it";
 import { resolveMentionToken } from "../../shared/file-mentions";
+import { extractHtmlSubset, renderImageHtml, restoreHtmlSubset, type SubsetEnv } from "./markdown-html";
 
 // Dual shiki themes: with `defaultColor: "light-dark()"` every token color is emitted as an
 // inline `light-dark(#light, #dark)` pair, resolved by the app's color-scheme — so code blocks
@@ -90,6 +91,7 @@ function isHanCodePoint(code: number | undefined): boolean {
 const mdPlain = new MarkdownIt({ html: false, linkify: true });
 patchLinkTarget(mdPlain);
 patchFileMentions(mdPlain);
+patchImages(mdPlain);
 
 /**
  * shiki's per-line guards, wired to the `highlight` settings group. `tokenizeMaxLineLength` is in
@@ -182,6 +184,20 @@ function insideLink(tokens: { type: string }[], index: number): boolean {
 		}
 	}
 	return false;
+}
+
+/**
+ * Images: markdown `![]()` and the HTML `<img>` shapes both land here, so a relative source is
+ * treated the same wherever it was written.
+ */
+function patchImages(md: MarkdownItType) {
+	md.renderer.rules["image"] = (tokens, idx, options, env, self: Renderer) => {
+		const token = tokens[idx];
+		if (!token) return "";
+		const src = String(token.attrGet("src") ?? "");
+		const alt = self.renderInlineAsText(token.children ?? [], options, env);
+		return renderImageHtml(src, alt, {}, (env as SubsetEnv).images);
+	};
 }
 
 function patchFileMentions(md: MarkdownItType) {
@@ -304,6 +320,7 @@ async function buildShikiMd(): Promise<MarkdownItType> {
 	md.use(plugin);
 	patchLinkTarget(md);
 	patchFileMentions(md);
+	patchImages(md);
 	return md;
 }
 
@@ -407,24 +424,43 @@ export function warmUpMarkdown(): void {
 /**
  * Render markdown → HTML. Synchronous: uses the cached shiki instance once ready, otherwise the
  * plain markdown-it fallback (the async highlighter build never blocks rendering).
+ *
+ * `images` maps a raw relative `src` to a data URL: the renderer cannot read files, so the caller
+ * resolves them and re-renders (see `ExplorerDrawer`). Unknown relative sources stay as chips.
  */
-export function renderMarkdown(src: string, files?: readonly string[]): string {
-	return withCopyButtons((mdShiki ?? mdPlain).render(src, files === undefined ? undefined : { files }));
+export function renderMarkdown(src: string, files?: readonly string[], images?: ReadonlyMap<string, string>): string {
+	return withCopyButtons(renderWith(mdShiki ?? mdPlain, src, envFor(files, images)));
 }
 
 /** Plain markdown (no shiki code highlighting) — fast synchronous first paint. Callers upgrade
  * to `renderMarkdown` asynchronously when the browser is idle for the highlighted version. */
-export function renderMarkdownPlain(src: string, files?: readonly string[]): string {
-	return withCopyButtons(mdPlain.render(src, files === undefined ? undefined : { files }));
+export function renderMarkdownPlain(src: string, files?: readonly string[], images?: ReadonlyMap<string, string>): string {
+	return withCopyButtons(renderWith(mdPlain, src, envFor(files, images)));
 }
 
 /**
  * Render markdown → HTML, waiting for the highlighter if it is still warming up.
  * Use at mount/startup when you want highlighting guaranteed on first paint.
  */
-export async function renderMarkdownReady(src: string, files?: readonly string[]): Promise<string> {
+export async function renderMarkdownReady(src: string, files?: readonly string[], images?: ReadonlyMap<string, string>): Promise<string> {
 	const md = await getShikiMd();
-	return withCopyButtons(md.render(src, files === undefined ? undefined : { files }));
+	return withCopyButtons(renderWith(md, src, envFor(files, images)));
+}
+
+function envFor(files?: readonly string[], images?: ReadonlyMap<string, string>): Env {
+	return { ...(files === undefined ? {} : { files }), ...(images === undefined ? {} : { images }) };
+}
+
+/** One render: HTML is drawn from an allowlist around markdown, never passed through raw.
+ * Recursion carries raw HTML (no copy buttons) so the outer pass wraps each block exactly once. */
+function renderWith(md: MarkdownItType, src: string, env: Env): string {
+	const { source, slots } = extractHtmlSubset(src);
+	const html = md.render(source, env);
+	return restoreHtmlSubset(html, slots, {
+		env: env as SubsetEnv,
+		render: (inner) => renderWith(md, inner, env),
+		renderInline: (inner) => md.renderInline(inner, env),
+	});
 }
 
 export const EXTERNAL_ICON_SVG =

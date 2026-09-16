@@ -469,6 +469,32 @@ body::before {
 		@apply my-2 w-full border-collapse text-[14px];
 		table-layout: fixed;
 	}
+	/* Allowlisted HTML from a document: images, linked screenshots, disclosures, in-page anchors. */
+	.md img {
+		@apply my-1.5 max-w-full rounded-[4px] border border-hairline align-middle;
+		height: auto;
+	}
+	.md-image {
+		@apply inline-flex items-baseline gap-1.5 rounded-[4px] border border-dashed border-hairline px-1.5 py-0.5 font-sans text-[11px] text-body-muted align-middle;
+	}
+	.md-image::before {
+		content: "image";
+		@apply font-mono text-[9px] uppercase tracking-[0.14em] text-muted;
+	}
+	.md details {
+		@apply my-2 border-y border-hairline py-1.5;
+	}
+	.md summary {
+		@apply cursor-pointer font-sans text-[12px] font-medium text-ink-soft;
+	}
+	.md details[open] > summary {
+		@apply mb-1.5;
+	}
+	.md-anchor {
+		display: block;
+		height: 0;
+		overflow: hidden;
+	}
 	.md th {
 		@apply font-semibold text-left bg-paper-hover border-b border-hairline px-2 py-1.5;
 	}
@@ -1933,6 +1959,49 @@ body::before {
 	}
 	.explorer-md-scroll {
 		@apply absolute inset-0 overflow-auto px-5 py-4;
+	}
+	/* YAML frontmatter as a document header: dimmed metadata above the body, never a table. */
+	.md-frontmatter {
+		@apply mx-auto mb-5 w-full border-y border-hairline py-2.5;
+		max-width: 80ch;
+	}
+	.md-frontmatter-head {
+		@apply mb-1 flex items-baseline justify-between gap-3;
+	}
+	.md-frontmatter-mark {
+		@apply font-mono text-[9px] font-medium uppercase tracking-[0.16em] text-muted;
+	}
+	.md-frontmatter-toggle {
+		@apply cursor-pointer font-mono text-[9.5px] text-body-muted transition-colors duration-[120ms] hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-seal/40;
+	}
+	.md-frontmatter-row {
+		@apply grid items-baseline gap-x-3 py-[2px];
+		grid-template-columns: minmax(72px, 150px) minmax(0, 1fr);
+	}
+	.md-frontmatter-prose-row {
+		@apply py-[2px];
+	}
+	.md-frontmatter-key {
+		@apply truncate font-mono text-[10px] text-muted;
+	}
+	.md-frontmatter-value {
+		@apply font-mono text-[11px] text-ink-soft;
+		overflow-wrap: anywhere;
+	}
+	.md-frontmatter-prose {
+		@apply mt-0.5 font-sans text-[12px] leading-[1.6] text-body-muted;
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+	}
+	/* A skill's description can run to hundreds of characters: show its opening lines, not the wall. */
+	.md-frontmatter-prose.clamped {
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 2;
+		overflow: hidden;
+	}
+	.md-frontmatter-prose-row .md-frontmatter-toggle {
+		@apply mt-0.5;
 	}
 	.explorer-md {
 		@apply mx-auto w-full;

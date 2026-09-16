@@ -64,7 +64,7 @@ import {
 import { aggregateUsage, lastUsage } from "./core/trajectory";
 import { deleteApiKey, getApiKey, loadCredentials, setApiKey } from "./lib/credentials";
 import { ensureModel, ensureSandboxMode, ensureStoragePath, ensureWorkspace, hasInvalidPersistedWorkspace, isThinkingLevel, readSandboxMode } from "./lib/ensure";
-import { listChildren, readFilePreview } from "./lib/explorer";
+import { listChildren, readFilePreview, readImageDataUrl } from "./lib/explorer";
 import { gitChanges, gitDiff, gitOverview, gitWorktrees } from "./lib/git-changes";
 import { listInstalledEditors, openInCodeEditor } from "./lib/open-in-editor";
 import {
@@ -1775,6 +1775,19 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				}
 			},
 
+			explorer_read_image: async ({ name, root, from, path }) => {
+				const entry = await agents.get(name);
+				if (!entry) return { ok: false as const, error: "no partner selected" };
+				const rootPath = root === "workspace" ? entry.agent.workspacePath : entry.agent.storagePath;
+				if (!rootPath) return { ok: false as const, error: root === "workspace" ? "workspace not set" : "storage not set" };
+				try {
+					const image = await readImageDataUrl(rootPath, from, path);
+					return image.ok ? { ok: true as const, dataUrl: image.dataUrl } : { ok: false as const, error: image.error ?? "image unavailable" };
+				} catch (error) {
+					return { ok: false as const, error: error instanceof Error ? error.message : String(error) };
+				}
+			},
+
 			git_changes: async ({ name }) => {
 				const entry = await agents.get(name);
 				if (!entry) return { ok: false as const, error: "no partner selected" };
@@ -1824,7 +1837,14 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				if (!rootPath) return { ok: false as const, error: root === "workspace" ? "workspace not set" : "storage not set" };
 				try {
 					const preview = await readFilePreview(rootPath, path);
-					return { ok: true as const, content: preview.content, binary: preview.binary, truncated: preview.truncated, size: preview.size };
+					return {
+						ok: true as const,
+						content: preview.content,
+						binary: preview.binary,
+						truncated: preview.truncated,
+						size: preview.size,
+						...(preview.frontmatter ? { frontmatter: preview.frontmatter } : {}),
+					};
 				} catch (error) {
 					return { ok: false as const, error: error instanceof Error ? error.message : String(error) };
 				}

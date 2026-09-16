@@ -1,4 +1,4 @@
-import { parse } from "yaml";
+import { parseFrontmatter } from "../lib/frontmatter";
 import type { SkillInvocationPolicy } from "./types";
 
 export const SKILL_NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -12,8 +12,6 @@ export interface ParsedSkill {
 	content: string;
 }
 
-const FRONTMATTER_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
-
 function boolValue(value: unknown): boolean | undefined {
 	if (typeof value === "boolean") return value;
 	if (typeof value === "string") {
@@ -26,15 +24,9 @@ function boolValue(value: unknown): boolean | undefined {
 }
 
 export function parseSkillFile(text: string): ParsedSkill | null {
-	const match = FRONTMATTER_RE.exec(text);
-	if (!match) return null;
-	let front: Record<string, unknown>;
-	try {
-		const parsed = parse(match[1]);
-		front = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
-	} catch {
-		return null;
-	}
+	const head = parseFrontmatter(text);
+	if (!head?.data) return null;
+	const front = head.data;
 	const name = typeof front["name"] === "string" ? front["name"].trim() : "";
 	if (!SKILL_NAME_RE.test(name)) return null;
 	const description = typeof front["description"] === "string" ? front["description"].trim() : "";
@@ -57,6 +49,6 @@ export function parseSkillFile(text: string): ParsedSkill | null {
 			modelInvocable: disableModel === undefined ? true : !disableModel,
 			userInvocable: userInvocable === undefined ? true : userInvocable,
 		},
-		content: text.slice(match[0].length).trimStart(),
+		content: text.slice(head.end).trimStart(),
 	};
 }

@@ -32,6 +32,7 @@ interface FileData {
 	truncated?: boolean;
 	size?: number;
 	error?: string;
+	frontmatter?: { end: number; raw: string; data: Record<string, unknown> | null };
 }
 
 function explorerGlyph(entry: ExplorerEntry) {
@@ -266,22 +267,175 @@ function PreviewBusy(props: { when: boolean }) {
 	);
 }
 
-function MarkdownFile(props: { content: string }) {
+/** How many dotted rows the header shows before it asks to be opened. */
+const FRONTMATTER_HEAD = 4;
+const FRONTMATTER_LIMIT = 8;
+/** Past this, a prose value shows its opening lines only: a skill's description can run to 600+ characters. */
+const PROSE_CLAMP_CHARS = 150;
+
+interface FrontmatterLine {
+	key: string;
+	value: string;
+	/** Long or multi-line values read as prose under their key instead of on the key's line. */
+	prose: boolean;
+	/** Prose long enough that the header should show its opening lines only. */
+	long: boolean;
+}
+
+function scalarText(value: unknown): string {
+	if (value == null) return "—";
+	if (typeof value === "string") return value;
+	if (typeof value === "number" || typeof value === "boolean") return String(value);
+	return JSON.stringify(value) ?? "—";
+}
+
+/** Flatten a YAML head into dotted rows: `colors.paper  #f7f3ea`, `typography.serif-family  Newsreader`. */
+function frontmatterLines(data: Record<string, unknown>, prefix = ""): FrontmatterLine[] {
+	const lines: FrontmatterLine[] = [];
+	for (const [key, value] of Object.entries(data)) {
+		const path = prefix ? `${prefix}.${key}` : key;
+		if (value && typeof value === "object" && !Array.isArray(value)) lines.push(...frontmatterLines(value as Record<string, unknown>, path));
+		else {
+			const text = Array.isArray(value) ? value.map(scalarText).join(" · ") : scalarText(value);
+			const prose = text.includes("\n") || text.length > 72;
+			lines.push({ key: path, value: text, prose, long: prose && (text.length > PROSE_CLAMP_CHARS || text.split("\n").length > 2) });
+		}
+	}
+	return lines;
+}
+
+type Frontmatter = { end: number; raw: string; data: Record<string, unknown> | null };
+
+/**
+ * A YAML head drawn as a document header rather than as raw text.
+ *
+ * GitHub renders frontmatter as a two-column table; a table is the wrong shape here — the values are
+ * often a long block scalar (a skill's whole description), a fixed-width cell turns that into a
+ * narrow column, and the header would then outweigh the document's own tables. As a header it keeps
+ * the document's heading hierarchy intact and stays honest: the metadata is still shown, it just
+ * stops pretending to be data.
+ *
+ * A head that does not parse (this repo's own DESIGN.md) keeps its bytes too, but behind a closed
+ * disclosure as a highlighted YAML block — the markdown parser used to eat it, turning YAML lines
+ * into paragraphs and, when a line began with `-` or `+`, into a list item.
+ */
+function FrontmatterHeader(props: { frontmatter: Frontmatter }) {
+	const [open, setOpen] = createSignal(false);
+	/** One prose value at a time: the key of the line whose full text is showing. */
+	const [expanded, setExpanded] = createSignal<string | null>(null);
+	const lines = createMemo(() => (props.frontmatter.data ? frontmatterLines(props.frontmatter.data) : []));
+	const collapsible = () => lines().length > FRONTMATTER_LIMIT;
+	const shown = () => (collapsible() && !open() ? lines().slice(0, FRONTMATTER_HEAD) : lines());
+	const rawHtml = createMemo(() => (props.frontmatter.data ? "" : renderMarkdown(`\`\`\`yaml\n${props.frontmatter.raw}\n\`\`\``)));
+
+	return (
+		<div class="md-frontmatter">
+			<div class="md-frontmatter-head">
+				<span class="md-frontmatter-mark">frontmatter</span>
+				<Show when={props.frontmatter.data && collapsible()}>
+					<button type="button" class="md-frontmatter-toggle" aria-expanded={open()} onClick={() => setOpen(!open())}>
+						{open() ? "show fewer" : `show all ${lines().length} fields`}
+					</button>
+				</Show>
+				<Show when={!props.frontmatter.data}>
+					<button type="button" class="md-frontmatter-toggle" aria-expanded={open()} onClick={() => setOpen(!open())}>
+						{open() ? "hide" : "not valid YAML — show it"}
+					</button>
+				</Show>
+			</div>
+			<Show
+				when={props.frontmatter.data}
+				fallback={
+					<Show when={open()}>
+						<div class="md" innerHTML={rawHtml()} />
+					</Show>
+				}
+			>
+				<For each={shown()}>
+					{(line) =>
+						line.prose ? (
+							<div class="md-frontmatter-prose-row">
+								<span class="md-frontmatter-key">{line.key}</span>
+								<p class="md-frontmatter-prose" classList={{ clamped: line.long && expanded() !== line.key }}>
+									{line.value}
+								</p>
+								<Show when={line.long}>
+									<button
+										type="button"
+										class="md-frontmatter-toggle"
+										aria-expanded={expanded() === line.key}
+										onClick={() => setExpanded(expanded() === line.key ? null : line.key)}
+									>
+										{expanded() === line.key ? "show less" : "show more"}
+									</button>
+								</Show>
+							</div>
+						) : (
+							<div class="md-frontmatter-row">
+								<span class="md-frontmatter-key">{line.key}</span>
+								<span class="md-frontmatter-value">{line.value}</span>
+							</div>
+						)
+					}
+				</For>
+			</Show>
+		</div>
+	);
+}
+
+function MarkdownFile(props: { content: string; frontmatter?: Frontmatter; partner?: string | null; path?: string }) {
 	const [busy, setBusy] = createSignal(false);
+	/** Resolved data URLs, kept for the life of this file so the second pass does not re-read them. */
+	const images = new Map<string, string>();
+	/** Why a source could not be inlined, shown on the chip that stays behind. */
+	const failures = new Map<string, string>();
 	let ref: HTMLDivElement | undefined;
+	/** The head is drawn as a header, so the renderer only ever sees the body. */
+	const body = () => (props.frontmatter ? props.content.slice(props.frontmatter.end) : props.content);
+
+	/** A relative source is a chip after the first paint; this turns the ones we can read into images. */
+	async function resolveImages(el: HTMLElement) {
+		const partner = props.partner;
+		const from = props.path;
+		if (!partner || !from) return images;
+		const srcs = [...new Set([...el.querySelectorAll<HTMLElement>("[data-md-src]")].map((node) => node.dataset["mdSrc"] ?? ""))].filter(Boolean).slice(0, 24);
+		await Promise.all(
+			srcs.map(async (src) => {
+				if (images.has(src)) return;
+				const res = await rpc.request.explorer_read_image({ name: partner, root: "workspace", from, path: src });
+				if (res.ok && res.dataUrl) images.set(src, res.dataUrl);
+				else if (res.error) failures.set(src, res.error);
+			}),
+		);
+		return images;
+	}
+
+	/** Say why a chip stayed a chip — a refusal the reader cannot see is a dead end. */
+	function explainFailures(el: HTMLElement) {
+		if (failures.size === 0) return;
+		for (const node of el.querySelectorAll<HTMLElement>("[data-md-src]")) {
+			const reason = failures.get(node.dataset["mdSrc"] ?? "");
+			if (reason) node.title = reason;
+		}
+	}
+
 	createEffect(() => {
 		const el = ref;
 		if (!el) return;
 		let cancelled = false;
 		setBusy(true);
-		el.innerHTML = renderMarkdown(props.content);
-		void renderMarkdownReady(props.content)
-			.then((html) => {
-				if (!cancelled && el.isConnected) el.innerHTML = html;
-			})
-			.finally(() => {
-				if (!cancelled) setBusy(false);
-			});
+		const text = body();
+		el.innerHTML = renderMarkdown(text);
+		void (async () => {
+			const resolved = await resolveImages(el).catch(() => images);
+			const html = await renderMarkdownReady(text, undefined, resolved);
+			if (!cancelled && el.isConnected) {
+				el.innerHTML = html;
+				explainFailures(el);
+			}
+		})().finally(() => {
+			if (!cancelled) setBusy(false);
+		});
 		onCleanup(() => {
 			cancelled = true;
 		});
@@ -289,6 +443,7 @@ function MarkdownFile(props: { content: string }) {
 	return (
 		<>
 			<div class="explorer-md-scroll">
+				<Show when={props.frontmatter}>{(head) => <FrontmatterHeader frontmatter={head()} />}</Show>
 				<div ref={ref} class="md explorer-md" />
 			</div>
 			<PreviewBusy when={busy() && props.content !== ""} />
@@ -1143,7 +1298,7 @@ export function ExplorerDrawer(props: {
 		if (!props.partner) return null;
 		const res = await rpc.request.explorer_read_file({ name: props.partner, root: "workspace", path: sel.path });
 		if (!res.ok) return { error: res.error ?? "failed to read file" };
-		return { content: res.content ?? "", binary: res.binary, truncated: res.truncated, size: res.size };
+		return res.ok ? res : { error: res.error ?? "failed to read file" };
 	});
 
 	createEffect(() => {
@@ -1278,7 +1433,7 @@ export function ExplorerDrawer(props: {
 											when={!rendered()}
 											fallback={
 												<div class="explorer-file-body">
-													<MarkdownFile content={fileData()?.content ?? ""} />
+													<MarkdownFile content={fileData()?.content ?? ""} frontmatter={fileData()?.frontmatter} partner={props.partner} path={shownFile()?.path} />
 												</div>
 											}
 										>
