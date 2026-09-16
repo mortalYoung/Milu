@@ -146,6 +146,8 @@ export function ConversationPage(props: {
 								paneWidth={props.dock.paneWidth()}
 								onPaneResize={props.dock.setPaneWidth}
 								onPaneCommit={props.dock.commitPaneWidth}
+								wrap={props.dock.wrap()}
+								onToggleWrap={props.dock.toggleWrap}
 								onClose={() => props.dock.close()}
 							/>
 							<GitChangesDrawer

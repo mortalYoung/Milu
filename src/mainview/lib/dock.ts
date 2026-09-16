@@ -17,6 +17,7 @@ export interface RevealTarget {
 
 const LETTER_WIDTH_KEY = "explorer.letterWidth";
 const PANE_WIDTH_KEY = "dock.paneWidth";
+const WRAP_KEY = "reader.wrap";
 
 /**
  * One width for every docked surface. The explorer's tree and the git change list are the same
@@ -47,6 +48,8 @@ export function createDock(options: { onOpen?: () => void; partner?: () => strin
 	const [paneWidth, setPaneWidth] = createSignal(storedPaneWidth());
 	// Pixels once dragged; null keeps the responsive default the pinned layout ships with.
 	const [letterWidth, setLetterWidth] = createSignal(storedLetterWidth());
+	// A reader preference, so it outlives the file it was set on.
+	const [wrap, setWrap] = createSignal(localStorage.getItem(WRAP_KEY) === "1");
 	let seq = 0;
 
 	/**
@@ -101,6 +104,13 @@ export function createDock(options: { onOpen?: () => void; partner?: () => strin
 		localStorage.setItem(PANE_WIDTH_KEY, String(Math.round(paneWidth())));
 	}
 
+	function toggleWrap() {
+		setWrap((value) => {
+			localStorage.setItem(WRAP_KEY, value ? "0" : "1");
+			return !value;
+		});
+	}
+
 	function revealInExplorer(path: string, range?: RevealRange | null) {
 		// Reveal and panel are one state change: without the batch, effects flush between the two
 		// writes and a consumer can see "request set, panel still closed".
@@ -122,6 +132,8 @@ export function createDock(options: { onOpen?: () => void; partner?: () => strin
 		paneWidth,
 		setPaneWidth,
 		commitPaneWidth,
+		wrap,
+		toggleWrap,
 		toggle,
 		close,
 		revealInExplorer,

@@ -1,4 +1,4 @@
-import { CaseSensitive, ChevronDown, ChevronRight, ChevronUp, Folder, FolderOpen, FolderSymlink, Pin, Regex, WholeWord, X } from "lucide-solid";
+import { ChevronDown, ChevronRight, Folder, FolderOpen, FolderSymlink, MessageSquareQuote, Pin, WrapText } from "lucide-solid";
 import { type Accessor, createEffect, createMemo, createResource, createSignal, For, onCleanup, Show, untrack } from "solid-js";
 import type { ExplorerEntry } from "../../shared/rpc";
 import { useComposer } from "../lib/contexts/composer-context";
@@ -9,8 +9,9 @@ import type { RevealRange, RevealTarget } from "../lib/dock";
 import { DOCK_PANE_MAX, DOCK_PANE_MIN } from "../lib/dock";
 import { ESCAPE_ORDER, useEscapeLayer } from "../lib/escape";
 import { fileGlyph, linkGlyph } from "../lib/file-icons";
-import { type HighlightToken, highlightCodeToLines, languageForPath, renderMarkdown, renderMarkdownReady } from "../lib/markdown";
+import { languageForPath, renderMarkdown, renderMarkdownReady } from "../lib/markdown";
 import { rpc } from "../lib/rpc";
+import { CodeReader, PreviewBusy } from "./CodeReader";
 import { DockShell } from "./DockShell";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "./ui/context-menu";
 
@@ -41,149 +42,6 @@ function explorerGlyph(entry: ExplorerEntry) {
 	return fileGlyph(entry.name, "explorer-row-icon");
 }
 
-interface FoldRange {
-	start: number;
-	end: number;
-}
-
-/**
- * Folds bracket blocks that span more than one line. Quotes, template literals and both comment
- * styles are skipped, so a brace inside a message cannot swallow the rest of the file. Regex
- * literals are not recognised: a `}` inside one may close a block early.
- */
-function findBracketFoldRanges(text: string, brackets: string): FoldRange[] {
-	const openers = new Set<string>();
-	const closers = new Map<string, string>();
-	if (brackets.includes("{")) {
-		openers.add("{");
-		closers.set("}", "{");
-	}
-	if (brackets.includes("[")) {
-		openers.add("[");
-		closers.set("]", "[");
-	}
-	const ranges: FoldRange[] = [];
-	const stack: { char: string; line: number }[] = [];
-	let line = 0;
-	let quote: string | null = null;
-	let escaped = false;
-	let lineComment = false;
-	let blockComment = false;
-	for (let i = 0; i < text.length; i++) {
-		const ch = text[i];
-		if (ch === "\n") {
-			line += 1;
-			lineComment = false;
-			continue;
-		}
-		if (lineComment) continue;
-		if (blockComment) {
-			if (ch === "*" && text[i + 1] === "/") {
-				blockComment = false;
-				i += 1;
-			}
-			continue;
-		}
-		if (quote) {
-			if (escaped) escaped = false;
-			else if (ch === "\\") escaped = true;
-			else if (ch === quote) quote = null;
-			continue;
-		}
-		if (ch === "/" && text[i + 1] === "/") {
-			lineComment = true;
-			i += 1;
-			continue;
-		}
-		if (ch === "/" && text[i + 1] === "*") {
-			blockComment = true;
-			i += 1;
-			continue;
-		}
-		if (ch === '"' || ch === "'" || ch === "`") {
-			quote = ch;
-			continue;
-		}
-		if (openers.has(ch)) {
-			stack.push({ char: ch, line });
-			continue;
-		}
-		const opener = closers.get(ch);
-		if (!opener) continue;
-		const open = stack.pop();
-		if (open && open.char === opener && line > open.line) ranges.push({ start: open.line, end: line });
-	}
-	return ranges;
-}
-
-function findMarkdownFoldRanges(text: string): FoldRange[] {
-	const lines = text.split("\n");
-	let fence: string | null = null;
-	const levels = lines.map((line) => {
-		const fenceMatch = /^ {0,3}(`{3,}|~{3,})/.exec(line);
-		if (fenceMatch) {
-			const marker = fenceMatch[1][0];
-			if (!fence) fence = marker;
-			else if (fence === marker) fence = null;
-			return null;
-		}
-		if (fence) return null;
-		const match = /^ {0,3}(#{1,6})(?:[ \t]+|$)/.exec(line);
-		return match ? match[1].length : null;
-	});
-	const ranges: FoldRange[] = [];
-	for (let i = 0; i < lines.length; i++) {
-		const level = levels[i];
-		if (level == null) continue;
-		let end = lines.length - 1;
-		for (let j = i + 1; j < lines.length; j++) {
-			const next = levels[j];
-			if (next != null && next <= level) {
-				end = j - 1;
-				break;
-			}
-		}
-		if (end > i) ranges.push({ start: i, end });
-	}
-	return ranges;
-}
-
-interface FindMatch {
-	line: number;
-	start: number;
-	end: number;
-}
-
-interface CodePiece {
-	content: string;
-	htmlStyle?: Record<string, string>;
-	matchId?: number;
-}
-
-function buildPieces(tokens: HighlightToken[], ranges: { start: number; end: number; id: number }[]): CodePiece[] {
-	const pieces: CodePiece[] = [];
-	let offset = 0;
-	for (const token of tokens) {
-		const content = token.content;
-		const tokenStart = offset;
-		let cursor = 0;
-		for (const range of ranges) {
-			const start = Math.max(range.start - tokenStart, 0);
-			const end = Math.min(range.end - tokenStart, content.length);
-			if (end <= start) continue;
-			if (start > cursor) pieces.push({ content: content.slice(cursor, start), htmlStyle: token.htmlStyle });
-			pieces.push({ content: content.slice(start, end), htmlStyle: token.htmlStyle, matchId: range.id });
-			cursor = end;
-		}
-		if (cursor < content.length) pieces.push({ content: content.slice(cursor), htmlStyle: token.htmlStyle });
-		offset += content.length;
-	}
-	return pieces;
-}
-
-const findHistory: string[] = [];
-const MAX_FIND_HISTORY = 50;
-
 const LANGUAGE_LABELS: Record<string, string> = {
 	ts: "TS",
 	tsx: "TSX",
@@ -209,19 +67,6 @@ function formatBytes(bytes: number) {
 	return `${(bytes / 1024).toFixed(1)} KB`;
 }
 
-/** Which languages fold on brackets, and which brackets. */
-const BRACKET_FOLD_LANGS: Record<string, string> = {
-	ts: "{}",
-	tsx: "{}",
-	js: "{}",
-	jsx: "{}",
-	css: "{}",
-	json: "{}[]",
-	jsonc: "{}[]",
-};
-
-type FoldRule = { kind: "markdown" } | { kind: "brackets"; brackets: string };
-
 /** A trailing newline is not a line — the count and the gutter agree with what an editor shows. */
 function contentLines(content: string): string[] {
 	if (content === "") return [];
@@ -237,20 +82,6 @@ function fileMetrics(path: string, data: FileData | null | undefined): string {
 	const count = contentLines(data.content).length;
 	const label = lang ? (LANGUAGE_LABELS[lang] ?? lang.toUpperCase()) : null;
 	return [label, `${count} ${count === 1 ? "line" : "lines"}`, formatBytes(data.size ?? data.content.length)].filter(Boolean).join(" · ");
-}
-
-/** The preview is already readable while the highlighter works; the pill only fades in if the
- * upgrade takes longer than a beat, so small files never flash it. */
-function PreviewBusy(props: { when: boolean }) {
-	return (
-		<Show when={props.when}>
-			<div class="explorer-busy">
-				<span class="work-dot" />
-				<span class="work-dot" />
-				<span class="work-dot" />
-			</div>
-		</Show>
-	);
 }
 
 /** How many dotted rows the header shows before it asks to be opened. */
@@ -437,435 +268,6 @@ function MarkdownFile(props: { content: string; frontmatter?: Frontmatter; partn
 	);
 }
 
-function CodeViewer(props: {
-	content: string;
-	lang: string | null;
-	fold: FoldRule | null;
-	locate?: RevealRange | null;
-	metrics: string;
-	/** The panel this reader belongs to is showing, so its Esc layers are live. */
-	panelOpen: boolean;
-	onSelection?: (range: { start: number; end: number } | null) => void;
-}) {
-	const [tokenData] = createResource(
-		() => ({ content: props.content, lang: props.lang }),
-		async ({ content, lang }) => highlightCodeToLines(content, lang),
-	);
-	const lines = createMemo(() => contentLines(props.content));
-	const folds = createMemo(() => {
-		const rule = props.fold;
-		if (!rule) return [];
-		return rule.kind === "markdown" ? findMarkdownFoldRanges(props.content) : findBracketFoldRanges(props.content, rule.brackets);
-	});
-	const [collapsed, setCollapsed] = createSignal<Set<number>>(new Set());
-	const [selection, setSelection] = createSignal<{ anchor: number; head: number } | null>(null);
-	createEffect(() => {
-		void props.content;
-		void props.locate;
-		setCollapsed(new Set<number>());
-		// A `path#16` / `path#74-80` request selects that range; plain opens start with no selection.
-		// Tracking content as well means the range is (re)applied once the file body actually arrives.
-		setSelection(props.locate ? { anchor: props.locate.start - 1, head: props.locate.end - 1 } : null);
-		if (props.locate) requestAnimationFrame(() => revealMatch(props.locate!.start - 1));
-	});
-	const foldEndByStart = createMemo(() => {
-		const map = new Map<number, number>();
-		for (const fold of folds()) map.set(fold.start, fold.end);
-		return map;
-	});
-	const hidden = createMemo(() => {
-		const hiddenLines = new Set<number>();
-		for (const start of collapsed()) {
-			const end = foldEndByStart().get(start);
-			if (end == null) continue;
-			for (let i = start + 1; i <= end; i++) hiddenLines.add(i);
-		}
-		return hiddenLines;
-	});
-	const visible = createMemo(() =>
-		lines()
-			.map((text, index) => ({ index, text }))
-			.filter((line) => !hidden().has(line.index)),
-	);
-	const lineRange = createMemo(() => {
-		const sel = selection();
-		if (!sel) return null;
-		return { start: Math.min(sel.anchor, sel.head), end: Math.max(sel.anchor, sel.head) };
-	});
-	const selectedLines = createMemo(() => {
-		const range = lineRange();
-		const set = new Set<number>();
-		if (range) for (let i = range.start; i <= range.end; i++) set.add(i);
-		return set;
-	});
-	createEffect(() => props.onSelection?.(lineRange()));
-	function selectLine(index: number, extend: boolean) {
-		setSelection((prev) => (extend && prev ? { anchor: prev.anchor, head: index } : { anchor: index, head: index }));
-	}
-	const codeText = () => {
-		const range = lineRange();
-		if (!range) return "";
-		return lines()
-			.slice(range.start, range.end + 1)
-			.join("\n");
-	};
-	// Arrow keys walk the visible lines and carry the selection; Shift extends it from the anchor.
-	function onCodeKeyDown(e: KeyboardEvent) {
-		if (e.metaKey || e.ctrlKey || e.altKey) return;
-		if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-		const rows = visible();
-		if (rows.length === 0) return;
-		e.preventDefault();
-		const sel = selection();
-		const at = sel ? rows.findIndex((row) => row.index === sel.head) : -1;
-		const step = e.key === "ArrowDown" ? 1 : -1;
-		const next = at === -1 ? 0 : Math.max(0, Math.min(rows.length - 1, at + step));
-		const target = rows[next].index;
-		if (e.shiftKey && sel) setSelection({ anchor: sel.anchor, head: target });
-		else setSelection({ anchor: target, head: target });
-		revealMatch(target);
-	}
-	function inField(target: EventTarget | null) {
-		const el = target as HTMLElement | null;
-		return !!el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
-	}
-	// Cmd+A anywhere in the pane takes the whole file into the line selection; line numbers stay out.
-	function onReaderKeyDown(e: KeyboardEvent) {
-		if (!(e.metaKey || e.ctrlKey) || e.altKey || e.key.toLowerCase() !== "a") return;
-		if (inField(e.target)) return;
-		e.preventDefault();
-		const total = lines().length;
-		if (total > 0) setSelection({ anchor: 0, head: total - 1 });
-	}
-	// Cmd+C on a line selection copies the code; a drag-selection is still the browser's to copy.
-	function onReaderCopy(e: ClipboardEvent) {
-		const native = window.getSelection();
-		if (native && !native.isCollapsed && scrollEl?.contains(native.anchorNode)) return;
-		const text = codeText();
-		if (!text) return;
-		e.clipboardData?.setData("text/plain", text);
-		e.preventDefault();
-	}
-	function toggleFold(start: number) {
-		const next = new Set(collapsed());
-		if (next.has(start)) next.delete(start);
-		else next.add(start);
-		setCollapsed(next);
-	}
-
-	// ——— find in file ———
-	const [findOpen, setFindOpen] = createSignal(false);
-	const [query, setQuery] = createSignal("");
-	const [caseSensitive, setCaseSensitive] = createSignal(false);
-	const [wholeWord, setWholeWord] = createSignal(false);
-	const [useRegex, setUseRegex] = createSignal(false);
-	const [activeMatch, setActiveMatch] = createSignal(0);
-	const [navigated, setNavigated] = createSignal(false);
-	let findInputEl: HTMLInputElement | undefined;
-	let scrollEl: HTMLDivElement | undefined;
-	let historyIndex = -1;
-	let historyDraft = "";
-
-	const search = createMemo(() => {
-		const term = query();
-		if (!findOpen() || !term) return { valid: true, matches: [] as FindMatch[] };
-		let source = useRegex() ? term : term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-		if (wholeWord()) source = `\\b(?:${source})\\b`;
-		let pattern: RegExp;
-		try {
-			pattern = new RegExp(source, caseSensitive() ? "g" : "gi");
-		} catch {
-			return { valid: false, matches: [] as FindMatch[] };
-		}
-		const matches: FindMatch[] = [];
-		for (const line of visible()) {
-			pattern.lastIndex = 0;
-			let match: RegExpExecArray | null;
-			while ((match = pattern.exec(line.text)) !== null) {
-				if (match[0].length === 0) {
-					pattern.lastIndex += 1;
-					continue;
-				}
-				matches.push({ line: line.index, start: match.index, end: match.index + match[0].length });
-			}
-		}
-		return { valid: true, matches };
-	});
-	const matchCount = () => search().matches.length;
-	const matchesByLine = createMemo(() => {
-		const map = new Map<number, { start: number; end: number; id: number }[]>();
-		search().matches.forEach((match, id) => {
-			const ranges = map.get(match.line);
-			if (ranges) ranges.push({ start: match.start, end: match.end, id });
-			else map.set(match.line, [{ start: match.start, end: match.end, id }]);
-		});
-		return map;
-	});
-
-	createEffect(() => {
-		void query();
-		void caseSensitive();
-		void wholeWord();
-		void useRegex();
-		setActiveMatch(0);
-		setNavigated(false);
-	});
-	createEffect(() => {
-		if (activeMatch() >= matchCount()) setActiveMatch(0);
-	});
-
-	function revealMatch(line: number) {
-		if (!scrollEl) return;
-		const row = scrollEl.querySelector<HTMLElement>(`[data-line="${line}"]`);
-		if (row) scrollEl.scrollTop = Math.max(0, row.offsetTop - (scrollEl.clientHeight - row.offsetHeight) / 2);
-	}
-	function selectionText(): string | null {
-		if (!scrollEl) return null;
-		const selection = window.getSelection();
-		if (!selection || selection.isCollapsed || selection.rangeCount === 0) return null;
-		const node = selection.anchorNode;
-		if (!node || !scrollEl.contains(node)) return null;
-		const text = selection.toString().trim();
-		if (!text || text.includes("\n")) return null;
-		return text;
-	}
-	function openFind() {
-		historyIndex = -1;
-		const picked = selectionText();
-		if (picked) setQuery(picked);
-		setFindOpen(true);
-		requestAnimationFrame(() => {
-			findInputEl?.focus();
-			findInputEl?.select();
-		});
-	}
-	function closeFind() {
-		setFindOpen(false);
-	}
-	function commitHistory() {
-		const term = query().trim();
-		if (!term) return;
-		const existing = findHistory.indexOf(term);
-		if (existing >= 0) findHistory.splice(existing, 1);
-		findHistory.push(term);
-		if (findHistory.length > MAX_FIND_HISTORY) findHistory.shift();
-		historyIndex = -1;
-	}
-	function recallHistory(direction: number) {
-		if (findHistory.length === 0) return;
-		if (direction < 0) {
-			if (historyIndex === -1) {
-				historyDraft = query();
-				historyIndex = findHistory.length - 1;
-			} else if (historyIndex > 0) {
-				historyIndex -= 1;
-			}
-			setQuery(findHistory[historyIndex]);
-		} else if (historyIndex !== -1) {
-			if (historyIndex < findHistory.length - 1) {
-				historyIndex += 1;
-				setQuery(findHistory[historyIndex]);
-			} else {
-				historyIndex = -1;
-				setQuery(historyDraft);
-			}
-		}
-	}
-	function stepMatch(direction: number) {
-		commitHistory();
-		const total = matchCount();
-		if (total === 0) return;
-		if (!navigated()) {
-			setNavigated(true);
-			setActiveMatch(direction > 0 ? 0 : total - 1);
-		} else {
-			setActiveMatch((index) => (index + direction + total) % total);
-		}
-		const match = search().matches[activeMatch()];
-		if (match) revealMatch(match.line);
-	}
-	const findCountLabel = () => {
-		if (!query()) return "";
-		const result = search();
-		if (!result.valid || result.matches.length === 0) return "No results";
-		return `${activeMatch() + 1} of ${result.matches.length}`;
-	};
-
-	createEffect(() => {
-		const onKeyDown = (e: KeyboardEvent) => {
-			if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== "f") return;
-			const active = document.activeElement as HTMLElement | null;
-			if (active && active !== findInputEl && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.isContentEditable)) return;
-			e.preventDefault();
-			openFind();
-		};
-		window.addEventListener("keydown", onKeyDown);
-		return () => window.removeEventListener("keydown", onKeyDown);
-	});
-
-	// Esc reaches the reader's own layers before the dock's: the find row sits over a line selection.
-	useEscapeLayer({
-		id: "explorer.readerFind",
-		order: ESCAPE_ORDER.readerFind,
-		isOpen: () => props.panelOpen && findOpen(),
-		close: () => closeFind(),
-	});
-	useEscapeLayer({
-		id: "explorer.readerSelection",
-		order: ESCAPE_ORDER.readerSelection,
-		isOpen: () => props.panelOpen && lineRange() != null,
-		close: () => setSelection(null),
-	});
-	return (
-		<div class="explorer-code-pane" onKeyDown={onReaderKeyDown} onCopy={onReaderCopy}>
-			<div class="explorer-reader-tools" role="search" aria-label="Find in file">
-				<Show
-					when={findOpen()}
-					fallback={
-						<button type="button" class="explorer-tool" title="Find in file (⌘F)" aria-label="Find in file" onClick={openFind}>
-							⌕
-						</button>
-					}
-				>
-					<input
-						ref={findInputEl}
-						class={"explorer-find-input" + (search().valid ? "" : " invalid")}
-						placeholder="Find"
-						aria-label="Find"
-						autocomplete="off"
-						autocapitalize="off"
-						spellcheck={false}
-						value={query()}
-						onInput={(e) => {
-							historyIndex = -1;
-							setQuery(e.currentTarget.value);
-						}}
-						onKeyDown={(e) => {
-							if (e.key === "Enter") {
-								e.preventDefault();
-								stepMatch(e.shiftKey ? -1 : 1);
-							} else if (e.key === "ArrowUp") {
-								e.preventDefault();
-								recallHistory(-1);
-							} else if (e.key === "ArrowDown") {
-								e.preventDefault();
-								recallHistory(1);
-							}
-						}}
-					/>
-					<button
-						type="button"
-						class={"explorer-find-toggle" + (caseSensitive() ? " on" : "")}
-						title="Match Case"
-						aria-label="Match case"
-						aria-pressed={caseSensitive()}
-						onMouseDown={(e) => e.preventDefault()}
-						onClick={() => setCaseSensitive((value) => !value)}
-					>
-						<CaseSensitive size={13} />
-					</button>
-					<button
-						type="button"
-						class={"explorer-find-toggle" + (wholeWord() ? " on" : "")}
-						title="Match Whole Word"
-						aria-label="Match whole word"
-						aria-pressed={wholeWord()}
-						onMouseDown={(e) => e.preventDefault()}
-						onClick={() => setWholeWord((value) => !value)}
-					>
-						<WholeWord size={13} />
-					</button>
-					<button
-						type="button"
-						class={"explorer-find-toggle" + (useRegex() ? " on" : "") + (search().valid ? "" : " error")}
-						title="Use Regular Expression"
-						aria-label="Use regular expression"
-						aria-pressed={useRegex()}
-						onMouseDown={(e) => e.preventDefault()}
-						onClick={() => setUseRegex((value) => !value)}
-					>
-						<Regex size={13} />
-					</button>
-					<span class="explorer-find-count" aria-live="polite">
-						{findCountLabel()}
-					</span>
-					<button
-						type="button"
-						class="explorer-find-nav"
-						title="Previous Match (Shift+Enter)"
-						aria-label="Previous match"
-						disabled={matchCount() === 0}
-						onMouseDown={(e) => e.preventDefault()}
-						onClick={() => stepMatch(-1)}
-					>
-						<ChevronUp size={14} />
-					</button>
-					<button
-						type="button"
-						class="explorer-find-nav"
-						title="Next Match (Enter)"
-						aria-label="Next match"
-						disabled={matchCount() === 0}
-						onMouseDown={(e) => e.preventDefault()}
-						onClick={() => stepMatch(1)}
-					>
-						<ChevronDown size={14} />
-					</button>
-					<button type="button" class="explorer-find-close" title="Close (Esc)" aria-label="Close find" onClick={closeFind}>
-						<X size={14} />
-					</button>
-				</Show>
-				<span class="explorer-metrics">{props.metrics}</span>
-			</div>
-			<div class="explorer-code-scroll" ref={scrollEl} tabIndex={0} onKeyDown={onCodeKeyDown}>
-				<div class="explorer-code-lines">
-					<For each={lines()}>
-						{(line, index) => {
-							const tokens = createMemo(() => tokenData()?.[index()]?.tokens ?? ([{ content: line, htmlStyle: undefined }] as HighlightToken[]));
-							const ranges = createMemo(() => matchesByLine().get(index()) ?? []);
-							const pieces = createMemo(() => buildPieces(tokens(), ranges()));
-							const end = createMemo(() => foldEndByStart().get(index()));
-							const isCollapsed = () => collapsed().has(index());
-							return (
-								<Show when={!hidden().has(index())}>
-									<div class={"explorer-code-line" + (selectedLines().has(index()) ? " selected" : "")} data-line={index()}>
-										<button
-											type="button"
-											class={"explorer-code-fold" + (end() == null ? " empty" : "")}
-											aria-label={end() == null ? undefined : isCollapsed() ? "Expand block" : "Collapse block"}
-											onClick={() => end() != null && toggleFold(index())}
-										>
-											{end() != null ? isCollapsed() ? <ChevronRight size={12} /> : <ChevronDown size={12} /> : null}
-										</button>
-										<button type="button" class="explorer-code-no" onClick={(e) => selectLine(index(), e.shiftKey)} title={`Select line ${index() + 1}`}>
-											{index() + 1}
-										</button>
-										<span class="explorer-code-text">
-											<Show when={ranges().length > 0} fallback={<For each={tokens()}>{(token) => <span style={token.htmlStyle}>{token.content}</span>}</For>}>
-												<For each={pieces()}>
-													{(piece) => (
-														<span
-															style={piece.htmlStyle}
-															classList={{ "explorer-find-match": piece.matchId !== undefined, current: piece.matchId !== undefined && piece.matchId === activeMatch() }}
-														>
-															{piece.content}
-														</span>
-													)}
-												</For>
-											</Show>
-										</span>
-									</div>
-								</Show>
-							);
-						}}
-					</For>
-				</div>
-			</div>
-			<PreviewBusy when={tokenData.loading && props.content !== ""} />
-		</div>
-	);
-}
-
 interface ExplorerRowMenu {
 	reveal: (entry: ExplorerEntry) => void;
 	copyName: (entry: ExplorerEntry) => void;
@@ -994,6 +396,9 @@ export function ExplorerDrawer(props: {
 	paneWidth: number;
 	onPaneResize: (px: number) => void;
 	onPaneCommit: () => void;
+	/** Long lines wrap in the reader — remembered with the other reader preferences. */
+	wrap: boolean;
+	onToggleWrap: () => void;
 	onClose: () => void;
 }) {
 	const settingsView = useSettings();
@@ -1243,17 +648,16 @@ export function ExplorerDrawer(props: {
 		scrollToRow(path);
 	}
 
-	const foldRule = createMemo<FoldRule | null>(() => {
+	// Folding is the parser's job now (lib/code-languages), so the two switches only decide whether a
+	// file gets one: markdown has its own switch, everything else shares the code one.
+	const foldable = () => {
 		const path = shownFile()?.path;
-		if (!path) return null;
+		if (!path) return false;
 		const lang = languageForPath(path);
-		if (!lang) return null;
+		if (!lang) return false;
 		const fold = settingsView.data()?.settings?.explorer?.fold;
-		if (lang === "markdown") return fold?.markdown === false ? null : { kind: "markdown" as const };
-		if (fold?.braces === false) return null;
-		const brackets = BRACKET_FOLD_LANGS[lang];
-		return brackets ? { kind: "brackets" as const, brackets } : null;
-	});
+		return lang === "markdown" ? fold?.markdown !== false : fold?.braces !== false;
+	};
 	const rendered = () => {
 		const file = shownFile();
 		return !!file && file.raw !== true && languageForPath(file.path) === "markdown";
@@ -1344,8 +748,8 @@ export function ExplorerDrawer(props: {
 										<button type="button" class="explorer-stamp" title={`Copy ${file().path}#${stampLabel()}`} onClick={copyLiveRange}>
 											⧉ {stampLabel()}
 										</button>
-										<button type="button" class="explorer-quote" title={`Quote ${file().path}#${stampLabel()} in the letter`} onClick={quoteInLetter}>
-											Quote
+										<button type="button" class="dock-btn" title={`Quote ${file().path}#${stampLabel()} in the letter`} aria-label="Quote in the letter" onClick={quoteInLetter}>
+											<MessageSquareQuote size={11} />
 										</button>
 									</Show>
 									<Show when={rawToggle()}>
@@ -1360,6 +764,17 @@ export function ExplorerDrawer(props: {
 											Raw
 										</button>
 									</Show>
+									<button
+										type="button"
+										class="dock-btn"
+										classList={{ on: props.wrap }}
+										aria-pressed={props.wrap}
+										aria-label="Wrap long lines"
+										title={props.wrap ? "Stop wrapping long lines" : "Wrap long lines"}
+										onClick={props.onToggleWrap}
+									>
+										<WrapText size={11} />
+									</button>
 								</div>
 								<Show
 									when={!fileData.loading}
@@ -1395,13 +810,14 @@ export function ExplorerDrawer(props: {
 												class="explorer-file-body"
 												style={`--explorer-line-gap: ${codeLineGap()}; --explorer-line-height: ${codeLineHeight()}; --explorer-line-height-em: ${codeLineHeight()}em`}
 											>
-												<CodeViewer
+												<CodeReader
 													content={fileData()?.content ?? ""}
 													lang={languageForPath(file().path) ?? null}
-													fold={foldRule()}
+													fold={foldable()}
 													locate={file().range ?? null}
 													metrics={metrics()}
 													panelOpen={props.open}
+													wrap={props.wrap}
 													onSelection={(range) => setLiveRange(range)}
 												/>
 											</div>

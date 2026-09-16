@@ -48,7 +48,7 @@ export function useEscapeLayer(layer: EscapeLayer) {
 }
 
 /** Everything open right now, highest first. */
-export function openEscapeLayers(app: EscapeLayer[]): EscapeLayer[] {
+function openEscapeLayers(app: EscapeLayer[]): EscapeLayer[] {
 	return [...app, ...published.values()].filter((layer) => layer.isOpen()).sort((a, b) => b.order - a.order);
 }
 

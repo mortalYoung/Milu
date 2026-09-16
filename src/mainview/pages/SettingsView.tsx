@@ -1497,8 +1497,8 @@ export function SettingsView() {
 		},
 		{
 			id: "explorerFoldBraces",
-			title: "Brace folding",
-			desc: "Fold {…} blocks in the file preview for ts, tsx, js, jsx, css and json.",
+			title: "Fold code",
+			desc: "Fold blocks, objects and elements in the reader's code, for the languages it parses: ts, tsx, js, jsx, python, html, css, json, yaml, xml.",
 			cats: ["general"],
 			modified: () => explorerFoldBraces() !== DEFAULTS.explorerFoldBraces,
 			control: () => (
@@ -1513,8 +1513,8 @@ export function SettingsView() {
 		},
 		{
 			id: "explorerFoldMarkdown",
-			title: "Markdown folding",
-			desc: "Fold the sections and fenced blocks of a markdown preview.",
+			title: "Fold markdown",
+			desc: "Fold sections in a raw markdown file.",
 			cats: ["general"],
 			modified: () => explorerFoldMarkdown() !== DEFAULTS.explorerFoldMarkdown,
 			control: () => (

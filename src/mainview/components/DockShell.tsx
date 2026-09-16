@@ -22,8 +22,8 @@ export interface DockListControls {
  * the head above it, pinning, and the floating list the pin trades the pane for.
  *
  * What a panel brings is only its content — the tree or the change list, the reader or the diff —
- * and the numbers that describe them. The pane width, the pin state and the Esc ladder are the
- * dock's own: one size, one rule, wherever you dock.
+ * and the numbers that describe them. The pane width and the pin state are the dock's own: one size,
+ * one rule, wherever you dock. (Esc is not: it has one owner for the whole app, see lib/escape.ts.)
  *
  * Pinned, the dock shares the row with the letter instead of covering it, and the list stops taking
  * row width: it hides, and floats over the detail when a panel asks for it. A pinned dock keeps no

@@ -37,6 +37,10 @@
 	--color-seal: light-dark(#b03a2e, #d97a68);
 	--color-seal-soft: light-dark(#e8d5d1, #362420);
 	--color-on-ink: light-dark(#fffdf8, #141210);
+	/* What the *native* selection paints, wherever it still paints: the reader re-points both (see
+	   `.cm-editor` below). */
+	--color-selection: var(--color-seal);
+	--color-selection-ink: var(--color-on-ink);
 
 	--color-qw-bg: light-dark(#f7f3ea, #141210);
 	--color-qw-panel: light-dark(#f7f3ea, #141210);
@@ -117,9 +121,10 @@ body::before {
 		cursor: pointer;
 	}
 
+	/* Seal behind, paper in front — indirected through two variables so the reader can opt out. */
 	::selection {
-		background: var(--color-seal);
-		color: var(--color-on-ink);
+		background: var(--color-selection);
+		color: var(--color-selection-ink);
 	}
 }
 
@@ -1858,14 +1863,13 @@ body::before {
 		@apply flex-none cursor-copy rounded-[5px] border border-seal-soft px-1.5 py-0.5 font-mono text-[10px] font-semibold text-seal;
 		background: color-mix(in srgb, var(--color-seal) 8%, var(--color-letter));
 	}
-	.explorer-raw,
-	.explorer-quote {
+	.explorer-raw {
 		@apply flex-none cursor-pointer rounded-[5px] border border-hairline bg-transparent px-1.5 py-0.5 font-sans text-[10px] text-muted;
 	}
 	.explorer-raw.on {
 		@apply border-ink bg-ink text-paper;
 	}
-	/* The dock heads' shared button: the pin, the list toggle. 19px, ink when on. */
+	/* The dock heads' shared button: the pin, the list toggle, Quote, Wrap. 19px, ink when on. */
 	.dock-btn {
 		@apply flex size-[19px] flex-none cursor-pointer items-center justify-center rounded-[5px] border-0 bg-transparent text-muted;
 	}
@@ -1985,12 +1989,17 @@ body::before {
 	.explorer-code-pane {
 		@apply flex h-full flex-col;
 	}
-	.explorer-code-scroll {
-		@apply relative min-h-0 flex-1 overflow-auto;
+	/* The reader's CodeMirror skin lives in CodeReader.tsx (EditorView.theme): CodeMirror mounts its own
+	   theme after this file, so a rule of equal specificity here would lose. */
+	.explorer-code-host {
+		@apply relative min-h-0 flex-1;
 	}
-	.explorer-code-scroll:focus,
-	.explorer-code-scroll:focus-visible {
-		outline: none;
+	/* A code reader is not letter paper: re-pointing the two variables the app's `::selection` reads stops
+	   that rule from painting inside the reader, where CodeMirror draws the selection itself. `initial`
+	   leaves the text on its own colour — `color: var(--color-selection-ink)` then has no value. */
+	.cm-editor {
+		--color-selection: transparent;
+		--color-selection-ink: initial;
 	}
 	.explorer-find-input {
 		@apply w-[112px] min-w-0 border-0 bg-transparent px-1 py-0.5 font-mono text-[11px] text-ink outline-none;
@@ -2030,48 +2039,6 @@ body::before {
 	.explorer-find-match.current {
 		background: color-mix(in srgb, var(--color-seal) 60%, transparent);
 	}
-	.explorer-code-lines {
-		@apply min-w-max;
-	}
-	.explorer-code-line {
-		@apply flex items-start whitespace-pre font-mono text-[12px];
-		line-height: var(--explorer-line-height, 1.2);
-		min-height: var(--explorer-line-height-em, 1.2em);
-	}
-	.explorer-code-line.selected {
-		background: var(--color-paper-hover);
-	}
-	.explorer-code-fold {
-		@apply flex-none size-[18px] flex items-center justify-center rounded-[3px] border-0 bg-transparent p-0 text-muted transition-colors;
-		opacity: 0;
-	}
-	.explorer-code-line:hover .explorer-code-fold:not(.empty),
-	.explorer-code-line.selected .explorer-code-fold:not(.empty) {
-		opacity: 1;
-	}
-	/* Hovering any line number reveals every fold button: the gutter is where you go looking for them. */
-	.explorer-code-lines:has(.explorer-code-no:hover) .explorer-code-fold:not(.empty) {
-		opacity: 1;
-	}
-	.explorer-code-fold:not(.empty):hover {
-		@apply bg-paper-hover text-ink;
-	}
-	.explorer-code-fold:focus-visible {
-		opacity: 1;
-		outline: 2px solid var(--color-ring);
-		outline-offset: -2px;
-	}
-	.explorer-code-no {
-		@apply flex-none w-[5.5ch] text-center border-0 bg-transparent p-0 font-mono text-[12px] text-muted select-none cursor-pointer transition-colors;
-	}
-	.explorer-code-no:hover {
-		@apply text-ink;
-	}
-	.explorer-code-text {
-		@apply flex-1 min-w-0 whitespace-pre font-mono text-[12px];
-		line-height: var(--explorer-line-height, 1.2);
-	}
-
 	/* git's own palette, on the two places that read it: the change list and the diff. */
 	.git-body,
 	.git-diff {
