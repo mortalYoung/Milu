@@ -83,7 +83,7 @@ function deleteDeniedText(hits: DeleteVerbHit[], trash: string | null) {
 	const where = first.line >= 0 ? ` (line ${first.line + 1})` : "";
 	return [
 		`Strict delete mode refuses ${verbs} here — matched \`${first.word}\`${where}. Move the paths to the trash instead:`,
-		trash ? `\n\tmkdir -p ${trash} && mv <path> ${trash}/\n` : "\n\tmove the paths into the trash directory\n",
+		trash ? `\n\tmv <path> ${trash}/\n` : "\n\tmove the paths into the trash directory\n",
 		"The files stay on disk and can be brought back. Only if that move fails may the rm tool delete them for good.",
 	].join("");
 }
@@ -109,7 +109,7 @@ function rmTool(deps: ToolDeps): AgentTool<typeof rmSchema, RmDetails> {
 	return {
 		name: "rm",
 		label: "rm",
-		description: `Irreversibly delete files and directories — no trash, no undo. This is the fallback for when moving a path to the trash did not work (disk full, file too large, permissions). It only runs after a bash call in this turn has failed while moving those paths into the trash, and refuses otherwise. For a recoverable delete, use bash instead: \`mkdir -p ${trashDirOf(deps) ?? "~/.Trash"} && mv <path> ${trashDirOf(deps) ?? "~/.Trash"}/\`.`,
+		description: `Irreversibly delete files and directories — no trash, no undo. This is the fallback for when moving a path to the trash did not work (disk full, file too large, permissions). It only runs after a bash call in this turn has failed while moving those paths into the trash, and refuses otherwise. For a recoverable delete, use bash instead: \`mv <path> ${trashDirOf(deps) ?? "~/.Trash"}/\`.`,
 		parameters: rmSchema,
 		async execute(_toolCallId, { paths, dir }) {
 			const settings = await loadSettings();
@@ -136,7 +136,7 @@ function rmTool(deps: ToolDeps): AgentTool<typeof rmSchema, RmDetails> {
 						content: [
 							{
 								type: "text",
-								text: `Refused: strict delete mode wants a failed trash move first. ${tried}\nMove the paths into the trash (\`mkdir -p ${trash ?? "~/.Trash"} && mv <path> ${trash ?? "~/.Trash"}/\`) and call rm again only if that fails.`,
+								text: `Refused: strict delete mode wants a failed trash move first. ${tried}\nMove the paths into the trash (\`mv <path> ${trash ?? "~/.Trash"}/\`) and call rm again only if that fails.`,
 							},
 						],
 						details: { ok: false, code: "no_failed_trash_move", deleted: [], failed: [] },
@@ -206,7 +206,7 @@ function bashTool(deps: ToolDeps): AgentHarnessTool<ExecutionToolContext, TSchem
 		label: "bash",
 		description:
 			"Execute a bash command. Runs in the working directory when one is set, otherwise in the storage scratch directory. Returns stdout and stderr (last ~50KB, truncated)." +
-			` Deleting files: move them to the trash instead of unlinking — \`mkdir -p ${trashDirOf(deps) ?? "<storage>/trash"} && mv <path> ${trashDirOf(deps) ?? "<storage>/trash"}/\`. In strict delete mode a \`rm\`/\`rmdir\` command is refused before it runs; the rm tool is the fallback for when the trash move itself fails.` +
+			` Deleting files: move them to the trash instead of unlinking — \`mv <path> ${trashDirOf(deps) ?? "~/.Trash"}/\`. In strict delete mode a \`rm\`/\`rmdir\` command is refused before it runs; the rm tool is the fallback for when the trash move itself fails.` +
 			(deps.permission?.isConfining()
 				? " Sandboxed: writes outside the working directory/storage are denied by the kernel and return `[sandbox: file access denied under <mode> mode]`. On a denial you may retry ONCE in the same turn with a strictly wider `sandbox_mode` plus a `justification` — a human must approve."
 				: ""),
