@@ -295,6 +295,7 @@
 - 原话摘录："`ESC` should close the search floating panel while it open rather than close code reviewer"
 - 收录：2026-08-31｜状态：生效
 - 教训：外层监听器注册更早时，内层必须用捕获阶段监听（`addEventListener(..., true)`）+ `stopPropagation` 抢在外层冒泡监听之前拦截，否则旧行为会先关掉外层
+- 2026-09-16 更新：**机制条款已废止**（全局 Esc 监听已删除，内层顺序改由 `lib/escape.ts` 的 `ESCAPE_ORDER` 声明，不再需要捕获抢跑）；**原则保留并升级为 P-63**（内层先关、不许越级）
 
 ### P-45 · 同一状态在全 app 使用同一词汇
 - 级别：强偏好
@@ -416,3 +417,30 @@
 - 规则：① 清空输入框绑定"已发出"而不是"已完成"——skill / command 的 RPC 要等整轮跑完才返回，把 `clearText()` 挂在结果上会让那串命令在输入框里滞留几分钟；失败用 toast 事后报，不要用"留着文本"来表达失败。唯一的例外是**裸命令**（无参数）：它的失败需要保留文本以便重试。② 每个入口都要在派发那一刻 `scroll.pin(true)`，不要依赖"自动跟随"——自动跟随只在 `following` 为真时生效，用户此前往上滚过就不跟了
 - 原话摘录："1. skill 发送的时候滚动条没有回到底部 2. skill 现在发送出去没有直接清空输入框。这么说起来，skill 不论发送成功或者失败都清空输入框"
 - 收录：2026-09-15｜状态：生效
+
+### P-61 · pin 住的文件隐藏所有"把它关掉"的可见出口
+- 级别：强偏好
+- 何时适用：任何"pin 住某个文件/详情"的界面（本项目的 dock：explorer 的 reader、git 的 diff）
+- 规则：pin 是文件自己的状态。pin 住时隐藏一切把该文件关掉的可见出口——面板的 `×`、详情头部的 `← 返回`——pin 按钮本身是唯一出口；键盘 Esc 保留为逃生口（先关内层浮层，再关文件，pin 随文件一起释放）
+- 原话摘录："在 pin 模式下隐藏 close this file 的按钮"（同源前一次反馈："no close icon while pinned"）
+- 收录：2026-09-16｜状态：生效
+
+### P-62 · 浮层与 chrome 之间留 gutter，与它覆盖的内容之间不留
+- 级别：强偏好
+- 何时适用：任何浮层/浮卡（popover、浮动面板、浮动列表）与窗口框架、页头、工具条等 chrome 相邻时
+- 规则：浮层与 chrome 之间保留 8px 空气（与 P-57 浮层族的 8px 同源）；与它所覆盖的内容之间不留 gutter，否则读起来像分栏而不是浮层。贴窗框 0px 会让卡片的圆角与 hairline 像被窗口裁掉
+- 原话摘录："优化一下 file list 的 popover 的位置，不要贴边"
+- 收录：2026-09-16｜状态：生效
+
+### P-63 · Esc 只有一个消费者：一处 handler + 声明的顺序 + "已处理"就是 preventDefault
+- 级别：硬禁令（架构）
+- 何时适用：本项目里任何"按 Esc 应该关掉/退出"的东西（浮层、面板、选中、内联编辑）
+- 规则：
+  1. 全 app 只有一个 Esc 监听（`useKeybindings` 里那条）。任何新增的可被 Esc 关闭的层，必须登记到 `lib/escape.ts` 的 `ESCAPE_ORDER`，禁止自己再挂 `keydown` 监听。
+  2. 层内部的状态留在层里，只向中央暴露 `{ isOpen, close }`；不要为了 Esc 把状态提升成全局 store（会产生第二份真相，比注册顺序 bug 更难查）。
+  3. 顺序是声明的 z 序，不是注册顺序；内层数字高于外层（先清内层，再关外壳）。
+  4. 谁真的处理了 Esc，谁就 `event.preventDefault()` 标成 handled；中央 handler 遇到 `defaultPrevented` 一律让位。Kobalte 的弹层关闭时会 preventDefault，因此 modal 及其内嵌 popover 自动独占 Esc，不需要我们镜像它的层栈。
+     - 陷阱（2026-09-16 实测踩中）：读 `defaultPrevented` 之前**不能有任何 `preventDefault`**，包括框架自己的。`useKeybindings` 当时先 `preventDefault()` 再调 handler，导致 handler 读到的永远是 `true`，Esc 直接全平：第一版“完全不生效”就是这个。正确顺序：**handler 先跑 → 自己读 flag → 再阻止默认**（keybindings 的默认阻止放在 handler 之后，并且只在还没被阻止时执行）。判据：`defaultPrevented` 只用来回答“上面有没有人处理过”，不能用来表达“我要阻止默认”。
+  5. 字段内的 Esc（清空/失焦/结束内联编辑）属于字段自己，且只有真的消费掉了才标 handled，否则要让 Esc 继续落到外层（例如让弹窗关闭）。
+- 原话摘录："把所有的 ESC 都干掉……在 useKeybinding 里新增 esc 的行为，在行为里去读取这些 open 的值，然后用代码逻辑控制现在要关哪个"
+- 收录：2026-09-16｜状态：生效（`ESCAPE_ORDER` 的具体数值待用户确认后定稿）

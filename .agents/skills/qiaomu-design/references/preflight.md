@@ -122,6 +122,8 @@
 - [ ] 产出与声明的设计读取、三拨盘值一致（说了 VARIANCE 9 就不能交居中对称）
 - [ ] 全页主题锁定：一页只有一个明暗主题，不混
 - [ ] 新增块的内容对齐到应用既有内容列（本项目 `clamp(560px, 46vw, 760px)`），没有无理由的满宽撑满；浮层归 composer 浮层族（`bottom: calc(100% + 8px)` + `width: 60%` + 同 clamp + 白卡全边框）；行内 gutter 用列内边距而不是负偏移（P-57）
+- [ ] 浮层与 chrome（窗框 / 页头 / 工具条）之间留 8px gutter，与它所覆盖的内容之间不留（P-62）
+- [ ] pin 住的详情隐藏所有关闭该文件/详情的可见出口（面板 `×`、头部 `← 返回`），只留 pin 按钮；Esc 仍可作为逃生口并逐层关闭（P-61）
 - [ ] 能一句话说出这一页的**记忆点**是什么
 - [ ] 动效气质与视觉气质一致（cohesion）
 
@@ -138,6 +140,9 @@
 - [ ] 手势/拖拽/sheet/swipe：pointer-down 即时反馈、1:1 跟手、pointer capture、velocity handoff、
       rubber-band 边界、可中断；已读 `apple-fluid-interfaces.md`
 - [ ] Framer Motion / Motion 高负载场景没有用 `x/y/scale` shorthand 造成主线程掉帧风险
+- [ ] Esc 只有一个消费者（useKeybindings 的 Esc 行为）；每个可被 Esc 关闭的层都登记在 ESCAPE_ORDER，没有新增全局 keydown 监听（P-63）
+- [ ] 读 `defaultPrevented` 之前没有任何 `preventDefault`（含 keybindings 自身的默认阻止顺序）：handler 先跑、读完 flag 再阻止默认（P-63）
+- [ ] 内层消费 Esc 时用 preventDefault 标 handled；中央 handler 遇 defaultPrevented 让位（P-63）
 - [ ] 动效不确定时已用慢放、逐帧或真实设备检查；专项审查按 `motion-review.md` 的
       Before / After / Why 表格输出
 
