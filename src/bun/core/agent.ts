@@ -423,7 +423,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 				}
 				const aborted = lastAssistant?.stopReason === "aborted";
 				if (deferAgentEnd) {
-					deferredAgentEnd = { message: lastAssistant ?? (event.messages[event.messages.length - 1] as AssistantMessage), run, aborted };
+					deferredAgentEnd = { message: lastAssistant ?? (event.messages[event.messages.length - 1] as AssistantMessage), messages: event.messages, run };
 					return;
 				}
 				ctx.setRunning(false);
@@ -519,9 +519,9 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		syncQueues();
 		void runWithRetry(tagged(first)).catch(() => {
 			prompting = null;
+			if (!inbox.includes(first)) return;
 			wakeRequested = true;
 			announceQueued(first);
-			ctx.setRunning(false);
 		});
 	}
 
@@ -538,15 +538,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	let stopRequested = false;
 	let prompting: QueuedMessage | null = null;
 	const inbox: QueuedMessage[] = [];
-	let deferredAgentEnd: { message: AssistantMessage; run: number; aborted: boolean } | null = null;
-
-	function lastAssistantMessage(): AssistantMessage | null {
-		for (let i = agent.state.messages.length - 1; i >= 0; i--) {
-			const m = agent.state.messages[i];
-			if (m.role === "assistant") return m as AssistantMessage;
-		}
-		return null;
-	}
+	let deferredAgentEnd: { message: AssistantMessage; messages: AgentMessage[]; run: number } | null = null;
 
 	function removeMessage(message: AssistantMessage) {
 		agent.state.messages = agent.state.messages.filter((m) => m !== message);
@@ -555,7 +547,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	async function runAttempt(input: AgentMessage | null): Promise<AssistantMessage> {
 		if (input) await agent.prompt(input);
 		else await agent.continue();
-		const message = lastAssistantMessage();
+		const message = deferredAgentEnd?.message;
 		if (!message) throw new Error("run ended without an assistant message");
 		return message;
 	}
@@ -568,7 +560,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		const aborted = message.stopReason === "aborted" || stopRequested;
 		const error = aborted || message.stopReason !== "error" ? undefined : message.errorMessage;
 		for (const item of inbox) item.failed = Boolean(error);
-		enforceDelivery({ type: "agent_end", messages: agent.state.messages } as Extract<AgentEvent, { type: "agent_end" }>);
+		enforceDelivery({ type: "agent_end", messages: end?.messages ?? agent.state.messages } as Extract<AgentEvent, { type: "agent_end" }>);
 		await deps.session.appendAgentEnd(endedRun, aborted ? "aborted" : error ? "error" : "completed", Date.now(), error).catch(logError);
 		bridge.onEnd(error);
 	}
@@ -596,6 +588,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		deferAgentEnd = true;
 		let lastFailed: AssistantMessage | null = null;
 		let scheduled: { retryId: string; retry: number } | null = null;
+		let failure: string | null = null;
 		try {
 			const message = policy.enabled
 				? await retryAssistantCall(
@@ -637,8 +630,18 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 				: await runAttemptWithOverflowRecovery(input);
 			await finalizeRun(message);
 			return message;
+		} catch (error) {
+			failure = error instanceof Error ? error.message : String(error);
+			throw error;
 		} finally {
 			deferAgentEnd = false;
+			if (failure !== null) {
+				const end = deferredAgentEnd;
+				deferredAgentEnd = null;
+				ctx.setRunning(false);
+				if (end) await deps.session.appendAgentEnd(end.run, "error", Date.now(), failure).catch(logError);
+				bridge.onEnd(failure);
+			}
 			if (ctx.running && !deferredAgentEnd) ctx.setRunning(false);
 			runSettling = false;
 			bridge.afterRun();
