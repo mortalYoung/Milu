@@ -17,6 +17,8 @@ export default {
 		copy: {
 			"dist/index.html": "views/mainview/index.html",
 			"dist/assets": "views/mainview/assets",
+			"node_modules/web-tree-sitter/tree-sitter.wasm": "bun/wasm/tree-sitter.wasm",
+			"node_modules/tree-sitter-wasms/out/tree-sitter-bash.wasm": "bun/wasm/tree-sitter-bash.wasm",
 		},
 		// Vite output is ignored by electrobun's watch — Vite rebuilds the view.
 		watchIgnore: ["dist/**"],

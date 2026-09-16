@@ -14,6 +14,7 @@ export interface PermissionPolicy {
 	workspace: string | null;
 	/** Always writable under workspace-write (agent state). */
 	storage: string | null;
+	trash?: string | null;
 	/** The session's effective confinement mode. */
 	mode: SandboxMode;
 }

@@ -48,6 +48,7 @@ export interface Settings {
 	mcp_config_path?: string;
 	retry?: { maxRetries?: number; baseDelayMs?: number };
 	bash?: { timeoutSec?: number };
+	delete?: { strict?: boolean };
 	webFetch?: { timeoutMs?: number; maxBytes?: number; maxChars?: number; userAgent?: string };
 	compaction?: {
 		thresholdRatio?: number;
@@ -79,6 +80,7 @@ const DEFAULT_SETTINGS: Settings = {
 	memoryEnabled: true,
 	memoryIdleMinutes: 5,
 	memoryMaxScenes: DEFAULT_MEMORY_MAX_SCENES,
+	delete: { strict: true },
 	explorer: { lineGap: 0.2, fold: { braces: true, markdown: true } },
 	highlight: { tokenizeMaxLineLength: 3000, tokenizeTimeLimit: 500 },
 };

@@ -94,6 +94,19 @@ export interface AgentDeps {
 	onBeforeNextTurn?: (signal?: AbortSignal) => Promise<AgentMessage[] | null>;
 }
 
+function bashCommandOf(args: unknown): string {
+	if (typeof args === "string") {
+		try {
+			const parsed = JSON.parse(args) as { command?: unknown } | null;
+			return typeof parsed?.command === "string" ? parsed.command : "";
+		} catch {
+			return "";
+		}
+	}
+	const record = args as { command?: unknown } | null;
+	return typeof record?.command === "string" ? record.command : "";
+}
+
 export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	const ctx = new Context();
 
@@ -211,12 +224,17 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		bridge.onMessage(text);
 	}
 
+	const failedBash: { command: string; run: number; turn: number; at: number }[] = [];
+	const FAILED_BASH_KEPT = 5;
+	const bashCallsInFlight = new Map<string, string>();
+
 	agent.state.tools = createTools({
 		store: deps.session,
 		permission,
 		...(skills ? { skills } : {}),
 		...(deps.readMemory ? { readMemory: deps.readMemory } : {}),
 		...(deps.mcp ? { mcp: deps.mcp } : {}),
+		lastFailedBash: () => failedBash.filter((failure) => failure.run === run).map(({ command, turn, at }) => ({ command, turn, at })),
 	});
 	agent.state.systemPrompt = ctx.composeSystemPrompt();
 
@@ -358,8 +376,17 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 						.catch(logError);
 				}
 			case "tool_execution_start":
+				if (event.toolName === "bash") bashCallsInFlight.set(event.toolCallId, bashCommandOf(event.args));
 				return deps.session.appendToolCall(event.toolCallId, event.toolName, event.args, run, turn, Date.now()).catch(logError);
 			case "tool_execution_end": {
+				if (event.toolName === "bash") {
+					const command = bashCallsInFlight.get(event.toolCallId) ?? "";
+					bashCallsInFlight.delete(event.toolCallId);
+					if (event.isError) {
+						failedBash.push({ command, run, turn, at: Date.now() });
+						if (failedBash.length > FAILED_BASH_KEPT) failedBash.shift();
+					}
+				}
 				const result: ToolResultMessage = {
 					role: "toolResult",
 					toolCallId: event.toolCallId,

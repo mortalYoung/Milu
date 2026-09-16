@@ -1,10 +1,13 @@
+import { mkdir, rm as removePath, stat } from "node:fs/promises";
+import { homedir } from "node:os";
+import { isAbsolute, resolve } from "node:path";
 import type { AgentHarnessTool, AgentTool, ExecutionEnv, ExecutionToolContext } from "@earendil-works/pi-agent-core";
 import { createEditTool, createReadTool, createWriteTool } from "@earendil-works/pi-agent-core";
 import { type TSchema, Type } from "@earendil-works/pi-ai";
 import { createMemoryTool, type MemoryRecord, type QueryMemoryOptions } from "../core/memory";
 import { loadSettings } from "../lib/settings";
 import type { SandboxMode } from "../permission";
-import { Permission } from "../permission";
+import { type DeleteVerbHit, findDeleteVerbs, isInside, movesToTrash, Permission } from "../permission";
 import type { SessionScope } from "../persist";
 import type { SkillDefinition, SkillSummary } from "../skills/types";
 import { createExecutionEnv, type SandboxedExecOptions } from "./execution-env";
@@ -16,6 +19,7 @@ export interface ToolDeps {
 	skills?: { list(): Promise<SkillSummary[]>; get(name: string): Promise<SkillDefinition | undefined> };
 	readMemory?: (opts: QueryMemoryOptions) => Promise<MemoryRecord[]>;
 	mcp?: McpAccess;
+	lastFailedBash?: () => { command: string; turn: number; at: number }[];
 }
 
 export interface McpToolSummary {
@@ -69,6 +73,118 @@ type BashDetails = {
 	sandbox?: { mode?: SandboxMode; rejected?: boolean; from?: SandboxMode; to?: SandboxMode; escalation?: boolean; code?: string };
 };
 
+function trashDirOf(deps: ToolDeps): string | null {
+	return deps.permission?.trashRoot() ?? null;
+}
+
+function deleteDeniedText(hits: DeleteVerbHit[], trash: string | null) {
+	const first = hits[0];
+	const verbs = [...new Set(hits.map((hit) => hit.verb))].map((verb) => `\`${verb}\``).join(" / ");
+	const where = first.line >= 0 ? ` (line ${first.line + 1})` : "";
+	return [
+		`Strict delete mode refuses ${verbs} here — matched \`${first.word}\`${where}. Move the paths to the trash instead:`,
+		trash ? `\n\tmkdir -p ${trash} && mv <path> ${trash}/\n` : "\n\tmove the paths into the trash directory\n",
+		"The files stay on disk and can be brought back. Only if that move fails may the rm tool delete them for good.",
+	].join("");
+}
+
+function protectedTarget(abs: string, workspace: string, storage: string | null): string | null {
+	if (abs === "/" || abs === homedir()) return "refused: filesystem or home root";
+	for (const root of [workspace, storage]) {
+		if (!root) continue;
+		if (abs === root) return "refused: the workspace/storage root itself";
+		if (isInside(root, abs)) return "refused: an ancestor of the workspace/storage root";
+	}
+	return null;
+}
+
+const rmSchema = Type.Object({
+	paths: Type.Array(Type.String(), { description: "Files or directories to delete. Absolute, or relative to the working directory." }),
+	dir: Type.Boolean({ description: "True when these paths are directories. A mismatch with the filesystem is refused." }),
+});
+
+type RmDetails = { ok: boolean; code?: "no_failed_trash_move"; deleted: string[]; failed: { path: string; error: string }[] };
+
+function rmTool(deps: ToolDeps): AgentTool<typeof rmSchema, RmDetails> {
+	return {
+		name: "rm",
+		label: "rm",
+		description: `Irreversibly delete files and directories — no trash, no undo. This is the fallback for when moving a path to the trash did not work (disk full, file too large, permissions). It only runs after a bash call in this turn has failed while moving those paths into the trash, and refuses otherwise. For a recoverable delete, use bash instead: \`mkdir -p ${trashDirOf(deps) ?? "~/.Trash"} && mv <path> ${trashDirOf(deps) ?? "~/.Trash"}/\`.`,
+		parameters: rmSchema,
+		async execute(_toolCallId, { paths, dir }) {
+			const settings = await loadSettings();
+			const storage = deps.permission?.storageRoot() ?? null;
+			const trash = trashDirOf(deps);
+			if (settings.delete?.strict !== false) {
+				const failures = deps.lastFailedBash?.() ?? [];
+				let justified = false;
+				for (const failure of failures) {
+					if (trash && (await movesToTrash(failure.command, trash))) {
+						justified = true;
+						break;
+					}
+				}
+				if (!justified) {
+					const tried =
+						failures.length > 0
+							? `Failed bash calls this turn:\n${failures
+									.slice(0, 3)
+									.map((failure) => `  - ${failure.command.trim().slice(0, 120) || "(unknown)"}`)
+									.join("\n")}`
+							: "No bash call has failed in this turn.";
+					return {
+						content: [
+							{
+								type: "text",
+								text: `Refused: strict delete mode wants a failed trash move first. ${tried}\nMove the paths into the trash (\`mkdir -p ${trash ?? "~/.Trash"} && mv <path> ${trash ?? "~/.Trash"}/\`) and call rm again only if that fails.`,
+							},
+						],
+						details: { ok: false, code: "no_failed_trash_move", deleted: [], failed: [] },
+					};
+				}
+			}
+			const workspace = deps.permission?.workspaceRoot() ?? process.cwd();
+			const deleted: string[] = [];
+			const failed: { path: string; error: string }[] = [];
+			for (const raw of paths) {
+				const abs = isAbsolute(raw) ? resolve(raw) : resolve(workspace, raw);
+				const blocked = protectedTarget(abs, workspace, storage);
+				if (blocked) {
+					failed.push({ path: raw, error: blocked });
+					continue;
+				}
+				const verdict = deps.permission?.checkFile(abs, "write");
+				if (verdict && !verdict.allowed) {
+					failed.push({ path: raw, error: verdict.reason });
+					continue;
+				}
+				const info = await stat(abs).catch(() => null);
+				if (!info) {
+					failed.push({ path: raw, error: "not found" });
+					continue;
+				}
+				if (info.isDirectory() !== dir) {
+					failed.push({ path: raw, error: dir ? "declared dir=true but this is not a directory" : "declared dir=false but this is a directory" });
+					continue;
+				}
+				try {
+					await removePath(abs, { recursive: dir, force: false });
+					deleted.push(raw);
+				} catch (error) {
+					const code = (error as NodeJS.ErrnoException)?.code;
+					failed.push({ path: raw, error: code === "ENOENT" ? "not found" : error instanceof Error ? error.message : String(error) });
+				}
+			}
+			const text = [
+				`force-deleted ${deleted.length} of ${paths.length} after the failed trash move`,
+				...deleted.map((path) => `  - ${path}`),
+				...failed.map((entry) => `  ! ${entry.path}: ${entry.error}`),
+			].join("\n");
+			return { content: [{ type: "text", text }], details: { ok: failed.length === 0, deleted, failed } };
+		},
+	};
+}
+
 function bashTool(deps: ToolDeps): AgentHarnessTool<ExecutionToolContext, TSchema, BashDetails> {
 	const baseProps = {
 		command: Type.String({ description: "Bash command to execute" }),
@@ -90,12 +206,23 @@ function bashTool(deps: ToolDeps): AgentHarnessTool<ExecutionToolContext, TSchem
 		label: "bash",
 		description:
 			"Execute a bash command. Runs in the working directory when one is set, otherwise in the storage scratch directory. Returns stdout and stderr (last ~50KB, truncated)." +
+			` Deleting files: move them to the trash instead of unlinking — \`mkdir -p ${trashDirOf(deps) ?? "<storage>/trash"} && mv <path> ${trashDirOf(deps) ?? "<storage>/trash"}/\`. In strict delete mode a \`rm\`/\`rmdir\` command is refused before it runs; the rm tool is the fallback for when the trash move itself fails.` +
 			(deps.permission?.isConfining()
 				? " Sandboxed: writes outside the working directory/storage are denied by the kernel and return `[sandbox: file access denied under <mode> mode]`. On a denial you may retry ONCE in the same turn with a strictly wider `sandbox_mode` plus a `justification` — a human must approve."
 				: ""),
 		parameters: schema,
 		async execute(toolCallId, params, signal, _onUpdate, context) {
 			const { command, timeout, sandbox_mode, justification } = params as { command: string; timeout?: number; sandbox_mode?: SandboxMode; justification?: string };
+			const settings = await loadSettings();
+			if (settings.delete?.strict !== false) {
+				const hits = await findDeleteVerbs(command);
+				if (hits.length > 0) {
+					return {
+						content: [{ type: "text", text: deleteDeniedText(hits, trashDirOf(deps)) }],
+						details: { sandbox: { code: "rm_forbidden", mode: deps.permission?.getMode() } },
+					};
+				}
+			}
 			if (timeout !== undefined && !(Number.isFinite(timeout) && timeout > 0)) {
 				return { content: [{ type: "text", text: `Invalid timeout: ${timeout} — pass a positive number of seconds.` }], details: {} };
 			}
@@ -111,7 +238,9 @@ function bashTool(deps: ToolDeps): AgentHarnessTool<ExecutionToolContext, TSchem
 			}
 			const { env } = context;
 			try {
-				const { stdout, stderr, exitCode } = await runBash(env, command, { timeout: await bashTimeoutSec(timeout), abortSignal: signal, sandboxMode: grantedMode });
+				const timeoutSec =
+					timeout !== undefined && timeout > 0 ? timeout : settings.bash?.timeoutSec && settings.bash.timeoutSec > 0 ? settings.bash.timeoutSec : DEFAULT_BASH_TIMEOUT_SEC;
+				const { stdout, stderr, exitCode } = await runBash(env, command, { timeout: timeoutSec, abortSignal: signal, sandboxMode: grantedMode });
 				const out = tail([stdout, stderr].filter((s) => s).join("\n"));
 				let text = out.text || "(no output)";
 				if (exitCode !== 0 && exitCode !== undefined) text += `\n\nCommand exited with code ${exitCode}`;
@@ -300,6 +429,8 @@ function mcpCallTool(deps: ToolDeps): AgentTool<typeof mcpCallSchema, McpCallDet
 
 export function createTools(deps: ToolDeps): AgentTool[] {
 	const env = createExecutionEnv("", deps.permission);
+	const trash = trashDirOf(deps);
+	if (trash) void mkdir(trash, { recursive: true }).catch(() => {});
 	return [
 		bindEnv(createReadTool(), env),
 		bindEnv(createWriteTool(), env),
@@ -310,6 +441,7 @@ export function createTools(deps: ToolDeps): AgentTool[] {
 		memoryTool(deps),
 		mcpListTool(deps),
 		mcpCallTool(deps),
+		rmTool(deps),
 	];
 }
 

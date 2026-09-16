@@ -38,6 +38,7 @@ export function checkPath(target: string, op: "read" | "write", policy: Permissi
 	if (isSensitiveName(basename(target))) return deny("sensitive_file", "Sensitive file access is not allowed (except inside the storage path)");
 	if (op === "write") {
 		const workspace = policy.workspace ?? policy.storage;
+		if (policy.trash && isInside(target, policy.trash)) return ALLOWED;
 		if (workspace && !isInside(target, workspace) && !isInsideAny(target, gitRoots(policy.workspace))) {
 			return deny("outside_workspace", policy.workspace ? "Path is outside the working directory and the storage path" : "Path is outside the storage path");
 		}

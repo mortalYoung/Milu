@@ -86,6 +86,6 @@ export function gitRoots(workspace: string | null): string[] {
 /** The writable roots a confined command may write under `workspace-write` (canonicalized + deduped). */
 export function writableRoots(policy: PermissionPolicy): string[] {
 	if (policy.mode !== "workspace-write") return [];
-	const roots = [policy.workspace, policy.storage, ...gitRoots(policy.workspace), "/tmp", tmpdir()].filter((r): r is string => r != null && r !== "");
+	const roots = [policy.workspace, policy.storage, policy.trash, ...gitRoots(policy.workspace), "/tmp", tmpdir()].filter((r): r is string => r != null && r !== "");
 	return [...new Set(roots.map(canonicalPath))];
 }

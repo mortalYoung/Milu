@@ -30,6 +30,7 @@ export interface SettingsData {
 	commands_path?: string;
 	retry?: { maxRetries?: number; baseDelayMs?: number };
 	bash?: { timeoutSec?: number };
+	delete?: { strict?: boolean };
 	webFetch?: { timeoutMs?: number; maxBytes?: number; maxChars?: number; userAgent?: string };
 	compaction?: {
 		thresholdRatio?: number;
@@ -71,6 +72,7 @@ const DEFAULTS = {
 	retryMaxRetries: 2,
 	retryBaseDelayMs: 500,
 	bashTimeoutSec: 15,
+	strictDelete: true,
 	theme: "system" as ThemeMode,
 	sandbox: "workspace-write" as SandboxMode,
 	toastPlacement: "bottomcenter" as ToastPlacement,
@@ -213,6 +215,7 @@ export function SettingsView() {
 	const [retryMaxRetries, setRetryMaxRetries] = createSignal("2");
 	const [retryBaseDelayMs, setRetryBaseDelayMs] = createSignal("500");
 	const [bashTimeoutSec, setBashTimeoutSec] = createSignal("15");
+	const [strictDelete, setStrictDelete] = createSignal(true);
 	const [webFetchTimeout, setWebFetchTimeout] = createSignal("15000");
 	const [webFetchMaxBytes, setWebFetchMaxBytes] = createSignal("1000000");
 	const [webFetchMaxChars, setWebFetchMaxChars] = createSignal("50000");
@@ -266,6 +269,7 @@ export function SettingsView() {
 		if (s.compaction?.digestMaxItems !== undefined) setCompactionDigestMaxItems(String(s.compaction.digestMaxItems));
 		if (s.compaction?.maxOverflowRetries !== undefined) setCompactionOverflowRetries(String(s.compaction.maxOverflowRetries));
 		if (s.explorer?.lineGap !== undefined) setExplorerLineGap(String(s.explorer.lineGap));
+		if (s.delete?.strict !== undefined) setStrictDelete(s.delete.strict);
 		if (s.explorer?.fold?.braces !== undefined) setExplorerFoldBraces(s.explorer.fold.braces);
 		if (s.explorer?.fold?.markdown !== undefined) setExplorerFoldMarkdown(s.explorer.fold.markdown);
 		if (s.highlight?.tokenizeMaxLineLength !== undefined) setHighlightMaxLineLength(String(s.highlight.tokenizeMaxLineLength));
@@ -457,6 +461,7 @@ export function SettingsView() {
 				maxOverflowRetries: parsePositiveInt(compactionOverflowRetries(), 1),
 				...(current?.compaction?.prune ? { prune: current.compaction.prune } : {}),
 			},
+			delete: { strict: strictDelete() },
 			explorer: {
 				lineGap: Number(explorerLineGap()) || DEFAULTS.explorerLineGap,
 				fold: { braces: explorerFoldBraces(), markdown: explorerFoldMarkdown() },
@@ -1404,6 +1409,22 @@ export function SettingsView() {
 						}}
 					/>
 				</TextField>
+			),
+		},
+		{
+			id: "strictDelete",
+			title: "Strict delete mode",
+			desc: "Refuse `rm`/`rmdir` in bash and only allow the rm tool after a move to the trash has failed. Turn it off to let bash delete directly.",
+			cats: ["permission"],
+			modified: () => strictDelete() !== DEFAULTS.strictDelete,
+			control: () => (
+				<SwitchToggle
+					checked={strictDelete()}
+					onChange={(on) => {
+						setStrictDelete(on);
+						void persist({ ...currentSettings(), delete: { strict: on } });
+					}}
+				/>
 			),
 		},
 		{

@@ -44,6 +44,10 @@ export class Permission {
 		return this.policy().storage;
 	}
 
+	trashRoot(): string | null {
+		return this.policy().trash ?? null;
+	}
+
 	/** True when a confining backend is mounted — gates whether escalation params appear in tool schemas. */
 	isConfining(): boolean {
 		return this.sandbox?.isConfining() ?? false;
@@ -82,6 +86,8 @@ export class Permission {
 	}
 }
 
+export type { DeleteVerbHit } from "./delete-verbs";
+export { DELETE_VERBS, findDeleteVerbs, movesToTrash } from "./delete-verbs";
 export { ESCALATION_UNAVAILABLE_TEXT, escalate } from "./escalate";
 export { ALLOWED, checkPath, commandMentionsSensitive, deny, isSensitiveName, sandboxDenialMarker } from "./guard";
 export { isSandboxMode, isStrictlyWider, SANDBOX_MODES, widerModes } from "./modes";
