@@ -694,6 +694,7 @@ export type AppRPCSchema = __schema<{
 						memoryEnabled?: boolean;
 						memoryIdleMinutes?: number;
 						memoryMaxScenes?: number;
+						memoryPendingRounds?: number;
 						commands_path?: string;
 						retry?: { maxRetries?: number; baseDelayMs?: number };
 						bash?: { timeoutSec?: number };
@@ -738,6 +739,7 @@ export type AppRPCSchema = __schema<{
 						memoryEnabled?: boolean;
 						memoryIdleMinutes?: number;
 						memoryMaxScenes?: number;
+						memoryPendingRounds?: number;
 						commands_path?: string;
 						retry?: { maxRetries?: number; baseDelayMs?: number };
 						bash?: { timeoutSec?: number };

@@ -27,6 +27,7 @@ export interface SettingsData {
 	memoryEnabled?: boolean;
 	memoryIdleMinutes?: number;
 	memoryMaxScenes?: number;
+	memoryPendingRounds?: number;
 	commands_path?: string;
 	retry?: { maxRetries?: number; baseDelayMs?: number };
 	bash?: { timeoutSec?: number };
@@ -85,6 +86,7 @@ const DEFAULTS = {
 	memoryEnabled: true,
 	memoryIdleMinutes: 5,
 	memoryMaxScenes: 15,
+	memoryPendingRounds: 10,
 	explorerLineGap: 0.2,
 	explorerFoldBraces: true,
 	explorerFoldMarkdown: true,
@@ -242,6 +244,7 @@ export function SettingsView() {
 	const [memoryEnabled, setMemoryEnabled] = createSignal(initial?.memoryEnabled ?? true);
 	const [memoryIdleMinutes, setMemoryIdleMinutes] = createSignal(String(initial?.memoryIdleMinutes ?? 5));
 	const [memoryMaxScenes, setMemoryMaxScenes] = createSignal(String(initial?.memoryMaxScenes ?? 15));
+	const [memoryPendingRounds, setMemoryPendingRounds] = createSignal(String(initial?.memoryPendingRounds ?? 10));
 
 	function persistSkillsDirs() {
 		const dirs = skillsDirs()
@@ -393,6 +396,9 @@ export function SettingsView() {
 	if (initial && typeof initial.memoryIdleMinutes === "number" && String(initial.memoryIdleMinutes) !== memoryIdleMinutes()) {
 		setMemoryIdleMinutes(String(initial.memoryIdleMinutes));
 	}
+	if (initial && typeof initial.memoryPendingRounds === "number" && String(initial.memoryPendingRounds) !== memoryPendingRounds()) {
+		setMemoryPendingRounds(String(initial.memoryPendingRounds));
+	}
 
 	if (initial && typeof initial.sendMessageIntervalSec === "number" && deliveryMode() === "unlimited") {
 		setDeliveryMode("custom");
@@ -441,6 +447,7 @@ export function SettingsView() {
 			memoryEnabled: memoryEnabled(),
 			memoryIdleMinutes: parsePositiveInt(memoryIdleMinutes(), DEFAULTS.memoryIdleMinutes),
 			memoryMaxScenes: parsePositiveInt(memoryMaxScenes(), DEFAULTS.memoryMaxScenes),
+			memoryPendingRounds: parsePositiveInt(memoryPendingRounds(), DEFAULTS.memoryPendingRounds),
 			commands_path: commandsPath().trim() || undefined,
 			retry: {
 				maxRetries: parsePositiveInt(retryMaxRetries(), DEFAULTS.retryMaxRetries),
@@ -1215,6 +1222,8 @@ export function SettingsView() {
 			control: () => (
 				<TextField class="h-[32px] w-[110px] shrink-0 gap-0" value={memoryIdleMinutes()} onChange={setMemoryIdleMinutes}>
 					<TextFieldInput
+						type="number"
+						min={0}
 						variant="compact"
 						title="Memory idle delay (minutes)"
 						aria-label="Memory idle delay"
@@ -1222,6 +1231,32 @@ export function SettingsView() {
 							const next = parsePositiveInt(memoryIdleMinutes(), DEFAULTS.memoryIdleMinutes);
 							setMemoryIdleMinutes(String(next));
 							void persist({ ...currentSettings(), memoryIdleMinutes: next });
+						}}
+						onKeyDown={(e) => {
+							if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
+						}}
+					/>
+				</TextField>
+			),
+		},
+		{
+			id: "memoryPendingRounds",
+			title: "Memory rounds before organize",
+			desc: "User rounds since the last checkpoint before background memory organization runs; 0 disables it.",
+			cats: ["memory"],
+			modified: () => memoryPendingRounds() !== String(DEFAULTS.memoryPendingRounds),
+			control: () => (
+				<TextField class="h-[32px] w-[110px] shrink-0 gap-0" value={memoryPendingRounds()} onChange={setMemoryPendingRounds}>
+					<TextFieldInput
+						type="number"
+						min={0}
+						variant="compact"
+						title="Memory rounds before organize"
+						aria-label="Memory rounds before organize"
+						onBlur={() => {
+							const next = parsePositiveInt(memoryPendingRounds(), DEFAULTS.memoryPendingRounds);
+							setMemoryPendingRounds(String(next));
+							void persist({ ...currentSettings(), memoryPendingRounds: next });
 						}}
 						onKeyDown={(e) => {
 							if (e.key === "Enter" || e.key === "Escape") e.currentTarget.blur();
@@ -1239,6 +1274,8 @@ export function SettingsView() {
 			control: () => (
 				<TextField class="h-[32px] w-[110px] shrink-0 gap-0" value={memoryMaxScenes()} onChange={setMemoryMaxScenes}>
 					<TextFieldInput
+						type="number"
+						min={1}
 						variant="compact"
 						title="Max scene documents"
 						aria-label="Max scene documents"

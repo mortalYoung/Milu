@@ -82,7 +82,17 @@ import {
 } from "./lib/partner-files";
 import { partnerUsage } from "./lib/partner-usage";
 import { searchFiles } from "./lib/search";
-import { commandsDir, DEFAULT_MCP_CONFIG_PATH, DEFAULT_PALETTE_IGNORE_DIRS, getPartnerDir, loadSettings, type Settings, saveSettings, sendMessageIntervalMs } from "./lib/settings";
+import {
+	commandsDir,
+	DEFAULT_MCP_CONFIG_PATH,
+	DEFAULT_MEMORY_PENDING_ROUNDS,
+	DEFAULT_PALETTE_IGNORE_DIRS,
+	getPartnerDir,
+	loadSettings,
+	type Settings,
+	saveSettings,
+	sendMessageIntervalMs,
+} from "./lib/settings";
 import { loadMcpConfig, saveMcpConfig } from "./mcp/config";
 import { McpManager } from "./mcp/manager";
 import { copyPartner, createPartner, deletePartner, listPartners, PartnerError, type PartnerInput, promotePartner } from "./partners";
@@ -555,7 +565,6 @@ async function withBackgroundAbort<T>(partner: string, run: (signal: AbortSignal
 }
 
 // ——— memory schedule (idle timer · round counter) ———
-const MEMORY_PENDING_ROUNDS = 10;
 const DEFAULT_MEMORY_IDLE_MINUTES = 5;
 
 interface MemorySchedule {
@@ -636,7 +645,8 @@ function afterAgentRun(name: string): void {
 			if (!entry) return;
 			const state = memoryScheduleFor(name);
 			state.rounds += 1;
-			if (state.rounds >= MEMORY_PENDING_ROUNDS) {
+			const roundThreshold = settings.memoryPendingRounds ?? DEFAULT_MEMORY_PENDING_ROUNDS;
+			if (roundThreshold > 0 && state.rounds >= roundThreshold) {
 				state.rounds = 0;
 				cancelMemoryIdleTimer(name);
 				await triggerMemoryRun(name, "threshold");
@@ -668,7 +678,8 @@ async function ensureMemorySchedule(entry: PartnerAgent): Promise<void> {
 			cancelMemoryIdleTimer(name);
 			return;
 		}
-		if (rounds >= MEMORY_PENDING_ROUNDS) {
+		const roundThreshold = settings.memoryPendingRounds ?? DEFAULT_MEMORY_PENDING_ROUNDS;
+		if (roundThreshold > 0 && rounds >= roundThreshold) {
 			state.rounds = 0;
 			cancelMemoryIdleTimer(name);
 			void triggerMemoryRun(name, "startup");

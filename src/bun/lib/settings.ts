@@ -8,6 +8,7 @@ export type ThemeMode = "system" | "light" | "dark";
 export type ToastPlacement = "topcenter" | "topright" | "bottomcenter" | "bottomright";
 
 export const DEFAULT_MEMORY_MAX_SCENES = 15;
+export const DEFAULT_MEMORY_PENDING_ROUNDS = 10;
 
 export type DockSide = "left" | "right";
 
@@ -44,6 +45,7 @@ export interface Settings {
 	memoryEnabled?: boolean;
 	memoryIdleMinutes?: number;
 	memoryMaxScenes?: number;
+	memoryPendingRounds?: number;
 	commands_path?: string;
 	mcp_config_path?: string;
 	retry?: { maxRetries?: number; baseDelayMs?: number };
@@ -80,6 +82,7 @@ const DEFAULT_SETTINGS: Settings = {
 	memoryEnabled: true,
 	memoryIdleMinutes: 5,
 	memoryMaxScenes: DEFAULT_MEMORY_MAX_SCENES,
+	memoryPendingRounds: DEFAULT_MEMORY_PENDING_ROUNDS,
 	delete: { strict: true },
 	explorer: { lineGap: 0.2, fold: { braces: true, markdown: true } },
 	highlight: { tokenizeMaxLineLength: 3000, tokenizeTimeLimit: 500 },
