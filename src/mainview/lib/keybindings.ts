@@ -6,7 +6,7 @@ export interface Keybinding {
 	ctrl?: boolean;
 	shift?: boolean;
 	alt?: boolean;
-	handler: () => void;
+	handler: (event: KeyboardEvent) => void;
 }
 
 function matches(e: KeyboardEvent, b: Keybinding): boolean {
@@ -24,8 +24,13 @@ export function useKeybindings(bindings: Keybinding[]) {
 		if (e.repeat) return;
 		for (const binding of bindings) {
 			if (!matches(e, binding)) continue;
-			e.preventDefault();
-			binding.handler();
+			// The handler runs before the default is blocked: a handler that only listens (Esc) has to see
+			// whether something above it already took the key, and `preventDefault` is itself the signal.
+			try {
+				binding.handler(e);
+			} finally {
+				if (!e.defaultPrevented) e.preventDefault();
+			}
 			return;
 		}
 	};

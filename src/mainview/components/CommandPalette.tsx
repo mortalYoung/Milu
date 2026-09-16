@@ -236,21 +236,14 @@ export function CommandPalette(props: {
 
 	createEffect(() => {
 		if (!palette.open()) return;
-		const onKey = (e: KeyboardEvent) => {
-			if (e.key !== "Escape") return;
-			e.stopPropagation();
-			palette.close();
-		};
 		const onPointerDown = (e: PointerEvent) => {
 			if (panelEl?.contains(e.target as Node)) return;
 			e.preventDefault();
 			e.stopPropagation();
 			palette.close();
 		};
-		window.addEventListener("keydown", onKey, true);
 		document.addEventListener("pointerdown", onPointerDown, true);
 		onCleanup(() => {
-			window.removeEventListener("keydown", onKey, true);
 			document.removeEventListener("pointerdown", onPointerDown, true);
 		});
 	});

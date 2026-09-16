@@ -6,11 +6,12 @@ import { useSession } from "../lib/contexts/session-context";
 import { useSettings } from "../lib/contexts/settings-context";
 import { useToast } from "../lib/contexts/toast-context";
 import type { RevealRange, RevealTarget } from "../lib/dock";
+import { DOCK_PANE_MAX, DOCK_PANE_MIN } from "../lib/dock";
+import { ESCAPE_ORDER, useEscapeLayer } from "../lib/escape";
 import { fileGlyph, linkGlyph } from "../lib/file-icons";
 import { type HighlightToken, highlightCodeToLines, languageForPath, renderMarkdown, renderMarkdownReady } from "../lib/markdown";
-import { createPresence, DOCK_EXIT_MS, DOCK_POPOVER_EXIT_MS } from "../lib/presence";
 import { rpc } from "../lib/rpc";
-import { clampPaneWidth, DockGrip, GRIP_WIDTH } from "./DockGrip";
+import { DockShell } from "./DockShell";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "./ui/context-menu";
 
 interface DirState {
@@ -183,15 +184,6 @@ function buildPieces(tokens: HighlightToken[], ranges: { start: number; end: num
 const findHistory: string[] = [];
 const MAX_FIND_HISTORY = 50;
 
-const TREE_MIN = 148;
-const TREE_MAX = 320;
-const TREE_DEFAULT = 240;
-
-// Pinning gives the letter and the code pane their own columns, so it needs both of them to fit.
-const LETTER_MIN = 420;
-const CODE_MIN = 460;
-const PIN_MIN = LETTER_MIN + CODE_MIN + GRIP_WIDTH;
-
 const LANGUAGE_LABELS: Record<string, string> = {
 	ts: "TS",
 	tsx: "TSX",
@@ -211,12 +203,6 @@ const LANGUAGE_LABELS: Record<string, string> = {
 	diff: "DIFF",
 	xml: "XML",
 };
-
-/** The tree width is a UI layout preference, so it lives with the other one (chatlist.collapsed). */
-function storedTreeWidth() {
-	const stored = Number(localStorage.getItem("explorer.treeWidth"));
-	return Number.isFinite(stored) && stored > 0 ? clampPaneWidth(stored, TREE_MIN, TREE_MAX) : TREE_DEFAULT;
-}
 
 function formatBytes(bytes: number) {
 	if (bytes < 1024) return `${bytes} B`;
@@ -457,6 +443,8 @@ function CodeViewer(props: {
 	fold: FoldRule | null;
 	locate?: RevealRange | null;
 	metrics: string;
+	/** The panel this reader belongs to is showing, so its Esc layers are live. */
+	panelOpen: boolean;
 	onSelection?: (range: { start: number; end: number } | null) => void;
 }) {
 	const [tokenData] = createResource(
@@ -715,26 +703,18 @@ function CodeViewer(props: {
 		return () => window.removeEventListener("keydown", onKeyDown);
 	});
 
-	// Esc peels the innermost layer first: the find row closes, then a line selection clears, then
-	// the reader itself. Same-node listeners run in registration order, so find registers first.
-	createEffect(() => {
-		const onKeyDown = (e: KeyboardEvent) => {
-			if (e.key !== "Escape" || !findOpen()) return;
-			e.stopImmediatePropagation();
-			closeFind();
-		};
-		window.addEventListener("keydown", onKeyDown, true);
-		return () => window.removeEventListener("keydown", onKeyDown, true);
+	// Esc reaches the reader's own layers before the dock's: the find row sits over a line selection.
+	useEscapeLayer({
+		id: "explorer.readerFind",
+		order: ESCAPE_ORDER.readerFind,
+		isOpen: () => props.panelOpen && findOpen(),
+		close: () => closeFind(),
 	});
-
-	createEffect(() => {
-		const onKeyDown = (e: KeyboardEvent) => {
-			if (e.key !== "Escape" || !lineRange()) return;
-			e.stopImmediatePropagation();
-			setSelection(null);
-		};
-		window.addEventListener("keydown", onKeyDown, true);
-		return () => window.removeEventListener("keydown", onKeyDown, true);
+	useEscapeLayer({
+		id: "explorer.readerSelection",
+		order: ESCAPE_ORDER.readerSelection,
+		isOpen: () => props.panelOpen && lineRange() != null,
+		close: () => setSelection(null),
 	});
 	return (
 		<div class="explorer-code-pane" onKeyDown={onReaderKeyDown} onCopy={onReaderCopy}>
@@ -993,6 +973,13 @@ function ExplorerNode(props: {
 	);
 }
 
+/**
+ * What each partner left open in the dock, kept outside the component: the reader outlives a partner
+ * switch, a panel switch and a remount, so a partner comes back to the file (and the pin) it left.
+ * Only the reader's own dismissal forgets it.
+ */
+const [openFiles, setOpenFiles] = createSignal<Record<string, SelectedFile>>({});
+
 export function ExplorerDrawer(props: {
 	open: boolean;
 	partner: string | null;
@@ -1003,6 +990,10 @@ export function ExplorerDrawer(props: {
 	letterWidth: number | null;
 	setLetterWidth: (width: number | null) => void;
 	commitLetterWidth: () => void;
+	/** The dock's one pane width, shared with every other docked panel. */
+	paneWidth: number;
+	onPaneResize: (px: number) => void;
+	onPaneCommit: () => void;
 	onClose: () => void;
 }) {
 	const settingsView = useSettings();
@@ -1010,52 +1001,23 @@ export function ExplorerDrawer(props: {
 	const composer = useComposer();
 	const session = useSession();
 	const codeLineGap = () => settingsView.data()?.settings?.explorer?.lineGap ?? 0.2;
-	const [treeWidth, setTreeWidth] = createSignal(storedTreeWidth());
 	const [liveRange, setLiveRange] = createSignal<{ start: number; end: number } | null>(null);
-	const pinTitle = () => {
-		if (!canPin()) return `Pinning needs ${PIN_MIN} px of width`;
-		return props.pinned ? "Let the reader cover the letter again" : "Pin the letter beside the file";
-	};
-	const [rowWidth, setRowWidth] = createSignal(0);
-	const [pinnedTree, setPinnedTree] = createSignal(false);
-	let dockEl: HTMLDivElement | undefined;
-	let rowObserver: ResizeObserver | undefined;
-	const canPin = () => rowWidth() >= PIN_MIN;
-	// The split grip resizes the letter column, which lives outside this component: measure it from
-	// the row's edge to the dock's edge rather than reaching for its DOM.
-	const letterHost = () => dockEl?.parentElement ?? undefined;
-	function letterWidthNow() {
-		const row = letterHost();
-		if (!row || !dockEl) return props.letterWidth ?? 0;
-		const rowBox = row.getBoundingClientRect();
-		const dockBox = dockEl.getBoundingClientRect();
-		return (props.side ?? "right") === "right" ? dockBox.left - rowBox.left : rowBox.right - dockBox.right;
-	}
-	const letterMax = () => {
-		const tree = pinnedTree() ? treeWidth() + GRIP_WIDTH : 0;
-		return Math.max(LETTER_MIN, rowWidth() - CODE_MIN - GRIP_WIDTH - tree);
-	};
-	function bindDock(el: HTMLDivElement) {
-		dockEl = el;
-		rowObserver?.disconnect();
-		// A ref callback runs when the element is created, before it is appended — measure on the
-		// next microtask, once the row it lives in actually exists.
-		queueMicrotask(() => {
-			const row = el.parentElement;
-			if (!row || !el.isConnected) return;
-			rowObserver = new ResizeObserver(() => setRowWidth(row.clientWidth));
-			rowObserver.observe(row);
-			setRowWidth(row.clientWidth);
-		});
-	}
-	onCleanup(() => rowObserver?.disconnect());
 	const codeLineHeight = () => 1 + codeLineGap();
 	const [dirs, setDirs] = createSignal<Record<string, DirState>>({});
 	const [dirReal, setDirReal] = createSignal<Record<string, string>>({});
 	const [expanded, setExpanded] = createSignal<Set<string>>(new Set());
-	const [selected, setSelected] = createSignal<SelectedFile | null>(null);
-	const drawer = createPresence(() => props.open, DOCK_EXIT_MS);
-	const viewer = createPresence(() => props.open && selected() != null, DOCK_POPOVER_EXIT_MS);
+	const selected = () => (props.partner ? (openFiles()[props.partner] ?? null) : null);
+	function setSelected(next: SelectedFile | null) {
+		const partner = props.partner;
+		if (!partner) return;
+		setOpenFiles((prev) => {
+			if ((prev[partner] ?? null) === next) return prev;
+			const copy = { ...prev };
+			if (next) copy[partner] = next;
+			else delete copy[partner];
+			return copy;
+		});
+	}
 	const shownFile = createMemo<SelectedFile | null>((prev) => selected() ?? prev, null);
 	const tokens = new Map<string, number>();
 	let treeEl: HTMLDivElement | undefined;
@@ -1087,7 +1049,6 @@ export function ExplorerDrawer(props: {
 		setDirs({});
 		setDirReal({});
 		setExpanded(new Set<string>());
-		setSelected(null);
 		treeScrollTop = 0;
 	}
 
@@ -1097,6 +1058,9 @@ export function ExplorerDrawer(props: {
 		if (scope === partner) return;
 		scope = partner;
 		reset();
+		// The reader comes back with the partner; the tree has to catch up to where that file lives.
+		const remembered = partner ? untrack(() => openFiles()[partner]) : undefined;
+		if (remembered) void expandTo(remembered.path);
 	});
 
 	createEffect(() => {
@@ -1114,8 +1078,8 @@ export function ExplorerDrawer(props: {
 		void revealFile(target.path, target.range);
 	});
 
-	async function revealFile(path: string, range?: RevealRange) {
-		if (!props.partner) return;
+	/** Opens every folder on a file's path, so the tree can show and scroll to it. */
+	async function expandTo(path: string) {
 		const segments = path.split("/").filter(Boolean);
 		if (segments.length === 0) return;
 		const chain = [""];
@@ -1126,6 +1090,11 @@ export function ExplorerDrawer(props: {
 			await loadDir(dir);
 		}
 		setExpanded(next);
+	}
+
+	async function revealFile(path: string, range?: RevealRange) {
+		await expandTo(path);
+		const segments = path.split("/").filter(Boolean);
 		setSelected({ path, name: segments[segments.length - 1], ...(range ? { range, raw: true } : {}) });
 		scrollToRow(path);
 	}
@@ -1148,12 +1117,12 @@ export function ExplorerDrawer(props: {
 		});
 	});
 
-	createEffect(() => {
-		if (!props.open) setSelected(null);
-	});
-
-	createEffect(() => {
-		if (!props.open) setPinnedTree(false);
+	// The open file is the dock's detail layer: Esc closes it, and the pin lets go with it.
+	useEscapeLayer({
+		id: "explorer.detail",
+		order: ESCAPE_ORDER.dockDetail,
+		isOpen: () => props.open && selected() != null,
+		close: () => setSelected(null),
 	});
 
 	function hasCycleToAncestor(entry: ExplorerEntry): boolean {
@@ -1274,10 +1243,6 @@ export function ExplorerDrawer(props: {
 		scrollToRow(path);
 	}
 
-	function commitTreeWidth() {
-		localStorage.setItem("explorer.treeWidth", String(treeWidth()));
-	}
-
 	const foldRule = createMemo<FoldRule | null>(() => {
 		const path = shownFile()?.path;
 		if (!path) return null;
@@ -1301,71 +1266,59 @@ export function ExplorerDrawer(props: {
 		return res.ok ? res : { error: res.error ?? "failed to read file" };
 	});
 
-	createEffect(() => {
-		if (!props.open) return;
-		const onKey = (e: KeyboardEvent) => {
-			if (e.key !== "Escape") return;
-			// A pinned dock is closed on purpose — the pin button, `← partner`, the tree's × — not by Esc.
-			// Esc still gets as far as the find row and a line selection (CodeViewer handles those).
-			if (props.pinned) return;
-			if (selected()) setSelected(null);
-			else props.onClose();
-		};
-		window.addEventListener("keydown", onKey);
-		return () => window.removeEventListener("keydown", onKey);
-	});
-
 	return (
-		<Show when={drawer.visible()}>
-			<div class={"explorer-dock side-" + (props.side ?? "right")} classList={{ leaving: drawer.leaving(), "show-tree": pinnedTree() }} ref={bindDock}>
-				<Show when={props.pinned && viewer.visible()}>
-					<DockGrip
-						class="dock-grip-split"
-						host={letterHost}
-						width={letterWidthNow}
-						min={LETTER_MIN}
-						max={letterMax()}
-						// The letter sits on the far side of the dock, so the pointer grows it the other way round.
-						side={(props.side ?? "right") === "right" ? "left" : "right"}
-						label="Resize the letter column"
-						onResize={props.setLetterWidth}
-						onCommit={props.commitLetterWidth}
-					/>
-				</Show>
-				<Show when={viewer.visible()}>
+		<DockShell
+			open={props.open}
+			panelId="explorer"
+			side={props.side ?? "right"}
+			pinned={props.pinned}
+			onTogglePin={props.onTogglePin}
+			letterWidth={props.letterWidth}
+			setLetterWidth={props.setLetterWidth}
+			commitLetterWidth={props.commitLetterWidth}
+			width={props.paneWidth}
+			min={DOCK_PANE_MIN}
+			max={DOCK_PANE_MAX}
+			resizeLabel="Resize the file tree"
+			onResize={props.onPaneResize}
+			onCommit={props.onPaneCommit}
+			title="Explorer"
+			onClose={props.onClose}
+			detail={{
+				open: selected() != null,
+				render: (leaving, list) => (
 					<Show when={shownFile()}>
 						{(file) => (
-							<div class="explorer-reader" classList={{ leaving: viewer.leaving() }}>
+							<div class="explorer-reader dock-detail" classList={{ leaving }}>
 								<div class="explorer-reader-head">
 									<button
 										type="button"
-										class="explorer-pin"
-										classList={{ on: props.pinned }}
-										aria-pressed={props.pinned}
-										disabled={!canPin()}
-										title={pinTitle()}
-										onClick={() => {
-											setPinnedTree(false);
-											props.onTogglePin();
-										}}
+										class="dock-btn"
+										classList={{ on: list.pinned }}
+										aria-pressed={list.pinned}
+										disabled={!list.canPin && !list.pinned}
+										title={list.pinned ? "Let the file cover the letter again" : "Pin the letter beside the file"}
+										onClick={() => list.togglePin()}
 									>
 										<Pin size={11} />
 									</button>
-									<Show when={props.pinned}>
+									<Show when={list.pinned}>
 										<button
 											type="button"
-											class="explorer-tool"
-											classList={{ on: pinnedTree() }}
-											aria-pressed={pinnedTree()}
-											title={pinnedTree() ? "Hide the file tree" : "Show the file tree"}
-											onClick={() => setPinnedTree((value) => !value)}
+											class="dock-btn"
+											classList={{ on: list.listOpen }}
+											aria-pressed={list.listOpen}
+											title={list.listOpen ? "Hide the file tree" : "Show the file tree"}
+											onClick={() => list.openList()}
 										>
 											☰
 										</button>
 									</Show>
-									<button type="button" class="explorer-back" title="Close this file" onClick={() => setSelected(null)}>
-										← {props.partner}
-									</button>
+									<Show when={!list.pinned}>
+										<button type="button" class="explorer-back" title="Close this file" onClick={() => setSelected(null)}>
+											← {props.partner}
+										</button>
+									</Show>
 									<span class="explorer-file-name">{file().name}</span>
 									<nav class="explorer-dir" aria-label="File path" title={file().path}>
 										<For each={dirSegments()}>
@@ -1373,13 +1326,14 @@ export function ExplorerDrawer(props: {
 												<button
 													type="button"
 													class="explorer-dir-seg"
-													onClick={() =>
+													onClick={() => {
+														if (list.pinned) list.openList();
 														void focusDir(
 															dirSegments()
 																.slice(0, index() + 1)
 																.join("/"),
-														)
-													}
+														);
+													}}
 												>
 													{segment}/
 												</button>
@@ -1447,6 +1401,7 @@ export function ExplorerDrawer(props: {
 													fold={foldRule()}
 													locate={file().range ?? null}
 													metrics={metrics()}
+													panelOpen={props.open}
 													onSelection={(range) => setLiveRange(range)}
 												/>
 											</div>
@@ -1459,40 +1414,21 @@ export function ExplorerDrawer(props: {
 							</div>
 						)}
 					</Show>
+				),
+			}}
+		>
+			<div class="explorer-tree" ref={treeEl} onScroll={(e) => (treeScrollTop = e.currentTarget.scrollTop)}>
+				<Show
+					when={rootState()?.status === "ready"}
+					fallback={<div class="explorer-empty">{rootState()?.status === "error" ? (rootState()?.error ?? "failed to load") : "loading workspace…"}</div>}
+				>
+					<For each={rootState()?.entries ?? []}>
+						{(entry) => (
+							<ExplorerNode entry={entry} menu={rowMenu} depth={0} dirs={dirs} expanded={expanded} selectedKey={selectedKey} onToggle={toggleDir} onSelect={selectFile} />
+						)}
+					</For>
 				</Show>
-				<Show when={viewer.visible()}>
-					<DockGrip
-						host={() => dockEl}
-						width={treeWidth}
-						min={TREE_MIN}
-						max={TREE_MAX}
-						side={props.side ?? "right"}
-						label="Resize the file tree"
-						onResize={setTreeWidth}
-						onCommit={commitTreeWidth}
-					/>
-				</Show>
-				<div class="explorer-tree-pane" style={{ width: `${treeWidth()}px` }}>
-					<div class="explorer-head">
-						<span class="explorer-title">Explorer</span>
-						<button type="button" class="explorer-close" title="Close" onClick={props.onClose}>
-							×
-						</button>
-					</div>
-					<div class="explorer-tree" ref={treeEl} onScroll={(e) => (treeScrollTop = e.currentTarget.scrollTop)}>
-						<Show
-							when={rootState()?.status === "ready"}
-							fallback={<div class="explorer-empty">{rootState()?.status === "error" ? (rootState()?.error ?? "failed to load") : "loading workspace…"}</div>}
-						>
-							<For each={rootState()?.entries ?? []}>
-								{(entry) => (
-									<ExplorerNode entry={entry} menu={rowMenu} depth={0} dirs={dirs} expanded={expanded} selectedKey={selectedKey} onToggle={toggleDir} onSelect={selectFile} />
-								)}
-							</For>
-						</Show>
-					</div>
-				</div>
 			</div>
-		</Show>
+		</DockShell>
 	);
 }

@@ -1671,13 +1671,16 @@ export function SettingsView() {
 			class="flex h-full min-h-0"
 			ref={rootRef}
 			onKeyDown={(e) => {
-				if (e.key === "Escape") {
-					setAdding(false);
-					setEditingId(null);
-					setKeyEditId(null);
-					resetCp();
-					setAddKind("builtin");
-				}
+				if (e.key !== "Escape") return;
+				// Clearing the view's own edit state is the inner layer; with nothing to clear, Esc stays
+				// unhandled so it can reach the dialog and close it.
+				const hadEdit = adding() || editingId() != null || keyEditId() != null;
+				setAdding(false);
+				setEditingId(null);
+				setKeyEditId(null);
+				resetCp();
+				setAddKind("builtin");
+				if (hadEdit) e.preventDefault();
 			}}
 		>
 			<nav class="flex w-[184px] shrink-0 flex-col border-r border-hairline py-5">
@@ -1717,7 +1720,10 @@ export function SettingsView() {
 								placeholder="Search settings"
 								aria-label="Search settings"
 								onKeyDown={(e) => {
-									if (e.key === "Escape") setQuery("");
+									if (e.key === "Escape" && query().trim()) {
+										e.preventDefault();
+										setQuery("");
+									}
 								}}
 								spellcheck={false}
 							/>

@@ -58,30 +58,28 @@ export function ConversationPage(props: {
 	const workspacePath = () => status.data().workspace_path;
 	const hasWorkspace = () => workspacePath() != null;
 	const gitAvailable = () => hasWorkspace() && status.data().is_git_repo;
+	// Both conditions describe the selected partner, so they may only act on that partner's status: the
+	// stale one in hand right after a switch would close the dock this partner had open.
 	createEffect(() => {
+		if (!status.settled()) return;
 		if (!hasWorkspace() && panel() === "explorer") props.dock.close();
 	});
 	createEffect(() => {
+		if (!status.settled()) return;
 		if ((!gitAvailable() || status.data().change_count === 0) && panel() === "git") props.dock.close();
 	});
 
 	const hasConversation = () => props.selected != null && transcript.view().length > 0;
 	const dockSide = () => settings.data()?.settings?.dockSide ?? "right";
+	// No partner, no dock to close: which panel is open is each partner's own state, so leaving the
+	// partner leaves it behind for the partner it belongs to. Switching partners, in particular,
+	// empties the transcript for a beat while its history loads — that is not a reason to close.
 	createEffect(() => {
 		if (!hasConversation()) {
-			props.dock.close();
 			setBtwOpen(false);
 			setBtwAnchor(null);
 			trajectory.mutate.setOpen(false);
 		}
-	});
-
-	createEffect(() => {
-		const onKey = (e: KeyboardEvent) => {
-			if (e.key === "Escape" && panel() === "replies") props.dock.close();
-		};
-		window.addEventListener("keydown", onKey);
-		onCleanup(() => window.removeEventListener("keydown", onKey));
 	});
 
 	return (
@@ -110,7 +108,7 @@ export function ConversationPage(props: {
 					<div class="chat-body" classList={{ "btw-open": btwOpen() }}>
 						<div
 							class="chat-main"
-							classList={{ pinned: props.dock.pinned(), "side-left": dockSide() === "left" }}
+							classList={{ pinned: props.dock.pinned(props.selected, panel()), "side-left": dockSide() === "left" }}
 							style={{ "--dock-bottom": `${composerHeight()}px`, ...(props.dock.letterWidth() != null ? { "--letter-width": `${props.dock.letterWidth()}px` } : {}) }}
 						>
 							<div class="chat-letter">
@@ -140,14 +138,30 @@ export function ConversationPage(props: {
 								partner={props.selected}
 								reveal={props.dock.reveal()}
 								side={dockSide()}
-								pinned={props.dock.pinned()}
-								onTogglePin={props.dock.togglePinned}
+								pinned={props.dock.pinned(props.selected, "explorer")}
+								onTogglePin={() => props.dock.togglePinned(props.selected, "explorer")}
 								letterWidth={props.dock.letterWidth()}
 								setLetterWidth={props.dock.setLetterWidth}
 								commitLetterWidth={props.dock.commitLetterWidth}
+								paneWidth={props.dock.paneWidth()}
+								onPaneResize={props.dock.setPaneWidth}
+								onPaneCommit={props.dock.commitPaneWidth}
 								onClose={() => props.dock.close()}
 							/>
-							<GitChangesDrawer open={panel() === "git"} partner={props.selected} side={dockSide()} onClose={() => props.dock.close()} />
+							<GitChangesDrawer
+								open={panel() === "git"}
+								partner={props.selected}
+								side={dockSide()}
+								pinned={props.dock.pinned(props.selected, "git")}
+								onTogglePin={() => props.dock.togglePinned(props.selected, "git")}
+								letterWidth={props.dock.letterWidth()}
+								setLetterWidth={props.dock.setLetterWidth}
+								commitLetterWidth={props.dock.commitLetterWidth}
+								paneWidth={props.dock.paneWidth()}
+								onPaneResize={props.dock.setPaneWidth}
+								onPaneCommit={props.dock.commitPaneWidth}
+								onClose={() => props.dock.close()}
+							/>
 						</div>
 					</div>
 				) : (

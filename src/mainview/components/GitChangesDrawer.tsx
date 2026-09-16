@@ -1,13 +1,10 @@
-import { createEffect, createMemo, createResource, createSignal, For, onCleanup, Show } from "solid-js";
+import { Pin } from "lucide-solid";
+import { createEffect, createMemo, createResource, createSignal, For, Show } from "solid-js";
 import type { GitChangeItem } from "../../shared/rpc";
-import { createPresence, DOCK_EXIT_MS, DOCK_POPOVER_EXIT_MS } from "../lib/presence";
+import { DOCK_PANE_MAX, DOCK_PANE_MIN } from "../lib/dock";
+import { ESCAPE_ORDER, useEscapeLayer } from "../lib/escape";
 import { rpc } from "../lib/rpc";
-import { clampPaneWidth, DockGrip } from "./DockGrip";
-
-const LIST_MIN = 220;
-const LIST_MAX = 420;
-const LIST_DEFAULT = 320;
-const LIST_WIDTH_KEY = "git.listWidth";
+import { DockShell } from "./DockShell";
 
 interface GitData {
 	repoRoot: string;
@@ -19,11 +16,6 @@ interface DiffData {
 	diff?: string;
 	content?: string;
 	error?: string;
-}
-
-function storedListWidth() {
-	const stored = Number(localStorage.getItem(LIST_WIDTH_KEY));
-	return Number.isFinite(stored) && stored > 0 ? clampPaneWidth(stored, LIST_MIN, LIST_MAX) : LIST_DEFAULT;
 }
 
 function basename(path: string) {
@@ -46,20 +38,53 @@ function DiffLineView(props: { text: string }) {
 	return <div class={"git-diff-line" + (cls() ? ` ${cls()}` : "")}>{props.text || " "}</div>;
 }
 
-export function GitChangesDrawer(props: { open: boolean; partner: string | null; side?: "left" | "right"; onClose: () => void }) {
+/**
+ * What each partner left open in the dock — the explorer's own memory, kept here too and outside the
+ * component for the same reason: the pin holds a file, and a partner that comes back pinned has to
+ * come back with the diff it was pinned to.
+ */
+const [openDiffs, setOpenDiffs] = createSignal<Record<string, GitChangeItem>>({});
+
+export function GitChangesDrawer(props: {
+	open: boolean;
+	partner: string | null;
+	side?: "left" | "right";
+	onClose: () => void;
+	/** The dock's one pane width, shared with every other docked panel. */
+	paneWidth: number;
+	onPaneResize: (px: number) => void;
+	onPaneCommit: () => void;
+	/** Pinning shares the row with the letter, exactly as the explorer does. */
+	pinned: boolean;
+	onTogglePin: () => void;
+	letterWidth: number | null;
+	setLetterWidth: (width: number | null) => void;
+	commitLetterWidth: () => void;
+}) {
 	const [data, setData] = createSignal<GitData | null>(null);
 	const [error, setError] = createSignal<string | null>(null);
 	const [loading, setLoading] = createSignal(false);
-	const [selected, setSelected] = createSignal<GitChangeItem | null>(null);
-	const [listWidth, setListWidth] = createSignal(storedListWidth());
-	const drawer = createPresence(() => props.open, DOCK_EXIT_MS);
-	const viewer = createPresence(() => props.open && selected() != null, DOCK_POPOVER_EXIT_MS);
-	const shownChange = createMemo<GitChangeItem | null>((prev) => selected() ?? prev, null);
-	let dockEl: HTMLDivElement | undefined;
-
-	function commitWidth() {
-		localStorage.setItem(LIST_WIDTH_KEY, String(listWidth()));
+	const selected = () => (props.partner ? (openDiffs()[props.partner] ?? null) : null);
+	function setSelected(next: GitChangeItem | null) {
+		const partner = props.partner;
+		if (!partner) return;
+		setOpenDiffs((prev) => {
+			if ((prev[partner] ?? null) === next) return prev;
+			const copy = { ...prev };
+			if (next) copy[partner] = next;
+			else delete copy[partner];
+			return copy;
+		});
 	}
+	const shownChange = createMemo<GitChangeItem | null>((prev) => selected() ?? prev, null);
+
+	// The open diff is the dock's detail layer: Esc closes it, and the pin lets go with it.
+	useEscapeLayer({
+		id: "git.detail",
+		order: ESCAPE_ORDER.dockDetail,
+		isOpen: () => props.open && selected() != null,
+		close: () => setSelected(null),
+	});
 
 	async function refresh() {
 		if (!props.partner) return;
@@ -82,10 +107,7 @@ export function GitChangesDrawer(props: { open: boolean; partner: string | null;
 	}
 
 	createEffect(() => {
-		if (props.open && props.partner) {
-			setSelected(null);
-			void refresh();
-		}
+		if (props.open && props.partner) void refresh();
 	});
 
 	const [diffData] = createResource(
@@ -120,17 +142,6 @@ export function GitChangesDrawer(props: { open: boolean; partner: string | null;
 		return parts.at(-1) ?? root;
 	};
 
-	createEffect(() => {
-		if (!props.open) return;
-		const onKey = (e: KeyboardEvent) => {
-			if (e.key !== "Escape") return;
-			if (selected()) setSelected(null);
-			else props.onClose();
-		};
-		window.addEventListener("keydown", onKey);
-		onCleanup(() => window.removeEventListener("keydown", onKey));
-	});
-
 	const renderGroup = (title: string, items: GitChangeItem[]) => (
 		<>
 			<div class="git-group-title">
@@ -152,16 +163,72 @@ export function GitChangesDrawer(props: { open: boolean; partner: string | null;
 	);
 
 	return (
-		<Show when={drawer.visible()}>
-			<div class={"git-dock side-" + (props.side ?? "right")} classList={{ leaving: drawer.leaving() }} ref={dockEl}>
-				<Show when={viewer.visible()}>
+		<DockShell
+			open={props.open}
+			panelId="git"
+			side={props.side ?? "right"}
+			width={props.paneWidth}
+			min={DOCK_PANE_MIN}
+			max={DOCK_PANE_MAX}
+			resizeLabel="Resize the change list"
+			onResize={props.onPaneResize}
+			onCommit={props.onPaneCommit}
+			pinned={props.pinned}
+			onTogglePin={props.onTogglePin}
+			letterWidth={props.letterWidth}
+			setLetterWidth={props.setLetterWidth}
+			commitLetterWidth={props.commitLetterWidth}
+			title="Git Changes"
+			actions={
+				<>
+					<span class="git-root">{shortRoot()}</span>
+					<button
+						type="button"
+						class={"dock-refresh" + (loading() ? " loading" : "")}
+						title={loading() ? "Refreshing…" : "Refresh"}
+						disabled={loading()}
+						onClick={() => void refresh()}
+					>
+						↻
+					</button>
+				</>
+			}
+			onClose={props.onClose}
+			detail={{
+				open: selected() != null,
+				render: (leaving, list) => (
 					<Show when={shownChange()}>
 						{(change) => (
-							<div class="git-diff" classList={{ leaving: viewer.leaving() }}>
+							<div class="git-diff dock-detail" classList={{ leaving }}>
 								<div class="git-diff-head">
-									<button type="button" class="git-back" title="Close this diff" onClick={() => setSelected(null)}>
-										← Changes
+									<button
+										type="button"
+										class="dock-btn"
+										classList={{ on: list.pinned }}
+										aria-pressed={list.pinned}
+										disabled={!list.canPin && !list.pinned}
+										title={list.pinned ? "Let the diff cover the letter again" : "Pin the letter beside the diff"}
+										onClick={() => list.togglePin()}
+									>
+										<Pin size={11} />
 									</button>
+									<Show when={list.pinned}>
+										<button
+											type="button"
+											class="dock-btn"
+											classList={{ on: list.listOpen }}
+											aria-pressed={list.listOpen}
+											title={list.listOpen ? "Hide the change list" : "Show the change list"}
+											onClick={() => list.openList()}
+										>
+											☰
+										</button>
+									</Show>
+									<Show when={!list.pinned}>
+										<button type="button" class="git-back" title="Close this diff" onClick={() => setSelected(null)}>
+											← Changes
+										</button>
+									</Show>
 									<span class="git-file-name">{basename(change().path)}</span>
 									<span class="git-dir" title={change().path}>
 										{dirname(change().path)}
@@ -205,52 +272,23 @@ export function GitChangesDrawer(props: { open: boolean; partner: string | null;
 							</div>
 						)}
 					</Show>
-				</Show>
-				<Show when={viewer.visible()}>
-					<DockGrip
-						host={() => dockEl}
-						width={listWidth}
-						min={LIST_MIN}
-						max={LIST_MAX}
-						side={props.side ?? "right"}
-						label="Resize the change list"
-						onResize={setListWidth}
-						onCommit={commitWidth}
-					/>
-				</Show>
-				<div class="git-list-pane" style={{ width: `${listWidth()}px` }}>
-					<div class="git-head">
-						<span class="git-title">Git Changes</span>
-						<span class="git-root">{shortRoot()}</span>
-						<button
-							type="button"
-							class={"git-refresh" + (loading() ? " loading" : "")}
-							title={loading() ? "Refreshing…" : "Refresh"}
-							disabled={loading()}
-							onClick={() => void refresh()}
-						>
-							↻
-						</button>
-						<button type="button" class="git-close" title="Close" onClick={props.onClose}>
-							×
-						</button>
-					</div>
-					<div class="git-body">
-						{loading() && !data() ? (
-							<div class="git-empty">loading…</div>
-						) : error() ? (
-							<div class="git-empty">{error()}</div>
-						) : !data() || (staged().length === 0 && unstaged().length === 0) ? (
-							<div class="git-empty">{data() ? "no changes" : "not a git repository"}</div>
-						) : (
-							<>
-								{staged().length > 0 ? renderGroup("Staged Changes", staged()) : null}
-								{unstaged().length > 0 ? renderGroup("Changes", unstaged()) : null}
-							</>
-						)}
-					</div>
-				</div>
+				),
+			}}
+		>
+			<div class="git-body">
+				{loading() && !data() ? (
+					<div class="git-empty">loading…</div>
+				) : error() ? (
+					<div class="git-empty">{error()}</div>
+				) : !data() || (staged().length === 0 && unstaged().length === 0) ? (
+					<div class="git-empty">{data() ? "no changes" : "not a git repository"}</div>
+				) : (
+					<>
+						{staged().length > 0 ? renderGroup("Staged Changes", staged()) : null}
+						{unstaged().length > 0 ? renderGroup("Changes", unstaged()) : null}
+					</>
+				)}
 			</div>
-		</Show>
+		</DockShell>
 	);
 }

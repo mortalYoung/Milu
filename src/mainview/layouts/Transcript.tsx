@@ -558,7 +558,10 @@ export function Transcript(props: {
 										}}
 										onKeyDown={(ev) => {
 											if (!isEditing()) return;
-											if (ev.key === "Escape") cancelEdit();
+											if (ev.key === "Escape") {
+												ev.preventDefault();
+												cancelEdit();
+											}
 											if (ev.key === "Enter" && !ev.shiftKey && !ev.isComposing) {
 												ev.preventDefault();
 												void saveEdit();

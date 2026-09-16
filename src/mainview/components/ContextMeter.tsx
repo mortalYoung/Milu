@@ -1,5 +1,6 @@
 import { createEffect, createSignal, onCleanup, Show } from "solid-js";
 import type { ContextUsage } from "../../shared/rpc";
+import { ESCAPE_ORDER, useEscapeLayer } from "../lib/escape";
 import { formatTokens } from "../lib/utils";
 
 const RADIUS = 5.5;
@@ -17,21 +18,16 @@ export function ContextMeter(props: { usage: ContextUsage }) {
 	const [open, setOpen] = createSignal(false);
 	let rootRef: HTMLSpanElement | undefined;
 
+	// Closes on a click outside; Esc is the app's single handler (lib/escape.ts).
+	useEscapeLayer({ id: "composer.meter", order: ESCAPE_ORDER.meter, isOpen: open, close: () => setOpen(false) });
 	createEffect(() => {
 		if (!open()) return;
 		const onPointerDown = (e: PointerEvent) => {
 			if (e.target instanceof Node && rootRef?.contains(e.target)) return;
 			setOpen(false);
 		};
-		const onKeyDown = (e: KeyboardEvent) => {
-			if (e.key === "Escape") setOpen(false);
-		};
 		document.addEventListener("pointerdown", onPointerDown);
-		document.addEventListener("keydown", onKeyDown);
-		onCleanup(() => {
-			document.removeEventListener("pointerdown", onPointerDown);
-			document.removeEventListener("keydown", onKeyDown);
-		});
+		onCleanup(() => document.removeEventListener("pointerdown", onPointerDown));
 	});
 
 	const percent = () => props.usage.percent;

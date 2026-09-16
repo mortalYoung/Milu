@@ -12,6 +12,7 @@ import { useSession } from "../lib/contexts/session-context";
 import { useSettings } from "../lib/contexts/settings-context";
 import { useSkills } from "../lib/contexts/skills-context";
 import { useToast } from "../lib/contexts/toast-context";
+import { ESCAPE_ORDER, useEscapeLayer } from "../lib/escape";
 import { detectTrigger, parseCommand } from "../lib/trigger";
 import { formatTokens } from "../lib/utils";
 import { Button } from "./Button";
@@ -150,6 +151,19 @@ export function Composer(props: {
 
 	const [panelOpen, setPanelOpen] = createSignal(false);
 
+	// Two Esc layers of its own: the command menu (attached to the field) over the runtime panel.
+	useEscapeLayer({
+		id: "composer.menu",
+		order: ESCAPE_ORDER.composerMenu,
+		isOpen: () => menuOpen() || claimed() != null,
+		close: () => {
+			suppressNextSync = true;
+			setMenuOpen(false);
+			setClaimed(null);
+		},
+	});
+	useEscapeLayer({ id: "composer.panel", order: ESCAPE_ORDER.composerPanel, isOpen: panelOpen, close: () => setPanelOpen(false) });
+
 	const commandHint = createMemo(() => {
 		if (menuOpen() || panelOpen() || shellMode() || submitting()) return null;
 		const parsed = parseCommand(text());
@@ -158,6 +172,7 @@ export function Composer(props: {
 		return cmd?.hint ? cmd : null;
 	});
 	let rootRef: HTMLFormElement | undefined;
+	// Closes on a click outside; Esc goes through the app's single handler (lib/escape.ts).
 	createEffect(() => {
 		if (!panelOpen()) return;
 		const onPointerDown = (e: PointerEvent) => {
@@ -165,15 +180,8 @@ export function Composer(props: {
 			if (e.target instanceof Element && e.target.closest('[role="menu"], [data-kb-menu-content]')) return;
 			setPanelOpen(false);
 		};
-		const onKeyDown = (e: KeyboardEvent) => {
-			if (e.key === "Escape") setPanelOpen(false);
-		};
 		document.addEventListener("pointerdown", onPointerDown);
-		document.addEventListener("keydown", onKeyDown);
-		onCleanup(() => {
-			document.removeEventListener("pointerdown", onPointerDown);
-			document.removeEventListener("keydown", onKeyDown);
-		});
+		onCleanup(() => document.removeEventListener("pointerdown", onPointerDown));
 	});
 
 	const resize = () => {
@@ -350,12 +358,6 @@ export function Composer(props: {
 				const delta = e.key === "ArrowDown" ? 1 : -1;
 				setSelectedIndex((i) => (i + delta + items.length) % items.length);
 			}
-			return;
-		}
-		if (e.key === "Escape" && (menuOpen() || claimed())) {
-			suppressNextSync = true;
-			setMenuOpen(false);
-			setClaimed(null);
 			return;
 		}
 		if (e.key === "Tab" && !e.shiftKey && menuOpen() && menuItems().length > 0) {

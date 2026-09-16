@@ -7,6 +7,7 @@ import type { RPC } from "./rpc";
 const CALIBRATE_DEBOUNCE_MS = 400;
 
 const EMPTY_STATUS = {
+	partner: null,
 	workspace_path: null,
 	is_git_repo: false,
 	change_count: 0,
@@ -24,9 +25,15 @@ export function createAgentStatus(rpc: RPC) {
 	const [writing, setWriting] = createStore<Record<string, boolean>>({});
 	const [snapshot, { refetch }] = createResource(
 		() => data.selected,
-		async (name) => (name ? rpc.request.get_status({ name }) : EMPTY_STATUS),
+		async (name) => (name ? { ...(await rpc.request.get_status({ name })), partner: name } : EMPTY_STATUS),
 		{ initialValue: EMPTY_STATUS },
 	);
+	/**
+	 * A refetch keeps the previous value, so for a beat after a partner switch the status in hand still
+	 * describes the partner we left — its workspace, its repo, its change count. Anything that *acts* on
+	 * the status (closing a dock, for one) has to ask whether it is looking at the right partner's.
+	 */
+	const settled = () => snapshot().partner === data.selected;
 	const status = () => (data.selected ? snapshot() : EMPTY_STATUS);
 
 	let workspaceKey: { partner: string | null; path: string | null } | null = null;
@@ -87,6 +94,7 @@ export function createAgentStatus(rpc: RPC) {
 
 	return {
 		data: status,
+		settled,
 		isBusyForSelected,
 		workingFor,
 		calibrate,

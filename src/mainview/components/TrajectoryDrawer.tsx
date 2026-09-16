@@ -5,6 +5,7 @@ import type { TrajectoryRecord } from "../../shared/rpc";
 import { scan } from "../../shared/trajectory";
 import { useSession } from "../lib/contexts/session-context";
 import { useTrajectory } from "../lib/contexts/trajectory-context";
+import { ESCAPE_ORDER, useEscapeLayer } from "../lib/escape";
 import type { TrajectoryMode } from "../lib/trajectory";
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -221,14 +222,12 @@ function DrawerContent(props: {
 		return () => ro.disconnect();
 	});
 
-	createEffect(() => {
-		const onKey = (e: KeyboardEvent) => {
-			if (e.key !== "Escape") return;
-			if (selectedKey() != null) setSelectedKey(null);
-			else props.onClose();
-		};
-		window.addEventListener("keydown", onKey);
-		return () => window.removeEventListener("keydown", onKey);
+	// The selected row is the drawer's inner layer; the drawer itself is the app's (lib/escape.ts).
+	useEscapeLayer({
+		id: "trajectory.row",
+		order: ESCAPE_ORDER.trajectoryRow,
+		isOpen: () => selectedKey() != null,
+		close: () => setSelectedKey(null),
 	});
 
 	const loadOlderKeep = async () => {

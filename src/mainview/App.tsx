@@ -21,6 +21,7 @@ import { ToastProvider, useToast } from "./lib/contexts/toast-context";
 import { TrajectoryProvider } from "./lib/contexts/trajectory-context";
 import { TranscriptProvider } from "./lib/contexts/transcript-context";
 import { createDock } from "./lib/dock";
+import { ESCAPE_ORDER, type EscapeLayer, escapeTop } from "./lib/escape";
 import { createInbox } from "./lib/inbox";
 import { useKeybindings } from "./lib/keybindings";
 import { COPIED_ICON_SVG, COPY_ICON_SVG, setHighlightLimits, warmUpMarkdown } from "./lib/markdown";
@@ -80,7 +81,7 @@ function WorkspaceControllers() {
 	const inbox = createInbox(rpc);
 	const metrics = createMetrics(rpc);
 	const trajectory = createTrajectory();
-	const dock = createDock({ onOpen: () => trajectory.mutate.setOpen(false) });
+	const dock = createDock({ onOpen: () => trajectory.mutate.setOpen(false), partner: () => session.data.selected });
 	const palette = createPalette();
 	const transcript = createTranscript();
 	const scroll = createScrollFollower(transcript.blocks);
@@ -107,7 +108,26 @@ function WorkspaceControllers() {
 	};
 
 	// ——— global keybindings ———
+	// Esc is the app's, not one listener per surface: a single handler closes the highest open layer.
+	// It yields to anything that already handled the key — Kobalte's overlays mark it when they dismiss
+	// — so a modal can never have the dock act behind it. Order lives in lib/escape.ts.
+	const escapeLayers: EscapeLayer[] = [
+		{ id: "palette", order: ESCAPE_ORDER.palette, isOpen: palette.open, close: palette.close },
+		{ id: "trajectory", order: ESCAPE_ORDER.trajectory, isOpen: trajectory.data.open, close: () => trajectory.mutate.setOpen(false) },
+		{ id: "dock", order: ESCAPE_ORDER.dock, isOpen: () => dock.panel() != null, close: dock.close },
+	];
 	useKeybindings([
+		{
+			key: "Escape",
+			handler: (event) => {
+				// Read before preventing: this key's own default is blocked either way, and afterwards the flag
+				// would only ever say "we did it".
+				const handledAbove = event.defaultPrevented;
+				event.preventDefault();
+				if (handledAbove) return;
+				escapeTop(escapeLayers);
+			},
+		},
 		{ key: ",", meta: true, handler: () => settings.mutate.setOpen(true) },
 		{ key: "b", meta: true, handler: toggleList },
 		{ key: "n", meta: true, handler: openAddPartner },

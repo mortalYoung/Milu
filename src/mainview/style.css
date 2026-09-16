@@ -693,29 +693,27 @@ body::before {
 	.chat-main.pinned.side-left {
 		@apply flex-row-reverse;
 	}
-	.chat-main.pinned .explorer-dock {
-		position: static;
+	.chat-main.pinned .dock {
+		position: relative;
 		flex: 0 0 auto;
 	}
-	.chat-main.pinned .explorer-dock:has(.explorer-reader) {
+	.chat-main.pinned .dock:has(.dock-detail) {
 		flex: 1 1 auto;
 		min-width: 0;
 	}
-	.chat-main.pinned:not(:has(.explorer-reader)) .chat-letter {
+	.chat-main.pinned:not(:has(.dock-detail)) .chat-letter {
 		flex: 1 1 auto;
 	}
-	.chat-main.pinned:has(.explorer-reader) .chat-letter {
+	.chat-main.pinned:has(.dock-detail) .chat-letter {
 		flex: 0 0 var(--letter-width, 42%);
 		min-width: 0;
 	}
-	/* The tree only yields to the code pane: with no file open it *is* the dock's content, and the ☰
-	   that would bring it back lives in the reader header. */
-	.chat-main.pinned .explorer-dock:not(.show-tree):has(.explorer-reader) .explorer-tree-pane,
-	.chat-main.pinned .explorer-dock:not(.show-tree):has(.explorer-reader) .dock-grip:not(.dock-grip-split) {
+	/* Pinned, the list takes no row width: it is hidden, and floats over the detail when asked for. */
+	.chat-main.pinned .dock:has(.dock-detail) .dock-pane:not(.floating) {
 		display: none;
 	}
 	/* Pinned, the letter column is the column: the composer reads its width, not 60% of it. */
-	.chat-main.pinned:has(.explorer-reader) .composer-row {
+	.chat-main.pinned:has(.dock-detail) .composer-row {
 		@apply w-full max-w-none;
 	}
 
@@ -1638,76 +1636,6 @@ body::before {
 		}
 	}
 
-	/* ——— dock panels: enter from the docked edge, leave faster ——— */
-	.dock-panel,
-	.dock-pop {
-		--ease-dock: cubic-bezier(0.32, 0.72, 0, 1);
-		transition-property: opacity, transform;
-		transition-timing-function: var(--ease-dock);
-	}
-	.dock-panel {
-		transition-duration: 220ms;
-	}
-	.dock-panel.side-right {
-		@starting-style {
-			opacity: 0;
-			transform: translateX(18px);
-		}
-	}
-	.dock-panel.side-left {
-		@starting-style {
-			opacity: 0;
-			transform: translateX(-18px);
-		}
-	}
-	.dock-panel.leaving {
-		opacity: 0;
-		transition-duration: 150ms;
-	}
-	.dock-panel.leaving.side-right {
-		transform: translateX(12px);
-	}
-	.dock-panel.leaving.side-left {
-		transform: translateX(-12px);
-	}
-	.dock-pop {
-		transition-duration: 180ms;
-	}
-	.dock-pop.side-right {
-		transform-origin: right center;
-		@starting-style {
-			opacity: 0;
-			transform: translateX(10px) scale(0.985);
-		}
-	}
-	.dock-pop.side-left {
-		transform-origin: left center;
-		@starting-style {
-			opacity: 0;
-			transform: translateX(-10px) scale(0.985);
-		}
-	}
-	.dock-pop.leaving {
-		opacity: 0;
-		transition-duration: 120ms;
-	}
-	.dock-pop.leaving.side-right {
-		transform: translateX(6px) scale(0.99);
-	}
-	.dock-pop.leaving.side-left {
-		transform: translateX(-6px) scale(0.99);
-	}
-	.dock-panel.leaving,
-	.dock-pop.leaving {
-		pointer-events: none;
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.dock-panel,
-		.dock-pop {
-			transition: none;
-		}
-	}
-
 	/* While a pane divider is dragged: no text selection, and the cursor holds across panes. */
 	body.pane-dragging {
 		user-select: none;
@@ -1749,7 +1677,10 @@ body::before {
 		box-shadow: 0 4px 12px color-mix(in srgb, var(--color-ink) 12%, transparent);
 	}
 	/* ——— explorer dock: the tree and the reader are two panes of one surface ——— */
-	.explorer-dock {
+	/* ——— dock panels: one shell for every docked surface ———
+	   The explorer and the git drawer were two copies of the same frame; these classes are the
+	   family, and a panel keeps only its own content classes. Values are unchanged from the copies. */
+	.dock {
 		--ease-dock: cubic-bezier(0.32, 0.72, 0, 1);
 		position: absolute;
 		inset: 0 0 var(--dock-bottom, 0px) 0;
@@ -1762,25 +1693,25 @@ body::before {
 			opacity: 0;
 		}
 	}
-	.explorer-dock.side-left {
+	.dock.side-left {
 		flex-direction: row-reverse;
 		justify-content: flex-end;
 	}
-	.explorer-dock.leaving {
+	.dock.leaving {
 		opacity: 0;
 		transition-duration: 150ms;
 	}
-	.explorer-reader,
-	.explorer-tree-pane,
-	.dock-grip {
+	.dock-detail,
+	.dock-pane,
+	.dock .dock-grip {
 		pointer-events: auto;
 	}
-	.explorer-dock.leaving .explorer-reader,
-	.explorer-dock.leaving .explorer-tree-pane,
-	.explorer-dock.leaving .dock-grip {
+	.dock.leaving .dock-detail,
+	.dock.leaving .dock-pane,
+	.dock.leaving .dock-grip {
 		pointer-events: none;
 	}
-	.explorer-tree-pane {
+	.dock-pane {
 		flex: none;
 		display: flex;
 		flex-direction: column;
@@ -1788,30 +1719,75 @@ body::before {
 		background: var(--color-letter);
 		transition: transform 220ms var(--ease-dock);
 	}
-	.explorer-dock.side-right .explorer-tree-pane {
+	/* The list while pinned: a card over the detail, so the reader keeps its width. It keeps 8px of air
+	   where it meets chrome — the reader head above, the window frame on its side — and none where it
+	   covers the reader, which is content, not frame. */
+	.dock-pane.floating {
+		position: absolute;
+		top: 38px;
+		z-index: 2;
+		max-height: 62%;
+		overflow: hidden;
+		padding: 0;
+		background: var(--color-paper);
+		border: 1px solid var(--color-hairline);
+		border-radius: 10px;
+		box-shadow:
+			0 6px 16px color-mix(in srgb, var(--color-ink) 10%, transparent),
+			0 1px 3px color-mix(in srgb, var(--color-ink) 6%, transparent);
+		transition:
+			opacity 160ms var(--ease-dock),
+			transform 160ms var(--ease-dock);
+		@starting-style {
+			opacity: 0;
+			transform: translateY(-4px);
+		}
+	}
+	.dock.side-right .dock-pane.floating {
+		right: 8px;
+	}
+	.dock.side-left .dock-pane.floating {
+		left: 8px;
+	}
+	.dock.side-right .dock-pane {
 		@starting-style {
 			transform: translateX(18px);
 		}
 	}
-	.explorer-dock.side-left .explorer-tree-pane {
+	.dock.side-left .dock-pane {
 		@starting-style {
 			transform: translateX(-18px);
 		}
 	}
-	.explorer-dock.leaving.side-right .explorer-tree-pane {
+	.dock.leaving.side-right .dock-pane {
 		transform: translateX(12px);
 	}
-	.explorer-dock.leaving.side-left .explorer-tree-pane {
+	.dock.leaving.side-left .dock-pane {
 		transform: translateX(-12px);
 	}
-	.explorer-head {
+	@media (prefers-reduced-motion: reduce) {
+		.dock,
+		.dock-pane,
+		.dock-detail,
+		.explorer-reader,
+		.git-diff {
+			transition: none;
+		}
+	}
+	/* Head frame: title left, actions right, one circular button that git's refresh shares. */
+	.dock-head {
 		@apply flex items-center gap-2 px-4 pb-3 border-b border-hairline;
 	}
-	.explorer-title {
-		@apply font-sans text-[9px] uppercase tracking-[0.2em] text-body-muted;
+	.dock-title {
+		@apply min-w-0 flex-1 truncate font-sans text-[9px] uppercase tracking-[0.2em] text-body-muted;
 	}
-	.explorer-close {
-		@apply font-sans text-[15px] leading-none text-body-muted hover:text-ink cursor-pointer bg-transparent border-0 p-0 ml-auto;
+	.dock-close,
+	.dock-refresh {
+		@apply shrink-0 size-6 flex items-center justify-center rounded-full text-muted cursor-pointer border-none bg-transparent hover:bg-paper-hover hover:text-ink;
+	}
+	.dock-refresh.loading {
+		@apply cursor-default;
+		animation: git-spin 0.8s linear infinite;
 	}
 	.explorer-tree {
 		@apply flex-1 min-h-0 overflow-y-auto pt-2 select-none;
@@ -1889,24 +1865,23 @@ body::before {
 	.explorer-raw.on {
 		@apply border-ink bg-ink text-paper;
 	}
-	.explorer-pin,
-	.explorer-tool.on {
+	/* The dock heads' shared button: the pin, the list toggle. 19px, ink when on. */
+	.dock-btn {
 		@apply flex size-[19px] flex-none cursor-pointer items-center justify-center rounded-[5px] border-0 bg-transparent text-muted;
 	}
-	.explorer-pin.on,
-	.explorer-tool.on {
+	.dock-btn.on {
 		@apply bg-ink text-paper;
 	}
-	.explorer-pin:disabled {
+	.dock-btn:disabled {
 		@apply cursor-default opacity-35;
 	}
-	.explorer-pin:not(:disabled):hover {
+	.dock-btn:not(:disabled):hover {
 		@apply bg-paper-hover text-ink;
 	}
-	.explorer-pin.on:hover {
+	.dock-btn.on:not(:disabled):hover {
 		@apply bg-ink-soft text-paper;
 	}
-	.explorer-pin:focus-visible,
+	.dock-btn:focus-visible,
 	.explorer-tool:focus-visible {
 		outline: 2px solid var(--color-ring);
 		outline-offset: -2px;
@@ -1945,10 +1920,9 @@ body::before {
 		}
 	}
 	@media (prefers-reduced-motion: reduce) {
-		.explorer-dock,
-		.explorer-tree-pane,
-		.explorer-reader {
-			transition: none;
+		.dock,
+		.dock-pane,
+		.dock-detail {
 		}
 		.explorer-busy {
 			animation: none;
@@ -2098,88 +2072,15 @@ body::before {
 		line-height: var(--explorer-line-height, 1.2);
 	}
 
-	/* ——— git dock: the change list and the diff are two panes of one surface ——— */
-	.git-dock {
-		--ease-dock: cubic-bezier(0.32, 0.72, 0, 1);
+	/* git's own palette, on the two places that read it: the change list and the diff. */
+	.git-body,
+	.git-diff {
 		--git-add: light-dark(#1a7f37, #7bc47f);
 		--git-del: light-dark(#cf222e, #e5847f);
 		--git-other: light-dark(#8250df, #b79ce8);
-		position: absolute;
-		inset: 0 0 var(--dock-bottom, 0px) 0;
-		z-index: 20;
-		display: flex;
-		justify-content: flex-end;
-		pointer-events: none;
-		transition: opacity 220ms var(--ease-dock);
-		@starting-style {
-			opacity: 0;
-		}
-	}
-	.git-dock.side-left {
-		flex-direction: row-reverse;
-		justify-content: flex-end;
-	}
-	.git-dock.leaving {
-		opacity: 0;
-		transition-duration: 150ms;
-	}
-	.git-diff,
-	.git-list-pane,
-	.git-dock .dock-grip {
-		pointer-events: auto;
-	}
-	.git-dock.leaving .git-diff,
-	.git-dock.leaving .git-list-pane,
-	.git-dock.leaving .dock-grip {
-		pointer-events: none;
-	}
-	.git-list-pane {
-		flex: none;
-		display: flex;
-		flex-direction: column;
-		padding: 16px 0;
-		background: var(--color-letter);
-		transition: transform 220ms var(--ease-dock);
-	}
-	.git-dock.side-right .git-list-pane {
-		@starting-style {
-			transform: translateX(18px);
-		}
-	}
-	.git-dock.side-left .git-list-pane {
-		@starting-style {
-			transform: translateX(-18px);
-		}
-	}
-	.git-dock.leaving.side-right .git-list-pane {
-		transform: translateX(12px);
-	}
-	.git-dock.leaving.side-left .git-list-pane {
-		transform: translateX(-12px);
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.git-dock,
-		.git-list-pane,
-		.git-diff {
-			transition: none;
-		}
-	}
-	.git-head {
-		@apply flex items-center gap-2 px-4 pb-3 border-b border-hairline;
-	}
-	.git-title {
-		@apply font-sans text-[9px] uppercase tracking-[0.2em] text-body-muted;
 	}
 	.git-root {
 		@apply ml-auto min-w-0 truncate font-mono text-[10px] text-muted;
-	}
-	.git-refresh,
-	.git-close {
-		@apply shrink-0 size-6 flex items-center justify-center rounded-full text-muted cursor-pointer border-none bg-transparent hover:bg-paper-hover hover:text-ink;
-	}
-	.git-refresh.loading {
-		@apply cursor-default;
-		animation: git-spin 0.8s linear infinite;
 	}
 	@keyframes git-spin {
 		to {
