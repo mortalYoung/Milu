@@ -142,6 +142,13 @@
 - [ ] Framer Motion / Motion 高负载场景没有用 `x/y/scale` shorthand 造成主线程掉帧风险
 - [ ] Esc 只有一个消费者（useKeybindings 的 Esc 行为）；每个可被 Esc 关闭的层都登记在 ESCAPE_ORDER，没有新增全局 keydown 监听（P-63）
 - [ ] 读 `defaultPrevented` 之前没有任何 `preventDefault`（含 keybindings 自身的默认阻止顺序）：handler 先跑、读完 flag 再阻止默认（P-63）
+- [ ] 覆盖第三方自带的 `!important` 规则：选择器要比对方多一个 class（`!important` 之间先比特异性、再比顺序），不要指望挂载顺序（P-66）
+- [ ] 给第三方编辑器/组件写样式时，优先用它文档给出的选择器形状（自拼 DOM 路径常见是死选择器）；写完用 style-mod `getRules()` 验一遍（P-66）
+- [ ] 需要让某个子树不继承全局视觉规则时，优先把颜色/值**间接化成变量**在该子树覆写，而不是靠选择器特异性对抗（P-66）
+- [ ] CodeMirror theme 的 key 是**相对根元素**的：根上的条件必须写 `&`（`&.cm-focused`），写裸 `.cm-editor` 会变成“要求它是根的后代”而永不匹配（写完用 style-mod `getRules()` 核一遍）（P-66）
+- [ ] CodeMirror 皮肤写在 `EditorView.theme()`（CM6 运行时注入的 base theme 会赢等特异性的 style.css 规则）；style.css 只留外壳（P-66）
+- [ ] 结构（折叠 / 缩进 / 括号）来自 parser；没有 parser 时宁可不提供，不用正则 / 括号计数近似（P-65）
+- [ ] 代码色彩只有 shiki 一个来源；若引入 lezer，只取结构（折叠 / 缩进 / 括号），不装 `syntaxHighlighting`（P-64）
 - [ ] 内层消费 Esc 时用 preventDefault 标 handled；中央 handler 遇 defaultPrevented 让位（P-63）
 - [ ] 动效不确定时已用慢放、逐帧或真实设备检查；专项审查按 `motion-review.md` 的
       Before / After / Why 表格输出

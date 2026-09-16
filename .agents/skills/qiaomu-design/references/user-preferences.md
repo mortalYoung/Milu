@@ -444,3 +444,32 @@
   5. 字段内的 Esc（清空/失焦/结束内联编辑）属于字段自己，且只有真的消费掉了才标 handled，否则要让 Esc 继续落到外层（例如让弹窗关闭）。
 - 原话摘录："把所有的 ESC 都干掉……在 useKeybinding 里新增 esc 的行为，在行为里去读取这些 open 的值，然后用代码逻辑控制现在要关哪个"
 - 收录：2026-09-16｜状态：生效（`ESCAPE_ORDER` 的具体数值待用户确认后定稿）
+
+### P-64 · 代码色彩只有一个来源：shiki；结构才交给 lezer
+- 级别：强偏好
+- 何时适用：reader / 编辑器 / diff 面板的代码高亮选型；任何"要不要换一套 highlighter"的决策
+- 规则：色彩永远由 shiki（TextMate + 项目主题 + 已暴露的两个 tokenize 限额）给——信里的代码块与 reader 用同一个实例，所以同一段代码在信里和 reader 里必然同色。lezer 只在需要「真实结构」的地方出现（折叠规则、括号匹配、缩进），按语言懒加载，且**不装 `syntaxHighlighting`**、不上色。反过来（用 lezer 上色）会同时得到两套色彩体系 + 两套语言栈，代价翻倍。
+- 落地（2026-09-16）：reader 换成 CodeMirror 6（`CodeReader.tsx`），颜色由 shiki token → CM6 decoration 驱动（约 40 行桥）；只用 shiki 上色的附带收益是重高亮不再丢选区。
+- 原话摘录：「高亮还可以交给 shiki」/「你评估一下代码高亮的方案是用其自带的 lezer 还是 shiki 好？」
+- 收录：2026-09-16｜状态：生效
+
+### P-65 · 结构问题交给 parser，不要用正则/括号计数启发式
+- 级别：强偏好
+- 何时适用：折叠范围、缩进、括号匹配、语法结构这一类"读代码结构"的需求；也适用于任何"用字符串扫描猜结构"的实现
+- 规则：结构一律从语言 parser（lezer）取，不用手写扫描。判据：手写扫描必须在注释/字符串/正则字面量里做状态机，永远只是近似（旧实现自认"不认 regex 字面量里的 `}`"）；parser 天然知道。语言没有 parser 时宁可不提供该能力，也不要留一个"看起来像能用"的近似实现
+- 证据（2026-09-16）：用 lezer 的 JSON parser 解析带 `//` 注释的 jsonc，树里依然有 `Object`/`Property`/`Array`（只是夹着 `⚠` 错误节点），所以折叠照常工作——连"jsonc 需要启发式兜底"这个假设都不成立，旧的 `lib/code-folds.ts`（140 行）整体删除
+- 原话摘录：「目前的实现方案我觉得无法实现一些复杂的需求……代码折叠规则」（→ 折叠改由 parser 提供）
+- 收录：2026-09-16｜状态：生效
+
+### P-66 · CodeMirror 的皮肤必须写在 EditorView.theme()，不能写在 style.css
+- 级别：强禁令（工程）
+- 何时适用：任何用 CodeMirror 6 的地方（本项目的 reader、以后的 diff）
+- 规则：CM6 在运行时把自带主题（baseTheme）注入 `<head>`，位置在 app 样式表**之后**；因此 style.css 里与它**等特异性**的 `.cm-*` 规则一律会输——表现为"我明明写了却完全没用"。凡是 CM6 自己也会设的属性（gutter 背景/边框/内边距、`.cm-content`/`.cm-line` 的 padding、选区背景、光标、折叠占位符），必须放进 `EditorView.theme({...})`：它带的模块类让特异性更高，且挂载顺序在 base theme 之后。只有外壳（host 容器、工具条、查找行、busy 提示）留在 style.css
+- 证据（2026-09-16，用户实测 6 条里 4 条同源）：gutter 灰底、选中蓝底、行号左偏（`.cm-line` 的 `0 2px 0 6px` 内边距胜出）、跨行选中底色，全部因为 style.css 的等特异性规则输给了运行时注入的 base theme；改用 theme 对象后一并消失
+- 追加证据（2026-09-16，用户实测三轮）：*鼠标拖出来的选区是红底、点行号设的选区是暖粉* —— CM6 自带的 `hideNativeSelection`（`drawSelection()` 自带）平时把原生选区 `transparent !important` 藏掉，但在 `.cm-content :focus…` 这一形状下改回 `backgroundColor: Highlight !important`（Highlight = 系统高亮色 = macOS 强调色），鼠标拖选正好命中。
+  - **失败一（打平特异性）**：`!important` 打平时先比顺序，而 CM6 的 `mountStyles()` 是 `styleModules.concat(baseTheme).reverse()` → **`Prec.highest` 的主题挂在最后**，默认优先级的主题排在它前面 → 输（我当时错误地以为“挂载在后就能赢”）。
+  - **失败二（死选择器，真正的原因）**：theme 的 key 会被**加上主题类 + 一个空格**前缀，而主题类挂在**编辑器根元素**上 → key 里再写一次 `.cm-editor` 就变成“要求它是根元素的后代” → **永远匹配不到**，整条覆盖是死代码（症状：改了两轮 css 一点变化都没有）。根元素上的条件必须用 `&` 写（`&.cm-focused`、`&.cm-editor …`）。
+  - **正解**：`&.cm-editor …`（锚在根上；多带一个 class 压过 `!important` 的平局，与挂载顺序无关）。判据：theme key 里出现裸的 `.cm-editor`（非 `&` 开头）就是 bug；写完用 style-mod 把 `getRules()` 打出来核一遍，别凭猜。
+  - **最终定案（用户从 CM6 文档找到的形状，一次就成）**：`"&.cm-focused .cm-selectionBackground, & .cm-selectionBackground, ::selection": { backgroundColor: … }`。theme key 里的 `::selection` 会变成 `.‹theme› ::selection`（1 个 class + 伪元素），**靠这个 class 就压过 app 的全局 `::selection`（0,0,1）**；而我之前把路径写全成 `.cm-scroller > .cm-selectionLayer …` 在这个 DOM 里**根本匹配不到**（死选择器）。三条教训：① 优先用库文档给的形状，别自己拼 DOM 路径；② 同名颜色按库自带 `!important` 规则的选择器形状各写一份（多一个 class），否则被它的 `Highlight !important`（系统高亮色）压掉；③ 让某个子树不继承全局视觉规则时，优先把颜色**间接化成变量**在该子树覆写，而不是靠选择器对抗。
+- 原话摘录：「样式问题很大，逐一修复：1 行号的背景颜色不对 2 选中文案的背景颜色不正确 3 跨行选中的文案背景颜色不正确 4 行号的位置不正确，没有居中」
+- 收录：2026-09-16｜状态：生效
