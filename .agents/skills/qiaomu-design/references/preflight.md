@@ -117,6 +117,17 @@
 - [ ] 除非用户明确要求，生成页面没有默认添加打赏二维码、公众号关注、GitHub/X 浮条、乔木推荐入口或个人 Profile 区块
 - [ ] 对外分享页面如需署名，最多使用低干扰页脚 `Powered by 向阳乔木` 链接到 `https://qiaomu.ai/`
 
+## A6.1 代码阅读面门禁（reader / diff，P-64~67）
+
+- [ ] diff 两侧分色：旧侧删=红、新侧增=绿；没有一条规则同时套两侧（旧侧被删的行画成绿 = 语义错误，P-67）
+- [ ] 改动的四层信号齐全：行号、变更条、行底 wash、字符级高亮；文字保持 ink，只有 `+/-` 记号本身染色
+- [ ] 行底 wash 与字符高亮是两个档位（本项目 10% / 24%），不是同一种颜色叠两层
+- [ ] 折叠未改动区是一条安静的 rule（发丝线 + 纸色带 + hover 变 ink），且库自带的装饰字形已关掉
+- [ ] 选区在 diff 里可见（`drawSelection()` + theme 里那三条 `::selection`），与 reader 同一枚 wash
+- [ ] CodeMirror 皮肤全部写在 `EditorView.theme()`（P-66），并用 `StyleModule.getRules()` 核过没有死选择器
+- [ ] 盖库自己的 `background` 简写时重声明的是 `background` 而不是 `background-color`（否则它的 `background-image`（如 2px 下划线）会留在底下），且选择器比库的多带一个 class（P-67）
+- [ ] reader 与 diff 的代码节奏同源：字号、行高（`--explorer-line-height`）、gutter 底色、等宽字体
+
 ## B. 设计读取一致性
 
 - [ ] 产出与声明的设计读取、三拨盘值一致（说了 VARIANCE 9 就不能交居中对称）

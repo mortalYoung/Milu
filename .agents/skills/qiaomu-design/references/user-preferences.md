@@ -473,3 +473,12 @@
   - **最终定案（用户从 CM6 文档找到的形状，一次就成）**：`"&.cm-focused .cm-selectionBackground, & .cm-selectionBackground, ::selection": { backgroundColor: … }`。theme key 里的 `::selection` 会变成 `.‹theme› ::selection`（1 个 class + 伪元素），**靠这个 class 就压过 app 的全局 `::selection`（0,0,1）**；而我之前把路径写全成 `.cm-scroller > .cm-selectionLayer …` 在这个 DOM 里**根本匹配不到**（死选择器）。三条教训：① 优先用库文档给的形状，别自己拼 DOM 路径；② 同名颜色按库自带 `!important` 规则的选择器形状各写一份（多一个 class），否则被它的 `Highlight !important`（系统高亮色）压掉；③ 让某个子树不继承全局视觉规则时，优先把颜色**间接化成变量**在该子树覆写，而不是靠选择器对抗。
 - 原话摘录：「样式问题很大，逐一修复：1 行号的背景颜色不对 2 选中文案的背景颜色不正确 3 跨行选中的文案背景颜色不正确 4 行号的位置不正确，没有居中」
 - 收录：2026-09-16｜状态：生效
+
+### P-67 · 代码对比面板走 git 惯例的四层语言，且删/增必须分色
+- 级别：强偏好
+- 何时适用：本项目 git 详情层的 diff（双栏 / 单栏），以及以后任何“两份文本对比”的阅读面
+- 规则：一个改动同时给四层信号——行号 + gutter 变更条 + 行底 wash + 字符级高亮；颜色按**侧**分工（旧侧删=红、新侧增=绿），**禁止一份规则同时套两侧**（那不是审美问题，是语义错误：旧侧被删的行会画成绿的）。文字保持 ink，颜色交给 wash 与条，只有 `+/-` 记号本身染色；行底与字符用两个档位的浓度（本项目 10% / 24%），不要同一色叠两层。行号必给：折叠未改动区之后没有行号等于失去坐标。折叠带用发丝线 + 纸色带 + hover 变 ink，库自带的 `⦚` 装饰字形关掉。
+- 证据（自发现 2026-09-17）：`diffTheme` 只写了一条 `.cm-changedLine`（`--git-add` 12%），而 @codemirror/merge 是用 `cm-merge-a` / `cm-merge-b` 标两侧的 → 旧侧被删的整行、旧侧被改的字符全部是绿的；`StyleModule.getRules()` 输出可复现（同一主题里只有一条 line 规则、无侧别类名）
+- 追加证据（自发现 2026-09-17，“新增的块底下有一条绿色的线”）：库给改动字符画的是 **2px 下划线**——`&light.cm-merge-b .cm-changedText { background: linear-gradient(#22bb22aa,#22bb22aa) bottom/100% 2px no-repeat }`。只写 `background-color` 盖不掉它：层级是按**长属性**逐条比的，简写已经设下的 `background-image / position / size / repeat` 没人重声明 → 那条绿线留在 wash 下面。正解：用 `background` 简写整体重置，并给这些规则多带一个 class（`&.cm-editor.cm-merge-a/b …`）——库的 `&light .cm-deletedChunk .cm-deletedText` 比裸形状多一个 class，靠顺序本来就赢不了。通用教训：**盖库的简写必须重声明简写**；改动字符/选中/折叠这种库自己也会画的东西，别用长属性去对。
+- 原话摘录：「帮我打磨一下 diff 的样式，太丑了，你参考一下 Zed 或者 VSCode」
+- 收录：2026-09-17｜状态：生效（已落入 preflight A6.1）
