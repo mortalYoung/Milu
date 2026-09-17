@@ -30,6 +30,14 @@ export function CommandPalette(props: {
 	let panelEl: HTMLDivElement | undefined;
 	let inputEl: HTMLInputElement | undefined;
 
+	// The partner list is re-read every step while the agent writes; results that move under the cursor
+	// are unsearchable, so the palette searches the list as it stood when it opened.
+	const [sessions, setSessions] = createSignal<PartnerItem[]>([]);
+	createEffect(() => {
+		if (!palette.open()) return;
+		setSessions(untrack(() => props.partners));
+	});
+
 	const filesAvailable = () => props.partner != null && props.hasWorkspace;
 	const modeAvailable = (mode: PaletteMode) => (mode === "files" ? filesAvailable() : mode === "access" ? props.partner != null : true);
 	const availableModes = createMemo(() => MODES.map((m) => m.id).filter(modeAvailable));
@@ -148,7 +156,7 @@ export function CommandPalette(props: {
 	}
 
 	const rows = createMemo<PaletteRow[]>(() => {
-		if (palette.mode() === "sessions") return sessionRows(props.partners, palette.query());
+		if (palette.mode() === "sessions") return sessionRows(sessions(), palette.query());
 		if (palette.mode() === "access") return grantRows(grants(), palette.query());
 		const result = fileResults();
 		return result?.ok ? fileRows(result.items, palette.query()) : [];

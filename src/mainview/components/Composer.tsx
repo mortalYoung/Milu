@@ -53,12 +53,10 @@ export function Composer(props: {
 	const skillDirectory = useSkills();
 	const shellContinuous = () => settings.data()?.settings?.shellContinuous ?? true;
 	const [text, setText] = createSignal("");
-	let handledPrefillId = 0;
 	createEffect(() => {
 		const request = composer.pendingPrefill();
-		if (!request || request.id === handledPrefillId) return;
-		handledPrefillId = request.id;
-		if (request.partner !== session.data.selected) return;
+		if (!request || request.partner !== session.data.selected) return;
+		composer.consumePrefill(request.id);
 		setText(request.text);
 		composer.change(request.text);
 		requestAnimationFrame(() => {

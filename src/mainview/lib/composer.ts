@@ -32,5 +32,10 @@ export function createComposer() {
 		setPendingPrefill({ id: prefillSeq, partner: data.selected, text });
 	}
 
-	return { drafts, change, clear, prefill, pendingPrefill };
+	/** A prefill is a one-shot: the composer that took it says so, so a remount cannot replay it. */
+	function consumePrefill(id: number) {
+		if (pendingPrefill()?.id === id) setPendingPrefill(null);
+	}
+
+	return { drafts, change, clear, prefill, pendingPrefill, consumePrefill };
 }
