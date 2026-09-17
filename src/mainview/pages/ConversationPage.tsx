@@ -162,6 +162,10 @@ export function ConversationPage(props: {
 								paneWidth={props.dock.paneWidth()}
 								onPaneResize={props.dock.setPaneWidth}
 								onPaneCommit={props.dock.commitPaneWidth}
+								sideBySide={props.dock.sideBySide()}
+								onToggleSideBySide={props.dock.toggleSideBySide}
+								wrap={props.dock.wrap()}
+								onToggleWrap={props.dock.toggleWrap}
 								onClose={() => props.dock.close()}
 							/>
 						</div>

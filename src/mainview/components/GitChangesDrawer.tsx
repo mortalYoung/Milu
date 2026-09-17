@@ -1,9 +1,12 @@
-import { Pin } from "lucide-solid";
+import { Columns2, Pin, WrapText } from "lucide-solid";
 import { createEffect, createMemo, createResource, createSignal, For, Show } from "solid-js";
 import type { GitChangeItem } from "../../shared/rpc";
+import { useSettings } from "../lib/contexts/settings-context";
 import { DOCK_PANE_MAX, DOCK_PANE_MIN } from "../lib/dock";
 import { ESCAPE_ORDER, useEscapeLayer } from "../lib/escape";
+import { languageForPath } from "../lib/markdown";
 import { rpc } from "../lib/rpc";
+import { CodeDiff } from "./CodeDiff";
 import { DockShell } from "./DockShell";
 
 interface GitData {
@@ -18,6 +21,9 @@ interface DiffData {
 	error?: string;
 }
 
+/** Both ends of the change, or why there are none to show. */
+type SidesData = { ok: true; original: string; modified: string; add: number; del: number; binary: boolean; tooLarge: boolean } | { ok: false; error: string };
+
 function basename(path: string) {
 	return path.slice(path.lastIndexOf("/") + 1);
 }
@@ -27,6 +33,8 @@ function dirname(path: string) {
 	return cut <= 0 ? "" : path.slice(0, cut + 1);
 }
 
+/** A patch line: the wash and the bar carry the colour, so the text stays ink and only the marker is
+ * dyed — the same three levels the two-sided diff paints. */
 function DiffLineView(props: { text: string }) {
 	const cls = () => {
 		if (props.text.startsWith("+++") || props.text.startsWith("---") || props.text.startsWith("diff --git")) return "meta";
@@ -35,15 +43,14 @@ function DiffLineView(props: { text: string }) {
 		if (props.text.startsWith("-")) return "del";
 		return "";
 	};
-	return <div class={"git-diff-line" + (cls() ? ` ${cls()}` : "")}>{props.text || " "}</div>;
+	const mark = () => (cls() === "add" || cls() === "del" ? props.text.slice(0, 1) : "");
+	return (
+		<div class={"git-diff-line" + (cls() ? ` ${cls()}` : "")}>
+			{mark() && <span class="git-diff-mark">{mark()}</span>}
+			{props.text.slice(mark().length) || " "}
+		</div>
+	);
 }
-
-/**
- * What each partner left open in the dock — the explorer's own memory, kept here too and outside the
- * component for the same reason: the pin holds a file, and a partner that comes back pinned has to
- * come back with the diff it was pinned to.
- */
-const [openDiffs, setOpenDiffs] = createSignal<Record<string, GitChangeItem>>({});
 
 export function GitChangesDrawer(props: {
 	open: boolean;
@@ -60,10 +67,24 @@ export function GitChangesDrawer(props: {
 	letterWidth: number | null;
 	setLetterWidth: (width: number | null) => void;
 	commitLetterWidth: () => void;
+	/** Two-sided by default; a unified column for a dock too narrow to split. */
+	sideBySide: boolean;
+	onToggleSideBySide: () => void;
+	/** Long lines wrap — the dock's reading preference, the same one the reader carries. */
+	wrap: boolean;
+	onToggleWrap: () => void;
 }) {
+	const settings = useSettings();
+	// The reader's line rhythm, shared: both panels read code in the same dock, so they breathe alike.
+	const lineHeight = () => 1 + (settings.data()?.settings?.explorer?.lineGap ?? 0.2);
 	const [data, setData] = createSignal<GitData | null>(null);
 	const [error, setError] = createSignal<string | null>(null);
 	const [loading, setLoading] = createSignal(false);
+	/**
+	 * What a partner left open in the dock — the explorer's own memory, kept here too: the pin holds a
+	 * file, and a partner that comes back pinned has to come back with the diff it was pinned to.
+	 */
+	const [openDiffs, setOpenDiffs] = createSignal<Record<string, GitChangeItem>>({});
 	const selected = () => (props.partner ? (openDiffs()[props.partner] ?? null) : null);
 	function setSelected(next: GitChangeItem | null) {
 		const partner = props.partner;
@@ -110,8 +131,44 @@ export function GitChangesDrawer(props: {
 		if (props.open && props.partner) void refresh();
 	});
 
-	const [diffData] = createResource(
+	// Both ends of the change, which is what a two-sided diff reads. `+12 −4` comes with it, from git.
+	const [sides] = createResource(
 		() => (shownChange() && props.partner ? { change: shownChange()!, name: props.partner } : null),
+		async ({ change, name }) => {
+			const res = await rpc.request.git_file_sides({ name, path: change.path, staged: change.staged, ...(change.from ? { from: change.from } : {}) });
+			if (!res.ok) return { ok: false as const, error: res.error ?? "failed to read the two sides" };
+			return {
+				ok: true as const,
+				original: res.original ?? "",
+				modified: res.modified ?? "",
+				add: res.add ?? 0,
+				del: res.del ?? 0,
+				binary: res.binary === true,
+				tooLarge: res.tooLarge === true,
+			};
+		},
+	);
+
+	/** The two documents, once both ends are readable. */
+	const both = (): Extract<SidesData, { ok: true }> | null => {
+		const data = sides();
+		if (!data || !data.ok) return null;
+		return data;
+	};
+	const comparable = () => {
+		const data = both();
+		return data != null && !data.binary && !data.tooLarge;
+	};
+	const sidesError = () => {
+		const data = sides();
+		return data && !data.ok ? data.error : null;
+	};
+	const stats = () => ({ add: both()?.add ?? 0, del: both()?.del ?? 0 });
+
+	// A line diff is still the only reading for a binary file or one too large to hold both ends, so the
+	// patch is fetched exactly then.
+	const [patch] = createResource(
+		() => (shownChange() && props.partner && sides() !== undefined && !sides.loading && !comparable() ? { change: shownChange()!, name: props.partner } : null),
 		async ({ change, name }): Promise<DiffData | null> => {
 			const res = await rpc.request.git_diff({ name, path: change.path, staged: change.staged });
 			if (!res.ok) return { error: res.error ?? "failed to load diff" };
@@ -119,28 +176,8 @@ export function GitChangesDrawer(props: {
 		},
 	);
 
-	// The size of the change, before the diff itself: `+12 −4`.
-	const stats = createMemo(() => {
-		const diff = diffData();
-		if (!diff) return { add: 0, del: 0 };
-		if (diff.kind === "new") return { add: (diff.content ?? "").split("\n").length, del: 0 };
-		let add = 0;
-		let del = 0;
-		for (const line of (diff.diff ?? "").split("\n")) {
-			if (line.startsWith("+") && !line.startsWith("+++")) add += 1;
-			else if (line.startsWith("-") && !line.startsWith("---")) del += 1;
-		}
-		return { add, del };
-	});
-
 	const staged = () => (data()?.changes ?? []).filter((c) => c.staged);
 	const unstaged = () => (data()?.changes ?? []).filter((c) => !c.staged);
-	const shortRoot = () => {
-		const root = data()?.repoRoot;
-		if (!root) return "";
-		const parts = root.split("/");
-		return parts.at(-1) ?? root;
-	};
 
 	const renderGroup = (title: string, items: GitChangeItem[]) => (
 		<>
@@ -179,27 +216,13 @@ export function GitChangesDrawer(props: {
 			setLetterWidth={props.setLetterWidth}
 			commitLetterWidth={props.commitLetterWidth}
 			title="Git Changes"
-			actions={
-				<>
-					<span class="git-root">{shortRoot()}</span>
-					<button
-						type="button"
-						class={"dock-refresh" + (loading() ? " loading" : "")}
-						title={loading() ? "Refreshing…" : "Refresh"}
-						disabled={loading()}
-						onClick={() => void refresh()}
-					>
-						↻
-					</button>
-				</>
-			}
 			onClose={props.onClose}
 			detail={{
 				open: selected() != null,
 				render: (leaving, list) => (
 					<Show when={shownChange()}>
 						{(change) => (
-							<div class="git-diff dock-detail" classList={{ leaving }}>
+							<div class="git-diff dock-detail" classList={{ leaving }} style={`--explorer-line-height: ${lineHeight()}; --explorer-line-height-em: ${lineHeight()}em`}>
 								<div class="git-diff-head">
 									<button
 										type="button"
@@ -224,11 +247,9 @@ export function GitChangesDrawer(props: {
 											☰
 										</button>
 									</Show>
-									<Show when={!list.pinned}>
-										<button type="button" class="git-back" title="Close this diff" onClick={() => setSelected(null)}>
-											← Changes
-										</button>
-									</Show>
+									<button type="button" class="git-back" title="Close this diff" onClick={() => setSelected(null)}>
+										← Changes
+									</button>
 									<span class="git-file-name">{basename(change().path)}</span>
 									<span class="git-dir" title={change().path}>
 										{dirname(change().path)}
@@ -243,31 +264,69 @@ export function GitChangesDrawer(props: {
 											</Show>
 										</span>
 									</Show>
-									<Show when={diffData()?.error}>
-										<span class="git-diff-error">{diffData()!.error}</span>
+									<Show when={comparable()}>
+										<button
+											type="button"
+											class="dock-btn"
+											classList={{ on: props.sideBySide }}
+											aria-pressed={props.sideBySide}
+											aria-label={props.sideBySide ? "Show one column" : "Show both sides"}
+											title={props.sideBySide ? "Show one column" : "Show both sides"}
+											onClick={props.onToggleSideBySide}
+										>
+											<Columns2 size={11} />
+										</button>
 									</Show>
+									<button
+										type="button"
+										class="dock-btn"
+										classList={{ on: props.wrap }}
+										aria-pressed={props.wrap}
+										aria-label="Wrap long lines"
+										title={props.wrap ? "Stop wrapping long lines" : "Wrap long lines"}
+										onClick={props.onToggleWrap}
+									>
+										<WrapText size={11} />
+									</button>
+									<Show when={sidesError()}>{(message) => <span class="git-diff-error">{message()}</span>}</Show>
 								</div>
 								<Show
-									when={!diffData.loading}
+									when={comparable() ? both() : null}
 									fallback={
-										<div class="git-diff-note">
-											<span class="work-dot" />
-											<span class="work-dot" />
-											<span class="work-dot" />
-										</div>
+										<Show
+											when={!sides.loading}
+											fallback={
+												<div class="git-diff-note">
+													<span class="work-dot" />
+													<span class="work-dot" />
+													<span class="work-dot" />
+												</div>
+											}
+										>
+											<Show when={both()?.binary}>
+												<div class="git-diff-note">binary file · no line-by-line diff</div>
+											</Show>
+											<Show when={both()?.tooLarge}>
+												<div class="git-diff-note">file too large to compare side by side</div>
+											</Show>
+											<Show when={patch()?.error ?? sidesError()}>{(message) => <div class="git-diff-note">{message()}</div>}</Show>
+											<Show when={patch()?.kind === "new"}>
+												<div class="git-diff-body" classList={{ wrap: props.wrap }}>
+													<div class="git-diff-new-note">new file</div>
+													<For each={(patch()?.content ?? "").split("\n")}>{(line) => <div class="git-diff-line add">{line || " "}</div>}</For>
+												</div>
+											</Show>
+											<Show when={patch()?.kind === "diff"}>
+												<div class="git-diff-body" classList={{ wrap: props.wrap }}>
+													<For each={(patch()?.diff ?? "").split("\n")}>{(line) => <DiffLineView text={line} />}</For>
+												</div>
+											</Show>
+										</Show>
 									}
 								>
-									<Show when={diffData()?.kind === "new"}>
-										<div class="git-diff-body">
-											<div class="git-diff-new-note">new file</div>
-											<For each={(diffData()?.content ?? "").split("\n")}>{(line) => <div class="git-diff-line add">{line || " "}</div>}</For>
-										</div>
-									</Show>
-									<Show when={diffData()?.kind === "diff"}>
-										<div class="git-diff-body">
-											<For each={(diffData()?.diff ?? "").split("\n")}>{(line) => <DiffLineView text={line} />}</For>
-										</div>
-									</Show>
+									{(data) => (
+										<CodeDiff original={data().original} modified={data().modified} lang={languageForPath(change().path)} sideBySide={props.sideBySide} wrap={props.wrap} />
+									)}
 								</Show>
 							</div>
 						)}

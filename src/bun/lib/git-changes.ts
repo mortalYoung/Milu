@@ -9,6 +9,8 @@ export interface GitChange {
 	status: GitChangeStatus;
 	staged: boolean;
 	untracked?: boolean;
+	/** For a rename or copy: the name the file had before. */
+	from?: string;
 }
 
 export interface GitChangesResult {
@@ -43,17 +45,19 @@ function parseStatus(stdout: string): GitChange[] {
 		if (!raw) continue;
 		const x = raw[0] ?? " ";
 		const y = raw[1] ?? " ";
-		let path = raw.slice(3);
+		const path = raw.slice(3);
+		let from: string | undefined;
 		if ((x === "R" || x === "C" || y === "R" || y === "C") && i + 1 < parts.length && parts[i + 1] !== "") {
+			from = parts[i + 1];
 			i += 1;
 		}
 		if (!path) continue;
 		if (x === "?" && y === "?") {
 			changes.push({ path, status: "U", staged: false, untracked: true });
 		} else if (x !== " ") {
-			changes.push({ path, status: statusLetter(x), staged: true });
+			changes.push({ path, status: statusLetter(x), staged: true, ...(from ? { from } : {}) });
 		} else if (y !== " ") {
-			changes.push({ path, status: statusLetter(y), staged: false });
+			changes.push({ path, status: statusLetter(y), staged: false, ...(from ? { from } : {}) });
 		}
 	}
 	return changes;
@@ -142,4 +146,89 @@ export async function gitDiff(workspace: string, path: string, opts: { staged?: 
 	const res = await runGit(repoRoot, args);
 	if (res.code !== 0) throw new Error(res.stderr.trim() || "git diff failed");
 	return { kind: "diff", diff: res.stdout };
+}
+
+/** The same ceiling the file preview reads by; a diff is not the place to read a bigger file. */
+const MAX_SIDE_BYTES = 512 * 1024;
+
+export interface GitFileSides {
+	original: string;
+	modified: string;
+	/** Added and removed lines, straight from git rather than counted out of a patch. */
+	add: number;
+	del: number;
+	/** A side is not text: there is no line-by-line reading to show. */
+	binary: boolean;
+	/** A side is larger than the preview ceiling. */
+	tooLarge: boolean;
+}
+
+async function runGitBytes(cwd: string, args: string[]): Promise<{ code: number; bytes: Uint8Array }> {
+	const proc = Bun.spawn(["git", ...args], { cwd, stdout: "pipe", stderr: "ignore" });
+	const bytes = new Uint8Array(await new Response(proc.stdout).arrayBuffer());
+	return { code: await proc.exited, bytes };
+}
+
+/** Text, or a note that the bytes are not text (or are too big to read as one). */
+function sideOf(bytes: Uint8Array | null): { text: string; binary: boolean; tooLarge: boolean } {
+	if (!bytes) return { text: "", binary: false, tooLarge: false };
+	if (bytes.byteLength > MAX_SIDE_BYTES) return { text: "", binary: false, tooLarge: true };
+	if (bytes.includes(0)) return { text: "", binary: true, tooLarge: false };
+	try {
+		return { text: new TextDecoder("utf-8", { fatal: true }).decode(bytes), binary: false, tooLarge: false };
+	} catch {
+		return { text: "", binary: true, tooLarge: false };
+	}
+}
+
+/** A trailing newline is not a line, matching how the reader counts them. */
+function lineCount(text: string): number {
+	if (text === "") return 0;
+	const lines = text.split("\n");
+	if (lines[lines.length - 1] === "") lines.pop();
+	return lines.length;
+}
+
+/**
+ * Both ends of a change, for a two-sided diff: a staged change runs HEAD against the index, an unstaged
+ * one runs the index against the working file. A rename reads its old name from the other end, so it does
+ * not arrive as "everything added".
+ */
+export async function gitFileSides(workspace: string, path: string, opts: { staged?: boolean; from?: string | null } = {}): Promise<GitFileSides> {
+	const repoRoot = await gitRepoRoot(workspace);
+	const target = resolve(repoRoot, path);
+	ensureWithin(repoRoot, target);
+	const from = opts.from ?? path;
+	ensureWithin(repoRoot, resolve(repoRoot, from));
+
+	// The spec is the whole `rev:path`; the index is an empty rev, so its spec is `:path`.
+	const blob = async (spec: string) => {
+		const res = await runGitBytes(repoRoot, ["show", spec]);
+		return res.code === 0 ? res.bytes : null;
+	};
+
+	const original = sideOf(await blob(opts.staged ? `HEAD:${from}` : `:${from}`));
+	const modified = opts.staged ? sideOf(await blob(`:${path}`)) : sideOf(await readFile(target).catch(() => null));
+
+	const numstatArgs = ["diff", "--no-ext-diff", "--numstat"];
+	if (opts.staged) numstatArgs.push("--cached");
+	numstatArgs.push("--", path);
+	const numstat = await runGit(repoRoot, numstatArgs);
+	const [add, del] = (numstat.stdout.split("\n")[0] ?? "").split("\t");
+	const counted = { add: Number(add) || 0, del: Number(del) || 0 };
+	// An untracked file is in no diff at all, so `--numstat` has nothing to say: the whole file is the
+	// addition, and the whole old file is the removal.
+	if (counted.add === 0 && counted.del === 0 && !original.binary && !modified.binary) {
+		if (original.text === "" && modified.text !== "") counted.add = lineCount(modified.text);
+		else if (modified.text === "" && original.text !== "") counted.del = lineCount(original.text);
+	}
+
+	return {
+		original: original.text,
+		modified: modified.text,
+		add: counted.add,
+		del: counted.del,
+		binary: original.binary || modified.binary,
+		tooLarge: original.tooLarge || modified.tooLarge,
+	};
 }

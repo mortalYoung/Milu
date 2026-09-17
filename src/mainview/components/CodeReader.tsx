@@ -1,13 +1,14 @@
 import { codeFolding, foldable, foldEffect, foldedRanges, unfoldEffect } from "@codemirror/language";
 import { findNext, findPrevious, getSearchQuery, SearchQuery, search, setSearchQuery } from "@codemirror/search";
-import { Compartment, EditorState, Prec, RangeSetBuilder, StateEffect, StateField } from "@codemirror/state";
+import { Compartment, EditorState, RangeSetBuilder } from "@codemirror/state";
 import { Decoration, type DecorationSet, drawSelection, EditorView, GutterMarker, gutter, keymap, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import { CaseSensitive, ChevronDown, ChevronUp, Regex, WholeWord, X } from "lucide-solid";
 import { createEffect, createMemo, createResource, createSignal, onCleanup, Show, untrack } from "solid-js";
 import { foldLanguage } from "../lib/code-languages";
 import type { RevealRange } from "../lib/dock";
 import { ESCAPE_ORDER, useEscapeLayer } from "../lib/escape";
-import { type HighlightLine, highlightCodeToLines } from "../lib/markdown";
+import { highlightCodeToLines } from "../lib/markdown";
+import { setTokens, tokenPainter } from "../lib/shiki-tokens";
 
 /** The preview is already readable while the highlighter works; the pill only fades in if the
  * upgrade takes longer than a beat, so small files never flash it. */
@@ -22,48 +23,6 @@ export function PreviewBusy(props: { when: boolean }) {
 		</Show>
 	);
 }
-
-// ——— shiki → CodeMirror: colours as decorations, so a re-highlight never costs the selection ———
-
-const setTokens = StateEffect.define<{ content: string; lines: HighlightLine[] } | null>();
-
-function tokenDecorations(content: string, lines: HighlightLine[], doc: EditorState["doc"]): DecorationSet {
-	// A token set that does not belong to the text in the editor is a file we already left.
-	if (doc.toString() !== content) return Decoration.none;
-	const builder = new RangeSetBuilder<Decoration>();
-	let skipped = false;
-	for (let index = 0; index < lines.length && !skipped; index++) {
-		if (index + 1 > doc.lines) break;
-		const line = doc.line(index + 1);
-		let offset = 0;
-		for (const token of lines[index].tokens) {
-			const from = line.from + offset;
-			offset += token.content.length;
-			if (offset > line.length) {
-				skipped = true;
-				break;
-			}
-			if (!token.htmlStyle || offset === from - line.from) continue;
-			const style = Object.entries(token.htmlStyle)
-				.map(([key, value]) => `${key}: ${value}`)
-				.join("; ");
-			builder.add(from, line.from + offset, Decoration.mark({ attributes: { style } }));
-		}
-	}
-	return builder.finish();
-}
-
-const tokenField = StateField.define<DecorationSet>({
-	create: () => Decoration.none,
-	update(decorations, transaction) {
-		let next = decorations;
-		for (const effect of transaction.effects) {
-			if (effect.is(setTokens)) next = effect.value ? tokenDecorations(effect.value.content, effect.value.lines, transaction.state.doc) : Decoration.none;
-		}
-		return transaction.docChanged ? next.map(transaction.changes) : next;
-	},
-	provide: (field) => EditorView.decorations.from(field),
-});
 
 /** Lines that the selection covers whole are the reader's "these lines" — the row selection. */
 function lineIsSelected(state: EditorState, line: { from: number; to: number }): boolean {
@@ -352,7 +311,7 @@ export function CodeReader(props: {
 				EditorView.editable.of(false),
 				drawSelection(),
 				EditorView.updateListener.of(reportSelection),
-				Prec.lowest(tokenField),
+				tokenPainter(),
 				selectionLineBands,
 				readerGutter(),
 				hoveredLine,
@@ -360,8 +319,8 @@ export function CodeReader(props: {
 				search(),
 				wrapCompartment.of(untrack(() => props.wrap) ? EditorView.lineWrapping : []),
 				languageCompartment.of([]),
-				// The one chord the reader owns: CodeMirror ships no keymap here, so without this ⌘A would fall
-				// through to the browser and select the page instead of the file.
+				// The reader's own binding for ⌘A. The Edit menu's Select All is a *native* key equivalent, so on
+				// the way through it usually never reaches this keymap — the listener below catches that path.
 				keymap.of([
 					{
 						key: "Mod-a",
@@ -448,6 +407,25 @@ export function CodeReader(props: {
 		const view = editor();
 		if (!view || !target) return;
 		applyLocate(view);
+	});
+
+	// ——— the Edit menu's Select All, taken over ———
+	// A native menu item owns ⌘A, so it never arrives as a keydown: the window selects the whole page, and
+	// the reader's own keymap above stays silent. That page-wide selection *is* the signal — when it happens
+	// while the reader has focus, select the file and drop the page selection, so what shows is ours.
+	createEffect(() => {
+		const view = editor();
+		if (!view) return;
+		const onSelectionChange = () => {
+			if (!view.hasFocus) return;
+			const selection = window.getSelection();
+			if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
+			if (selection.getRangeAt(0).commonAncestorContainer !== document.body) return;
+			selection.removeAllRanges();
+			view.dispatch({ selection: { anchor: 0, head: view.state.doc.length } });
+		};
+		document.addEventListener("selectionchange", onSelectionChange);
+		onCleanup(() => document.removeEventListener("selectionchange", onSelectionChange));
 	});
 
 	// ——— find in file: the row is ours, the matching and the highlight are CodeMirror's ———

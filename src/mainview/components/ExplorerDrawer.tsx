@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Folder, FolderOpen, FolderSymlink, MessageSquareQuote, Pin, WrapText } from "lucide-solid";
+import { ChevronDown, ChevronRight, Folder, FolderOpen, FolderSymlink, MessageSquareQuote, Pilcrow, Pin, WrapText } from "lucide-solid";
 import { type Accessor, createEffect, createMemo, createResource, createSignal, For, onCleanup, Show, untrack } from "solid-js";
 import type { ExplorerEntry } from "../../shared/rpc";
 import { useComposer } from "../lib/contexts/composer-context";
@@ -755,13 +755,14 @@ export function ExplorerDrawer(props: {
 									<Show when={rawToggle()}>
 										<button
 											type="button"
-											class="explorer-raw"
+											class="dock-btn"
 											classList={{ on: isRaw() }}
 											aria-pressed={isRaw()}
+											aria-label={isRaw() ? "Show rendered markdown" : "Show raw markdown"}
 											title={isRaw() ? "Show rendered markdown" : "Show raw markdown"}
 											onClick={toggleRaw}
 										>
-											Raw
+											<Pilcrow size={11} />
 										</button>
 									</Show>
 									<button

@@ -50,7 +50,6 @@ export function DockShell(props: {
 	/** The layer in front of the pane, kept mounted through its own exit. */
 	detail?: { open: boolean; render: (leaving: boolean, list: DockListControls) => JSX.Element };
 	title: JSX.Element;
-	actions?: JSX.Element;
 	onClose: () => void;
 	/** The pane's own content, which keeps its classes, its ref and its scroll. */
 	children: JSX.Element;
@@ -175,7 +174,6 @@ export function DockShell(props: {
 					<Show when={!floating()}>
 						<div class="dock-head">
 							<span class="dock-title">{props.title}</span>
-							{props.actions}
 							<Show when={!props.pinned}>
 								<button type="button" class="dock-close" title="Close" onClick={props.onClose}>
 									×

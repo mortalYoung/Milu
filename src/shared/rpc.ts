@@ -22,6 +22,8 @@ export interface GitChangeItem {
 	status: GitChangeStatus;
 	staged: boolean;
 	untracked?: boolean;
+	/** For a rename or copy: the name the file had before. */
+	from?: string;
 }
 
 export interface GitWorktreeItem {
@@ -626,6 +628,11 @@ export type AppRPCSchema = __schema<{
 			git_diff: {
 				params: { name: string; path: string; staged?: boolean };
 				response: { ok: boolean; error?: string; kind?: "diff" | "new"; diff?: string; content?: string };
+			};
+
+			git_file_sides: {
+				params: { name: string; path: string; staged?: boolean; from?: string };
+				response: { ok: boolean; error?: string; original?: string; modified?: string; add?: number; del?: number; binary?: boolean; tooLarge?: boolean };
 			};
 
 			git_worktrees: {

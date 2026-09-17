@@ -1786,13 +1786,8 @@ body::before {
 	.dock-title {
 		@apply min-w-0 flex-1 truncate font-sans text-[9px] uppercase tracking-[0.2em] text-body-muted;
 	}
-	.dock-close,
-	.dock-refresh {
+	.dock-close {
 		@apply shrink-0 size-6 flex items-center justify-center rounded-full text-muted cursor-pointer border-none bg-transparent hover:bg-paper-hover hover:text-ink;
-	}
-	.dock-refresh.loading {
-		@apply cursor-default;
-		animation: git-spin 0.8s linear infinite;
 	}
 	.explorer-tree {
 		@apply flex-1 min-h-0 overflow-y-auto pt-2 select-none;
@@ -1863,13 +1858,7 @@ body::before {
 		@apply flex-none cursor-copy rounded-[5px] border border-seal-soft px-1.5 py-0.5 font-mono text-[10px] font-semibold text-seal;
 		background: color-mix(in srgb, var(--color-seal) 8%, var(--color-letter));
 	}
-	.explorer-raw {
-		@apply flex-none cursor-pointer rounded-[5px] border border-hairline bg-transparent px-1.5 py-0.5 font-sans text-[10px] text-muted;
-	}
-	.explorer-raw.on {
-		@apply border-ink bg-ink text-paper;
-	}
-	/* The dock heads' shared button: the pin, the list toggle, Quote, Wrap. 19px, ink when on. */
+	/* The dock heads' shared button: the pin, the list toggle, Quote, Wrap, Raw. 19px, ink when on. */
 	.dock-btn {
 		@apply flex size-[19px] flex-none cursor-pointer items-center justify-center rounded-[5px] border-0 bg-transparent text-muted;
 	}
@@ -2046,13 +2035,14 @@ body::before {
 		--git-del: light-dark(#cf222e, #e5847f);
 		--git-other: light-dark(#8250df, #b79ce8);
 	}
-	.git-root {
-		@apply ml-auto min-w-0 truncate font-mono text-[10px] text-muted;
+	/* The two-sided diff is a CodeMirror merge view; it fills the detail body and scrolls on its own. Only
+	   the merge view carries a height: its own contract is one scroller around both panes, and giving the
+	   row of editors a height too would clip them at the pane bottom instead of scrolling the document. */
+	.git-diff-host {
+		@apply relative flex-1 min-h-0;
 	}
-	@keyframes git-spin {
-		to {
-			transform: rotate(360deg);
-		}
+	.git-diff-host .cm-mergeView {
+		height: 100%;
 	}
 	.git-body {
 		@apply flex-1 min-h-0 overflow-y-auto pt-2;
@@ -2143,19 +2133,44 @@ body::before {
 	.git-diff-note .work-dot {
 		background: var(--color-seal);
 	}
+	/* The patch view — a file that is not text, or too large to hold both ends of. It wears the same three
+	   levels as the two-sided diff: a wash for the line, a bar where the gutter would be, ink for the text
+	   with only the +/- marker dyed. */
 	.git-diff-body {
-		@apply flex-1 min-h-0 overflow-auto px-4 py-3 font-mono text-[12px] leading-[1.4];
+		@apply flex-1 min-h-0 overflow-auto py-3 font-mono text-[12px];
+		line-height: var(--explorer-line-height, 1.2);
 	}
 	.git-diff-line {
+		border-left: 3px solid transparent;
+		padding: 0 16px 0 11px;
 		white-space: pre;
 	}
+	/* The patch view takes the same wrap switch as the two-sided one — the same shapes CodeMirror's
+	   lineWrapping uses, so the two modes break long lines identically. */
+	.git-diff-body.wrap .git-diff-line {
+		white-space: break-spaces;
+		word-break: break-word;
+		overflow-wrap: anywhere;
+	}
 	.git-diff-line.add {
-		color: var(--git-add);
+		background: color-mix(in srgb, var(--git-add) 10%, transparent);
+		border-left-color: var(--git-add);
 	}
 	.git-diff-line.del {
+		background: color-mix(in srgb, var(--git-del) 10%, transparent);
+		border-left-color: var(--git-del);
+	}
+	.git-diff-mark {
+		color: var(--color-muted);
+	}
+	.git-diff-line.add .git-diff-mark {
+		color: var(--git-add);
+	}
+	.git-diff-line.del .git-diff-mark {
 		color: var(--git-del);
 	}
 	.git-diff-line.hunk {
+		font-weight: 500;
 		color: var(--color-seal);
 	}
 	.git-diff-line.meta {
