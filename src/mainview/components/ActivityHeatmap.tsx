@@ -1,14 +1,14 @@
-import { For } from "solid-js";
+import { For, Show } from "solid-js";
 import type { PartnerActivityDay } from "../../shared/rpc";
 import { formatTokens } from "../lib/utils";
 import { Tooltip, TooltipContent, TooltipPortal, TooltipTrigger } from "./ui/tooltip";
 
 const CELL = 10;
 const GAP = 2;
-const COL = 12;
 const GUTTER = 26;
-const INNER = 476;
-export const HEATMAP_WEEKS = Math.floor((INNER - GUTTER) / COL);
+/** The calendar's horizon, shared with every caller: the grid, the month rule and the label beside it
+ * are all derived from this one number (P-55). */
+export const HEATMAP_WEEKS = 53;
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const TOKENS_PER_TURN = 3_000;
@@ -44,12 +44,16 @@ interface MonthMark {
 	span: number;
 }
 
-export function ActivityHeatmap(props: { days: PartnerActivityDay[] }) {
+export function ActivityHeatmap(props: { days: PartnerActivityDay[]; weeks?: number; legend?: boolean }) {
+	/** A year of Monday-aligned days; the label beside the calendar is derived from this same number. */
+	const weeks = () => props.weeks ?? 53;
+	const shown = () => props.days.slice(-weeks() * 7);
 	// The series is always Monday-aligned; the last column is partial up to today.
 	// Both the grid and the month rule are laid out from that same column count.
 	const columns = () => {
 		const out: PartnerActivityDay[][] = [];
-		for (let i = 0; i < props.days.length; i += 7) out.push(props.days.slice(i, i + 7));
+		const days = shown();
+		for (let i = 0; i < days.length; i += 7) out.push(days.slice(i, i + 7));
 		return out;
 	};
 	const months = () => {
@@ -65,7 +69,7 @@ export function ActivityHeatmap(props: { days: PartnerActivityDay[] }) {
 	};
 
 	return (
-		<div class="activity-heatmap">
+		<div class="activity-heatmap" style={{ "--activity-cell": `${CELL}px` }}>
 			<div
 				class="activity-months"
 				style={{
@@ -93,7 +97,7 @@ export function ActivityHeatmap(props: { days: PartnerActivityDay[] }) {
 						gap: `${GAP}px`,
 					}}
 				>
-					<For each={props.days}>
+					<For each={shown()}>
 						{(day) => (
 							<Tooltip openDelay={120} closeDelay={60} placement="top">
 								<TooltipTrigger as="div" tabIndex={-1} class={`activity-cell hlv-${levelOf(loadOf(day))}`} />
@@ -105,6 +109,18 @@ export function ActivityHeatmap(props: { days: PartnerActivityDay[] }) {
 					</For>
 				</div>
 			</div>
+			<Show when={props.legend !== false}>
+				<div class="activity-legend">
+					<span class="activity-legend-label">less</span>
+					<i class="activity-cell hlv-0" />
+					<i class="activity-cell hlv-1" />
+					<i class="activity-cell hlv-2" />
+					<i class="activity-cell hlv-3" />
+					<i class="activity-cell hlv-4" />
+					<span class="activity-legend-label">more</span>
+					<span class="activity-legend-note">shade blends turns and fresh tokens</span>
+				</div>
+			</Show>
 		</div>
 	);
 }

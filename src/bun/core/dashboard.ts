@@ -9,8 +9,11 @@ import { personaFilePath } from "./persona";
 import { loadRuntimeStats } from "./runtime-stats";
 import { scenesFilePath } from "./scenes";
 
-/** The trailing window the curve draws. Its label is derived from this, never written by hand. */
+/** The reading window a caller gets when it does not ask for one. Every label is derived from the
+ * window that was actually queried, never written by hand (P-55). */
 export const DASHBOARD_WINDOW_DAYS = 7;
+/** A week reads the rhythm, a quarter reads the drift; nothing longer is worth plotting per day. */
+export const DASHBOARD_WINDOW_MAX_DAYS = 120;
 /** Calendar horizon for the heatmap: Monday-aligned through today. Must stay ≥ the widest `weeks` a caller passes to ActivityHeatmap (the dashboard asks for a year). */
 export const DASHBOARD_HEATMAP_WEEKS = 53;
 /** dailyActivity takes weeks and clamps at 104 — two years covers every recorded day. */
@@ -110,7 +113,9 @@ const EMPTY_DAY = (ts: number): PartnerActivityDay => ({ ts, tokens: 0, freshTok
 
 const sum = (xs: number[]) => xs.reduce((total, x) => total + x, 0);
 
-export async function buildDashboardOverview(session: SessionReader): Promise<DashboardOverview> {
+export async function buildDashboardOverview(session: SessionReader, requestedDays?: number): Promise<DashboardOverview> {
+	// One reading window for the whole page: the curves, every partner's own series, and every label.
+	const windowDays = Math.min(DASHBOARD_WINDOW_MAX_DAYS, Math.max(DASHBOARD_WINDOW_DAYS, Math.round(requestedDays ?? DASHBOARD_WINDOW_DAYS)));
 	const settings = await loadSettings();
 	const profiles = await listPartners(settings);
 	const partners: DashboardPartnerStats[] = [];
@@ -161,7 +166,7 @@ export async function buildDashboardOverview(session: SessionReader): Promise<Da
 			tps: generationMs > 0 ? output / (generationMs / 1000) : null,
 			memory: sizes,
 			lastRun,
-			days: activity.slice(-DASHBOARD_WINDOW_DAYS).map((day) => day.turns),
+			days: activity.slice(-windowDays).map((day) => day.turns),
 		});
 
 		turns += partnerTurns;
@@ -188,7 +193,7 @@ export async function buildDashboardOverview(session: SessionReader): Promise<Da
 		const ts = cursor.getTime();
 		heatmap.push(merged.get(ts) ?? EMPTY_DAY(ts));
 	}
-	const days = heatmap.slice(-DASHBOARD_WINDOW_DAYS);
+	const days = heatmap.slice(-windowDays);
 
 	ttfts.sort((a, b) => a - b);
 	const totals: DashboardTotals = {
@@ -205,5 +210,7 @@ export async function buildDashboardOverview(session: SessionReader): Promise<Da
 		memory,
 		since: recorded[0] ?? null,
 	};
-	return { partners, totals, days, windowDays: DASHBOARD_WINDOW_DAYS, heatmap };
+	// The per-letter counts (and the totals) come from this whole scan, not from the reading window:
+	// the window moves the curves, and the page says so rather than letting a header imply otherwise.
+	return { partners, totals, days, windowDays, activityWeeks: ACTIVITY_WEEKS, heatmap };
 }

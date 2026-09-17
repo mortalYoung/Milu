@@ -23,6 +23,8 @@ const EMPTY_STATUS = {
 export function createAgentStatus(rpc: RPC) {
 	const { data } = useSession();
 	const [writing, setWriting] = createStore<Record<string, boolean>>({});
+	/** When this partner's current turn started — the dock and the dashboard say "since 21:06" from it. */
+	const [starts, setStarts] = createStore<Record<string, number>>({});
 	const [snapshot, { refetch }] = createResource(
 		() => data.selected,
 		async (name) => (name ? { ...(await rpc.request.get_status({ name })), partner: name } : EMPTY_STATUS),
@@ -77,14 +79,29 @@ export function createAgentStatus(rpc: RPC) {
 
 	function beginTurn(partner: string) {
 		setWriting({ [partner]: true });
+		setStarts({ [partner]: Date.now() });
 	}
 
 	function endTurn(partner: string) {
 		setWriting({ [partner]: false });
+		setStarts((current) => {
+			if (!(partner in current)) return current;
+			const next = { ...current };
+			delete next[partner];
+			return next;
+		});
 	}
+
+	const sinceFor = (partner: string) => starts[partner] ?? null;
 
 	function releaseTurn(partner: string) {
 		setWriting((current) => {
+			if (!(partner in current)) return current;
+			const next = { ...current };
+			delete next[partner];
+			return next;
+		});
+		setStarts((current) => {
 			if (!(partner in current)) return current;
 			const next = { ...current };
 			delete next[partner];
@@ -97,6 +114,7 @@ export function createAgentStatus(rpc: RPC) {
 		settled,
 		isBusyForSelected,
 		workingFor,
+		sinceFor,
 		calibrate,
 		mutateSandboxMode,
 		mutateModel,

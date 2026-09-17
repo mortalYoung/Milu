@@ -1502,7 +1502,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				return { overview: await buildMemoryOverview(session, getPartnerDir(settings, name)) };
 			},
 
-			dashboard_overview: async () => ({ overview: await buildDashboardOverview(session) }),
+			dashboard_overview: async ({ days }) => ({ overview: await buildDashboardOverview(session, days) }),
 
 			memory_run_trace: async ({ name, runId }) => {
 				const settings = await loadSettings();

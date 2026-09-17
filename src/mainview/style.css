@@ -3018,3 +3018,318 @@ html.theme-flip *::after {
 		transition: none;
 	}
 }
+
+/* ————————————————— Dashboard console（B · 训练台） —————————————————
+   从上到下：现在（谁在写、写到哪）→ 这个窗口（一格一量纲 + 相对上一窗口的变化）→ 三条曲线 →
+   一年的日历 → letters 与最近发生的事。信息密度调低，所以每一块之间留 16-20px 的呼吸。 */
+.dashboard-page {
+	@apply flex flex-1 min-h-0 flex-col;
+}
+.dashboard-scroll {
+	@apply flex-1 min-h-0 overflow-y-auto px-6 pb-10;
+}
+.dashboard-head {
+	@apply sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-hairline bg-qw-bg px-6 py-3 -mx-6 mb-4;
+}
+.dashboard-title {
+	@apply flex items-baseline gap-3 min-w-0;
+}
+.dashboard-head-right {
+	@apply flex items-center gap-3;
+}
+.dashboard-seg {
+	@apply inline-flex shrink-0 overflow-hidden rounded-[4px] border border-hairline;
+}
+.dashboard-seg button {
+	@apply cursor-pointer border-0 border-l border-hairline bg-transparent px-[8px] py-[2px] font-mono text-[10px] text-body-muted;
+}
+.dashboard-seg button:first-child {
+	@apply border-l-0;
+}
+.dashboard-seg button:hover {
+	@apply text-ink;
+}
+.dashboard-seg button.on {
+	@apply bg-ink text-paper;
+}
+.dashboard-seg.small button {
+	@apply px-[6px] py-[1px] text-[9px];
+}
+.dashboard-skeleton {
+	@apply mt-4 h-[420px] rounded-[6px];
+	background: color-mix(in srgb, var(--color-hairline) 40%, transparent);
+}
+
+/* now */
+.dashboard-status {
+	@apply rounded-[6px] border border-hairline;
+}
+.dashboard-status-head {
+	@apply flex items-center justify-between px-3 pt-2 pb-1;
+}
+.dashboard-status-line {
+	@apply grid items-center gap-x-4 border-t border-hairline-soft px-3 py-[7px] font-sans text-[11.5px];
+	grid-template-columns: 118px 74px minmax(0, 1fr) 168px;
+}
+.dashboard-status-name {
+	@apply flex items-center gap-2 font-semibold text-ink;
+}
+/* the dot: seal and pulsing while writing, flat muted when queued, dormant when idle */
+.dashboard-status-name .work-dot {
+	background: var(--color-seal);
+}
+.dashboard-status-name .work-dot.queued {
+	background: var(--color-muted);
+	animation: none;
+}
+.dashboard-status-name .work-dot.idle {
+	background: var(--color-hairline);
+	animation: none;
+}
+.dashboard-status-state {
+	@apply font-mono text-[9.5px] uppercase tracking-[0.1em] text-body-muted;
+}
+.dashboard-status-state.writing {
+	@apply text-seal;
+}
+.dashboard-status-phase {
+	@apply flex min-w-0 items-center gap-[10px];
+}
+.dashboard-status-phase-text {
+	@apply truncate text-[9.5px] text-ink-soft;
+}
+.dashboard-status-read {
+	@apply text-right text-[9.5px] text-body-muted;
+}
+.dashboard-bar {
+	@apply relative block h-[4px] min-w-0 flex-1 overflow-hidden rounded-[2px];
+	background: var(--color-hairline);
+}
+.dashboard-bar i {
+	@apply absolute inset-y-0 left-0 block bg-seal;
+}
+.dashboard-bar.pending i {
+	opacity: 0.45;
+	background: repeating-linear-gradient(90deg, var(--color-muted) 0 5px, transparent 5px 10px);
+}
+.dashboard-bar.idle i {
+	background: var(--color-muted);
+}
+
+/* the window */
+.dashboard-kv {
+	@apply mt-4 grid border-t border-b border-hairline;
+	grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.dashboard-kv > div {
+	@apply flex flex-col gap-[2px] border-l border-hairline-soft px-4 py-[10px];
+}
+.dashboard-kv > div:first-child {
+	@apply border-l-0 pl-0;
+}
+.dashboard-kv-value {
+	@apply text-[19px] font-semibold leading-none tracking-[-0.02em] text-ink;
+}
+.dashboard-kv-note {
+	@apply text-[9px] text-body-muted;
+}
+.dashboard-delta.up {
+	@apply text-seal;
+}
+
+/* charts */
+.dashboard-charts {
+	@apply mt-5 grid gap-4;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.dashboard-card {
+	@apply rounded-[6px] border border-hairline-soft bg-letter px-3 pt-2 pb-2;
+}
+.dashboard-card figcaption {
+	@apply mb-1 flex items-baseline justify-between gap-3;
+}
+.dashboard-chart {
+	@apply relative;
+}
+.dashboard-chart svg {
+	@apply block w-full;
+	height: auto;
+	animation: dashboard-chart-in 200ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+@keyframes dashboard-chart-in {
+	from {
+		opacity: 0;
+	}
+}
+.dashboard-chart-grid {
+	stroke: var(--color-hairline-soft);
+	stroke-width: 1;
+}
+.dashboard-chart-line {
+	fill: none;
+	stroke: var(--color-ink);
+	stroke-width: 1.5;
+	stroke-linejoin: round;
+	stroke-linecap: round;
+}
+.dashboard-chart-line.muted {
+	stroke: var(--color-muted);
+	stroke-width: 1;
+}
+.dashboard-chart-end {
+	fill: var(--color-seal);
+}
+.dashboard-chart-cross {
+	stroke: var(--color-hairline);
+	stroke-width: 1;
+}
+.dashboard-chart-dot {
+	fill: var(--color-ink);
+	stroke: var(--color-letter);
+	stroke-width: 1.5;
+}
+.dashboard-chart-tick {
+	fill: var(--color-muted);
+	font-family: var(--font-mono);
+	font-size: 8px;
+}
+.dashboard-chart-tip {
+	@apply pointer-events-none absolute top-1 z-10 min-w-[120px] rounded-[4px] border border-hairline bg-letter px-2 py-1;
+	transform: translateX(-50%);
+	animation: dashboard-tip-in 120ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+@keyframes dashboard-tip-in {
+	from {
+		opacity: 0;
+	}
+}
+.dashboard-chart-tip-day {
+	@apply mb-[2px] font-mono text-[9px] text-body-muted;
+}
+.dashboard-chart-tip-row {
+	@apply flex items-baseline justify-between gap-3 font-mono text-[10px] text-ink-soft tabular-nums;
+}
+.dashboard-chart-tip-label {
+	@apply text-body-muted;
+}
+
+/* the calendar stays */
+.dashboard-calendar {
+	@apply mt-5;
+}
+.activity-legend {
+	@apply mt-[6px] flex items-center gap-[3px] font-mono text-[9px] text-muted;
+}
+.activity-legend .activity-cell {
+	@apply size-[8px] rounded-[1.5px];
+}
+.activity-legend-label {
+	@apply mx-[3px];
+}
+.activity-legend-note {
+	@apply ml-2;
+}
+.hlv-0 {
+	@apply bg-hairline/60;
+}
+
+/* letters + recent runs */
+.dashboard-split {
+	@apply mt-5 grid gap-4;
+	grid-template-columns: 1.6fr minmax(0, 1fr);
+}
+.dashboard-controls {
+	@apply flex items-center gap-2;
+}
+.dashboard-search {
+	@apply w-[120px] border-0 border-b border-hairline bg-transparent py-[1px] font-mono text-[10px] text-ink outline-none;
+}
+.dashboard-search:focus {
+	@apply border-ink;
+}
+.dashboard-table {
+	@apply w-full border-collapse;
+}
+.dashboard-table th {
+	@apply border-b border-ink pb-[5px] font-mono text-[9px] font-medium uppercase tracking-[0.12em] text-body-muted;
+}
+.dashboard-table th.r,
+.dashboard-table td.r {
+	@apply text-right;
+}
+.dashboard-table td {
+	@apply border-b border-hairline-soft py-[5px] font-mono text-[10.5px] text-ink-soft tabular-nums;
+}
+.dashboard-table tbody tr {
+	@apply cursor-pointer transition-colors duration-[120ms];
+}
+.dashboard-table tbody tr:hover,
+.dashboard-table tbody tr:focus-visible {
+	@apply bg-paper-hover outline-none;
+}
+.dashboard-table td.name {
+	@apply font-sans text-[12px] font-semibold text-ink;
+}
+.dashboard-table tr.working td.name {
+	@apply text-seal;
+}
+.dashboard-table .dashboard-fork {
+	@apply ml-2 font-sans text-[9px] font-normal text-body-muted;
+}
+.dashboard-fresh {
+	@apply flex items-center gap-2;
+}
+.dashboard-fresh .dashboard-bar {
+	@apply h-[3px];
+}
+.dashboard-runs ul {
+	@apply mt-1;
+}
+.dashboard-runs li {
+	@apply grid items-baseline gap-x-2 border-b border-hairline-soft py-[4px] text-[11px] text-ink-soft;
+	grid-template-columns: 38px minmax(0, 1fr) 42px;
+}
+.dashboard-runs-time {
+	@apply font-mono text-[9.5px] text-muted;
+}
+.dashboard-runs-who {
+	@apply mr-1 font-semibold text-ink;
+}
+.dashboard-runs-ms {
+	@apply text-right font-mono text-[9.5px] text-muted;
+}
+.dashboard-runs-empty {
+	@apply py-2 font-mono text-[10px] text-muted;
+}
+.dashboard-foot {
+	@apply mt-5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-hairline pt-2;
+}
+.dashboard-foot-file {
+	@apply ml-3;
+}
+
+@media (max-width: 900px) {
+	.dashboard-charts,
+	.dashboard-split {
+		grid-template-columns: minmax(0, 1fr);
+	}
+	.dashboard-kv {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+	.dashboard-kv > div:nth-child(odd) {
+		@apply border-l-0 pl-0;
+	}
+	.dashboard-status-line {
+		grid-template-columns: 96px minmax(0, 1fr);
+	}
+	.dashboard-status-read {
+		@apply text-left;
+		grid-column: 2;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.dashboard-chart svg,
+	.dashboard-chart-tip {
+		animation: none;
+	}
+}

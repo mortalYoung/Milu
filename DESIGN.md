@@ -240,7 +240,7 @@ header 抬头不换行;输入区保持衬线 16px。
 - `prefers-reduced-motion: reduce` 时移除位移类动画,保留 opacity 过渡。
 - hover 效果包在 `@media (hover: hover) and (pointer: fine)`。
 
-## 10. Dashboard(Ledger 方向,由 Phase 2 四方向预览选定 A)
+## 10. Dashboard(由 Phase 2 四方向预览选定)
 
 第三个全窗口视图(rail: Chat / Skills / Dashboard / Settings),与 Skills 同族:
 `flex-1 overflow-y-auto` + `px-6 py-6` 满宽内容列(不是 §5 的 60% 信流栏——那是对话列的解剖,
@@ -253,7 +253,7 @@ header 抬头不换行;输入区保持衬线 16px。
 无卡片、无阴影,只用横贯满宽的三段条带 + 发丝线分行。唯一重音仍是封印红,且只出现在
 **量尺填充**与**曲线柱**上——红在这页的语义是"量",不是"警告"。
 
-**视角例外声明**:视图标题 `Ledger` 用 Newsreader 20px semibold(与 Skills 的 `Skills` 一致),
+**视角例外声明**:视图标题 `Dashboard` 用 Newsreader 20px semibold(与 Skills 的 `Skills` 一致),
 属"视图族标题"语境;表格与数字一律 Public Sans / JetBrains Mono,不破 §3。
 
 ### 结构(先综合、后个体)
