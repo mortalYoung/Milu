@@ -12,6 +12,7 @@ export function createComposer() {
 	const { data } = useSession();
 	const [drafts, setDrafts] = createSignal<Record<string, string>>({});
 	const [pendingPrefill, setPendingPrefill] = createSignal<ComposerPrefill | null>(null);
+	const [panelOpen, setPanelOpen] = createSignal(false);
 	let prefillSeq = 0;
 
 	function change(text: string) {
@@ -37,5 +38,5 @@ export function createComposer() {
 		if (pendingPrefill()?.id === id) setPendingPrefill(null);
 	}
 
-	return { drafts, change, clear, prefill, pendingPrefill, consumePrefill };
+	return { drafts, change, clear, prefill, pendingPrefill, consumePrefill, panelOpen, setPanelOpen };
 }

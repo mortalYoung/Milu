@@ -2294,6 +2294,13 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				}
 			},
 
+			set_menu_state: async ({ partner, workspace, git }) => {
+				menuState.partner = partner;
+				menuState.workspace = workspace;
+				menuState.git = git;
+				refreshMenu();
+				return { ok: true };
+			},
 			set_partner: async ({ profile }) => {
 				if (profile) {
 					const dir = await partnerDirFor(profile.name);
@@ -2376,30 +2383,93 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 	},
 });
 
-ApplicationMenu.setApplicationMenu([
-	{
-		label: "LETTERS",
-		submenu: [{ role: "about" }, { type: "divider" }, { role: "hide" }, { role: "hideOthers" }, { role: "showAll" }, { type: "divider" }, { role: "quit" }],
-	},
-	{
-		label: "Edit",
-		submenu: [
-			{ role: "undo" },
-			{ role: "redo" },
-			{ type: "divider" },
-			{ role: "cut" },
-			{ role: "copy" },
-			{ role: "paste" },
-			{ role: "pasteAndMatchStyle" },
-			{ type: "divider" },
-			{ role: "selectAll" },
-		],
-	},
-	{
-		label: "Window",
-		submenu: [{ role: "minimize" }, { role: "zoom" }],
-	},
-]);
+const menuState = { partner: false, workspace: false, git: false };
+
+type AppMenuItem = Parameters<typeof ApplicationMenu.setApplicationMenu>[0][number];
+
+function buildMenu(): AppMenuItem[] {
+	return [
+		{
+			label: "LETTERS",
+			submenu: [
+				{ role: "about", label: "About Letters" },
+				{ type: "divider" },
+				{ label: "Settings…", action: "letters.settings", accelerator: "Command+," },
+				{ type: "divider" },
+				{ role: "hide", accelerator: "Command+H" },
+				{ role: "hideOthers", accelerator: "Command+Option+H" },
+				{ role: "showAll" },
+				{ type: "divider" },
+				{ role: "quit", label: "Quit Letters", accelerator: "Command+Q" },
+			],
+		},
+		{
+			label: "Partner",
+			submenu: [
+				{ label: "New partner", action: "letters.new-partner", accelerator: "Command+N" },
+				{ label: "Close chat", action: "letters.close-chat", accelerator: "Command+W" },
+				{ label: "Partner details", action: "letters.details", accelerator: "Command+E" },
+				{ type: "divider" },
+				{ label: "Open trajectory", action: "letters.trajectory", enabled: menuState.partner },
+				{ label: "Open replies", action: "letters.replies", enabled: menuState.partner },
+				{ label: "Open runtime config", action: "letters.runtime-config", enabled: menuState.partner },
+				{ type: "divider" },
+				{ label: "Open workspace", action: "letters.workspace", enabled: menuState.workspace },
+				{ label: "Open git changes", action: "letters.git-changes", enabled: menuState.git },
+				{ type: "divider" },
+				{ label: "Toggle letter list", action: "letters.toggle-list", accelerator: "Command+B" },
+			],
+		},
+		{
+			label: "View",
+			submenu: [
+				{ label: "Command palette…", action: "letters.palette", accelerator: "Command+P" },
+				{ label: "Manage access…", action: "letters.access", accelerator: "Command+Shift+P" },
+				{ type: "divider" },
+				{
+					label: "Switch to",
+					submenu: [
+						{ label: "Chat", action: "letters.view-chat" },
+						{ label: "Skills", action: "letters.view-skills" },
+						{ label: "Dashboard", action: "letters.view-dashboard" },
+					],
+				},
+				{ type: "divider" },
+				{ role: "toggleFullScreen", accelerator: "Control+Command+F" },
+			],
+		},
+		{
+			label: "Edit",
+			submenu: [
+				{ role: "undo" },
+				{ role: "redo" },
+				{ type: "divider" },
+				{ role: "cut" },
+				{ role: "copy" },
+				{ role: "paste" },
+				{ role: "pasteAndMatchStyle" },
+				{ type: "divider" },
+				{ role: "selectAll" },
+			],
+		},
+		{
+			label: "Window",
+			submenu: [{ role: "minimize" }, { role: "zoom" }, { type: "divider" }, { role: "bringAllToFront" }],
+		},
+	];
+}
+
+function refreshMenu() {
+	ApplicationMenu.setApplicationMenu(buildMenu());
+}
+
+ApplicationMenu.on("application-menu-clicked", (event) => {
+	const { action } = (event as { data?: { action?: string } }).data ?? {};
+	if (typeof action !== "string" || !action.startsWith("letters.")) return;
+	rpc.send.menu_command({ action });
+});
+
+refreshMenu();
 
 armCommandsWatch(commandsDir(startupSettings));
 void armSkillsWatchers();
@@ -2407,7 +2477,7 @@ void armSkillsWatchers();
 let restoreFrame: { x: number; y: number; width: number; height: number } | null = null;
 
 const mainWindow: BrowserWindow = new BrowserWindow({
-	title: "Coding",
+	title: "Letters",
 
 	titleBarStyle: "hiddenInset",
 	trafficLightOffset: { x: 0, y: 10 },

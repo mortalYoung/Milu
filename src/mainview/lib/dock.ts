@@ -83,6 +83,13 @@ export function createDock(options: { onOpen?: () => void; partner?: () => strin
 		setPanel(null);
 	}
 
+	function open(next: DockPanel) {
+		batch(() => {
+			options.onOpen?.();
+			setPanel(next);
+		});
+	}
+
 	/**
 	 * Pinned means the reader shares the row with the letter instead of covering it — a property of the
 	 * file in front of it, so the key is the file's own panel and its partner. Leaving the file puts the
@@ -134,6 +141,7 @@ export function createDock(options: { onOpen?: () => void; partner?: () => strin
 	}
 	return {
 		panel,
+		open,
 		reveal,
 		pinned,
 		togglePinned,

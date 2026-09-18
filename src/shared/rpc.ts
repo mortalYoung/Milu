@@ -963,6 +963,11 @@ export type AppRPCSchema = __schema<{
 				response: { ok: boolean };
 			};
 
+			set_menu_state: {
+				params: { partner: boolean; workspace: boolean; git: boolean };
+				response: { ok: boolean };
+			};
+
 			duplicate_partner: {
 				params: { name: string };
 				response: {
@@ -1064,6 +1069,8 @@ export type AppRPCSchema = __schema<{
 
 			command_update: {};
 			skills_change: {};
+
+			menu_command: { action: string };
 			skill_update: {};
 			shell_update: {};
 		};

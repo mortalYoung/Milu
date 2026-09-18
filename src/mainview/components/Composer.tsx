@@ -147,8 +147,6 @@ export function Composer(props: {
 		return [...commands, ...skillItems];
 	});
 
-	const [panelOpen, setPanelOpen] = createSignal(false);
-
 	// Two Esc layers of its own: the command menu (attached to the field) over the runtime panel.
 	useEscapeLayer({
 		id: "composer.menu",
@@ -160,10 +158,10 @@ export function Composer(props: {
 			setClaimed(null);
 		},
 	});
-	useEscapeLayer({ id: "composer.panel", order: ESCAPE_ORDER.composerPanel, isOpen: panelOpen, close: () => setPanelOpen(false) });
+	useEscapeLayer({ id: "composer.panel", order: ESCAPE_ORDER.composerPanel, isOpen: composer.panelOpen, close: () => composer.setPanelOpen(false) });
 
 	const commandHint = createMemo(() => {
-		if (menuOpen() || panelOpen() || shellMode() || submitting()) return null;
+		if (menuOpen() || composer.panelOpen() || shellMode() || submitting()) return null;
 		const parsed = parseCommand(text());
 		if (!parsed || parsed.rawInput.trim()) return null;
 		const cmd = commandDirectory.commands().find((c) => c.name === parsed.name);
@@ -172,11 +170,11 @@ export function Composer(props: {
 	let rootRef: HTMLFormElement | undefined;
 	// Closes on a click outside; Esc goes through the app's single handler (lib/escape.ts).
 	createEffect(() => {
-		if (!panelOpen()) return;
+		if (!composer.panelOpen()) return;
 		const onPointerDown = (e: PointerEvent) => {
 			if (e.target instanceof Node && rootRef?.contains(e.target)) return;
 			if (e.target instanceof Element && e.target.closest('[role="menu"], [data-kb-menu-content]')) return;
-			setPanelOpen(false);
+			composer.setPanelOpen(false);
 		};
 		document.addEventListener("pointerdown", onPointerDown);
 		onCleanup(() => document.removeEventListener("pointerdown", onPointerDown));
@@ -307,7 +305,7 @@ export function Composer(props: {
 		}
 		const skillMatch = /^\/skill:([a-z0-9_-]+)(?:\s+(.*))?$/.exec(trimmed);
 		if (skillMatch) {
-			setPanelOpen(false);
+			composer.setPanelOpen(false);
 			await executeSkill(skillMatch[1], skillMatch[2]?.trim() || undefined);
 			return;
 		}
@@ -338,7 +336,7 @@ export function Composer(props: {
 			return;
 		}
 
-		setPanelOpen(false);
+		composer.setPanelOpen(false);
 		clearText();
 		props.onSend(trimmed);
 	}
@@ -450,12 +448,12 @@ export function Composer(props: {
 					variant="ghost"
 					size="icon"
 					class="composer-toggle"
-					title={panelOpen() ? "Hide runtime context" : "Runtime context"}
+					title={composer.panelOpen() ? "Hide runtime context" : "Runtime context"}
 					aria-label="Runtime context"
-					aria-expanded={panelOpen()}
+					aria-expanded={composer.panelOpen()}
 					aria-controls="composer-panel"
 					icon={<SlidersHorizontal size={15} />}
-					onClick={() => setPanelOpen((v) => !v)}
+					onClick={() => composer.setPanelOpen((v) => !v)}
 				/>
 				<div class={"composer-field" + (shellMode() ? " shell" : "")}>
 					{shellMode() && (
@@ -512,7 +510,7 @@ export function Composer(props: {
 					)}
 				</div>
 			</div>
-			<Show when={panelOpen()}>
+			<Show when={composer.panelOpen()}>
 				<div id="composer-panel" class="composer-panel" role="group" aria-label="Runtime context">
 					{(agent.data().workspace_path || agent.data().storage_path) && (
 						<div class="composer-panel-path">

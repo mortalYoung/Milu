@@ -240,6 +240,57 @@ function WorkspaceControllers() {
 		void session.mutate.refreshHistory();
 	});
 
+	rpc.addMessageListener("menu_command", ({ action }) => {
+		if (action === "letters.view-chat" || action === "letters.view-skills" || action === "letters.view-dashboard") {
+			setView(action.slice("letters.view-".length) as "chat" | "skills" | "dashboard");
+			return;
+		}
+		if (action === "letters.settings") {
+			settings.mutate.setOpen(true);
+			return;
+		}
+		if (action === "letters.palette" || action === "letters.access") {
+			palette.launch(action === "letters.palette" ? "sessions" : "access");
+			return;
+		}
+		setView("chat");
+		switch (action) {
+			case "letters.new-partner":
+				openAddPartner();
+				return;
+			case "letters.close-chat":
+				closeCurrentChat();
+				return;
+			case "letters.details":
+				openCurrentDetails();
+				return;
+			case "letters.trajectory":
+				trajectory.mutate.setOpen(true);
+				return;
+			case "letters.replies":
+				dock.open("replies");
+				return;
+			case "letters.runtime-config":
+				composer.setPanelOpen(true);
+				return;
+			case "letters.workspace":
+				dock.open("explorer");
+				return;
+			case "letters.git-changes":
+				dock.open("git");
+				return;
+			case "letters.toggle-list":
+				toggleList();
+		}
+	});
+
+	createEffect(() => {
+		const partner = session.data.selected != null;
+		const snapshot = status.settled() ? status.data() : null;
+		const workspace = partner && snapshot?.workspace_path != null;
+		void rpc.request.set_menu_state({ partner, workspace, git: workspace && snapshot?.is_git_repo === true });
+	});
+
 	// ——— actions ———
 	function onSend(text: string) {
 		scroll.pin(true);
