@@ -5,6 +5,7 @@
 	"description": "A minimal FT-styled agent harness desktop app — pi's double loop on Electrobun",
 	"scripts": {
 		"start": "bun run build:view && bun x electrobun dev",
+		"start:log": "mkdir -p .logs && bun run build:view && { echo \"\"; echo \"=== start $(date \"+%Y-%m-%dT%H:%M:%S%z\") ===\"; bun x electrobun dev; } 2>&1 | tee -a \".logs/dev-$(date +%F).log\"",
 		"dev": "bun run build:view && bun x electrobun dev --watch",
 		"dev:view": "vite build --watch",
 		"build": "bun run build:view && electrobun build",
