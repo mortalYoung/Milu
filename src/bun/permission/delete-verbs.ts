@@ -59,13 +59,20 @@ function locateWasm(file: string): string | null {
 }
 
 let parserPromise: Promise<TsParser | null> | null = null;
+let degraded = false;
+
+function warnDegraded(reason: string): void {
+	if (degraded) return;
+	degraded = true;
+	console.error("delete gate degraded to the word scan:", reason);
+}
 
 function getParser(): Promise<TsParser | null> {
 	parserPromise ??= (async () => {
 		const runtime = locateWasm(RUNTIME_WASM);
 		const grammar = locateWasm(GRAMMAR_WASM);
 		if (!runtime || !grammar) {
-			console.error(`delete gate unavailable: ${runtime ? GRAMMAR_WASM : RUNTIME_WASM} not found near ${moduleDir()}`);
+			warnDegraded(`${runtime ? GRAMMAR_WASM : RUNTIME_WASM} not found near ${moduleDir()}`);
 			return null;
 		}
 		try {
@@ -75,7 +82,7 @@ function getParser(): Promise<TsParser | null> {
 			parser.setLanguage(await Language.load(grammar));
 			return parser as unknown as TsParser;
 		} catch (error) {
-			console.error("delete gate unavailable:", error instanceof Error ? error.message : error);
+			warnDegraded(error instanceof Error ? error.message : String(error));
 			return null;
 		}
 	})();
@@ -155,12 +162,20 @@ export interface CommandPosition {
 
 export type CommandVisitor = (name: string, args: string[], position: CommandPosition | null) => void;
 
-async function walkCommands(command: string, depth: number, visit: CommandVisitor): Promise<void> {
-	if (depth > MAX_DEPTH || command.trim() === "") return;
+async function walkCommands(command: string, depth: number, visit: CommandVisitor): Promise<boolean> {
+	if (depth > MAX_DEPTH || command.trim() === "") return true;
 	const parser = await getParser();
-	if (!parser) return;
-	const tree = parser.parse(command);
-	if (!tree) return;
+	if (!parser) return false;
+	let tree: { rootNode: TsNode } | null;
+	try {
+		tree = parser.parse(command);
+	} catch (error) {
+		parserPromise = null;
+		warnDegraded(error instanceof Error ? error.message : String(error));
+		return false;
+	}
+	degraded = false;
+	if (!tree) return true;
 	const root = tree.rootNode;
 	const nested = depth > 0;
 	for (const node of commandNodes(root)) {
@@ -186,15 +201,36 @@ async function walkCommands(command: string, depth: number, visit: CommandVisito
 			if (payload) await walkCommands(payload, depth + 1, visit);
 		}
 	}
+	return true;
+}
+
+function scanDeleteVerbs(command: string, depth = 0): DeleteVerbHit[] {
+	const hits: DeleteVerbHit[] = [];
+	for (const segment of command.split(/[;&|\n]/)) {
+		const words = segment
+			.trim()
+			.split(/\s+/)
+			.filter((word) => word !== "" && !ASSIGNMENT_RE.test(word));
+		let head = 0;
+		while (head < words.length && WRAPPERS.has(verbOf(words[head]!))) head += 1;
+		const word = words[head];
+		if (!word) continue;
+		const verb = verbOf(word);
+		if (DELETE_VERBS.has(verb)) hits.push({ verb, word, line: -1, column: -1 });
+		if (depth >= MAX_DEPTH || !(SHELLS.has(verb) || verb === "eval")) continue;
+		const payload = payloadOf(word, words.slice(head + 1).map(unquote));
+		if (payload) hits.push(...scanDeleteVerbs(payload, depth + 1));
+	}
+	return hits;
 }
 
 export async function findDeleteVerbs(command: string): Promise<DeleteVerbHit[]> {
 	const hits: DeleteVerbHit[] = [];
-	await walkCommands(command, 0, (name, _args, position) => {
+	const walked = await walkCommands(command, 0, (name, _args, position) => {
 		const verb = verbOf(name);
 		if (DELETE_VERBS.has(verb)) hits.push({ verb, word: name, line: position?.line ?? -1, column: position?.column ?? -1 });
 	});
-	return hits;
+	return walked ? hits : scanDeleteVerbs(command);
 }
 
 const TRASH_TAILS = new Set(["trash", ".Trash", ".trash"]);
@@ -213,12 +249,13 @@ function isTrashPath(text: string, trashDir: string): boolean {
 
 export async function movesToTrash(command: string, trashDir: string): Promise<boolean> {
 	let moved = false;
-	await walkCommands(command, 0, (name, args) => {
+	const walked = await walkCommands(command, 0, (name, args) => {
 		if (moved || verbOf(name) !== "mv") return;
 		const operands = args.filter((arg) => !arg.startsWith("-"));
 		const flagIndex = args.findIndex((arg) => ["-t", "--target-directory"].includes(arg));
 		const dest = flagIndex >= 0 ? (args[flagIndex + 1] ?? "") : (operands.at(-1) ?? "");
 		if (dest !== "" && isTrashPath(dest, trashDir)) moved = true;
 	});
-	return moved;
+	if (walked) return moved;
+	return command.split(/\s+/).some((word) => isTrashPath(unquote(word).replace(/[;,|&)]+$/, ""), trashDir));
 }
