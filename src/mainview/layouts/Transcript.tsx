@@ -616,8 +616,8 @@ export function Transcript(props: {
 						if ((e.kind === "command" || e.kind === "skill" || e.kind === "shell") && (e.command ?? e.skill)) {
 							const info = e.kind === "skill" ? e.skill! : e.command!;
 							const args = info.args;
-							const output = info.text;
-							const foldable = e.kind === "command" ? !!args : e.kind === "shell" ? !!output : false;
+							const output = () => info.text;
+							const foldable = () => (e.kind === "command" ? !!args : e.kind === "shell" ? !!output() : false);
 							const rowKey = e.key ?? String(e.id);
 							const isOpen = () => (e.kind === "shell" ? !collapsedShells().has(rowKey) : expandedCommand() === rowKey);
 							const onRowClick = () => {
@@ -640,10 +640,10 @@ export function Transcript(props: {
 									role={e.kind === "skill" ? "button" : undefined}
 								>
 									<div
-										class={"msg-command-head" + (foldable ? " is-foldable" : "")}
-										onClick={foldable ? onRowClick : undefined}
-										role={foldable ? "button" : undefined}
-										aria-expanded={foldable ? isOpen() : undefined}
+										class={"msg-command-head" + (foldable() ? " is-foldable" : "")}
+										onClick={foldable() ? onRowClick : undefined}
+										role={foldable() ? "button" : undefined}
+										aria-expanded={foldable() ? isOpen() : undefined}
 									>
 										{e.kind === "skill" ? (
 											<span class="msg-command-badge">skill</span>
@@ -671,11 +671,11 @@ export function Transcript(props: {
 											<div class="msg-command-args">{args}</div>
 										) : null
 									) : e.kind === "shell" ? (
-										isOpen() && output ? (
-											<div class="msg-command-args is-shell-out">{output}</div>
+										isOpen() && output() ? (
+											<div class="msg-command-args is-shell-out">{output()}</div>
 										) : null
-									) : info.status === "error" && output ? (
-										<div class="msg-command-args is-command-error">{output}</div>
+									) : info.status === "error" && output() ? (
+										<div class="msg-command-args is-command-error">{output()}</div>
 									) : isOpen() && args ? (
 										<div class="msg-command-args">{args}</div>
 									) : null}

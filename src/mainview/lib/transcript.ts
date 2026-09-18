@@ -1,4 +1,5 @@
-import { type Accessor, createMemo } from "solid-js";
+import { type Accessor, createEffect, createMemo } from "solid-js";
+import { createStore, reconcile } from "solid-js/store";
 import { projectView } from "../../shared/entry-meta";
 import type { ViewItem } from "../../shared/rpc";
 import {
@@ -76,51 +77,6 @@ function buildView(items: ViewItem[]): Entry[] {
 	return out;
 }
 
-function sameCommand(a: Entry["command"], b: Entry["command"]): boolean {
-	if (!a || !b) return a === b;
-	return a.commandId === b.commandId && a.name === b.name && a.args === b.args && a.text === b.text && a.status === b.status;
-}
-
-function sameEscalation(a: Entry["escalation"], b: Entry["escalation"]): boolean {
-	if (!a || !b) return a === b;
-	return a.id === b.id && a.command === b.command && a.from === b.from && a.to === b.to && a.justification === b.justification && a.status === b.status;
-}
-
-function sameFiles(a: string[] | undefined, b: string[] | undefined): boolean {
-	if (a === b) return true;
-	if (!a || !b) return false;
-	return a.length === b.length && a.every((path, i) => path === b[i]);
-}
-
-function sameEntry(a: Entry, b: Entry): boolean {
-	return (
-		a === b ||
-		(a.kind === b.kind &&
-			a.text === b.text &&
-			a.time === b.time &&
-			a.error === b.error &&
-			a.aborted === b.aborted &&
-			a.key === b.key &&
-			sameFiles(a.files, b.files) &&
-			sameCommand(a.command, b.command) &&
-			sameCommand(a.skill, b.skill) &&
-			sameEscalation(a.escalation, b.escalation))
-	);
-}
-
-function reconcileViews(prev: Entry[], next: Entry[]): Entry[] {
-	const prevByKey = new Map<string, Entry>();
-	for (const e of prev) {
-		const key = e.key ?? String(e.id);
-		if (!prevByKey.has(key)) prevByKey.set(key, e);
-	}
-	return next.map((e) => {
-		const key = e.key ?? String(e.id);
-		const old = prevByKey.get(key);
-		return old && sameEntry(old, e) ? old : e;
-	});
-}
-
 type ChatBlock = Entry | Entry[];
 
 function blockKey(block: ChatBlock): string {
@@ -168,12 +124,13 @@ function reconcileBlocks(prev: ChatBlock[], fresh: ChatBlock[]): ChatBlock[] {
 export function createTranscript(): TranscriptController {
 	const { data } = useSession();
 
-	const view = createMemo<Entry[]>((prev) => {
+	const [items, setItems] = createStore<Entry[]>([]);
+	createEffect(() => {
 		const next = buildView(projectView(data.origin.entries, { baseDir: data.origin.baseDir }));
-		return reconcileViews(prev, next);
-	}, []);
+		setItems(reconcile(next, { key: "key" }));
+	});
 
-	const blocks = createMemo<ChatBlock[]>((prev) => reconcileBlocks(prev, groupView(view())), []);
+	const blocks = createMemo<ChatBlock[]>((prev) => reconcileBlocks(prev, groupView(items)), []);
 
-	return { view, blocks };
+	return { view: () => items, blocks };
 }
