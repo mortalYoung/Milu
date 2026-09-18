@@ -3074,7 +3074,6 @@ html.theme-flip *::after {
 .dashboard-status-name {
 	@apply flex items-center gap-2 font-semibold text-ink;
 }
-/* the dot: seal and pulsing while writing, flat muted when queued, dormant when idle */
 .dashboard-status-name .work-dot {
 	background: var(--color-seal);
 }

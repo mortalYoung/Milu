@@ -345,7 +345,6 @@ export interface DashboardOverview {
 	/** The trailing day window the curve draws; its label is derived from `windowDays`. */
 	days: PartnerActivityDay[];
 	windowDays: number;
-	/** The horizon the per-letter counts were scanned over — the label beside them derives from this. */
 	activityWeeks: number;
 	/** Dense calendar series (Monday-aligned through today) for the heatmap. */
 	heatmap: PartnerActivityDay[];
@@ -683,7 +682,6 @@ export type AppRPCSchema = __schema<{
 			};
 
 			dashboard_overview: {
-				/** The per-day window both the curves and every partner's own series are read over. */
 				params: { days?: number };
 				response: { overview: DashboardOverview };
 			};

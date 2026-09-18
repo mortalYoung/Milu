@@ -6,8 +6,6 @@ import { Tooltip, TooltipContent, TooltipPortal, TooltipTrigger } from "./ui/too
 const CELL = 10;
 const GAP = 2;
 const GUTTER = 26;
-/** The calendar's horizon, shared with every caller: the grid, the month rule and the label beside it
- * are all derived from this one number (P-55). */
 export const HEATMAP_WEEKS = 53;
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -45,7 +43,6 @@ interface MonthMark {
 }
 
 export function ActivityHeatmap(props: { days: PartnerActivityDay[]; weeks?: number; legend?: boolean }) {
-	/** A year of Monday-aligned days; the label beside the calendar is derived from this same number. */
 	const weeks = () => props.weeks ?? 53;
 	const shown = () => props.days.slice(-weeks() * 7);
 	// The series is always Monday-aligned; the last column is partial up to today.

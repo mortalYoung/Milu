@@ -1,17 +1,9 @@
 import { createMemo, createSignal, For, Show } from "solid-js";
 
-/**
- * The dashboard's plot: one or two 1.5px lines over a hairline grid, an end marker in seal, and a readout
- * that follows the pointer. No animation on the data itself — the reference page, and every chart that
- * means to be read rather than watched, keeps the ink still and moves only the readout.
- */
-
 export interface DashboardSeries {
 	label: string;
 	values: number[];
-	/** Appended to the value in the readout and in the aria label. */
 	unit?: string;
-	/** Rendered in the muted ink, under the primary line. */
 	muted?: boolean;
 }
 

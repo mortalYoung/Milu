@@ -9,10 +9,7 @@ import { personaFilePath } from "./persona";
 import { loadRuntimeStats } from "./runtime-stats";
 import { scenesFilePath } from "./scenes";
 
-/** The reading window a caller gets when it does not ask for one. Every label is derived from the
- * window that was actually queried, never written by hand (P-55). */
 export const DASHBOARD_WINDOW_DAYS = 7;
-/** A week reads the rhythm, a quarter reads the drift; nothing longer is worth plotting per day. */
 export const DASHBOARD_WINDOW_MAX_DAYS = 120;
 /** Calendar horizon for the heatmap: Monday-aligned through today. Must stay ≥ the widest `weeks` a caller passes to ActivityHeatmap (the dashboard asks for a year). */
 export const DASHBOARD_HEATMAP_WEEKS = 53;
@@ -114,7 +111,6 @@ const EMPTY_DAY = (ts: number): PartnerActivityDay => ({ ts, tokens: 0, freshTok
 const sum = (xs: number[]) => xs.reduce((total, x) => total + x, 0);
 
 export async function buildDashboardOverview(session: SessionReader, requestedDays?: number): Promise<DashboardOverview> {
-	// One reading window for the whole page: the curves, every partner's own series, and every label.
 	const windowDays = Math.min(DASHBOARD_WINDOW_MAX_DAYS, Math.max(DASHBOARD_WINDOW_DAYS, Math.round(requestedDays ?? DASHBOARD_WINDOW_DAYS)));
 	const settings = await loadSettings();
 	const profiles = await listPartners(settings);
@@ -210,7 +206,5 @@ export async function buildDashboardOverview(session: SessionReader, requestedDa
 		memory,
 		since: recorded[0] ?? null,
 	};
-	// The per-letter counts (and the totals) come from this whole scan, not from the reading window:
-	// the window moves the curves, and the page says so rather than letting a header imply otherwise.
 	return { partners, totals, days, windowDays, activityWeeks: ACTIVITY_WEEKS, heatmap };
 }

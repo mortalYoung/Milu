@@ -23,7 +23,6 @@ const EMPTY_STATUS = {
 export function createAgentStatus(rpc: RPC) {
 	const { data } = useSession();
 	const [writing, setWriting] = createStore<Record<string, boolean>>({});
-	/** When this partner's current turn started — the dock and the dashboard say "since 21:06" from it. */
 	const [starts, setStarts] = createStore<Record<string, number>>({});
 	const [snapshot, { refetch }] = createResource(
 		() => data.selected,

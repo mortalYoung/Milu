@@ -8,17 +8,9 @@ import { useSession } from "../lib/contexts/session-context";
 import { rpc } from "../lib/rpc";
 import { formatBytes, formatTokens } from "../lib/utils";
 
-/**
- * The dashboard, read as a console: what is happening now, what the window adds up to, how it moved, and
- * who did it. Every panel here is fed by `dashboard_overview` and the session store — no gauge is drawn
- * that has nothing behind it, and the window control is the same number the query used (P-55, P-60).
- */
-
 const CAP = "font-mono text-[9px] font-medium uppercase tracking-[0.16em] text-body-muted";
 const NUM = "font-mono tabular-nums";
-/** The windows a reader actually asks for: the rhythm, the month, the quarter. */
 const WINDOWS = [7, 30, 90] as const;
-/** What the letters table can be ordered by, and the word on its button. */
 const SORTS = [
 	{ value: "fresh", label: "fresh" },
 	{ value: "turns", label: "turns" },
@@ -40,18 +32,15 @@ function ms(value: number | null): string {
 	return value >= 1000 ? `${(value / 1000).toFixed(1)}s` : `${Math.round(value)}ms`;
 }
 
-/** One row of the status block: what a letter is doing, and the last time it did anything. */
 interface StatusRow {
 	name: string;
 	writing: boolean;
 	queued: number;
 	since: number | null;
 	last: number;
-	/** writing 2 / queued 1 / idle 0 — the sort key and the row's state in one number. */
 	rank: number;
 }
 
-/** Today reads as a clock, anything older as a date: "last 21:06" beats "last SEP 17". */
 function lastSeen(ts: number): string {
 	if (ts <= 0) return "—";
 	return new Date(ts).toDateString() === new Date().toDateString() ? clock(ts) : dayLabel(ts);
@@ -64,7 +53,6 @@ function delta(now: number, before: number): { text: string; up: boolean } | nul
 	return { text: `${change > 0 ? "▲" : "▼"} ${Math.abs(change).toFixed(1)}%`, up: change > 0 };
 }
 
-/** Two equal windows ending today, off the dense calendar: the delta a lifetime average can never give. */
 function windows(days: PartnerActivityDay[], span: number) {
 	const recent = days.slice(-span);
 	const previous = days.slice(-span * 2, -span);
@@ -112,11 +100,9 @@ export function DashboardView(props: { unread: (name: string) => boolean }) {
 				};
 			})
 			.sort((a, b) => b.rank - a.rank || b.last - a.last);
-		/** Three rows is the reading; a letter that is actually live is never dropped for a quiet one. */
 		return ranked.slice(0, Math.max(3, activeCount()));
 	});
 	const todayTurns = createMemo(() => overview()?.heatmap.at(-1)?.turns ?? 0);
-	/** Honest proportional: this letter's share of today's turns, not a made-up progress bar. */
 	const shareOfToday = (stats: DashboardPartnerStats | undefined) => {
 		const total = todayTurns();
 		if (!stats || total <= 0) return 0;
@@ -153,7 +139,6 @@ export function DashboardView(props: { unread: (name: string) => boolean }) {
 			.slice(0, 6),
 	);
 	const totals = createMemo<DashboardTotals | null>(() => overview()?.totals ?? null);
-	/** The letters' counts are scanned over this whole horizon; every label beside them says so. */
 	const scanLabel = createMemo(() => `${Math.round((overview()?.activityWeeks ?? 0) / 4.345)} months`);
 	const memoryFiles = createMemo(() => {
 		const memory = totals()?.memory;
