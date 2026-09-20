@@ -5,7 +5,6 @@
 		"module": "ESNext",
 		"moduleDetection": "force",
 		"jsx": "react-jsx",
-		"jsxImportSource": "solid-js",
 		"allowJs": true,
 		"moduleResolution": "bundler",
 		"allowImportingTsExtensions": true,
@@ -29,5 +28,5 @@
 		}
 	},
 	"include": ["src/**/*"],
-	"exclude": ["node_modules", "dist", "build", "../../package/dist"]
+	"exclude": ["src/legacy-solid", "node_modules", "dist", "build", "../../package/dist"]
 }

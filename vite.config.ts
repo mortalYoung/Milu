@@ -1,13 +1,13 @@
 import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
-import solid from "vite-plugin-solid";
 import { electrobunViteAliases } from "./.hutch/devkit/api/config/electrobun-vite.ts";
 
 // The view (src/mainview) is built by Vite into dist/; electrobun copies
 // dist/index.html + dist/assets into the bundle (see electrobun.config.ts).
 // v2 SDK imports (electrobun/view) resolve from the Hutch-projected devkit.
 export default defineConfig({
-	plugins: [solid(), tailwindcss()],
+	plugins: [react(), tailwindcss()],
 	resolve: {
 		alias: electrobunViteAliases(".hutch/devkit"),
 	},
