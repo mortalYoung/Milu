@@ -179,13 +179,19 @@ export function PartnerDetailsDialog(props: {
 													<span class="underline decoration-dotted decoration-ink/30 underline-offset-2">{usage() ? formatBytes(usage()!.bytes) : "-"}</span>
 												</TooltipTrigger>
 												<TooltipPortal>
-													<TooltipContent>
-														{usage()?.parts.length
-															? usage()!
-																	.parts.slice(0, 3)
-																	.map((part) => `${part.label} ${formatBytes(part.bytes)}`)
-																	.join(" · ")
-															: "no files yet"}
+													<TooltipContent class="leading-snug">
+														<Show when={usage()?.parts.length} fallback={"no files yet"}>
+															<ul class="flex flex-col gap-0.5">
+																<For each={usage()!.parts}>
+																	{(part) => (
+																		<li class="flex items-baseline gap-2">
+																			<span class="min-w-[62px] text-paper/70">{part.label}</span>
+																			<span class="font-mono tabular-nums">{formatBytes(part.bytes)}</span>
+																		</li>
+																	)}
+																</For>
+															</ul>
+														</Show>
 													</TooltipContent>
 												</TooltipPortal>
 											</Tooltip>
