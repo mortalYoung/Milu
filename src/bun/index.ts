@@ -2370,6 +2370,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 						const kind = last?.kind;
 						const lastMessageKind: ChatPreviewKind | undefined =
 							kind === "user" || kind === "send_message" || kind === "command" || kind === "skill" || kind === "shell" ? kind : undefined;
+						const startedAt = await session.sessionStartedAt(getPartnerDir(settings, profile.name));
 						const readAt = await readPartnerReadAt(getPartnerDir(settings, profile.name));
 						const agentEntry = await agents.get(profile.name);
 						const writing = agentEntry?.agent.isStreaming === true || runningCommandPartners.has(profile.name);
@@ -2378,6 +2379,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 							path: getPartnerDir(settings, profile.name),
 							workspace: await ensureWorkspace(getPartnerDir(settings, profile.name)),
 							readAt,
+							startedAt,
 							writing,
 							...(last && lastMessageKind ? { lastMessage: last.text, lastMessageAt: last.time, lastMessageKind } : {}),
 						};

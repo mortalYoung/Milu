@@ -1,5 +1,5 @@
 import { For, Show } from "solid-js";
-import { convTime, previewFor } from "../lib/chat-preview";
+import { activityAt, convTime, previewFor } from "../lib/chat-preview";
 import { fileGlyph } from "../lib/file-icons";
 import { type PaletteRow, splitPath } from "../lib/palette";
 import { Avatar } from "./ui/avatar";
@@ -38,7 +38,7 @@ export function PaletteList(props: { rows: PaletteRow[]; index: number; unread: 
 								<Show when={props.unread(row.partner.name)}>
 									<span class="conv-unread-dot" title="new messages" />
 								</Show>
-								<span class="palette-row-time">{convTime(row.partner.lastMessageAt ?? row.partner.createdAt)}</span>
+								<span class="palette-row-time">{convTime(activityAt(row.partner))}</span>
 							</button>
 						);
 					}

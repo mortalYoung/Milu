@@ -7,7 +7,7 @@
 import { ArrowUpFromLine, ChevronDown, ChevronRight, Copy, CopyPlus, Files, GitFork, Info, MoreVertical, Plus, Trash2 } from "lucide-solid";
 import { createEffect, createMemo, createSignal, Show } from "solid-js";
 import type { ChatPreviewKind } from "../../shared/rpc";
-import { convTime, previewFor } from "../lib/chat-preview";
+import { activityAt, convTime, previewFor } from "../lib/chat-preview";
 import { useAgentStatus } from "../lib/contexts/agent-status-context";
 import { Button } from "./Button";
 import { Avatar } from "./ui/avatar";
@@ -36,6 +36,8 @@ export interface PartnerItem {
 	lastMessage?: string;
 	/** Timestamp of the last visible message. */
 	lastMessageAt?: number;
+	/** When the current session began — the time a cleared, still-empty chat shows. */
+	startedAt?: number;
 	/** What the last visible row was — a message, or an activity row (command/skill/shell). */
 	lastMessageKind?: ChatPreviewKind;
 	/** Per-partner read watermark (persisted): messages after this timestamp are unread. */
@@ -45,7 +47,7 @@ export interface PartnerItem {
 	writing?: boolean;
 }
 
-const byRecency = (a: PartnerItem, b: PartnerItem) => (b.lastMessageAt ?? b.createdAt) - (a.lastMessageAt ?? a.createdAt);
+const byRecency = (a: PartnerItem, b: PartnerItem) => activityAt(b) - activityAt(a);
 
 function copyText(text: string) {
 	const fallback = () => {
@@ -120,7 +122,7 @@ function ChatRow(props: {
 			<span class={"conv-main" + (props.hasChildren ? " pr-14" : "")}>
 				<span class="conv-name-row">
 					<span class="conv-name">{partner.name}</span>
-					<span class="conv-time">{convTime(partner.lastMessageAt ?? partner.createdAt)}</span>
+					<span class="conv-time">{convTime(activityAt(partner))}</span>
 				</span>
 				<span class="conv-preview">
 					<span class="conv-preview-main">

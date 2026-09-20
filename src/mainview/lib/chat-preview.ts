@@ -17,6 +17,14 @@ export function oneLine(text: string): string {
 	return text.replace(/\s+/g, " ").trim();
 }
 
+/**
+ * A row's time: the last message, else when the current session began (a cleared chat has no
+ * message left but was just touched), else the profile's birthday. Never the retired log's date.
+ */
+export function activityAt(partner: PartnerItem): number {
+	return partner.lastMessageAt ?? partner.startedAt ?? partner.createdAt;
+}
+
 /** The row's preview: the last visible row when there is one, else the profile note, else a placeholder. */
 export function previewFor(partner: PartnerItem): string {
 	if (partner.lastMessage) {

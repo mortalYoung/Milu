@@ -115,6 +115,8 @@ export interface SessionStore {
 	scope(dir: string): SessionScope;
 	visibleHistory(dir: string, baseDir?: string | null): Promise<ViewItem[]>;
 	lastMessage(dir: string): Promise<ViewItem | null>;
+	/** When the current (newest) session began — a rotated, still-empty conversation dates from here. */
+	sessionStartedAt(dir: string): Promise<number>;
 	deriveMessages(dir: string): Promise<AgentMessage[]>;
 	escalationRequest(
 		dir: string,
@@ -383,6 +385,10 @@ export function createSessionStore(): SessionStore {
 		async visibleHistory(dir, baseDir) {
 			const state = await stateFor(dir);
 			return projectView(state.entries, { baseDir: baseDir ?? null });
+		},
+		async sessionStartedAt(dir) {
+			const state = await stateFor(dir);
+			return (await state.session.getMetadata()).createdAt;
 		},
 		async lastMessage(dir) {
 			const state = await stateFor(dir);

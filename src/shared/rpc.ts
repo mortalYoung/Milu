@@ -984,6 +984,9 @@ export type AppRPCSchema = __schema<{
 
 						lastMessageKind?: ChatPreviewKind;
 
+						/** When the current session began; the row's time when a cleared chat has no message left. */
+						startedAt?: number;
+
 						readAt?: number;
 						writing: boolean;
 					}[];

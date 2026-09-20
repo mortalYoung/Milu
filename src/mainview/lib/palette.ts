@@ -1,6 +1,7 @@
 import { createSignal } from "solid-js";
 import { fuzzyScore } from "../../shared/fuzzy";
 import type { PartnerItem } from "../components/ConversationList";
+import { activityAt } from "./chat-preview";
 import type { RevealRange } from "./dock";
 
 export type PaletteMode = "sessions" | "files" | "access";
@@ -81,7 +82,7 @@ export function splitPath(path: string): { dir: string; name: string } {
 export function sessionRows(partners: PartnerItem[], query: string): PaletteRow[] {
 	const q = query.trim();
 	if (!q) {
-		return [...partners].sort((a, b) => (b.lastMessageAt ?? 0) - (a.lastMessageAt ?? 0) || a.name.localeCompare(b.name)).map((partner) => ({ kind: "session" as const, partner }));
+		return [...partners].sort((a, b) => activityAt(b) - activityAt(a) || a.name.localeCompare(b.name)).map((partner) => ({ kind: "session" as const, partner }));
 	}
 	const hits: { partner: PartnerItem; name: number | null; persona: number | null; workspace: number | null }[] = [];
 	for (const partner of partners) {
@@ -96,7 +97,7 @@ export function sessionRows(partners: PartnerItem[], query: string): PaletteRow[
 			(b.name ?? 0) - (a.name ?? 0) ||
 			(b.workspace ?? 0) - (a.workspace ?? 0) ||
 			(b.persona ?? 0) - (a.persona ?? 0) ||
-			(b.partner.lastMessageAt ?? 0) - (a.partner.lastMessageAt ?? 0),
+			activityAt(b.partner) - activityAt(a.partner),
 	);
 	return hits.map(({ partner }) => ({ kind: "session" as const, partner }));
 }

@@ -113,10 +113,14 @@ describe("session store (pi JSONL backend)", () => {
 		await session.scope(dir).appendSendMessage("old reply", {}, 2);
 		expect((await session.visibleHistory(dir)).map((m) => m.text)).toEqual(["old", "old reply"]);
 
+		const before = await session.sessionStartedAt(dir);
 		const newId = await session.rotateSession(dir);
 		expect(newId).toBeTruthy();
 		expect(await session.visibleHistory(dir)).toEqual([]);
 		expect(await session.rawEntries(dir)).toEqual([]);
+		// A cleared chat has no message left, but the fresh session dates the row: the start time moves forward.
+		expect(await session.lastMessage(dir)).toBeNull();
+		expect(await session.sessionStartedAt(dir)).toBeGreaterThanOrEqual(before);
 
 		// new writes land in the fresh file
 		await session.scope(dir).appendUser("new", 3);
