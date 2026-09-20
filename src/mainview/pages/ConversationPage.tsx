@@ -1,16 +1,19 @@
 import { type Accessor, createEffect, createSignal, type JSX, onCleanup } from "solid-js";
 import { AnimatePresence, Motion } from "solid-motion";
+import type { TaskSummary } from "../../shared/rpc";
 import { Composer } from "../components/Composer";
 import { ConversationList, type PartnerItem } from "../components/ConversationList";
 import { ExplorerDrawer } from "../components/ExplorerDrawer";
 import { GitChangesDrawer } from "../components/GitChangesDrawer";
 import { RepliesPane } from "../components/RepliesPane";
+import { TaskLogDialog } from "../components/TaskLogDialog";
 import { Transcript } from "../layouts/Transcript";
 import { useAgentStatus } from "../lib/contexts/agent-status-context";
 import { useSettings } from "../lib/contexts/settings-context";
 import { useTrajectory } from "../lib/contexts/trajectory-context";
 import { useTranscript } from "../lib/contexts/transcript-context";
 import type { Dock } from "../lib/dock";
+import { rpc } from "../lib/rpc";
 
 export function ConversationPage(props: {
 	dock: Dock;
@@ -45,6 +48,23 @@ export function ConversationPage(props: {
 	const panel = () => props.dock.panel();
 	const [btwOpen, setBtwOpen] = createSignal(false);
 	const [btwAnchor, setBtwAnchor] = createSignal<string | null>(null);
+	const [taskOpen, setTaskOpen] = createSignal(false);
+	const [taskVersion, setTaskVersion] = createSignal(0);
+	const [taskOutput, setTaskOutput] = createSignal(0);
+	const [tasks, setTasks] = createSignal<TaskSummary[]>([]);
+	rpc.addMessageListener("task_update", ({ kind }) => {
+		if (kind === "output") setTaskOutput((v) => v + 1);
+		else setTaskVersion((v) => v + 1);
+	});
+	createEffect(() => {
+		const name = props.selected;
+		taskVersion();
+		if (!name) {
+			setTasks([]);
+			return;
+		}
+		void rpc.request.task_list({ name }).then((response) => setTasks(response.tasks));
+	});
 	// The unpinned dock stops above the composer instead of covering it, so it needs that height.
 	const [composerHeight, setComposerHeight] = createSignal(0);
 	let composerObserver: ResizeObserver | undefined;
@@ -130,7 +150,17 @@ export function ConversationPage(props: {
 									/>
 								</div>
 								<div class="composer-slot" ref={bindComposerSlot}>
-									<Composer onSend={props.onSend} onStop={props.onStop} onShell={props.onShell} onOpenPath={props.onOpenPath} editors={props.editors} />
+									<Composer
+										onSend={props.onSend}
+										onStop={props.onStop}
+										onShell={props.onShell}
+										onOpenPath={props.onOpenPath}
+										onTasks={() => setTaskOpen(true)}
+										hasTasks={tasks().length > 0}
+										taskRunning={tasks().filter((task) => task.status === "running").length}
+										editors={props.editors}
+									/>
+									<TaskLogDialog open={taskOpen()} onOpenChange={setTaskOpen} tasks={tasks()} partner={props.selected} version={taskVersion()} output={taskOutput()} />
 								</div>
 							</div>
 							<ExplorerDrawer

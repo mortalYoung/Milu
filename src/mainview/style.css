@@ -3332,3 +3332,44 @@ html.theme-flip *::after {
 		animation: none;
 	}
 }
+
+/* ——— background tasks ——— */
+.task-live {
+	color: var(--color-seal);
+	animation: task-live-pulse 1.9s cubic-bezier(0.23, 1, 0.32, 1) infinite;
+}
+@keyframes task-live-pulse {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.3;
+	}
+}
+.followup-dock-task {
+	@apply shrink-0 rounded-[3px] border border-hairline px-[5px] pt-[1px] pb-[2px] font-mono text-[9px] tracking-[0.08em] text-body-muted;
+}
+.followup-dock-edit.static {
+	cursor: default;
+}
+@media (prefers-reduced-motion: reduce) {
+	.task-live {
+		animation: none;
+	}
+}
+.composer-task-slot {
+	position: relative;
+}
+.composer-task-count {
+	position: absolute;
+	top: -3px;
+	right: -3px;
+	min-width: 13px;
+	height: 13px;
+	padding: 0 3px;
+	border-radius: 7px;
+	background: var(--color-seal);
+	color: var(--color-on-ink);
+	@apply grid place-items-center font-mono text-[8.5px] font-semibold;
+}

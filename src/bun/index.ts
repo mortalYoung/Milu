@@ -7,7 +7,7 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { AgentMessage, Entry } from "@earendil-works/pi-agent-core";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import { getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
-import { ApplicationMenu, BrowserView, BrowserWindow, Utils } from "electrobun/main";
+import { ApplicationMenu, BrowserView, BrowserWindow, app as electrobunApp, Utils } from "electrobun/main";
 import { mcpChangedText } from "../shared/events";
 import { projectOrigin } from "../shared/origin";
 import type { AppRPCSchema, ChatPreviewKind } from "../shared/rpc";
@@ -61,6 +61,7 @@ import {
 	scenePendingCount,
 	sceneViewsDir,
 } from "./core/scenes";
+import { createTaskRegistry, DEFAULT_REMIND_AFTER_SEC, type TaskHistoryRecord } from "./core/tasks";
 import { aggregateUsage, lastUsage } from "./core/trajectory";
 import { deleteApiKey, getApiKey, loadCredentials, setApiKey } from "./lib/credentials";
 import { ensureModel, ensureSandboxMode, ensureStoragePath, ensureWorkspace, hasInvalidPersistedWorkspace, isThinkingLevel, readSandboxMode } from "./lib/ensure";
@@ -105,7 +106,7 @@ import { scanSkillsRoot } from "./skills/filesystem";
 import { SKILL_NAME_RE } from "./skills/frontmatter";
 import { getSkill, listSkillCandidates, listSkills } from "./skills/registry";
 import type { SkillsService } from "./skills/types";
-import { type McpAccess, type McpServerSummary, runEscalatedBash } from "./tools";
+import { type McpAccess, type McpServerSummary, runEscalatedBash, type TaskAccess } from "./tools";
 
 await loadCredentials();
 const startupSettings = await loadSettings();
@@ -224,6 +225,101 @@ const agents = new Map<string, Promise<PartnerAgent>>();
 
 let skillSeq = 0;
 let shellSeq = 0;
+
+const taskRegistry = createTaskRegistry({
+	dirFor: (partner) => getPartnerDir(settingsCache ?? startupSettings, partner),
+	loadHistory: (partner) => taskHistory(partner),
+	onStart: (task) => {
+		void session
+			.scope(getPartnerDir(settingsCache ?? startupSettings, task.partner))
+			.appendTaskStart({ taskId: task.id, command: task.command, logPath: task.logPath, ...(task.pid !== undefined ? { pid: task.pid } : {}) }, task.startedAt)
+			.catch((error) => console.error("appendTaskStart failed:", error));
+	},
+	onEnd: (task) => {
+		void session
+			.scope(getPartnerDir(settingsCache ?? startupSettings, task.partner))
+			.appendTaskEnd(
+				{
+					taskId: task.id,
+					command: task.command,
+					status: task.status,
+					...(task.exitCode !== undefined ? { exitCode: task.exitCode } : {}),
+					...(task.signalCode !== undefined ? { signalCode: task.signalCode } : {}),
+				},
+				task.endedAt ?? Date.now(),
+			)
+			.catch((error) => console.error("appendTaskEnd failed:", error));
+	},
+	onChange: (taskId, _partner, kind) => rpc.send.task_update({ taskId, kind }),
+	notify: (partner, taskId, reason, remindAfter) => void notifyTask(partner, taskId, reason, remindAfter),
+});
+
+function taskAccess(partner: string): TaskAccess {
+	return {
+		start: (input) => taskRegistry.start({ partner, ...input }),
+		read: (id, options) => taskRegistry.read(id, { ...(options ?? {}), partner }),
+		subscribe: (id, remindAfter) => taskRegistry.subscribe(id, remindAfter, partner),
+		stop: (id) => taskRegistry.stop(id, "model", partner),
+	};
+}
+
+async function notifyTask(partner: string, taskId: string, reason: "exit" | "deadline", remindAfter?: number): Promise<void> {
+	const entry = await agents.get(partner);
+	if (!entry) return;
+	const task = taskRegistry.get(taskId);
+	const command = task?.command ?? "";
+	const head =
+		reason === "deadline"
+			? `[task ${taskId}] still running at ${remindAfter ?? DEFAULT_REMIND_AFTER_SEC}s`
+			: task?.status === "killed"
+				? `[task ${taskId}] stopped`
+				: `[task ${taskId}] ended${task?.exitCode !== undefined ? ` (exit ${task.exitCode})` : task?.signalCode ? ` (${task.signalCode})` : ""}`;
+	const tail =
+		reason === "deadline"
+			? `You will still be notified when it ends.\ntask { op: "read", id: "${taskId}" } for output · task { op: "stop", id: "${taskId}" } to kill it`
+			: `task { op: "read", id: "${taskId}" } for output`;
+	await entry.agent.chat([head, `$ ${command}`, tail].join("\n"), { source: "task", taskId }).catch(() => {});
+}
+
+/** Tasks live in session-log events once they are gone: the process dies with the app, the record does not. */
+async function taskHistory(partner: string): Promise<TaskHistoryRecord[]> {
+	const dir = getPartnerDir(settingsCache ?? startupSettings, partner);
+	const entries = await session.rawEntries(dir);
+	const ends = new Map<string, { status?: unknown; exitCode?: unknown; signalCode?: unknown; timestamp?: unknown }>();
+	const starts: Array<{ id: string; command: string; logPath: string; startedAt: number }> = [];
+	for (const entry of entries) {
+		if (entry.type !== "custom") continue;
+		const custom = entry as {
+			customType?: string;
+			data?: { taskId?: unknown; command?: unknown; logPath?: unknown; timestamp?: unknown; status?: unknown; exitCode?: unknown; signalCode?: unknown };
+		};
+		const data = custom.data;
+		if (!data || data.taskId == null) continue;
+		if (custom.customType === EVENTS.taskStart) {
+			starts.push({
+				id: String(data.taskId),
+				command: String(data.command ?? ""),
+				logPath: String(data.logPath ?? ""),
+				startedAt: typeof data.timestamp === "number" ? data.timestamp : 0,
+			});
+		} else if (custom.customType === EVENTS.taskEnd) {
+			ends.set(String(data.taskId), data);
+		}
+	}
+	return starts
+		.filter((start) => start.logPath)
+		.map((start) => {
+			const end = ends.get(start.id);
+			const status = end?.status;
+			return {
+				...start,
+				status: status === "exited" || status === "killed" ? status : "interrupted",
+				...(typeof end?.exitCode === "number" ? { exitCode: end.exitCode } : {}),
+				...(typeof end?.signalCode === "string" ? { signalCode: end.signalCode } : {}),
+				...(typeof end?.timestamp === "number" ? { endedAt: end.timestamp } : {}),
+			} satisfies TaskHistoryRecord;
+		});
+}
 
 type HistoryView = Awaited<ReturnType<typeof session.visibleHistory>>;
 interface HistoryViewCache {
@@ -346,6 +442,7 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 			grantedSkills: () => readPartnerGrantedSkills(dir),
 			skills: skillsService,
 			mcp: mcpAccess,
+			tasks: taskAccess(profile.name),
 			onBeforeNextTurn: async (signal) => {
 				const target = await agents.get(profile.name);
 				if (!target) return null;
@@ -981,17 +1078,19 @@ async function memoryStatusReport(entry: PartnerAgent): Promise<string> {
 	].join("\n");
 }
 
-async function reconcileTerminalStates(dir: string): Promise<{ commands: number; shells: number; escalations: number; memoryRuns: number }> {
+async function reconcileTerminalStates(dir: string): Promise<{ commands: number; shells: number; tasks: number; escalations: number; memoryRuns: number }> {
 	const entries = await session.rawEntries(dir);
 	const commandDones = new Set<string>();
 	const shellDones = new Set<string>();
+	const taskEnds = new Set<string>();
 	const escalationDecisions = new Set<string>();
 	const memoryRunEnds = new Set<string>();
 	for (const entry of entries) {
 		if (entry.type !== "custom") continue;
-		const custom = entry as { customType?: string; data?: { commandId?: unknown; shellId?: unknown; escalationId?: unknown; runId?: unknown } };
+		const custom = entry as { customType?: string; data?: { commandId?: unknown; shellId?: unknown; taskId?: unknown; escalationId?: unknown; runId?: unknown } };
 		if (custom.customType === EVENTS.commandDone && custom.data?.commandId != null) commandDones.add(String(custom.data.commandId));
 		else if (custom.customType === EVENTS.shellDone && custom.data?.shellId != null) shellDones.add(String(custom.data.shellId));
+		else if (custom.customType === EVENTS.taskEnd && custom.data?.taskId != null) taskEnds.add(String(custom.data.taskId));
 		else if (custom.customType === EVENTS.escalationDecision && custom.data?.escalationId != null) escalationDecisions.add(String(custom.data.escalationId));
 		else if (custom.customType === EVENTS.memoryRunEnd && custom.data?.runId != null) memoryRunEnds.add(String(custom.data.runId));
 	}
@@ -999,6 +1098,7 @@ async function reconcileTerminalStates(dir: string): Promise<{ commands: number;
 	const ts = Date.now();
 	let commands = 0;
 	let shells = 0;
+	let tasks = 0;
 	let escalations = 0;
 	let memoryRuns = 0;
 	for (const entry of entries) {
@@ -1008,6 +1108,7 @@ async function reconcileTerminalStates(dir: string): Promise<{ commands: number;
 			data?: {
 				commandId?: unknown;
 				shellId?: unknown;
+				taskId?: unknown;
 				command?: unknown;
 				escalationId?: unknown;
 				runId?: unknown;
@@ -1027,6 +1128,12 @@ async function reconcileTerminalStates(dir: string): Promise<{ commands: number;
 				const command = String(custom.data?.command ?? "");
 				await scope.appendShellDone({ shellId: id, command, kind: "interrupted" }, ts);
 				shells++;
+			}
+		} else if (custom.customType === EVENTS.taskStart) {
+			const id = custom.data?.taskId != null ? String(custom.data.taskId) : null;
+			if (id && !taskEnds.has(id)) {
+				await scope.appendTaskEnd({ taskId: id, command: String(custom.data?.command ?? ""), status: "interrupted" }, ts);
+				tasks++;
 			}
 		} else if (custom.customType === EVENTS.escalationRequest) {
 			const id = custom.data?.escalationId != null ? String(custom.data.escalationId) : null;
@@ -1058,9 +1165,9 @@ async function reconcileTerminalStates(dir: string): Promise<{ commands: number;
 			}
 		}
 	}
-	if (commands + shells + escalations + memoryRuns > 0)
-		console.log(`reconcile ${dir}: ${commands} commands, ${shells} shells, ${escalations} escalations, ${memoryRuns} memory runs`);
-	return { commands, shells, escalations, memoryRuns };
+	if (commands + shells + tasks + escalations + memoryRuns > 0)
+		console.log(`reconcile ${dir}: ${commands} commands, ${shells} shells, ${tasks} tasks, ${escalations} escalations, ${memoryRuns} memory runs`);
+	return { commands, shells, tasks, escalations, memoryRuns };
 }
 
 async function applyWorkspace(entry: PartnerAgent, path: string | null): Promise<{ ok: true; workspace: string | null } | { ok: false; error: string }> {
@@ -1752,6 +1859,20 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 			},
 
 			open_external: ({ url }) => ({ ok: Utils.openExternal(url) }),
+
+			task_list: async ({ name }) => ({ tasks: await taskRegistry.list(name) }),
+
+			task_read: ({ name, id, offset, before, lines }) =>
+				taskRegistry.read(id, {
+					partner: name,
+					...(offset !== undefined ? { offset } : {}),
+					...(before !== undefined ? { before } : {}),
+					...(lines !== undefined ? { lines } : {}),
+				}),
+
+			task_stop: ({ name, id }) => taskRegistry.stop(id, "user", name),
+
+			task_search: ({ name, id, query, limit }) => taskRegistry.search(id, query, { partner: name, ...(limit !== undefined ? { limit } : {}) }),
 
 			open_path: async ({ path, editorId }) => {
 				const opened = await openInCodeEditor(path, editorId);
@@ -2490,5 +2611,7 @@ const mainWindow: BrowserWindow = new BrowserWindow({
 		y: 60,
 	},
 });
+
+electrobunApp.on("before-quit", () => taskRegistry.reapAll());
 
 console.log("\x1b[32mletters started — agent ready\x1b[0m");

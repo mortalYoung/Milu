@@ -28,6 +28,8 @@ import {
 	type ShellRunEventData,
 	type SkillDoneEventData,
 	type SkillRunEventData,
+	type TaskEndEventData,
+	type TaskStartEventData,
 	type ToolResultEventData,
 } from "./events";
 
@@ -100,6 +102,8 @@ export interface SessionScope {
 	appendSkillDone(details: SkillDoneEventData, timestamp: number): Promise<void>;
 	appendShellRun(details: ShellRunEventData, timestamp: number): Promise<void>;
 	appendShellDone(details: ShellDoneEventData, timestamp: number): Promise<void>;
+	appendTaskStart(details: TaskStartEventData, timestamp: number): Promise<void>;
+	appendTaskEnd(details: TaskEndEventData, timestamp: number): Promise<void>;
 	appendRetryScheduled(details: RetryScheduledEventData, timestamp: number): Promise<void>;
 	appendRetryStarted(details: RetryStartedEventData, timestamp: number): Promise<void>;
 	appendCompactionSummary(text: string, timestamp: number): Promise<string>;
@@ -334,6 +338,12 @@ export function createSessionStore(): SessionStore {
 			},
 			async appendShellDone(details, timestamp) {
 				await appendCustom(dir, EVENTS.shellDone, { ...details, timestamp });
+			},
+			async appendTaskStart(details, timestamp) {
+				await appendCustom(dir, EVENTS.taskStart, { ...details, timestamp });
+			},
+			async appendTaskEnd(details, timestamp) {
+				await appendCustom(dir, EVENTS.taskEnd, { ...details, timestamp });
 			},
 			async appendRetryScheduled(details, timestamp) {
 				await appendCustom(dir, EVENTS.retryScheduled, { ...details, timestamp });

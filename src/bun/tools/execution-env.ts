@@ -9,6 +9,19 @@ export interface SandboxedExecOptions extends ShellExecOptions {
 	sandboxMode?: SandboxMode;
 }
 
+/** A live child process that outlives the call that started it. */
+export interface RunningProcess {
+	readonly pid: number;
+	readonly exitCode: number | null;
+	readonly signalCode: string | null;
+	readonly exited: Promise<void>;
+	kill(): void;
+}
+
+export type TaskExecutionEnv = ExecutionEnv & {
+	start(command: string, options?: SandboxedExecOptions): Promise<Result<RunningProcess, ExecutionError>>;
+};
+
 const KILL_ESCALATE_MS = 500;
 
 function mapFileError(path: string, cause: unknown): FileError {
@@ -31,7 +44,7 @@ function toFileInfo(path: string, s: { size: number; mtimeMs: number; isDirector
 	};
 }
 
-export function createExecutionEnv(cwd: string, permission?: Permission): ExecutionEnv {
+export function createExecutionEnv(cwd: string, permission?: Permission): TaskExecutionEnv {
 	const checkAbort = (signal?: AbortSignal) => signal?.throwIfAborted();
 	const scratchBase = () => {
 		if (!permission) return cwd;
@@ -53,6 +66,70 @@ export function createExecutionEnv(cwd: string, permission?: Permission): Execut
 		if (!permission) return null;
 		const decision = permission.checkFile(target, op);
 		return decision.allowed ? null : err(new PermissionError(decision.reason, target, decision.code));
+	};
+
+	type PreparedCommand = {
+		argv: string[];
+		env: Record<string, string | undefined>;
+		denialSignatures: string[];
+		runnerFailureRules: string[];
+		marker: string | undefined;
+	};
+
+	const prepareConfined = async (command: string, opts: SandboxedExecOptions): Promise<Result<PreparedCommand, ExecutionError>> => {
+		if (permission) {
+			const scan = permission.checkCommand(command);
+			if (!scan.allowed) return err(new ExecutionError("spawn_error", scan.reason));
+		}
+		let argv = ["/bin/sh", "-c", command];
+		let denialSignatures: string[] = [];
+		let runnerFailureRules: string[] = [];
+		let marker: string | undefined;
+		if (permission) {
+			const mode = opts.sandboxMode ?? permission.getMode();
+			try {
+				const confined = await permission.confine(argv, { sandboxMode: mode });
+				argv = confined.argv;
+				denialSignatures = confined.denialSignatures;
+				runnerFailureRules = confined.runnerFailureRules;
+				if (confined.enforcement !== "none") marker = sandboxDenialMarker(mode);
+			} catch (e) {
+				if (e instanceof SandboxUnavailableError) {
+					return err(new ExecutionError("spawn_error", "sandbox unavailable — cannot execute confined command"));
+				}
+				throw e;
+			}
+		}
+		const env = opts.inheritEnv === false ? { ...(opts.env ?? {}) } : { ...process.env, ...(opts.env ?? {}) };
+		return ok({ argv, env, denialSignatures, runnerFailureRules, marker });
+	};
+
+	const spawnConfined = (argv: string[], env: Record<string, string | undefined>, opts: SandboxedExecOptions) => {
+		const proc = Bun.spawn(argv, {
+			cwd: opts.cwd ? resolve(scratchBase(), opts.cwd) : scratchBase(),
+			env,
+			stdout: "pipe",
+			stderr: "pipe",
+			detached: true,
+		});
+		const killGroup = (signal: "SIGTERM" | "SIGKILL") => {
+			const pgid = proc.pid;
+			if (!Number.isInteger(pgid) || pgid <= 0 || pgid === process.pid) return;
+			try {
+				process.kill(-pgid, signal);
+			} catch {
+				try {
+					proc.kill(signal);
+				} catch {}
+			}
+		};
+		const teardown = () => {
+			killGroup("SIGTERM");
+			setTimeout(() => {
+				if (proc.exitCode === null) killGroup("SIGKILL");
+			}, KILL_ESCALATE_MS);
+		};
+		return { proc, teardown };
 	};
 
 	return {
@@ -250,55 +327,11 @@ export function createExecutionEnv(cwd: string, permission?: Permission): Execut
 		},
 		async exec(command, options) {
 			const opts: SandboxedExecOptions = options ?? {};
-			if (permission) {
-				const scan = permission.checkCommand(command);
-				if (!scan.allowed) return err(new ExecutionError("spawn_error", scan.reason));
-			}
-			let argv = ["/bin/sh", "-c", command];
-			let denialSignatures: string[] = [];
-			let runnerFailureRules: string[] = [];
-			let marker: string | undefined;
-			if (permission) {
-				const mode = opts.sandboxMode ?? permission.getMode();
-				try {
-					const confined = await permission.confine(argv, { sandboxMode: mode });
-					argv = confined.argv;
-					denialSignatures = confined.denialSignatures;
-					runnerFailureRules = confined.runnerFailureRules;
-					if (confined.enforcement !== "none") marker = sandboxDenialMarker(mode);
-				} catch (e) {
-					if (e instanceof SandboxUnavailableError) {
-						return err(new ExecutionError("spawn_error", "sandbox unavailable — cannot execute confined command"));
-					}
-					throw e;
-				}
-			}
-			const env = opts.inheritEnv === false ? { ...(opts.env ?? {}) } : { ...process.env, ...(opts.env ?? {}) };
+			const prepared = await prepareConfined(command, opts);
+			if (!prepared.ok) return prepared;
+			const { argv, env, denialSignatures, runnerFailureRules, marker } = prepared.value;
 			try {
-				const proc = Bun.spawn(argv, {
-					cwd: opts.cwd ? resolve(scratchBase(), opts.cwd) : scratchBase(),
-					env,
-					stdout: "pipe",
-					stderr: "pipe",
-					detached: true,
-				});
-				const killGroup = (signal: "SIGTERM" | "SIGKILL") => {
-					const pgid = proc.pid;
-					if (!Number.isInteger(pgid) || pgid <= 0 || pgid === process.pid) return;
-					try {
-						process.kill(-pgid, signal);
-					} catch {
-						try {
-							proc.kill(signal);
-						} catch {}
-					}
-				};
-				const teardown = () => {
-					killGroup("SIGTERM");
-					setTimeout(() => {
-						if (proc.exitCode === null) killGroup("SIGKILL");
-					}, KILL_ESCALATE_MS);
-				};
+				const { proc, teardown } = spawnConfined(argv, env, opts);
 				if (opts.abortSignal?.aborted) teardown();
 				opts.abortSignal?.addEventListener("abort", teardown, { once: true });
 				let timedOut = false;
@@ -333,6 +366,34 @@ export function createExecutionEnv(cwd: string, permission?: Permission): Execut
 				return err(new ExecutionError("spawn_error", e instanceof Error ? e.message : String(e)));
 			}
 		},
+		async start(command, options) {
+			const opts: SandboxedExecOptions = options ?? {};
+			const prepared = await prepareConfined(command, opts);
+			if (!prepared.ok) return prepared;
+			const { argv, env } = prepared.value;
+			let spawned: ReturnType<typeof spawnConfined>;
+			try {
+				spawned = spawnConfined(argv, env, opts);
+			} catch (e) {
+				return err(new ExecutionError("spawn_error", e instanceof Error ? e.message : String(e)));
+			}
+			const { proc, teardown } = spawned;
+			void drainStream(proc.stdout, opts.onStdout);
+			void drainStream(proc.stderr, opts.onStderr);
+			return ok({
+				get pid() {
+					return proc.pid;
+				},
+				get exitCode() {
+					return proc.exitCode;
+				},
+				get signalCode() {
+					return proc.signalCode ?? null;
+				},
+				exited: proc.exited.then(() => undefined),
+				kill: teardown,
+			});
+		},
 		async cleanup() {},
 	};
 }
@@ -349,4 +410,15 @@ async function readStream(stream: ReadableStream<Uint8Array>, onChunk?: (chunk: 
 		onChunk?.(chunk);
 	}
 	return text;
+}
+
+/** Same as readStream but drops the text: a background task's output is unbounded, so it must never accumulate. */
+async function drainStream(stream: ReadableStream<Uint8Array>, onChunk?: (chunk: string) => void): Promise<void> {
+	const reader = stream.getReader();
+	const decoder = new TextDecoder();
+	for (;;) {
+		const { done, value } = await reader.read();
+		if (done) break;
+		onChunk?.(decoder.decode(value, { stream: true }));
+	}
 }

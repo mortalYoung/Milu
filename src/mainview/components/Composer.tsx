@@ -1,4 +1,4 @@
-import { ArrowUp, SlidersHorizontal, Square } from "lucide-solid";
+import { ArrowUp, SlidersHorizontal, Square, Terminal } from "lucide-solid";
 import { createEffect, createMemo, createSignal, For, type JSX, onCleanup, Show, untrack } from "solid-js";
 import type { CommandDescriptor, SandboxMode } from "../../shared/rpc";
 import { filterCommands } from "../lib/commands";
@@ -40,6 +40,9 @@ export function Composer(props: {
 	onStop: () => void;
 	onShell?: (command: string) => Promise<{ ok: boolean; error?: string; shellId?: string }>;
 	onOpenPath?: (path: string, editorId?: string) => void;
+	onTasks?: () => void;
+	hasTasks?: boolean;
+	taskRunning?: number;
 	editors?: { id: string; name: string }[];
 }) {
 	const metrics = useMetrics();
@@ -455,6 +458,14 @@ export function Composer(props: {
 					icon={<SlidersHorizontal size={15} />}
 					onClick={() => composer.setPanelOpen((v) => !v)}
 				/>
+				<Show when={props.hasTasks}>
+					<div class="composer-task-slot">
+						<Button variant="ghost" size="icon" class="composer-toggle" title="Tasks" aria-label="Tasks" icon={<Terminal size={15} />} onClick={() => props.onTasks?.()} />
+						<Show when={(props.taskRunning ?? 0) > 0}>
+							<span class="composer-task-count">{props.taskRunning}</span>
+						</Show>
+					</div>
+				</Show>
 				<div class={"composer-field" + (shellMode() ? " shell" : "")}>
 					{shellMode() && (
 						<span class="composer-shell-prefix" aria-hidden="true">

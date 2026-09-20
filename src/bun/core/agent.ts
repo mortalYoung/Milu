@@ -11,7 +11,7 @@ import { Permission, policyFor } from "../permission";
 import type { SessionScope } from "../persist";
 import type { ContextChangedEventData } from "../persist/events";
 import type { SkillsService } from "../skills/types";
-import { createTools, type McpAccess } from "../tools";
+import { createTools, type McpAccess, type TaskAccess } from "../tools";
 import type { PartnerModel } from "./agent-config";
 import { convertToLlm, resolveModel, STREAM_FN } from "./agent-config";
 import { Context } from "./context";
@@ -34,6 +34,8 @@ export interface QueuedMessage {
 	content: string;
 	timestamp: number;
 	failed?: boolean;
+	source?: "user" | "task";
+	taskId?: string;
 }
 
 export interface ChatOutcome {
@@ -55,7 +57,7 @@ export interface AgentHandle {
 	setThinkingLevel: (level: ThinkingLevel) => void;
 	readonly runtimeStats: SessionStats["runtime"];
 	readonly tools: RequestTool[];
-	chat: (text: string) => Promise<ChatOutcome>;
+	chat: (text: string, meta?: { source?: "user" | "task"; taskId?: string }) => Promise<ChatOutcome>;
 	waitForIdle: () => Promise<void>;
 	queued: () => QueuedMessage[];
 	cancelQueued: (id: string) => boolean;
@@ -90,6 +92,7 @@ export interface AgentDeps {
 	grantedSkills?: () => Promise<string[]>;
 	skills?: SkillsService;
 	mcp?: McpAccess;
+	tasks?: TaskAccess;
 	onContextOverflow?: () => Promise<boolean>;
 	onBeforeNextTurn?: (signal?: AbortSignal) => Promise<AgentMessage[] | null>;
 }
@@ -234,6 +237,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		...(skills ? { skills } : {}),
 		...(deps.readMemory ? { readMemory: deps.readMemory } : {}),
 		...(deps.mcp ? { mcp: deps.mcp } : {}),
+		...(deps.tasks ? { tasks: deps.tasks } : {}),
 		lastFailedBash: () => failedBash.filter((failure) => failure.run === run).map(({ command, turn, at }) => ({ command, turn, at })),
 	});
 	agent.state.systemPrompt = ctx.composeSystemPrompt();
@@ -476,8 +480,8 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		}
 	}
 
-	function enqueue(text: string): QueuedMessage {
-		const item = { id: uuidv7(), content: text, timestamp: Date.now() };
+	function enqueue(text: string, meta?: { source?: "user" | "task"; taskId?: string }): QueuedMessage {
+		const item = { id: uuidv7(), content: text, timestamp: Date.now(), ...(meta?.source ? { source: meta.source } : {}), ...(meta?.taskId ? { taskId: meta.taskId } : {}) };
 		inbox.push(item);
 		return item;
 	}
@@ -735,11 +739,11 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 				console.error("agent.continue failed:", error);
 			}
 		},
-		async chat(text: string): Promise<ChatOutcome> {
+		async chat(text: string, meta?: { source?: "user" | "task"; taskId?: string }): Promise<ChatOutcome> {
 			if (text.trim() === "") return { queued: false };
 			await pushTimeGapReminderIfNeeded();
 			ctx.markUserMessage();
-			const item = enqueue(text);
+			const item = enqueue(text, meta);
 			if (runSettling) {
 				wakeRequested = true;
 				announceQueued(item);

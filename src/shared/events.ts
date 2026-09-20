@@ -33,6 +33,8 @@ export const EVENTS = {
 	skillDone: "skill/done",
 	shellRun: "shell/run",
 	shellDone: "shell/done",
+	taskStart: "task/start",
+	taskEnd: "task/end",
 	retryScheduled: "retry/scheduled",
 	retryStarted: "retry/started",
 } as const;
@@ -113,6 +115,23 @@ export interface ShellDoneEventData {
 	kind: "success" | "error" | "interrupted";
 	text?: string;
 	exitCode?: number;
+}
+
+export type TaskStatus = "running" | "exited" | "killed" | "interrupted";
+
+export interface TaskStartEventData {
+	taskId: string;
+	command: string;
+	logPath: string;
+	pid?: number;
+}
+
+export interface TaskEndEventData {
+	taskId: string;
+	command: string;
+	status: TaskStatus;
+	exitCode?: number;
+	signalCode?: string;
 }
 
 export interface SkillDigestItem {

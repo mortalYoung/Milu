@@ -5,12 +5,13 @@ import type { AgentHarnessTool, AgentTool, ExecutionEnv, ExecutionToolContext } 
 import { createEditTool, createReadTool, createWriteTool } from "@earendil-works/pi-agent-core";
 import { type TSchema, Type } from "@earendil-works/pi-ai";
 import { createMemoryTool, type MemoryRecord, type QueryMemoryOptions } from "../core/memory";
+import type { TaskFailure, TaskReadResult, TaskSubscribeResult, TaskSummary } from "../core/tasks";
 import { loadSettings } from "../lib/settings";
 import type { SandboxMode } from "../permission";
 import { type DeleteVerbHit, findDeleteVerbs, isInside, movesToTrash, Permission } from "../permission";
 import type { SessionScope } from "../persist";
 import type { SkillDefinition, SkillSummary } from "../skills/types";
-import { createExecutionEnv, type SandboxedExecOptions } from "./execution-env";
+import { createExecutionEnv, type SandboxedExecOptions, type TaskExecutionEnv } from "./execution-env";
 import { fetchPage, WebFetchError, type WebFetchResult, webFetchOptions } from "./web-fetch";
 
 export interface ToolDeps {
@@ -19,7 +20,15 @@ export interface ToolDeps {
 	skills?: { list(): Promise<SkillSummary[]>; get(name: string): Promise<SkillDefinition | undefined> };
 	readMemory?: (opts: QueryMemoryOptions) => Promise<MemoryRecord[]>;
 	mcp?: McpAccess;
+	tasks?: TaskAccess;
 	lastFailedBash?: () => { command: string; turn: number; at: number }[];
+}
+
+export interface TaskAccess {
+	start(input: { command: string; env: TaskExecutionEnv; sandboxMode?: SandboxMode }): Promise<{ ok: true; task: TaskSummary } | { ok: false; error: string }>;
+	read(id: string, options?: { lines?: number; before?: number }): Promise<TaskReadResult>;
+	subscribe(id: string, remindAfter?: number): Promise<TaskSubscribeResult | TaskFailure>;
+	stop(id: string, by: "model" | "user"): Promise<{ ok: boolean; error?: string }>;
 }
 
 export interface McpToolSummary {
@@ -189,6 +198,13 @@ function bashTool(deps: ToolDeps): AgentHarnessTool<ExecutionToolContext, TSchem
 	const baseProps = {
 		command: Type.String({ description: "Bash command to execute" }),
 		timeout: Type.Optional(Type.Number({ description: "Timeout in seconds for this call; defaults to the bash timeout setting." })),
+		background: Type.Optional(
+			Type.Boolean({
+				description:
+					"Run it detached and return a task id immediately, without waiting. Use for servers, watchers, or anything that doesn't exit on its own; also for a long job you'd rather not block on. " +
+					'Not compatible with timeout. Read its output with the task tool (op: "read"); to be notified when it ends, call the task tool (op: "subscribe").',
+			}),
+		),
 	};
 	const schema = deps.permission?.isConfining()
 		? Type.Object({
@@ -205,14 +221,20 @@ function bashTool(deps: ToolDeps): AgentHarnessTool<ExecutionToolContext, TSchem
 		name: "bash",
 		label: "bash",
 		description:
-			"Execute a bash command. Runs in the working directory when one is set, otherwise in the storage scratch directory. Returns stdout and stderr (last ~50KB, truncated)." +
+			"Execute a bash command. Runs in the working directory when one is set, otherwise in the storage scratch directory. Returns stdout and stderr (last ~50KB, truncated), or a task id at once when `background` is set." +
 			` Deleting files: move them to the trash instead of unlinking — \`mv <path> ${trashDirOf(deps) ?? "~/.Trash"}/\`. In strict delete mode a \`rm\`/\`rmdir\` command is refused before it runs; the rm tool is the fallback for when the trash move itself fails.` +
 			(deps.permission?.isConfining()
 				? " Sandboxed: writes outside the working directory/storage are denied by the kernel and return `[sandbox: file access denied under <mode> mode]`. On a denial you may retry ONCE in the same turn with a strictly wider `sandbox_mode` plus a `justification` — a human must approve."
 				: ""),
 		parameters: schema,
 		async execute(toolCallId, params, signal, _onUpdate, context) {
-			const { command, timeout, sandbox_mode, justification } = params as { command: string; timeout?: number; sandbox_mode?: SandboxMode; justification?: string };
+			const { command, timeout, sandbox_mode, justification, background } = params as {
+				command: string;
+				timeout?: number;
+				sandbox_mode?: SandboxMode;
+				justification?: string;
+				background?: boolean;
+			};
 			const settings = await loadSettings();
 			if (settings.delete?.strict !== false) {
 				const hits = await findDeleteVerbs(command);
@@ -222,6 +244,12 @@ function bashTool(deps: ToolDeps): AgentHarnessTool<ExecutionToolContext, TSchem
 						details: { sandbox: { code: "rm_forbidden", mode: deps.permission?.getMode() } },
 					};
 				}
+			}
+			if (background && timeout !== undefined) {
+				return {
+					content: [{ type: "text", text: 'timeout is not supported with background; end the task with task { op: "stop", id } instead.' }],
+					details: {},
+				};
 			}
 			if (timeout !== undefined && !(Number.isFinite(timeout) && timeout > 0)) {
 				return { content: [{ type: "text", text: `Invalid timeout: ${timeout} — pass a positive number of seconds.` }], details: {} };
@@ -238,6 +266,25 @@ function bashTool(deps: ToolDeps): AgentHarnessTool<ExecutionToolContext, TSchem
 			}
 			const { env } = context;
 			try {
+				if (background) {
+					if (!deps.tasks) return { content: [{ type: "text", text: "Background tasks are not available in this session." }], details: {} };
+					const started = await deps.tasks.start({
+						command,
+						env: createExecutionEnv("", deps.permission),
+						...(grantedMode ? { sandboxMode: grantedMode } : {}),
+					});
+					if (!started.ok) return { content: [{ type: "text", text: `Failed to start: ${started.error}` }], details: {} };
+					const task = started.task;
+					return {
+						content: [
+							{
+								type: "text",
+								text: `Started task ${task.id} (pid ${task.pid ?? "?"}) in the background.\nNotify me when it ends:  task { op: "subscribe", id: "${task.id}" }\nRead its output now:     task { op: "read", id: "${task.id}" }`,
+							},
+						],
+						details: { taskId: task.id },
+					};
+				}
 				const timeoutSec =
 					timeout !== undefined && timeout > 0 ? timeout : settings.bash?.timeoutSec && settings.bash.timeoutSec > 0 ? settings.bash.timeoutSec : DEFAULT_BASH_TIMEOUT_SEC;
 				const { stdout, stderr, exitCode } = await runBash(env, command, { timeout: timeoutSec, abortSignal: signal, sandboxMode: grantedMode });
@@ -427,6 +474,54 @@ function mcpCallTool(deps: ToolDeps): AgentTool<typeof mcpCallSchema, McpCallDet
 	};
 }
 
+const taskSchema = Type.Object({
+	op: Type.Union([Type.Literal("read"), Type.Literal("subscribe"), Type.Literal("stop")], {
+		description: 'What to do with the task: "read" its output tail, "subscribe" to be notified when it ends, or "stop" it.',
+	}),
+	id: Type.String({ description: "Task id returned by bash with background: true." }),
+	lines: Type.Optional(Type.Number({ description: "read: how many tail lines to return. Defaults to 200." })),
+	remind_after: Type.Optional(Type.Number({ description: "subscribe: seconds until a one-off reminder that the task is still running. Defaults to 180. Does not kill the task." })),
+});
+
+type TaskDetails = { ok: boolean };
+
+function taskTool(deps: ToolDeps): AgentTool<typeof taskSchema, TaskDetails> {
+	return {
+		name: "task",
+		label: "Task",
+		description:
+			"Inspect or stop a background task started by bash with background: true.\n" +
+			"- read: the last lines of its output, plus its status and exit code.\n" +
+			"- subscribe: get a follow-up message when the task ends (once). If it is still running after `remind_after` seconds you also get one reminder; the task keeps running.\n" +
+			"- stop: kill the task's process group.",
+		parameters: taskSchema,
+		async execute(_toolCallId, { op, id, lines, remind_after }) {
+			if (!deps.tasks) return { content: [{ type: "text", text: "Background tasks are not available in this session." }], details: { ok: false } };
+			if (op === "read") {
+				const result = await deps.tasks.read(id, lines !== undefined ? { lines } : {});
+				if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { ok: false } };
+				const head = `${result.status}${result.exitCode !== undefined ? ` · exit ${result.exitCode}` : ""} · ${result.bytes} bytes`;
+				const text = result.text.trim() ? `${head}\n\n${result.text}` : head;
+				return { content: [{ type: "text", text }], details: { ok: true } };
+			}
+			if (op === "subscribe") {
+				const result = await deps.tasks.subscribe(id, remind_after);
+				if (!result.ok) return { content: [{ type: "text", text: result.error }], details: { ok: false } };
+				if (result.exited) {
+					const code = result.exitCode !== undefined ? ` with exit code ${result.exitCode}` : "";
+					return { content: [{ type: "text", text: `Task ${id} already ended${code}.` }], details: { ok: true } };
+				}
+				return {
+					content: [{ type: "text", text: `Subscribed. I will be messaged when ${id} ends, and reminded after ${result.remindAfter}s if it is still running.` }],
+					details: { ok: true },
+				};
+			}
+			const result = await deps.tasks.stop(id, "model");
+			return { content: [{ type: "text", text: result.ok ? `Stopped task ${id}.` : (result.error ?? "stop failed") }], details: { ok: result.ok } };
+		},
+	};
+}
+
 export function createTools(deps: ToolDeps): AgentTool[] {
 	const env = createExecutionEnv("", deps.permission);
 	const trash = trashDirOf(deps);
@@ -442,6 +537,7 @@ export function createTools(deps: ToolDeps): AgentTool[] {
 		mcpListTool(deps),
 		mcpCallTool(deps),
 		rmTool(deps),
+		taskTool(deps),
 	];
 }
 

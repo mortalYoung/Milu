@@ -3,7 +3,7 @@ import type { ElectrobunRPCSchema } from "electrobun/main";
 import type { CustomModel, CustomProvider, ThemeMode, ToastPlacement } from "../bun/lib/settings";
 import type { McpConfig, McpLifecycle, McpServerConfig, McpServerStatusState } from "../bun/mcp/types";
 import type { SandboxMode } from "../bun/permission/types";
-import type { MemoryRunEndReason, MemoryRunStage, MemoryRunTraceEvent } from "./events";
+import type { MemoryRunEndReason, MemoryRunStage, MemoryRunTraceEvent, TaskStatus } from "./events";
 
 export type { CustomModel, CustomProvider, McpServerStatusState, SandboxMode, ThemeMode, ToastPlacement };
 
@@ -80,6 +80,20 @@ export interface QueuedMessageRpc {
 	content: string;
 	timestamp: number;
 	failed?: boolean;
+	source?: "user" | "task";
+	taskId?: string;
+}
+
+export interface TaskSummary {
+	id: string;
+	command: string;
+	status: TaskStatus;
+	pid?: number;
+	exitCode?: number;
+	signalCode?: string;
+	startedAt: number;
+	endedAt?: number;
+	bytes: number;
 }
 
 export interface ViewItem {
@@ -477,6 +491,45 @@ export type AppRPCSchema = __schema<{
 			follow_up_list: {
 				params: { name: string };
 				response: { items: QueuedMessageRpc[] };
+			};
+
+			task_list: {
+				params: { name: string };
+				response: { tasks: TaskSummary[] };
+			};
+
+			task_read: {
+				params: { name: string; id: string; offset?: number; before?: number; lines?: number };
+				response: {
+					ok: boolean;
+					error?: string;
+					text?: string;
+					nextOffset?: number;
+					startOffset?: number;
+					hasMore?: boolean;
+					eof?: boolean;
+					reset?: boolean;
+					truncated?: boolean;
+					status?: TaskStatus;
+					exitCode?: number;
+					bytes?: number;
+				};
+			};
+
+			task_stop: {
+				params: { name: string; id: string };
+				response: { ok: boolean; error?: string };
+			};
+
+			task_search: {
+				params: { name: string; id: string; query: string; limit?: number };
+				response: {
+					ok: boolean;
+					error?: string;
+					total?: number;
+					matches?: Array<{ line: number; text: string }>;
+					truncated?: boolean;
+				};
 			};
 
 			cancel_follow_up: {
@@ -1073,6 +1126,7 @@ export type AppRPCSchema = __schema<{
 			menu_command: { action: string };
 			skill_update: {};
 			shell_update: {};
+			task_update: { taskId: string; kind: "started" | "output" | "ended" };
 		};
 	};
 }>;

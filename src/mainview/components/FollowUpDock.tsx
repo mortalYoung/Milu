@@ -28,19 +28,30 @@ export function FollowUpDock() {
 							<button type="button" class="followup-dock-x" aria-label="Cancel queued message" onClick={() => void inbox.cancel(partner(), item.id)}>
 								<X size={12} />
 							</button>
-							<button
-								type="button"
-								class="followup-dock-edit"
-								title={item.content}
-								onClick={() => {
-									void inbox.cancel(partner(), item.id);
-									composer.prefill(item.content);
-								}}
+							<Show
+								when={item.source !== "task"}
+								fallback={
+									<div class="followup-dock-edit static">
+										<span class="followup-dock-task">task</span>
+										<p class="followup-dock-text">{item.content}</p>
+										<span class="followup-dock-time">{clock(item.timestamp)}</span>
+									</div>
+								}
 							>
-								<p class="followup-dock-text">{item.content}</p>
-								{item.failed && <span class="followup-dock-fail">failed</span>}
-								<span class="followup-dock-time">{clock(item.timestamp)}</span>
-							</button>
+								<button
+									type="button"
+									class="followup-dock-edit"
+									title={item.content}
+									onClick={() => {
+										void inbox.cancel(partner(), item.id);
+										composer.prefill(item.content);
+									}}
+								>
+									<p class="followup-dock-text">{item.content}</p>
+									{item.failed && <span class="followup-dock-fail">failed</span>}
+									<span class="followup-dock-time">{clock(item.timestamp)}</span>
+								</button>
+							</Show>
 						</div>
 					)}
 				</For>
