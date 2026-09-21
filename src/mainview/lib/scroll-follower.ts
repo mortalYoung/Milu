@@ -9,6 +9,7 @@ export interface ScrollFollower {
 	offsetInContent: (el: HTMLElement) => number;
 	hold: () => void;
 	pin: (force?: boolean) => void;
+	pinNow: (force?: boolean) => void;
 	locate: (id: number) => void;
 }
 
@@ -50,15 +51,19 @@ export function createScrollFollower(transcript: Pick<TranscriptController, "sto
 		setFollowing(true);
 	}
 
+	function pinNow(force = false) {
+		const el = containerEl;
+		if (!el) return;
+		if (!force && (!following() || hasTextSelection())) return;
+		writeScrollTop(el, el.scrollHeight);
+		followBottom();
+	}
+
 	function pin(force = false) {
 		if (pinRaf != null) cancelAnimationFrame(pinRaf);
 		pinRaf = requestAnimationFrame(() => {
 			pinRaf = null;
-			const el = containerEl;
-			if (!el) return;
-			if (!force && (!following() || hasTextSelection())) return;
-			writeScrollTop(el, el.scrollHeight);
-			followBottom();
+			pinNow(force);
 		});
 	}
 
@@ -177,6 +182,7 @@ export function createScrollFollower(transcript: Pick<TranscriptController, "sto
 		offsetInContent: (el: HTMLElement) => el.getBoundingClientRect().top - (contentElValue?.getBoundingClientRect().top ?? 0),
 		hold,
 		pin,
+		pinNow,
 		locate: (id: number) => {
 			const el = document.getElementById("entry-" + id);
 			if (!el) return;

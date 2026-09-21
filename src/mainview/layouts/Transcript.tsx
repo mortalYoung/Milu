@@ -1,6 +1,6 @@
 import { Check, ChevronRight, CircleStop, Pencil } from "lucide-react";
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { EVENTS } from "../../shared/events";
 import { BtwPanel } from "../components/BtwPanel";
@@ -44,7 +44,7 @@ function hasTextSelection(): boolean {
 function Markdown(props: { text: string; files?: string[]; class?: string }) {
 	const ref = useRef<HTMLDivElement>(null);
 
-	useEffect(() => {
+	useLayoutEffect(() => {
 		const el = ref.current;
 		if (!el) return;
 		let cancelled = false;

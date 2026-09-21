@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useLayoutEffect } from "react";
 import { useStore } from "zustand";
 import { Show } from "../lib/jsx";
 import type { ScrollFollower } from "../lib/scroll-follower";
@@ -14,6 +14,10 @@ export function ScrollRegion(props: {
 	children: ReactNode;
 }) {
 	const following = useStore(props.scroll.store, (state) => state.following);
+
+	useLayoutEffect(() => {
+		props.scroll.pinNow();
+	});
 
 	return (
 		<div className="relative flex-1 min-h-0 flex flex-col">
