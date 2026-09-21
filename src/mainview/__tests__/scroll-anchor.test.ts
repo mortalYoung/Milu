@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { classifyReader, compensatedTop, distanceToBottom, FOLLOW_THRESHOLD, floorTop, isAtBottom } from "./scroll-anchor";
+import { classifyReader, compensatedTop, distanceToBottom, FOLLOW_THRESHOLD, floorTop, isAtBottom } from "../lib/scroll-anchor";
 
 describe("follow threshold", () => {
 	test("FOLLOW_THRESHOLD is 24px, at bottom means ≤ 24 + 1", () => {

@@ -2,7 +2,11 @@ import { Switch as SwitchPrimitive } from "radix-ui";
 import type { ComponentProps } from "react";
 import { cn } from "../../lib/utils";
 
-export function Switch({ className, onChange, ...rest }: Omit<ComponentProps<typeof SwitchPrimitive.Root>, "onCheckedChange"> & { onChange?: (checked: boolean) => void }) {
+export function Switch({
+	className,
+	onChange,
+	...rest
+}: Omit<ComponentProps<typeof SwitchPrimitive.Root>, "onCheckedChange" | "onChange"> & { onChange?: (checked: boolean) => void }) {
 	return (
 		<SwitchPrimitive.Root
 			className={cn(

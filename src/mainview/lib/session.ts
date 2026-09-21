@@ -37,6 +37,8 @@ export interface SessionData {
 
 const EMPTY_ORIGIN: OriginData = { entries: [], hasMore: false, total: 0, loading: false, baseDir: null };
 
+export type Session = ReturnType<typeof createSession>;
+
 export function createSession(rpc: RPC) {
 	const store = createStore<SessionData>()(() => ({ selected: null, partners: [], origin: EMPTY_ORIGIN }));
 	const historyLoading = createInFlightBoolean();

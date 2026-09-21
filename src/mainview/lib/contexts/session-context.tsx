@@ -1,7 +1,7 @@
 import { createContext, type ReactNode, useContext } from "react";
-import type { createSession } from "../session";
+import type { Session } from "../session";
 
-export type Session = ReturnType<typeof createSession>;
+export type { Session };
 
 const SessionContext = createContext<Session | undefined>(undefined);
 

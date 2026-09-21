@@ -1,0 +1,166 @@
+import { useEffect, useState } from "react";
+import type { MemoryRunUsage, MemoryRunView, MemoryTrajectoryMessageView } from "../../shared/rpc";
+import { convTime } from "../lib/chat-preview";
+import { rpc } from "../lib/rpc";
+import { formatTokens } from "../lib/utils";
+import { Dialog, DialogContent, DialogTitle } from "./ui/dialog";
+
+const MONO = "font-mono tabular-nums";
+
+function totalTokens(usage: MemoryRunUsage): number {
+	return usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
+}
+
+function usageTitle(usage: MemoryRunUsage): string {
+	return `${usage.calls} calls · in ${usage.input} · out ${usage.output} · cache read ${usage.cacheRead} · cache write ${usage.cacheWrite}`;
+}
+
+function preview(message: MemoryTrajectoryMessageView): string {
+	const text = (message.text ?? message.thinking ?? "").replace(/\s+/g, " ").trim();
+	if (text) return text;
+	const calls = message.toolCalls?.map((call) => call.name).join(", ");
+	return calls ? `${calls}(…)` : "—";
+}
+
+function chars(message: MemoryTrajectoryMessageView): string {
+	const size = (message.text?.length ?? 0) + (message.thinking?.length ?? 0) + (message.toolCalls?.reduce((acc, call) => acc + call.args.length, 0) ?? 0);
+	return size > 0 ? `${size.toLocaleString()} chars` : "";
+}
+
+function hasBody(message: MemoryTrajectoryMessageView): boolean {
+	return Boolean(message.text || message.thinking || message.toolCalls?.length || message.errorMessage);
+}
+
+function MessageLabel({ message }: { message: MemoryTrajectoryMessageView }) {
+	return (
+		<>
+			<span className="shrink-0 rounded-[3px] border border-hairline px-1 py-[1px] font-mono text-[9.5px] uppercase tracking-[0.06em] text-body-muted">
+				{message.toolName ? `${message.role} · ${message.toolName}` : message.role}
+				{message.isError ? " · error" : ""}
+				{message.errorMessage ? ` · ${message.stopReason ?? "error"}` : ""}
+			</span>
+			<span className="min-w-0 flex-1 truncate font-mono text-[10.5px] text-ink">{preview(message)}</span>
+			<span className={`shrink-0 text-[10px] ${MONO} text-muted`}>{chars(message)}</span>
+		</>
+	);
+}
+
+function Block({ label, text }: { label: string; text: string }) {
+	return (
+		<div className="flex flex-col gap-1">
+			<p className="font-sans text-[9.5px] font-semibold uppercase tracking-[0.12em] text-muted">{label}</p>
+			<pre className="max-h-[320px] overflow-auto whitespace-pre-wrap break-words rounded border border-hairline bg-paper px-2 py-1.5 font-mono text-[10.5px] leading-[1.55] text-body-muted">
+				{text}
+			</pre>
+		</div>
+	);
+}
+
+export function MemoryTrajectoryDialog(props: { partner: string; run: MemoryRunView | null; onClose: () => void }) {
+	const [openMessage, setOpenMessage] = useState<string | null>(null);
+	const [trace, setTrace] = useState<Awaited<ReturnType<typeof rpc.request.memory_run_trace>>["run"] | null>(null);
+
+	useEffect(() => {
+		if (!props.run) {
+			setTrace(null);
+			return;
+		}
+		let cancelled = false;
+		const key = { name: props.partner, runId: props.run.runId };
+		void rpc.request.memory_run_trace(key).then((res) => {
+			if (!cancelled) setTrace(res.run);
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, [props.run, props.partner]);
+
+	const counts = (() => {
+		const byType = new Map<string, number>();
+		for (const event of trace?.trace ?? []) byType.set(event.event, (byType.get(event.event) ?? 0) + 1);
+		return [...byType.entries()];
+	})();
+
+	return (
+		<Dialog open={props.run != null} onOpenChange={(open) => !open && props.onClose()}>
+			<DialogContent
+				focusClose
+				layerClass="z-[60]"
+				overlayClass="bg-background/45"
+				className="z-[60] w-[1040px] max-w-[min(1040px,92vw)] h-[min(720px,84vh)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden border-print-line bg-letter text-ink p-0"
+			>
+				<DialogTitle className="sr-only">Memory run trajectory</DialogTitle>
+				{props.run && (
+					<>
+						<header className="flex flex-col gap-1.5 border-b border-hairline px-5 pb-3 pt-4 pr-12">
+							<div className="flex items-baseline gap-2">
+								<span className="font-sans text-[13px] font-semibold text-ink">{props.run.stage} run</span>
+								<span className={"font-mono text-[10.5px] " + (props.run.reason === "completed" ? "text-body-muted" : "text-seal")}>{props.run.reason}</span>
+								<span className="ml-auto font-mono text-[10.5px] text-muted">{convTime(props.run.startedAt)}</span>
+							</div>
+							<div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10.5px] text-muted">
+								<span>{(props.run.durationMs / 1000).toFixed(1)}s</span>
+								<span>+{props.run.added} added</span>
+								{props.run.usage && <span title={usageTitle(props.run.usage)}>{formatTokens(totalTokens(props.run.usage))} tok</span>}
+								<span>{(props.run.bytes / 1024).toFixed(1)} KB</span>
+								{trace?.model && <span>{trace.model}</span>}
+								{trace?.attempts != null && <span>{trace.attempts} attempt(s)</span>}
+								{trace?.targetRawId && <span>covered {trace.targetRawId.slice(0, 8)}…</span>}
+							</div>
+							{props.run.error && <p className="font-mono text-[10.5px] text-seal">{props.run.error}</p>}
+							{counts.length > 0 && (
+								<div className="mt-0.5 flex flex-wrap gap-1.5">
+									{counts.map(([type, count]) => (
+										<span className="rounded-[3px] border border-hairline px-1.5 py-[1px] font-mono text-[9.5px] text-body-muted" key={type}>
+											{type} × {count}
+										</span>
+									))}
+								</div>
+							)}
+						</header>
+
+						<div className="min-h-0 overflow-y-auto px-5 py-3">
+							{(trace?.attemptsView ?? []).map((attempt) => (
+								<section className="mb-3" key={attempt.attempt}>
+									<p className="mb-1 font-sans text-[9.5px] font-semibold uppercase tracking-[0.12em] text-muted">attempt {attempt.attempt}</p>
+									{attempt.messages.map((message, index) => {
+										const key = `${attempt.attempt}-${index}`;
+										const body = hasBody(message);
+										return (
+											<div className="border-b border-hairline last:border-b-0" key={key}>
+												{body ? (
+													<button
+														type="button"
+														className="memory-row flex w-full items-baseline gap-2 py-1.5 text-left"
+														aria-expanded={openMessage === key}
+														onClick={() => setOpenMessage(openMessage === key ? null : key)}
+													>
+														<MessageLabel message={message} />
+													</button>
+												) : (
+													<div className="flex w-full items-baseline gap-2 py-1.5">
+														<MessageLabel message={message} />
+													</div>
+												)}
+												{openMessage === key && (
+													<div className="flex flex-col gap-2 pb-3 pl-1">
+														{message.errorMessage && <Block label={`error · ${message.stopReason ?? "error"}`} text={message.errorMessage} />}
+														{message.thinking && <Block label="thinking" text={message.thinking} />}
+														{message.text && <Block label="text" text={message.text} />}
+														{(message.toolCalls ?? []).map((call, callIndex) => (
+															<Block label={`tool call · ${call.name}`} text={call.args} key={`${key}:${callIndex}`} />
+														))}
+													</div>
+												)}
+											</div>
+										);
+									})}
+								</section>
+							))}
+						</div>
+					</>
+				)}
+			</DialogContent>
+		</Dialog>
+	);
+}
