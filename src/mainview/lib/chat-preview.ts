@@ -1,4 +1,4 @@
-import type { PartnerItem } from "../components/ConversationList";
+import type { PartnerItem } from "./session";
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const pad = (n: number) => String(n).padStart(2, "0");
