@@ -478,3 +478,30 @@ function withCopyButtons(html: string): string {
 		return `<div class="md-code"><button type="button" class="md-copy" aria-label="Copy code">${COPY_ICON_SVG}</button><pre${attrs}>${body}</pre></div>`;
 	});
 }
+
+const COPY_RESET_MS = 1200;
+const copyTimers = new WeakMap<Element, ReturnType<typeof setTimeout>>();
+
+/** One delegated listener for every code block the renderer emits — the buttons live inside
+ * `innerHTML`, so delegation is the only place that can hear them. */
+export function installCodeCopyHandler(): void {
+	document.addEventListener("click", (event) => {
+		const target = event.target;
+		if (!(target instanceof Element)) return;
+		const button = target.closest(".md-copy");
+		if (!(button instanceof HTMLElement)) return;
+		const code = button.parentElement?.querySelector("pre")?.textContent;
+		if (code == null) return;
+		void navigator.clipboard?.writeText(code).catch(() => {});
+		button.classList.add("copied");
+		button.innerHTML = COPIED_ICON_SVG;
+		clearTimeout(copyTimers.get(button));
+		copyTimers.set(
+			button,
+			setTimeout(() => {
+				button.classList.remove("copied");
+				button.innerHTML = COPY_ICON_SVG;
+			}, COPY_RESET_MS),
+		);
+	});
+}

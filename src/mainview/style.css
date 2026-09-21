@@ -532,6 +532,9 @@ body::before {
 		outline: 2px solid var(--color-seal);
 		outline-offset: 1px;
 	}
+	.md-code .md-copy.copied {
+		@apply border-seal/40 text-seal opacity-100;
+	}
 	@media (hover: hover) and (pointer: fine) {
 		.md-code:hover .md-copy {
 			opacity: 1;

@@ -5,6 +5,7 @@ import { createComposer } from "./composer";
 import { createDashboard } from "./dashboard";
 import { createDock } from "./dock";
 import { createInbox } from "./inbox";
+import { installCodeCopyHandler } from "./markdown";
 import { watchMenuState } from "./menu-state";
 import { createMetrics } from "./metrics";
 import { createPalette } from "./palette";
@@ -52,6 +53,7 @@ export const agentEvents = createAgentEvents(rpc, {
 });
 
 export function boot() {
+	installCodeCopyHandler();
 	agentEvents.install();
 	status.install();
 	skills.install();
