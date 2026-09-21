@@ -820,7 +820,8 @@ body::before {
 		@apply items-start;
 	}
 	.btw-flow-content {
-		@apply max-w-full min-w-0 break-words text-ink;
+		@apply max-w-full min-w-0 text-ink;
+		overflow-wrap: anywhere;
 	}
 	.btw-flow-content.md {
 		font-size: 13.5px;
@@ -1081,7 +1082,8 @@ body::before {
 		@apply flex flex-col items-end self-end;
 	}
 	.msg-user {
-		@apply mt-6 max-w-full bg-ink text-paper font-serif text-[16px] leading-[1.5] whitespace-pre-wrap break-words rounded-[10px] px-[15px] py-[10px];
+		@apply mt-6 max-w-full bg-ink text-paper font-serif text-[16px] leading-[1.5] whitespace-pre-wrap rounded-[10px] px-[15px] py-[10px];
+		overflow-wrap: anywhere;
 	}
 	.msg-user-time {
 		@apply font-sans text-[10.5px] text-seal tracking-[0.05em] mt-1.5;
@@ -1191,6 +1193,7 @@ body::before {
 	}
 	.msg-command-args.is-shell-out {
 		@apply font-mono text-[11.5px] whitespace-pre-wrap;
+		overflow-wrap: anywhere;
 		max-height: 320px;
 		overflow-y: auto;
 	}
@@ -1222,7 +1225,8 @@ body::before {
 		@apply self-start mt-6 relative bg-letter border border-hairline rounded-[10px] px-[18px] pt-[17px] pb-3 min-w-0 w-full max-w-full;
 	}
 	.msg-letter-text {
-		@apply font-serif text-[16px] leading-[1.62] break-words text-ink;
+		@apply font-serif text-[16px] leading-[1.62] text-ink;
+		overflow-wrap: anywhere;
 	}
 
 	.msg-postmark {
