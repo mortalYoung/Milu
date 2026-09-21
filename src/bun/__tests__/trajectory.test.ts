@@ -7,7 +7,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Entry } from "@earendil-works/pi-agent-core";
 import { scan } from "../../shared/trajectory";
-import { aggregateUsage, buildData, lastUsage } from "../core/trajectory";
+import { aggregateUsage, buildData, lastTrajectoryUsage, lastUsage } from "../core/trajectory";
 
 let counter = 1;
 function entry(partial: Record<string, unknown>): Entry {
@@ -97,6 +97,17 @@ describe("lastUsage last-turn usage extraction", () => {
 	test("later assistant without usage does not clear the last usage", () => {
 		const usage = lastUsage([userEntry("q"), assistantEntry([{ type: "text", text: "a" }], { input: 10, output: 5 }), assistantEntry([{ type: "text", text: "b" }])]);
 		expect(usage).toEqual({ input: 10, output: 5, cacheRead: 0, cacheWrite: 0, totalTokens: 0 });
+	});
+
+	test("an aborted turn's empty usage does not clear the last usage", () => {
+		const entries = [
+			userEntry("q"),
+			assistantEntry([{ type: "text", text: "a" }], { input: 9000, output: 300, cacheRead: 20000, cacheWrite: 1000 }),
+			userEntry("aborted prompt"),
+			assistantEntry([{ type: "thinking", thinking: "…" }], { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0 }),
+		];
+		expect(lastUsage(entries)).toEqual({ input: 9000, output: 300, cacheRead: 20000, cacheWrite: 1000, totalTokens: 0 });
+		expect(lastTrajectoryUsage(entries)).toEqual({ input: 9000, output: 300, cacheRead: 20000, cacheWrite: 1000, totalTokens: 0 });
 	});
 
 	test("usage passes through custom entries untouched", () => {

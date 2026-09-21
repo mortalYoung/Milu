@@ -29,12 +29,17 @@ export function aggregateUsage(entries: Entry[]): UsageTotals | null {
 	return totals;
 }
 
+/** An aborted turn still writes an assistant message, but its usage comes back empty — that is not a
+ * sample of the context, so it must not displace the last real one. */
+const hasUsageSample = (usage: { input?: number; output?: number; cacheRead?: number; cacheWrite?: number }) =>
+	(usage.input ?? 0) + (usage.output ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0) > 0;
+
 export function lastUsage(entries: Entry[]): Usage | null {
 	let last: Usage | null = null;
 	for (const entry of entries) {
 		if (entry.type !== "message") continue;
 		const msg = entry.message;
-		if (msg.role !== "assistant" || !msg.usage) continue;
+		if (msg.role !== "assistant" || !msg.usage || !hasUsageSample(msg.usage)) continue;
 		last = toUsage(msg.usage);
 	}
 	return last;
@@ -45,7 +50,7 @@ export function lastTrajectoryUsage(entries: Entry[]): TrajectoryUsage | null {
 	for (const entry of entries) {
 		if (entry.type !== "message") continue;
 		const msg = entry.message;
-		if (msg.role !== "assistant" || !msg.usage) continue;
+		if (msg.role !== "assistant" || !msg.usage || !hasUsageSample(msg.usage)) continue;
 		const u = toTrajectoryUsage(msg.usage);
 		if (u) last = u;
 	}
