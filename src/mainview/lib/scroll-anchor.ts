@@ -33,6 +33,23 @@ export interface ScrollAnchor {
 	key: string;
 
 	anchorTop: number;
-
-	scrollTop: number;
 }
+
+/** A row of a fixed-height list, held by key so it survives the rows being unmounted (virtualized)
+ * or rows being prepended above it. */
+export interface RowAnchor {
+	key: string;
+
+	within: number;
+}
+
+export const rowAnchorAt = (scrollTop: number, origin: number, rowHeight: number, keyAt: (index: number) => string | undefined): RowAnchor | null => {
+	const index = Math.max(0, Math.floor((scrollTop - origin) / rowHeight));
+	const key = keyAt(index);
+	if (key === undefined) return null;
+	return { key, within: scrollTop - origin - index * rowHeight };
+};
+
+export const rowAnchorTop = (anchor: RowAnchor, index: number, origin: number, rowHeight: number) => origin + index * rowHeight + anchor.within;
+
+export const rowTopForIndex = (index: number, rowHeight: number, origin: number, clientHeight: number) => Math.max(0, index * rowHeight + origin - (clientHeight - rowHeight) / 2);

@@ -11,6 +11,7 @@ export function ScrollRegion(props: {
 	innerClass?: string;
 	innerClassList?: Record<string, boolean | undefined>;
 	ariaLive?: "polite";
+	onScroll?: (el: HTMLElement) => void;
 	children: ReactNode;
 }) {
 	const following = useStore(props.scroll.store, (state) => state.following);
@@ -21,7 +22,13 @@ export function ScrollRegion(props: {
 
 	return (
 		<div className="relative flex-1 min-h-0 flex flex-col">
-			<section id={props.id} aria-live={props.ariaLive} ref={props.scroll.setContainer} className={cn("scroll-region overflow-y-auto overscroll-contain", props.class)}>
+			<section
+				id={props.id}
+				aria-live={props.ariaLive}
+				ref={props.scroll.setContainer}
+				onScroll={props.onScroll ? (event) => props.onScroll?.(event.currentTarget) : undefined}
+				className={cn("scroll-region overflow-y-auto overscroll-contain", props.class)}
+			>
 				<div ref={props.scroll.setContent} className={cn(props.innerClass, props.innerClassList)}>
 					{props.children}
 				</div>

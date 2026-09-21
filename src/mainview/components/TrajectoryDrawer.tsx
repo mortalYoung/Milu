@@ -7,7 +7,10 @@ import { scan } from "../../shared/trajectory";
 import { useSession } from "../lib/contexts/session-context";
 import { useTrajectory } from "../lib/contexts/trajectory-context";
 import { ESCAPE_ORDER, useEscapeLayer } from "../lib/escape";
+import { rowAnchorAt, rowAnchorTop, rowTopForIndex } from "../lib/scroll-anchor";
+import { createScrollFollower } from "../lib/scroll-follower";
 import type { TrajectoryMode } from "../lib/trajectory";
+import { ScrollRegion } from "./ScrollRegion";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const fmtDateTime = (ts: number) => {
@@ -33,6 +36,15 @@ const ROW_H = 28;
 const BAND_COL = 18;
 const BAND_WINDOW = 80;
 const BAND_BUFFER = 30;
+const GRID_CLASS = "traj-grid";
+
+/** Content offset of the first virtual row: the grid sits below the load-earlier button, so the
+ * anchor arithmetic starts where the grid starts, not where the scroller's content starts. */
+function rowOrigin(el: HTMLElement): number {
+	const grid = el.querySelector<HTMLElement>(`.${GRID_CLASS}`);
+	if (!grid) return 0;
+	return grid.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop;
+}
 
 export function TrajectoryDrawer() {
 	const trajectory = useTrajectory();
@@ -76,11 +88,12 @@ function DrawerContent(props: {
 	const [bandStart, setBandStart] = useState(0);
 	const [fade, setFade] = useState({ left: false, right: false });
 
-	const listRef = useRef<HTMLDivElement>(null);
+	const trajectory = useTrajectory();
+
 	const bandRef = useRef<HTMLDivElement>(null);
 	const drawerRef = useRef<HTMLDivElement>(null);
 	const popRef = useRef<HTMLDivElement>(null);
-	const suppressAutoScroll = useRef(false);
+	const rowsRef = useRef<FlatRow[]>([]);
 
 	const summary = useMemo(() => scan(props.records), [props.records]);
 	const rows = summary.data;
@@ -122,11 +135,31 @@ function DrawerContent(props: {
 		}
 		return out.map((row, i) => ({ ...row, runStart: i === 0 || out[i - 1]!.record.run !== row.record.run }));
 	}, [rows]);
+	rowsRef.current = flatRows;
+
+	const scroll = useMemo(
+		() =>
+			createScrollFollower({
+				source: (onChange) =>
+					trajectory.store.subscribe((state, previous) => {
+						if (state.records === previous.records) return;
+						onChange(state.records.length === 0);
+					}),
+				anchor: {
+					capture: (el) => rowAnchorAt(el.scrollTop, rowOrigin(el), ROW_H, (index) => rowsRef.current[index]?.key),
+					compensate: (el, saved) => {
+						const index = rowsRef.current.findIndex((row) => row.key === saved.key);
+						return index < 0 ? null : rowAnchorTop(saved, index, rowOrigin(el), ROW_H);
+					},
+				},
+			}),
+		[trajectory],
+	);
 
 	const virtualizer = useVirtualizer({
 		count: flatRows.length,
 		estimateSize: () => ROW_H,
-		getScrollElement: () => listRef.current,
+		getScrollElement: () => scroll.store.getState().containerEl,
 		overscan: 10,
 	});
 
@@ -146,8 +179,9 @@ function DrawerContent(props: {
 
 	const locate = (key: string) => {
 		const index = flatRows.findIndex((row) => row.key === key);
-		if (index < 0) return;
-		virtualizer.scrollToIndex(index, { align: "center" });
+		const el = scroll.store.getState().containerEl;
+		if (index < 0 || !el) return;
+		scroll.seek(rowTopForIndex(index, ROW_H, rowOrigin(el), el.clientHeight));
 		setSelectedKey(key);
 	};
 
@@ -209,16 +243,11 @@ function DrawerContent(props: {
 	};
 
 	useEffect(() => {
-		if (suppressAutoScroll.current) return;
+		if (!scroll.store.getState().following) return;
 		const el = bandRef.current;
 		if (el) el.scrollLeft = el.scrollWidth;
 		checkFade();
-		const scrollBottom = () => {
-			if (flatRows.length > 0) virtualizer.scrollToIndex(flatRows.length - 1, { align: "end" });
-		};
-		queueMicrotask(scrollBottom);
-		requestAnimationFrame(scrollBottom);
-	}, [flatRows]);
+	}, [flatRows, scroll]);
 
 	useEffect(() => {
 		const el = bandRef.current;
@@ -235,20 +264,9 @@ function DrawerContent(props: {
 		close: () => setSelectedKey(null),
 	});
 
-	const loadOlderKeep = async () => {
-		suppressAutoScroll.current = true;
-		try {
-			const el = listRef.current;
-			const before = el?.scrollTop ?? 0;
-			const countBefore = flatRows.length;
-			await props.onLoadOlder();
-			queueMicrotask(() => {
-				if (!listRef.current) return;
-				listRef.current.scrollTop = before + (flatRows.length - countBefore) * ROW_H;
-			});
-		} finally {
-			suppressAutoScroll.current = false;
-		}
+	const loadOlder = () => {
+		scroll.hold();
+		void props.onLoadOlder();
 	};
 
 	const countText =
@@ -419,19 +437,13 @@ function DrawerContent(props: {
 						{fade.right && <span className="traj-fade right" />}
 					</div>
 
-					<div
-						className="traj-all"
-						ref={listRef}
-						onScroll={() => {
-							if (selectedKey != null) setSelectedKey(null);
-						}}
-					>
+					<ScrollRegion scroll={scroll} class="traj-all" onScroll={() => selectedKey != null && setSelectedKey(null)}>
 						{props.hasMore && (
-							<button type="button" className="traj-load-earlier" onClick={() => void loadOlderKeep()} disabled={props.loadingOlder}>
+							<button type="button" className="traj-load-earlier" onClick={loadOlder} disabled={props.loadingOlder}>
 								{props.loadingOlder ? "loading…" : "↑ load earlier"}
 							</button>
 						)}
-						<div style={{ height: `${totalSize}px`, position: "relative", width: "100%" }}>
+						<div className={GRID_CLASS} style={{ height: `${totalSize}px`, position: "relative", width: "100%" }}>
 							{virtualItems.map((item) => {
 								const row = flatRows[item.index];
 								return (
@@ -441,7 +453,7 @@ function DrawerContent(props: {
 								);
 							})}
 						</div>
-					</div>
+					</ScrollRegion>
 				</>
 			)}
 

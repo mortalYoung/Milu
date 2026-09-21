@@ -11,6 +11,9 @@ import {
 	inputWindowFor,
 	isAtBottom,
 	looksForeign,
+	rowAnchorAt,
+	rowAnchorTop,
+	rowTopForIndex,
 } from "../lib/scroll-anchor";
 
 describe("follow threshold", () => {
@@ -65,6 +68,31 @@ describe("input window", () => {
 	test("exactly one viewport is not enough to call it foreign", () => {
 		expect(looksForeign(687, 687, 5000)).toBe(false);
 		expect(looksForeign(688, 687, 5000)).toBe(true);
+	});
+});
+
+describe("fixed-height row anchor", () => {
+	const keyAt = (index: number) => (index < 0 || index > 99 ? undefined : `row-${index}`);
+
+	test("captures the first visible row and how far into it the viewport starts", () => {
+		expect(rowAnchorAt(0, 0, 28, keyAt)).toEqual({ key: "row-0", within: 0 });
+		expect(rowAnchorAt(100, 0, 28, keyAt)).toEqual({ key: "row-3", within: 16 });
+	});
+	test("an origin above the rows (a load-earlier button, padding) shifts the row count, not the anchor", () => {
+		expect(rowAnchorAt(100, 40, 28, keyAt)).toEqual({ key: "row-2", within: 4 });
+	});
+	test("an empty list has no anchor", () => {
+		expect(rowAnchorAt(100, 0, 28, () => undefined)).toBeNull();
+	});
+	test("compensation keeps the row where it was, even after rows were prepended above it", () => {
+		const anchor = rowAnchorAt(100, 0, 28, keyAt)!;
+		// 同一个 key 前面插了 5 行 → 现在是第 8 行；行的内容坐标 = 140 + (100 - 16)
+		expect(rowAnchorTop(anchor, 8, 0, 28)).toBe(240);
+		expect(rowAnchorTop(anchor, 8, 40, 28)).toBe(280);
+	});
+	test("centring a row lands it in the middle of the viewport, never above the top", () => {
+		expect(rowTopForIndex(20, 28, 0, 400)).toBe(374);
+		expect(rowTopForIndex(2, 28, 0, 400)).toBe(0);
 	});
 });
 

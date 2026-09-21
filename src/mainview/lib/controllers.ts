@@ -10,7 +10,7 @@ import { watchMenuState } from "./menu-state";
 import { createMetrics } from "./metrics";
 import { createPalette } from "./palette";
 import { rpc } from "./rpc";
-import { createScrollFollower } from "./scroll-follower";
+import { createScrollFollower, domRowAnchor } from "./scroll-follower";
 import { createSession, type PartnerItem } from "./session";
 import { createSettings } from "./settings";
 import { createSkills } from "./skills";
@@ -24,7 +24,14 @@ export const session = createSession(rpc);
 export const toast = createToast();
 export const status = createAgentStatus(rpc, session.store);
 export const transcript = createTranscript(session.store);
-export const scroll = createScrollFollower(transcript);
+export const scroll = createScrollFollower({
+	anchor: domRowAnchor,
+	source: (onChange) =>
+		transcript.store.subscribe((state, previous) => {
+			if (state.blocks === previous.blocks) return;
+			onChange(state.blocks.length === 0);
+		}),
+});
 export const skills = createSkills(rpc, session.store, toast);
 export const unread = createUnread(rpc, session.store);
 export const inbox = createInbox(rpc);
