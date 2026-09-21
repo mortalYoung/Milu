@@ -422,7 +422,7 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 	const agent = createAgent(
 		{
 			onTurnStart: (turn) => rpc.send.agent_turn({ turn, partner: profile.name }),
-			onMessage: () => rpc.send.agent_message({}),
+			onMessage: () => rpc.send.agent_message({ partner: profile.name }),
 			onQueueChange: (event) => rpc.send.inbox_update({ partner: profile.name, ...event }),
 			onEnd: (error) => {
 				rejectPendingEscalations(profile.name, "run ended while awaiting approval");
@@ -482,7 +482,7 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 							},
 							Date.now(),
 						)
-						.then(() => rpc.send.escalation_update({}))
+						.then(() => rpc.send.escalation_update({ partner: profile.name }))
 						.catch((error) => {
 							console.error("confirmEscalation persist failed:", error);
 							pendingSandboxConfirms.delete(id);
@@ -1696,7 +1696,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				if (pending) {
 					pending.resolve(approved ? { approved: true, mode: pending.to } : { approved: false, reason: "rejected by user" });
 				}
-				rpc.send.escalation_update({});
+				rpc.send.escalation_update({ partner: pending?.partner ?? viewPartner?.name });
 				if (resume) void resumeApprovedEscalation(resume.entry, resume.request, resume.turn);
 				return { ok: true };
 			},

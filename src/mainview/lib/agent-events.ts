@@ -24,8 +24,8 @@ export function createAgentEvents(
 			void session.mutate.refreshPartners();
 		});
 
-		rpc.addMessageListener("agent_message", () => {
-			void session.mutate.refreshHistory();
+		rpc.addMessageListener("agent_message", ({ partner }) => {
+			if (partner === selected()) void session.mutate.refreshHistory();
 			void session.mutate.refreshPartners();
 		});
 
@@ -38,8 +38,8 @@ export function createAgentEvents(
 			void session.mutate.refreshHistory();
 		});
 
-		rpc.addMessageListener("escalation_update", () => {
-			void session.mutate.refreshHistory();
+		rpc.addMessageListener("escalation_update", ({ partner }) => {
+			if (partner === undefined || partner === selected()) void session.mutate.refreshHistory();
 			status.calibrate();
 		});
 

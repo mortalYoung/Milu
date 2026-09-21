@@ -1104,7 +1104,7 @@ export type AppRPCSchema = __schema<{
 		messages: {
 			agent_turn: { turn: number; partner: string };
 
-			agent_message: {};
+			agent_message: { partner: string };
 
 			origin_update: { partner: string };
 
@@ -1121,7 +1121,7 @@ export type AppRPCSchema = __schema<{
 
 			sandbox_mode_update: {};
 
-			escalation_update: {};
+			escalation_update: { partner?: string };
 
 			command_update: {};
 			skills_change: {};
