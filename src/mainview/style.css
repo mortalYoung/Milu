@@ -1042,19 +1042,35 @@ body::before {
 		overflow-anchor: none;
 	}
 	.transcript-inner {
-		width: clamp(560px, 46vw, 760px);
-		@apply max-w-full mx-auto flex flex-col;
+		--transcript-measure: clamp(560px, 46vw, 760px);
+		--btw-gap: 42px;
+		--btw-note: 240px;
+		--btw-group: calc(var(--transcript-measure) + var(--btw-gap) + var(--btw-note));
+		width: var(--transcript-measure);
+		@apply max-w-full flex flex-col;
+		position: relative;
+		margin-left: max(0px, calc(50% - var(--transcript-measure) / 2));
+		margin-right: auto;
+		transition: margin-left 240ms var(--ease-out);
 	}
 	.transcript-inner.btw-open {
-		position: relative;
-		margin-left: 0;
-		margin-right: auto;
+		margin-left: max(0px, calc(50% - var(--btw-group) / 2));
+	}
+	@container (min-width: 874px) {
+		.transcript-inner.btw-open {
+			width: min(var(--transcript-measure), calc(100% - var(--btw-gap) - var(--btw-note)));
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.transcript-inner {
+			transition: none;
+		}
 	}
 	.transcript-inner.btw-open .btw-cell {
 		position: absolute;
 		top: var(--btw-top, 0);
-		left: calc(100% + 42px);
-		width: 240px;
+		left: calc(100% + var(--btw-gap));
+		width: var(--btw-note);
 		height: var(--btw-height, auto);
 		display: flex;
 		min-height: 0;

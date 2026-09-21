@@ -1,5 +1,5 @@
 import { Check, ChevronRight, CircleStop, Pencil } from "lucide-react";
-import { AnimatePresence, MotionConfig, motion } from "motion/react";
+import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "motion/react";
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { EVENTS } from "../../shared/events";
@@ -232,6 +232,7 @@ export function Transcript(props: {
 	const session = useSession();
 	const skillDirectory = useSkills();
 	const scroll = useScroll();
+	const reduceMotion = useReducedMotion();
 
 	const { items, blocks } = useStore(controller.store, (state) => state);
 	const locateFlashId = useStore(scroll.store, (state) => state.locateFlashId);
@@ -610,11 +611,20 @@ export function Transcript(props: {
 					)}
 				</AnimatePresence>
 
-				<Show when={btwAnchor && worker}>
-					<div className="btw-cell">
-						<BtwPanel name={worker!} anchorEntryId={btwAnchor!} onClose={() => props.onBtwClose?.()} />
-					</div>
-				</Show>
+				<AnimatePresence>
+					{btwAnchor && worker && (
+						<motion.div
+							key="btw"
+							className="btw-cell"
+							initial={{ opacity: 0, clipPath: "inset(0% 100% 0% 0%)" }}
+							animate={{ opacity: 1, clipPath: "inset(0% 0% 0% 0%)" }}
+							exit={{ opacity: 0, clipPath: "inset(0% 100% 0% 0%)", transition: { duration: reduceMotion ? 0 : 0.16, ease: [0.23, 1, 0.32, 1] } }}
+							transition={{ duration: reduceMotion ? 0 : 0.22, ease: [0.23, 1, 0.32, 1] }}
+						>
+							<BtwPanel name={worker} anchorEntryId={btwAnchor} onClose={() => props.onBtwClose?.()} />
+						</motion.div>
+					)}
+				</AnimatePresence>
 			</ScrollRegion>
 
 			<Dialog open={skillDialog != null} onOpenChange={(open) => !open && setSkillDialog(null)}>
