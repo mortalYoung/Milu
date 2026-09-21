@@ -11,7 +11,7 @@ import type { RevealRange, RevealTarget } from "../lib/dock";
 import { DOCK_PANE_MAX, DOCK_PANE_MIN } from "../lib/dock";
 import { ESCAPE_ORDER, useEscapeLayer } from "../lib/escape";
 import { fileGlyph, linkGlyph } from "../lib/file-icons";
-import { languageForPath, renderMarkdown, renderMarkdownReady } from "../lib/markdown";
+import { languageForPath, paintMarkdown, renderMarkdown, renderMarkdownReady } from "../lib/markdown";
 import { rpc } from "../lib/rpc";
 import { CodeReader, PreviewBusy } from "./CodeReader";
 import { type DockListControls, DockShell } from "./DockShell";
@@ -207,12 +207,12 @@ function MarkdownFile(props: { content: string; frontmatter?: Frontmatter; partn
 		let cancelled = false;
 		setBusy(true);
 		const text = body;
-		el.innerHTML = renderMarkdown(text);
+		paintMarkdown(el, renderMarkdown(text));
 		void (async () => {
 			const resolved = await resolveImages(el).catch(() => images.current);
 			const html = await renderMarkdownReady(text, undefined, resolved);
 			if (!cancelled && el.isConnected) {
-				el.innerHTML = html;
+				paintMarkdown(el, html);
 				explainFailures(el);
 			}
 		})().finally(() => {

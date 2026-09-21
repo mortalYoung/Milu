@@ -123,6 +123,7 @@ export function setHighlightLimits(next?: Partial<HighlightLimits> | null): void
 	const merged = { ...DEFAULT_HIGHLIGHT_LIMITS, ...next };
 	if (merged.tokenizeMaxLineLength === limits.tokenizeMaxLineLength && merged.tokenizeTimeLimit === limits.tokenizeTimeLimit) return;
 	limits = merged;
+	renderCache.clear();
 	if (pluginOptions) Object.assign(pluginOptions, merged);
 }
 
@@ -427,15 +428,19 @@ export function warmUpMarkdown(): void {
  *
  * `images` maps a raw relative `src` to a data URL: the renderer cannot read files, so the caller
  * resolves them and re-renders (see `ExplorerDrawer`). Unknown relative sources stay as chips.
+ *
+ * Renders are content-addressed: an identical (source, files) pair returns the identical string, so
+ * a re-render is a string comparison, not a DOM rebuild — see `paintMarkdown`.
  */
 export function renderMarkdown(src: string, files?: readonly string[], images?: ReadonlyMap<string, string>): string {
-	return withCopyButtons(renderWith(mdShiki ?? mdPlain, src, envFor(files, images)));
+	const md = mdShiki;
+	return cachedRender(md ? SHIKI_TAG : PLAIN_TAG, src, files, images, () => withCopyButtons(renderWith(md ?? mdPlain, src, envFor(files, images))));
 }
 
 /** Plain markdown (no shiki code highlighting) — fast synchronous first paint. Callers upgrade
  * to `renderMarkdown` asynchronously when the browser is idle for the highlighted version. */
 export function renderMarkdownPlain(src: string, files?: readonly string[], images?: ReadonlyMap<string, string>): string {
-	return withCopyButtons(renderWith(mdPlain, src, envFor(files, images)));
+	return cachedRender(PLAIN_TAG, src, files, images, () => withCopyButtons(renderWith(mdPlain, src, envFor(files, images))));
 }
 
 /**
@@ -444,7 +449,40 @@ export function renderMarkdownPlain(src: string, files?: readonly string[], imag
  */
 export async function renderMarkdownReady(src: string, files?: readonly string[], images?: ReadonlyMap<string, string>): Promise<string> {
 	const md = await getShikiMd();
-	return withCopyButtons(renderWith(md, src, envFor(files, images)));
+	return cachedRender(SHIKI_TAG, src, files, images, () => withCopyButtons(renderWith(md, src, envFor(files, images))));
+}
+
+const PLAIN_TAG = "plain";
+const SHIKI_TAG = "shiki";
+const RENDER_CACHE_LIMIT = 200;
+const renderCache = new Map<string, string>();
+const painted = new WeakMap<HTMLElement, string>();
+
+/** Identity of the file-mention list, for use as an effect dependency and as part of a cache key. */
+export function markdownFilesKey(files?: readonly string[]): string {
+	return files === undefined || files.length === 0 ? "" : files.join("\u0000");
+}
+
+function cachedRender(tag: string, src: string, files: readonly string[] | undefined, images: ReadonlyMap<string, string> | undefined, produce: () => string): string {
+	if (images !== undefined) return produce();
+	const key = `${tag}\u0001${src}\u0001${markdownFilesKey(files)}`;
+	const hit = renderCache.get(key);
+	if (hit !== undefined) return hit;
+	const html = produce();
+	if (renderCache.size >= RENDER_CACHE_LIMIT) {
+		const oldest = renderCache.keys().next().value;
+		if (oldest !== undefined) renderCache.delete(oldest);
+	}
+	renderCache.set(key, html);
+	return html;
+}
+
+/** Replace `el`'s children only when the HTML actually changed — an identical string is a no-op, so
+ * a recompute never tears down the rendered subtree (nor the selection inside it). */
+export function paintMarkdown(el: HTMLElement, html: string): void {
+	if (painted.get(el) === html) return;
+	painted.set(el, html);
+	el.innerHTML = html;
 }
 
 function envFor(files?: readonly string[], images?: ReadonlyMap<string, string>): Env {

@@ -1,7 +1,7 @@
 import { ArrowUp } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { BtwThreadRpc } from "../../shared/rpc";
-import { renderMarkdown, renderMarkdownReady } from "../lib/markdown";
+import { paintMarkdown, renderMarkdown, renderMarkdownReady } from "../lib/markdown";
 import { rpc } from "../lib/rpc";
 import { ChatInput } from "./ui/ChatInput";
 
@@ -12,9 +12,9 @@ function BtwMarkdown(props: { text: string; class?: string }) {
 		const el = ref.current;
 		if (!el) return;
 		let cancelled = false;
-		el.innerHTML = renderMarkdown(props.text);
+		paintMarkdown(el, renderMarkdown(props.text));
 		void renderMarkdownReady(props.text).then((html) => {
-			if (!cancelled && el.isConnected) el.innerHTML = html;
+			if (!cancelled && el.isConnected) paintMarkdown(el, html);
 		});
 		return () => {
 			cancelled = true;

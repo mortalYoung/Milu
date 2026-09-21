@@ -12,7 +12,7 @@ import { useSkills } from "../lib/contexts/skills-context";
 import { useTranscript } from "../lib/contexts/transcript-context";
 import { type Entry, type EscalationInfo, formatHistoryTime, parseStamp } from "../lib/entries";
 import { For, Show } from "../lib/jsx";
-import { renderMarkdown, renderMarkdownReady } from "../lib/markdown";
+import { markdownFilesKey, paintMarkdown, renderMarkdown, renderMarkdownReady } from "../lib/markdown";
 import { rpc } from "../lib/rpc";
 import { blockKey, type ChatBlock } from "../lib/transcript";
 import { cn } from "../lib/utils";
@@ -43,19 +43,20 @@ function hasTextSelection(): boolean {
 
 function Markdown(props: { text: string; files?: string[]; class?: string }) {
 	const ref = useRef<HTMLDivElement>(null);
+	const filesKey = markdownFilesKey(props.files);
 
 	useLayoutEffect(() => {
 		const el = ref.current;
 		if (!el) return;
 		let cancelled = false;
-		el.innerHTML = renderMarkdown(props.text, props.files);
+		paintMarkdown(el, renderMarkdown(props.text, props.files));
 		void renderMarkdownReady(props.text, props.files).then((html) => {
-			if (!cancelled && el.isConnected) el.innerHTML = html;
+			if (!cancelled && el.isConnected) paintMarkdown(el, html);
 		});
 		return () => {
 			cancelled = true;
 		};
-	}, [props.text, props.files]);
+	}, [props.text, filesKey]);
 
 	return <div ref={ref} className={props.class} />;
 }
