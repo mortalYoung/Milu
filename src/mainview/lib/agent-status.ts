@@ -19,7 +19,7 @@ export interface StatusData {
 	models: { provider: string; models: { id: string; name: string }[] }[];
 }
 
-const EMPTY_STATUS: StatusData = {
+export const EMPTY_STATUS: StatusData = {
 	partner: null,
 	workspace_path: null,
 	is_git_repo: false,

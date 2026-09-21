@@ -1,6 +1,8 @@
 import { createContext, type ReactNode, useContext } from "react";
 import type { createAgentStatus } from "../agent-status";
 
+export { EMPTY_STATUS } from "../agent-status";
+
 export type AgentStatus = ReturnType<typeof createAgentStatus>;
 
 const AgentStatusContext = createContext<AgentStatus | undefined>(undefined);
