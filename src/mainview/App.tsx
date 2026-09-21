@@ -1,3 +1,4 @@
+import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { AppHeader } from "./components/AppHeader";
@@ -193,20 +194,33 @@ function ChatView(props: {
 
 	return (
 		<div className="chat-page">
-			{!props.listCollapsed && (
-				<ConversationList
-					partners={partners}
-					selected={selected}
-					unread={isUnread}
-					onSelect={(name) => selectPartner(partners.find((p) => p.name === name) ?? null)}
-					onAddPartner={() => {}}
-					onDelete={(name) => void onDeletePartner(name)}
-					onViewDetails={props.onViewDetails}
-					onDuplicate={(name) => void runCopy("duplicate", name)}
-					onFork={(name) => void runCopy("fork", name)}
-					onPromote={(name) => void onPromotePartner(name)}
-				/>
-			)}
+			<MotionConfig reducedMotion="user">
+				<AnimatePresence initial={false}>
+					{!props.listCollapsed && (
+						<motion.div
+							key="chat-list"
+							className="conv-pane"
+							initial={{ width: 0 }}
+							animate={{ width: "15rem" }}
+							exit={{ width: 0, transition: { duration: 0.18, ease: [0.23, 1, 0.32, 1] } }}
+							transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}
+						>
+							<ConversationList
+								partners={partners}
+								selected={selected}
+								unread={isUnread}
+								onSelect={(name) => selectPartner(partners.find((p) => p.name === name) ?? null)}
+								onAddPartner={() => {}}
+								onDelete={(name) => void onDeletePartner(name)}
+								onViewDetails={props.onViewDetails}
+								onDuplicate={(name) => void runCopy("duplicate", name)}
+								onFork={(name) => void runCopy("fork", name)}
+								onPromote={(name) => void onPromotePartner(name)}
+							/>
+						</motion.div>
+					)}
+				</AnimatePresence>
+			</MotionConfig>
 			<div className="chat-window">
 				{selected ? (
 					<div className={"chat-body" + (btwAnchor ? " btw-open" : "")}>

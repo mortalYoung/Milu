@@ -305,6 +305,10 @@ body::before {
 		@apply h-16 shrink-0 bg-paper border-b border-hairline flex items-center px-6 eyebrow;
 	}
 
+	.conv-pane {
+		@apply w-60 shrink-0 h-full overflow-hidden;
+	}
+
 	.conv-list-search {
 		@apply h-9 border border-hairline rounded-[8px] bg-letter flex items-center gap-2 pl-3 pr-1 mr-3 mb-[14px];
 	}
