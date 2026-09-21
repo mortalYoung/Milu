@@ -442,36 +442,41 @@ export function App() {
 																		</main>
 																	</div>
 																</div>
+																<Dialog open={settingsOpen} onOpenChange={settings.mutate.setOpen}>
+																	<DialogContent className="w-[820px] max-w-none h-[640px] grid-rows-[auto_1fr] overflow-hidden bg-letter border-print-line p-0">
+																		<DialogHeader className="px-4 pt-4">
+																			<DialogTitle className="font-serif text-[15px]">Settings</DialogTitle>
+																		</DialogHeader>
+																		<SettingsView />
+																	</DialogContent>
+																</Dialog>
+																<PartnerModal open={showModal} onOpenChange={setShowModal} onConfirm={onCreatePartner} existingNames={partners.map((p) => p.name)} />
+																<PartnerDetailsDialog
+																	partner={detailsPartner}
+																	onOpenChange={(open) => !open && setDetailsPartner(null)}
+																	onOpenPath={onOpenPath}
+																	editors={editors}
+																/>
+																<CommandPalette
+																	palette={palette}
+																	partner={selected}
+																	partners={partners}
+																	hasWorkspace={agentSnapshot.workspace_path != null}
+																	unread={isUnread}
+																	onSelectPartner={(name) => {
+																		settings.mutate.setOpen(false);
+																		setView("chat");
+																		selectPartner(partners.find((p) => p.name === name) ?? null);
+																	}}
+																	onRevealFile={(path, range) => dock.revealInExplorer(path, range)}
+																	onOpenFile={(path) => {
+																		settings.mutate.setOpen(false);
+																		void rpc.request.open_path({ path }).then((res) => {
+																			if (!res.ok) toast.push({ title: "Couldn't open file", body: res.error ?? "No supported editor found" }, "error");
+																		});
+																	}}
+																/>
 															</TooltipProvider>
-															<Dialog open={settingsOpen} onOpenChange={settings.mutate.setOpen}>
-																<DialogContent className="w-[820px] max-w-none h-[640px] grid-rows-[auto_1fr] overflow-hidden bg-letter border-print-line p-0">
-																	<DialogHeader className="px-4 pt-4">
-																		<DialogTitle className="font-serif text-[15px]">Settings</DialogTitle>
-																	</DialogHeader>
-																	<SettingsView />
-																</DialogContent>
-															</Dialog>
-															<PartnerModal open={showModal} onOpenChange={setShowModal} onConfirm={onCreatePartner} existingNames={partners.map((p) => p.name)} />
-															<PartnerDetailsDialog partner={detailsPartner} onOpenChange={(open) => !open && setDetailsPartner(null)} onOpenPath={onOpenPath} editors={editors} />
-															<CommandPalette
-																palette={palette}
-																partner={selected}
-																partners={partners}
-																hasWorkspace={agentSnapshot.workspace_path != null}
-																unread={isUnread}
-																onSelectPartner={(name) => {
-																	settings.mutate.setOpen(false);
-																	setView("chat");
-																	selectPartner(partners.find((p) => p.name === name) ?? null);
-																}}
-																onRevealFile={(path, range) => dock.revealInExplorer(path, range)}
-																onOpenFile={(path) => {
-																	settings.mutate.setOpen(false);
-																	void rpc.request.open_path({ path }).then((res) => {
-																		if (!res.ok) toast.push({ title: "Couldn't open file", body: res.error ?? "No supported editor found" }, "error");
-																	});
-																}}
-															/>
 														</ScrollProvider>
 													</TranscriptProvider>
 												</TrajectoryProvider>
