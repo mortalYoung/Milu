@@ -100,7 +100,6 @@ export function Composer(props: {
 			syncCommandState(request.text, request.text.length);
 			resize();
 		});
-		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [pendingPrefill, selected]);
 
 	useEffect(() => {
@@ -115,7 +114,6 @@ export function Composer(props: {
 			resize();
 			focusEnd();
 		});
-		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [selected]);
 
 	const menuItems = (() => {

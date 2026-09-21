@@ -28,5 +28,5 @@
 		}
 	},
 	"include": ["src/**/*"],
-	"exclude": ["src/legacy-solid", "node_modules", "dist", "build", "../../package/dist"]
+	"exclude": ["node_modules", "dist", "build", "../../package/dist"]
 }
