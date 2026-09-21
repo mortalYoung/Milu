@@ -1,5 +1,5 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
-import { classifyReader, compensatedTop, distanceToBottom, floorTop, flowTop, isAtBottom, type ScrollAnchor } from "./scroll-anchor";
+import { classifyReader, compensatedTop, distanceToBottom, floorTop, flowTop, isAtBottom, LOCATE_WINDOW_MS, looksForeign, type ScrollAnchor } from "./scroll-anchor";
 import type { TranscriptController } from "./transcript";
 
 export interface ScrollFollower {
@@ -12,6 +12,10 @@ export interface ScrollFollower {
 	pinNow: (force?: boolean) => void;
 	locate: (id: number) => void;
 }
+
+const SCROLL_KEYS = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
+
+const INPUT_EVENTS = ["wheel", "touchstart", "touchmove", "focusin"] as const;
 
 function innermostRow(matches: HTMLElement[]): HTMLElement | null {
 	for (const row of matches) if (!row.querySelector("[data-chat-anchor-key]")) return row;
@@ -32,9 +36,13 @@ export function createScrollFollower(transcript: Pick<TranscriptController, "sto
 	let anchor: ScrollAnchor | null = null;
 	let pinRaf: number | null = null;
 	let flashTimer: ReturnType<typeof setTimeout> | undefined;
+	let lastInputAt = 0;
+	let explainedUntil = 0;
+	let foreignRun = 0;
+	let foreignCheck: number | null = null;
 
 	const following = () => store.getState().following;
-	const setFollowing = (value: boolean) => store.setState({ following: value });
+	const inputAge = () => performance.now() - lastInputAt;
 
 	function hasTextSelection(): boolean {
 		const selection = window.getSelection();
@@ -42,13 +50,19 @@ export function createScrollFollower(transcript: Pick<TranscriptController, "sto
 	}
 
 	function writeScrollTop(el: HTMLElement, top: number) {
+		const before = el.scrollTop;
 		el.scrollTop = top;
 		observedTop = el.scrollTop;
+		if (el.scrollTop !== before && foreignCheck != null) {
+			cancelAnimationFrame(foreignCheck);
+			foreignCheck = null;
+		}
+		foreignRun = 0;
 	}
 
 	function followBottom() {
 		anchor = null;
-		setFollowing(true);
+		store.setState({ following: true });
 	}
 
 	function pinNow(force = false) {
@@ -84,6 +98,7 @@ export function createScrollFollower(transcript: Pick<TranscriptController, "sto
 	}
 
 	function captureAnchor(el: HTMLElement) {
+		observedTop = el.scrollTop;
 		const row = anchorRow(el);
 		const key = row?.dataset["chatAnchorKey"];
 		if (!row || !key) return;
@@ -99,7 +114,7 @@ export function createScrollFollower(transcript: Pick<TranscriptController, "sto
 			followBottom();
 			return;
 		}
-		setFollowing(false);
+		store.setState({ following: false });
 		captureAnchor(el);
 	}
 
@@ -109,7 +124,7 @@ export function createScrollFollower(transcript: Pick<TranscriptController, "sto
 		if (!el) return;
 		const row = innermostRow(Array.from(el.querySelectorAll<HTMLElement>(`[data-chat-anchor-key="${CSS.escape(anchor.key)}"]`)));
 		if (!row) return;
-		writeScrollTop(el, compensatedTop(anchor, row.getBoundingClientRect().top, el.getBoundingClientRect().top));
+		writeScrollTop(el, compensatedTop(el.scrollTop, row.getBoundingClientRect().top, el.getBoundingClientRect().top, anchor.anchorTop));
 		anchor = { key: anchor.key, anchorTop: anchor.anchorTop, scrollTop: observedTop };
 	}
 
@@ -117,7 +132,12 @@ export function createScrollFollower(transcript: Pick<TranscriptController, "sto
 		const el = containerEl;
 		if (!el) return;
 		captureAnchor(el);
-		setFollowing(false);
+		store.setState({ following: false });
+	}
+
+	function healForeign(el: HTMLElement) {
+		if (hasTextSelection()) return;
+		writeScrollTop(el, following() ? el.scrollHeight : Math.min(observedTop, floorTop(el.scrollHeight, el.clientHeight)));
 	}
 
 	function rejudge(el: HTMLElement) {
@@ -138,9 +158,40 @@ export function createScrollFollower(transcript: Pick<TranscriptController, "sto
 		const onScroll = () => {
 			const floor = floorTop(el.scrollHeight, el.clientHeight);
 			if (!classifyReader(el.scrollTop, observedTop, floor)) return;
+			if (foreignCheck != null) {
+				cancelAnimationFrame(foreignCheck);
+				foreignCheck = null;
+			}
+			const delta = el.scrollTop - observedTop;
+			if (performance.now() >= explainedUntil && looksForeign(delta, el.clientHeight, inputAge())) {
+				foreignRun += 1;
+				if (foreignRun === 1) {
+					const jumpedTo = el.scrollTop;
+					foreignCheck = requestAnimationFrame(() => {
+						foreignCheck = requestAnimationFrame(() => {
+							foreignCheck = null;
+							if (foreignRun !== 1 || Math.abs(el.scrollTop - jumpedTo) > 0.5) return;
+							healForeign(el);
+							foreignRun = 0;
+						});
+					});
+					return;
+				}
+			}
+			foreignRun = 0;
 			release(el);
 		};
 		el.addEventListener("scroll", onScroll, { passive: true });
+
+		const onInput = () => {
+			lastInputAt = performance.now();
+			foreignRun = 0;
+		};
+		for (const type of INPUT_EVENTS) el.addEventListener(type, onInput, { passive: true, capture: true });
+		const onKey = (event: KeyboardEvent) => {
+			if (SCROLL_KEYS.has(event.key)) lastInputAt = performance.now();
+		};
+		document.addEventListener("keydown", onKey, true);
 
 		const rows = new ResizeObserver(() => (following() ? pin() : holdPlace()));
 		rows.observe(body);
@@ -150,6 +201,8 @@ export function createScrollFollower(transcript: Pick<TranscriptController, "sto
 
 		detach = () => {
 			el.removeEventListener("scroll", onScroll);
+			for (const type of INPUT_EVENTS) el.removeEventListener(type, onInput, { capture: true });
+			document.removeEventListener("keydown", onKey, true);
 			rows.disconnect();
 			host.disconnect();
 		};
@@ -186,6 +239,7 @@ export function createScrollFollower(transcript: Pick<TranscriptController, "sto
 		locate: (id: number) => {
 			const el = document.getElementById("entry-" + id);
 			if (!el) return;
+			explainedUntil = performance.now() + LOCATE_WINDOW_MS;
 			el.scrollIntoView({ behavior: "smooth", block: "center" });
 			store.setState({ locateFlashId: id });
 			clearTimeout(flashTimer);
