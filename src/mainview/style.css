@@ -1671,6 +1671,11 @@ body::before {
 		transform: translateX(-0.5px);
 		background: var(--color-hairline);
 	}
+	/* With the dock on the left, the pane's own right border is the pane/detail divider, so that grip
+	   only draws its line while it is being used. */
+	.dock.side-left .dock-grip-pane:not(:hover):not(:focus-visible):not(.dragging) i {
+		background: transparent;
+	}
 	.dock-grip:hover i,
 	.dock-grip:focus-visible i,
 	.dock-grip.dragging i {
@@ -1728,6 +1733,7 @@ body::before {
 		flex-direction: column;
 		padding: 16px 0;
 		background: var(--color-letter);
+		border-right: 1px solid var(--color-hairline);
 		transition: transform 220ms var(--ease-dock);
 	}
 	/* The list while pinned: a card over the detail, so the reader keeps its width. It keeps 8px of air

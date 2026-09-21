@@ -131,8 +131,9 @@ export function DockShell(props: {
 				/>
 			)}
 			{viewer.visible && props.detail?.render(viewer.leaving, list)}
-			{viewer.visible && (
+			{!props.pinned && viewer.visible && (
 				<DockGrip
+					class="dock-grip-pane"
 					host={() => dockEl.current}
 					width={() => props.width}
 					min={props.min}
