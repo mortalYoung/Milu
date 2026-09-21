@@ -1,4 +1,4 @@
-import { cp, rm, stat } from "node:fs/promises";
+import { cp, rm, stat, utimes } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import type { AgentMessage, Entry } from "@earendil-works/pi-agent-core";
 import { JsonlSessionRepo, Session } from "@earendil-works/pi-agent-core";
@@ -453,9 +453,15 @@ export function createSessionStore(): SessionStore {
 				await rm(join(targetDir, dir), { recursive: true, force: true });
 			}
 			const targetRepo = new JsonlSessionRepo({ fs: createExecutionEnv(targetDir), sessionsRoot: targetDir });
+			const current = sessions[0];
+			let forked = "";
 			for (const session of sessions) {
-				await targetRepo.fork(session, { scope: "tree", cwd: targetDir });
+				const created = await targetRepo.fork(session, { scope: "tree", cwd: targetDir });
+				if (current && session.path === current.path) forked = ((await created.getMetadata()) as { path?: string }).path ?? "";
 			}
+			// Every fork gets a fresh mtime, so the copied order no longer says which session is current —
+			// `openRoot` picks the newest, and the cleared chat has to stay that one.
+			if (forked) await utimes(forked, new Date(), new Date(Date.now() + 1000));
 			roots.delete(targetDir);
 			await openRoot(targetDir);
 		},

@@ -130,4 +130,19 @@ describe("session store (pi JSONL backend)", () => {
 		const reopened = createSessionStore();
 		expect((await reopened.visibleHistory(dir)).map((m) => m.text)).toEqual(["new"]);
 	});
+
+	it("forkTo re-creates the current session and keeps the cleared logs archived", async () => {
+		const source = await tempDir();
+		const target = join(await tempDir(), "Letters-fork");
+		const session = createSessionStore();
+		await session.scope(source).appendUser("before the clear", 1);
+		await session.rotateSession(source);
+		await session.scope(source).appendUser("after the clear", 2);
+
+		await session.forkTo(source, target);
+
+		const forked = createSessionStore();
+		expect((await forked.visibleHistory(target)).map((m) => m.text)).toEqual(["after the clear"]);
+		expect(await forked.allRawEntries(target)).toHaveLength(2);
+	});
 });
