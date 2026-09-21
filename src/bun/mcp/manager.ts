@@ -1,3 +1,5 @@
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import type { Tool } from "@modelcontextprotocol/sdk/types.js";
@@ -6,6 +8,34 @@ import type { McpConfig, McpLifecycle, McpServerConfig, McpServerStatus, McpServ
 
 const DEFAULT_IDLE_TTL_MS = 60_000;
 const DEFAULT_MAX_BUFFER_SIZE = 10 * 1024 * 1024;
+
+/** Where `npx`, `uvx` and friends usually live when a GUI-launched app has only launchd's PATH. */
+export const FALLBACK_BIN_DIRS = ["/opt/homebrew/bin", "/usr/local/bin", ".bun/bin", ".local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"];
+
+export function withFallbackPath(inherited: string, home: string): string {
+	const dirs = [...inherited.split(":"), ...FALLBACK_BIN_DIRS.map((dir) => (dir.startsWith("/") ? dir : join(home, dir)))].filter(Boolean);
+	return [...new Set(dirs)].join(":");
+}
+
+let shellPathPromise: Promise<string> | null = null;
+
+/** The app inherits launchd's bare PATH when it is opened from Finder, so an MCP command like `npx`
+ * is not on it. Ask the login shell once (that is where brew/fnm/nvm put their bin), and fall back
+ * to the usual directories when the shell has nothing to say. */
+export function shellPath(): Promise<string> {
+	shellPathPromise ??= (async () => {
+		try {
+			const proc = Bun.spawn([process.env["SHELL"]?.trim() || "/bin/zsh", "-lc", 'printf %s "$PATH"'], { stdout: "pipe", stderr: "ignore" });
+			const text = (await new Response(proc.stdout).text()).trim();
+			await proc.exited;
+			if (text.includes("/")) return withFallbackPath(`${text}:${process.env["PATH"] ?? ""}`, homedir());
+		} catch {
+			// fall through to the static floor
+		}
+		return withFallbackPath(process.env["PATH"] ?? "", homedir());
+	})();
+	return shellPathPromise;
+}
 
 interface McpSession {
 	config: McpServerConfig;
@@ -141,7 +171,7 @@ export class McpManager {
 			const transport = new StdioClientTransport({
 				command: session.config.transport.command,
 				...(session.config.transport.args ? { args: session.config.transport.args } : {}),
-				...(session.config.transport.env ? { env: session.config.transport.env } : {}),
+				env: { PATH: await shellPath(), ...session.config.transport.env },
 				...(session.config.transport.cwd ? { cwd: session.config.transport.cwd } : {}),
 				maxBufferSize: this.maxBufferSize,
 			});
