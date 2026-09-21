@@ -2531,7 +2531,7 @@ function buildMenu(): AppMenuItem[] {
 			submenu: [
 				{ label: "New partner", action: "letters.new-partner", accelerator: "Command+N" },
 				{ label: "Close chat", action: "letters.close-chat", accelerator: "Command+W" },
-				{ label: "Partner details", action: "letters.details", accelerator: "Command+E" },
+				{ label: "Partner details", action: "letters.details", accelerator: "Command+E", enabled: menuState.partner },
 				{ type: "divider" },
 				{ label: "Open trajectory", action: "letters.trajectory", enabled: menuState.partner },
 				{ label: "Open replies", action: "letters.replies", enabled: menuState.partner },
