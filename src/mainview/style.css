@@ -640,9 +640,9 @@ body::before {
 	.activity-heatmap {
 		@apply flex-1 flex flex-col gap-[5px] select-none min-w-0;
 	}
-	/* 占位：activity 数据到达前不要把卡片顶起来（月份行 10 + gap 5 + 7 行 ×10 + 6 个 gap ×2） */
+	/* 占位：数据到达前预留热力图的高度（月份行 10 + 2 个 gap + 7 行格子 82 + legend 的 mt 6 与行高 11） */
 	.activity-slot {
-		min-height: 97px;
+		min-height: 120px;
 	}
 	.activity-months {
 		@apply font-sans text-[8.5px] leading-[10px] text-muted;
@@ -651,7 +651,10 @@ body::before {
 		@apply flex;
 	}
 	.activity-weekdays {
-		@apply w-[22px] shrink-0 pr-[4px] font-sans text-[7.5px] leading-none text-muted;
+		@apply shrink-0 pr-[4px] font-sans text-[7.5px] leading-none text-muted;
+	}
+	.activity-cells .activity-cell {
+		aspect-ratio: 1;
 	}
 	.activity-cell {
 		@apply rounded-[1.5px] bg-hairline/60 hover:outline hover:outline-seal;

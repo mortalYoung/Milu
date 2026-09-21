@@ -110,7 +110,14 @@ export function PartnerDetailsDialog(props: {
 								))}
 							</div>
 
-							<div className="grid grid-cols-[1fr_240px] gap-2.5 px-5 pt-2.5 pb-2.5">
+							<div className="px-5 pt-2.5">
+								<div className={CARD + " p-3"}>
+									<p className="font-sans text-[9.5px] font-semibold uppercase tracking-[0.12em] text-muted mb-2">Activity · last {ACTIVITY_WINDOW}</p>
+									<div className="activity-slot">{days && <ActivityHeatmap days={days} />}</div>
+								</div>
+							</div>
+
+							<div className="grid grid-cols-[1fr_240px] gap-2.5 px-5 pt-2.5 pb-5">
 								<div className="flex min-w-0 flex-col gap-2.5">
 									<div className={CARD}>
 										<button
@@ -142,13 +149,10 @@ export function PartnerDetailsDialog(props: {
 										)}
 									</div>
 
-									<div className={CARD + " p-3"}>
-										<p className="font-sans text-[9.5px] font-semibold uppercase tracking-[0.12em] text-muted mb-2">Activity · last {ACTIVITY_WINDOW}</p>
-										<div className="activity-slot">{days && <ActivityHeatmap days={days} />}</div>
-									</div>
+									<MemorySection partner={partner.name} />
 								</div>
 
-								<div className={CARD + " p-3 min-w-0"}>
+								<div className={CARD + " p-3 min-w-0 self-start"}>
 									<p className="font-sans text-[9.5px] font-semibold uppercase tracking-[0.12em] text-muted mb-2">Status</p>
 									<div className="grid gap-2 font-sans text-[11px]">
 										<div>
@@ -236,10 +240,6 @@ export function PartnerDetailsDialog(props: {
 										</div>
 									</div>
 								</div>
-							</div>
-
-							<div className="w-full overflow-x-hidden px-5 pb-5">
-								<MemorySection partner={partner.name} />
 							</div>
 						</div>
 					</div>

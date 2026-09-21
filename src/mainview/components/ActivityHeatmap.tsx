@@ -4,7 +4,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 const CELL = 10;
 const GAP = 2;
-const GUTTER = 26;
+const WEEKDAY_W = 22;
 export const HEATMAP_WEEKS = 53;
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -68,9 +68,9 @@ export function ActivityHeatmap(props: { days: PartnerActivityDay[]; weeks?: num
 			<div
 				className="activity-months"
 				style={{
-					marginLeft: `${GUTTER}px`,
+					marginLeft: `${WEEKDAY_W}px`,
 					display: "grid",
-					gridTemplateColumns: `repeat(${columns.length}, ${CELL}px)`,
+					gridTemplateColumns: `repeat(${columns.length}, minmax(0, ${CELL}px))`,
 					gap: `${GAP}px`,
 				}}
 			>
@@ -81,7 +81,7 @@ export function ActivityHeatmap(props: { days: PartnerActivityDay[]; weeks?: num
 				))}
 			</div>
 			<div className="activity-grid" style={{ gap: `${GAP}px` }}>
-				<div className="activity-weekdays" style={{ display: "grid", gridTemplateRows: `repeat(7, ${CELL}px)`, gap: `${GAP}px` }}>
+				<div className="activity-weekdays" style={{ display: "grid", width: `${WEEKDAY_W}px`, gridTemplateRows: "repeat(7, 1fr)", gap: `${GAP}px` }}>
 					<span style={{ gridRow: "1" }}>Mon</span>
 					<span style={{ gridRow: "3" }}>Wed</span>
 					<span style={{ gridRow: "5" }}>Fri</span>
@@ -90,9 +90,9 @@ export function ActivityHeatmap(props: { days: PartnerActivityDay[]; weeks?: num
 					className="activity-cells"
 					style={{
 						display: "grid",
-						gridTemplateRows: `repeat(7, ${CELL}px)`,
 						gridAutoFlow: "column",
-						gridAutoColumns: `${CELL}px`,
+						gridTemplateRows: "repeat(7, auto)",
+						gridAutoColumns: `minmax(0, ${CELL}px)`,
 						gap: `${GAP}px`,
 					}}
 				>
