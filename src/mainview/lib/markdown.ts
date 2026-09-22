@@ -18,8 +18,11 @@
 import type { MarkdownItShikiSetupOptions } from "@shikijs/markdown-it/core";
 import type { HighlighterCore } from "@shikijs/types";
 import MarkdownIt, { type Env, type MarkdownIt as MarkdownItType, type Renderer, type RendererRule, type Token } from "markdown-it";
-import { resolveMentionToken } from "../../shared/file-mentions";
+import { parseLineRange, resolveMentionToken, workspacePath, workspaceRelativePath } from "../../shared/file-mentions";
+import type { Dock } from "./dock";
 import { extractHtmlSubset, renderImageHtml, restoreHtmlSubset, type SubsetEnv } from "./markdown-html";
+import type { RPC } from "./rpc";
+import type { Toast } from "./toast";
 
 // Dual shiki themes: with `defaultColor: "light-dark()"` every token color is emitted as an
 // inline `light-dark(#light, #dark)` pair, resolved by the app's color-scheme — so code blocks
@@ -541,5 +544,39 @@ export function installCodeCopyHandler(): void {
 				button.innerHTML = COPY_ICON_SVG;
 			}, COPY_RESET_MS),
 		);
+	});
+}
+
+/** What a click on rendered markdown does: an in-document anchor jumps there, an external URL goes to
+ * the system browser, and a file-mention chip reveals the file in the explorer — ⌘-click hands it to
+ * an editor instead. It also swallows every other href, which would otherwise navigate the webview away. */
+export function installMarkdownClickHandler(deps: { rpc: RPC; toast: Toast; dock: Dock; originBaseDir: () => string | null }): void {
+	document.addEventListener("click", (event) => {
+		const target = event.target instanceof Element ? event.target : null;
+		if (target === null) return;
+		const anchor = target.closest("a[href]");
+		if (anchor !== null) {
+			const href = anchor.getAttribute("href");
+			if (href === null) return;
+			event.preventDefault();
+			if (/^(https?|mailto):/i.test(href)) void deps.rpc.request.open_external({ url: href });
+			else if (href.startsWith("#")) {
+				const jump = document.getElementById(href.slice(1));
+				if (jump) jump.scrollIntoView({ block: "start", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+			}
+			return;
+		}
+		const mention = target.closest(".md-file-mention");
+		const path = mention?.getAttribute("data-path");
+		if (!path) return;
+		event.preventDefault();
+		const baseDir = deps.originBaseDir();
+		if (event.metaKey) {
+			void deps.rpc.request.open_path({ path: workspacePath(path, baseDir) }).then((res) => {
+				if (!res.ok) deps.toast.push({ title: "Couldn't open file", body: res.error ?? "No supported editor found" }, "error");
+			});
+			return;
+		}
+		deps.dock.revealInExplorer(workspaceRelativePath(path, baseDir), parseLineRange(mention?.getAttribute("data-range")));
 	});
 }

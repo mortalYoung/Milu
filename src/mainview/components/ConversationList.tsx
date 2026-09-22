@@ -1,8 +1,9 @@
 import { ArrowUpFromLine, ChevronDown, ChevronRight, Copy, CopyPlus, Files, GitFork, Info, MoreVertical, Plus, Trash2 } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
-import { activityAt, convTime, previewFor } from "../lib/chat-preview";
+import { activityAt, convTime, filterPartners, previewFor } from "../lib/chat-preview";
 import { useAgentStatus } from "../lib/contexts/agent-status-context";
+import { imeGuard } from "../lib/ime";
 import { Show } from "../lib/jsx";
 import type { PartnerItem } from "../lib/session";
 import { Button } from "./Button";
@@ -23,6 +24,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 export type { PartnerItem };
 
 const byRecency = (a: PartnerItem, b: PartnerItem) => activityAt(b) - activityAt(a);
+
+const SKELETON_ROWS = 5;
 
 function copyText(text: string) {
 	const fallback = () => {
@@ -64,7 +67,7 @@ function ChatRow(props: {
 	working: boolean;
 	unread: boolean;
 	leaf?: boolean;
-	hasChildren?: boolean;
+	childCount?: number;
 	expanded?: boolean;
 	onSelect: () => void;
 	onToggle?: () => void;
@@ -92,9 +95,27 @@ function ChatRow(props: {
 			}}
 		>
 			<Avatar name={partner.name} variant={props.selected ? "ink" : "paper"} />
-			<span className={"conv-main" + (props.hasChildren ? " pr-14" : "")}>
+			<span className="conv-main">
 				<span className="conv-name-row">
-					<span className="conv-name">{partner.name}</span>
+					<span className="conv-name-wrap">
+						<span className="conv-name">{partner.name}</span>
+						{props.childCount != null && props.childCount > 0 && (
+							<button
+								type="button"
+								className="conv-fork-count"
+								aria-expanded={props.expanded}
+								aria-label={`${props.expanded ? "Collapse" : "Expand"} ${props.childCount} fork${props.childCount === 1 ? "" : "s"} of ${partner.name}`}
+								title={props.expanded ? "Collapse forks" : "Expand forks"}
+								onClick={(event) => {
+									event.stopPropagation();
+									props.onToggle?.();
+								}}
+							>
+								{props.expanded ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
+								{props.childCount}
+							</button>
+						)}
+					</span>
 					<span className="conv-time">{convTime(activityAt(partner))}</span>
 				</span>
 				<span className="conv-preview">
@@ -128,7 +149,7 @@ function ChatRow(props: {
 				>
 					<MoreVertical size={14} />
 				</DropdownMenuTrigger>
-				<DropdownMenuContent onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()} className="min-w-44 p-1">
+				<DropdownMenuContent side="right" align="start" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()} className="min-w-44 p-1">
 					<DropdownMenuItem className={MENU_ITEM_CLASS} onSelect={() => props.onViewDetails()}>
 						<Info size={13} className="text-body-muted" />
 						<span>View details</span>
@@ -165,29 +186,13 @@ function ChatRow(props: {
 					<DeleteMenuItem onSelect={props.onDelete} />
 				</DropdownMenuContent>
 			</DropdownMenu>
-			{props.hasChildren && (
-				<button
-					type="button"
-					className={
-						"absolute right-8 top-1/2 -translate-y-1/2 size-5 flex items-center justify-center rounded text-muted hover:text-ink transition-opacity " +
-						(props.expanded ? "opacity-100" : "opacity-0 group-hover:opacity-100")
-					}
-					title={props.expanded ? "Collapse forks" : "Expand forks"}
-					aria-label={props.expanded ? "Collapse forks" : "Expand forks"}
-					onClick={(event) => {
-						event.stopPropagation();
-						props.onToggle?.();
-					}}
-				>
-					{props.expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-				</button>
-			)}
 		</div>
 	);
 }
 
 export function ConversationList(props: {
 	partners: PartnerItem[];
+	loading: boolean;
 	selected: string | null;
 	unread: (name: string) => boolean;
 	onSelect: (name: string) => void;
@@ -202,6 +207,10 @@ export function ConversationList(props: {
 	const writing = useStore(status.store, (state) => state.writing);
 	const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 	const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+	const [query, setQuery] = useState("");
+	const imeRef = useRef<ReturnType<typeof imeGuard> | null>(null);
+	if (!imeRef.current) imeRef.current = imeGuard(setQuery);
+	const ime = imeRef.current;
 
 	const workingFor = (name: string) => writing[name] ?? props.partners.find((p) => p.name === name)?.writing ?? false;
 
@@ -228,6 +237,13 @@ export function ConversationList(props: {
 
 	const deleteForkCount = confirmDelete ? props.partners.filter((p) => p.forkedFrom === confirmDelete).length : 0;
 
+	const searching = query.trim() !== "";
+	const matched = useMemo(() => new Set(filterPartners(props.partners, query).map((partner) => partner.name)), [props.partners, query]);
+	const visibleRoots = useMemo(() => {
+		if (!searching) return roots;
+		return roots.filter((root) => matched.has(root.name) || (leavesByRoot.get(root.name) ?? []).some((leaf) => matched.has(leaf.name)));
+	}, [roots, leavesByRoot, matched, searching]);
+
 	const toggle = (name: string) =>
 		setExpanded((prev) => {
 			const next = new Set(prev);
@@ -239,7 +255,22 @@ export function ConversationList(props: {
 	return (
 		<aside className="w-60 shrink-0 h-full bg-paper border-r border-hairline flex flex-col pl-3 pt-3">
 			<div className="conv-list-search">
-				<input className="conv-list-input" type="text" placeholder="Search correspondence…" spellCheck={false} />
+				<input
+					className="conv-list-input"
+					type="text"
+					placeholder="Search correspondence…"
+					spellCheck={false}
+					value={query}
+					onChange={(event) => setQuery(event.currentTarget.value)}
+					onKeyDown={(event) => {
+						if (event.nativeEvent.isComposing || ime.composing) return;
+						if (event.key !== "Escape" || query === "") return;
+						event.preventDefault();
+						setQuery("");
+					}}
+					onCompositionStart={ime.onStart}
+					onCompositionEnd={(event) => ime.onEnd(event.nativeEvent, event.currentTarget)}
+				/>
 				<Tooltip>
 					<TooltipTrigger asChild>
 						<Button variant="default" size="icon" class="size-[26px] rounded-full electrobun-webkit-app-region-no-drag" title="Add Partner (⌘N)" onClick={props.onAddPartner}>
@@ -250,49 +281,71 @@ export function ConversationList(props: {
 				</Tooltip>
 			</div>
 
-			{props.partners.length === 0 && <div className="px-1 py-3 text-[12px] text-muted">No partners yet</div>}
+			{props.partners.length === 0 && !props.loading && <div className="px-1 py-3 text-[12px] text-muted">No partners yet</div>}
 
-			<div className="flex flex-col gap-[2px]">
-				{roots.map((root) => {
-					const leaves = leavesByRoot.get(root.name) ?? [];
-					const isExpanded = expanded.has(root.name);
-					return (
-						<Fragment key={root.name}>
-							<ChatRow
-								partner={root}
-								selected={props.selected === root.name}
-								working={workingFor(root.name)}
-								unread={props.unread(root.name)}
-								hasChildren={leaves.length > 0}
-								expanded={isExpanded}
-								onSelect={() => props.onSelect(root.name)}
-								onToggle={() => toggle(root.name)}
-								onViewDetails={() => props.onViewDetails(root.name)}
-								onDuplicate={() => props.onDuplicate(root.name)}
-								onFork={() => props.onFork(root.name)}
-								onPromote={() => props.onPromote(root.name)}
-								onDelete={() => setConfirmDelete(root.name)}
-							/>
-							{isExpanded &&
-								leaves.map((leaf) => (
+			{searching && props.partners.length > 0 && visibleRoots.length === 0 && (
+				<div className="px-1 py-3">
+					<p className="font-sans text-[12px] text-ink-soft">No letter matches</p>
+					<p className="mt-1 font-mono text-[10px] text-muted">
+						<button type="button" className="cursor-pointer hover:text-ink" onClick={() => setQuery("")}>
+							clear the filter
+						</button>
+						· ⌘P searches everything
+					</p>
+				</div>
+			)}
+
+			<div className="conv-rows">
+				{props.partners.length === 0 && props.loading
+					? Array.from({ length: SKELETON_ROWS }, (_, index) => (
+							<div className="conv-skeleton" key={index} aria-busy="true">
+								<span className="conv-skeleton-face" />
+								<span className="conv-skeleton-lines">
+									<span className="conv-skeleton-line" />
+									<span className="conv-skeleton-line preview" />
+								</span>
+							</div>
+						))
+					: visibleRoots.map((root) => {
+							const leaves = leavesByRoot.get(root.name) ?? [];
+							const isExpanded = expanded.has(root.name) || (searching && leaves.some((leaf) => matched.has(leaf.name)));
+							return (
+								<Fragment key={root.name}>
 									<ChatRow
-										key={leaf.name}
-										partner={leaf}
-										selected={props.selected === leaf.name}
-										working={workingFor(leaf.name)}
-										unread={props.unread(leaf.name)}
-										leaf
-										onSelect={() => props.onSelect(leaf.name)}
-										onViewDetails={() => props.onViewDetails(leaf.name)}
-										onDuplicate={() => props.onDuplicate(leaf.name)}
-										onFork={() => props.onFork(leaf.name)}
-										onPromote={() => props.onPromote(leaf.name)}
-										onDelete={() => setConfirmDelete(leaf.name)}
+										partner={root}
+										selected={props.selected === root.name}
+										working={workingFor(root.name)}
+										unread={props.unread(root.name)}
+										childCount={leaves.length}
+										expanded={isExpanded}
+										onSelect={() => props.onSelect(root.name)}
+										onToggle={() => toggle(root.name)}
+										onViewDetails={() => props.onViewDetails(root.name)}
+										onDuplicate={() => props.onDuplicate(root.name)}
+										onFork={() => props.onFork(root.name)}
+										onPromote={() => props.onPromote(root.name)}
+										onDelete={() => setConfirmDelete(root.name)}
 									/>
-								))}
-						</Fragment>
-					);
-				})}
+									{isExpanded &&
+										leaves.map((leaf) => (
+											<ChatRow
+												key={leaf.name}
+												partner={leaf}
+												selected={props.selected === leaf.name}
+												working={workingFor(leaf.name)}
+												unread={props.unread(leaf.name)}
+												leaf
+												onSelect={() => props.onSelect(leaf.name)}
+												onViewDetails={() => props.onViewDetails(leaf.name)}
+												onDuplicate={() => props.onDuplicate(leaf.name)}
+												onFork={() => props.onFork(leaf.name)}
+												onPromote={() => props.onPromote(leaf.name)}
+												onDelete={() => setConfirmDelete(leaf.name)}
+											/>
+										))}
+								</Fragment>
+							);
+						})}
 			</div>
 
 			<Dialog open={confirmDelete != null} onOpenChange={(open) => !open && setConfirmDelete(null)}>

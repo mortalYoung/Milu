@@ -101,7 +101,7 @@ import { copyPartner, createPartner, deletePartner, listPartners, PartnerError, 
 import type { EscalationDecision, EscalationRequest, SandboxMode } from "./permission";
 import { isSandboxMode, SandboxManager, validateWorkspace } from "./permission";
 import { createSessionStore, type SessionScope } from "./persist";
-import { type ContextChangedEventData, EVENTS, type MemoryRunEndEventData, type MemoryRunStage, type MemoryRunStartEventData } from "./persist/events";
+import { type ContextChangedEventData, EVENTS, type MemoryRunEndEventData, type MemoryRunStartEventData } from "./persist/events";
 import { scanSkillsRoot } from "./skills/filesystem";
 import { SKILL_NAME_RE } from "./skills/frontmatter";
 import { getSkill, listSkillCandidates, listSkills } from "./skills/registry";
@@ -1078,96 +1078,9 @@ async function memoryStatusReport(entry: PartnerAgent): Promise<string> {
 	].join("\n");
 }
 
-async function reconcileTerminalStates(dir: string): Promise<{ commands: number; shells: number; tasks: number; escalations: number; memoryRuns: number }> {
-	const entries = await session.rawEntries(dir);
-	const commandDones = new Set<string>();
-	const shellDones = new Set<string>();
-	const taskEnds = new Set<string>();
-	const escalationDecisions = new Set<string>();
-	const memoryRunEnds = new Set<string>();
-	for (const entry of entries) {
-		if (entry.type !== "custom") continue;
-		const custom = entry as { customType?: string; data?: { commandId?: unknown; shellId?: unknown; taskId?: unknown; escalationId?: unknown; runId?: unknown } };
-		if (custom.customType === EVENTS.commandDone && custom.data?.commandId != null) commandDones.add(String(custom.data.commandId));
-		else if (custom.customType === EVENTS.shellDone && custom.data?.shellId != null) shellDones.add(String(custom.data.shellId));
-		else if (custom.customType === EVENTS.taskEnd && custom.data?.taskId != null) taskEnds.add(String(custom.data.taskId));
-		else if (custom.customType === EVENTS.escalationDecision && custom.data?.escalationId != null) escalationDecisions.add(String(custom.data.escalationId));
-		else if (custom.customType === EVENTS.memoryRunEnd && custom.data?.runId != null) memoryRunEnds.add(String(custom.data.runId));
-	}
-	const scope = session.scope(dir);
-	const ts = Date.now();
-	let commands = 0;
-	let shells = 0;
-	let tasks = 0;
-	let escalations = 0;
-	let memoryRuns = 0;
-	for (const entry of entries) {
-		if (entry.type !== "custom") continue;
-		const custom = entry as {
-			customType?: string;
-			data?: {
-				commandId?: unknown;
-				shellId?: unknown;
-				taskId?: unknown;
-				command?: unknown;
-				escalationId?: unknown;
-				runId?: unknown;
-				startedAt?: unknown;
-				stage?: unknown;
-			};
-		};
-		if (custom.customType === EVENTS.commandRun) {
-			const id = custom.data?.commandId != null ? String(custom.data.commandId) : null;
-			if (id && !commandDones.has(id)) {
-				await scope.appendCommandDone({ commandId: id, kind: "interrupted" }, ts);
-				commands++;
-			}
-		} else if (custom.customType === EVENTS.shellRun) {
-			const id = custom.data?.shellId != null ? String(custom.data.shellId) : null;
-			if (id && !shellDones.has(id)) {
-				const command = String(custom.data?.command ?? "");
-				await scope.appendShellDone({ shellId: id, command, kind: "interrupted" }, ts);
-				shells++;
-			}
-		} else if (custom.customType === EVENTS.taskStart) {
-			const id = custom.data?.taskId != null ? String(custom.data.taskId) : null;
-			if (id && !taskEnds.has(id)) {
-				await scope.appendTaskEnd({ taskId: id, command: String(custom.data?.command ?? ""), status: "interrupted" }, ts);
-				tasks++;
-			}
-		} else if (custom.customType === EVENTS.escalationRequest) {
-			const id = custom.data?.escalationId != null ? String(custom.data.escalationId) : null;
-			if (id && !escalationDecisions.has(id)) {
-				const request = await session.escalationRequest(dir, id);
-				const resumable = request?.toolCallId ? (await session.resumeTurn(dir, request.toolCallId)) !== null : false;
-				if (!resumable) {
-					await scope.appendEscalationRecord("escalation/decision", { escalationId: id, approved: false, dropped: true }, ts);
-					escalations++;
-				}
-			}
-		} else if (custom.customType === EVENTS.memoryRunStart) {
-			const runId = custom.data?.runId != null ? String(custom.data.runId) : null;
-			if (runId && !memoryRunEnds.has(runId)) {
-				const startedAt = typeof custom.data?.startedAt === "number" ? custom.data.startedAt : ts;
-				const stage: MemoryRunStage = custom.data?.stage === "scene" || custom.data?.stage === "persona" || custom.data?.stage === "consolidate" ? custom.data.stage : "memory";
-				await scope.appendMemoryRunEnd(
-					{
-						runId,
-						stage,
-						startedAt,
-						endedAt: ts,
-						reason: "interrupted",
-						added: 0,
-					},
-					ts,
-				);
-				memoryRuns++;
-			}
-		}
-	}
-	if (commands + shells + tasks + escalations + memoryRuns > 0)
-		console.log(`reconcile ${dir}: ${commands} commands, ${shells} shells, ${tasks} tasks, ${escalations} escalations, ${memoryRuns} memory runs`);
-	return { commands, shells, tasks, escalations, memoryRuns };
+// ——— reconcile terminal states: parked ———
+async function reconcileTerminalStates(_dir: string): Promise<{ commands: number; shells: number; tasks: number; escalations: number; memoryRuns: number }> {
+	return { commands: 0, shells: 0, tasks: 0, escalations: 0, memoryRuns: 0 };
 }
 
 async function applyWorkspace(entry: PartnerAgent, path: string | null): Promise<{ ok: true; workspace: string | null } | { ok: false; error: string }> {

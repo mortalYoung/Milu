@@ -5,7 +5,7 @@ import { createComposer } from "./composer";
 import { createDashboard } from "./dashboard";
 import { createDock } from "./dock";
 import { createInbox } from "./inbox";
-import { installCodeCopyHandler } from "./markdown";
+import { installCodeCopyHandler, installMarkdownClickHandler } from "./markdown";
 import { watchMenuState } from "./menu-state";
 import { createMetrics } from "./metrics";
 import { createPalette } from "./palette";
@@ -61,6 +61,7 @@ export const agentEvents = createAgentEvents(rpc, {
 
 export function boot() {
 	installCodeCopyHandler();
+	installMarkdownClickHandler({ rpc, toast, dock, originBaseDir: () => session.store.getState().origin.baseDir });
 	agentEvents.install();
 	status.install();
 	skills.install();

@@ -1,3 +1,4 @@
+import { fuzzyScore } from "../../shared/fuzzy";
 import type { PartnerItem } from "./session";
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
@@ -36,4 +37,30 @@ export function previewFor(partner: PartnerItem): string {
 		return text;
 	}
 	return partner.persona?.split("\n").find((l) => l.trim()) ?? "";
+}
+
+/**
+ * The one partner matcher, shared by the palette's Sessions mode and the chat list's filter: name,
+ * workspace and persona are each fuzzy-scored; a name hit outranks everything, then the score,
+ * then workspace, then persona, and the most recently active letter breaks the tie.
+ */
+export function filterPartners(partners: PartnerItem[], query: string): PartnerItem[] {
+	const q = query.trim();
+	if (!q) return [...partners].sort((a, b) => activityAt(b) - activityAt(a) || a.name.localeCompare(b.name));
+	const hits: { partner: PartnerItem; name: number | null; persona: number | null; workspace: number | null }[] = [];
+	for (const partner of partners) {
+		const name = fuzzyScore(q, partner.name);
+		const persona = partner.persona ? fuzzyScore(q, partner.persona) : null;
+		const workspace = partner.workspace ? fuzzyScore(q, partner.workspace) : null;
+		if (name !== null || persona !== null || workspace !== null) hits.push({ partner, name, persona, workspace });
+	}
+	hits.sort(
+		(a, b) =>
+			Number(b.name !== null) - Number(a.name !== null) ||
+			(b.name ?? 0) - (a.name ?? 0) ||
+			(b.workspace ?? 0) - (a.workspace ?? 0) ||
+			(b.persona ?? 0) - (a.persona ?? 0) ||
+			activityAt(b.partner) - activityAt(a.partner),
+	);
+	return hits.map(({ partner }) => partner);
 }

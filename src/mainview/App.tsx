@@ -1,4 +1,3 @@
-import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { AppHeader } from "./components/AppHeader";
@@ -53,6 +52,7 @@ import {
 } from "./lib/controllers";
 import { ESCAPE_ORDER, type EscapeLayer, escapeTop } from "./lib/escape";
 import { useKeybindings } from "./lib/keybindings";
+import { warmUpMarkdown } from "./lib/markdown";
 import type { PartnerFormData } from "./lib/partner-form";
 import { rpc } from "./lib/rpc";
 import type { PartnerItem } from "./lib/session";
@@ -128,6 +128,7 @@ function ChatView(props: {
 	const settingsCtl = useSettings();
 	const settingsSnapshot = useStore(settingsCtl.store, (state) => state.snapshot);
 	const partners = useStore(session.store, (state) => state.partners);
+	const partnersLoading = useStore(session.partnersLoading.store, (state) => state.loading);
 	const writing = useStore(status.store, (state) => state.writing);
 	const loading = useStore(session.historyLoading.store, (state) => state.loading);
 	const readAt = useStore(unread.store, (state) => state.readAt);
@@ -194,33 +195,21 @@ function ChatView(props: {
 
 	return (
 		<div className="chat-page">
-			<MotionConfig reducedMotion="user">
-				<AnimatePresence initial={false}>
-					{!props.listCollapsed && (
-						<motion.div
-							key="chat-list"
-							className="conv-pane"
-							initial={{ width: 0 }}
-							animate={{ width: "15rem" }}
-							exit={{ width: 0, transition: { duration: 0.18, ease: [0.23, 1, 0.32, 1] } }}
-							transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}
-						>
-							<ConversationList
-								partners={partners}
-								selected={selected}
-								unread={isUnread}
-								onSelect={(name) => selectPartner(partners.find((p) => p.name === name) ?? null)}
-								onAddPartner={() => {}}
-								onDelete={(name) => void onDeletePartner(name)}
-								onViewDetails={props.onViewDetails}
-								onDuplicate={(name) => void runCopy("duplicate", name)}
-								onFork={(name) => void runCopy("fork", name)}
-								onPromote={(name) => void onPromotePartner(name)}
-							/>
-						</motion.div>
-					)}
-				</AnimatePresence>
-			</MotionConfig>
+			<div className={"conv-pane" + (props.listCollapsed ? " collapsed" : "")} inert={props.listCollapsed}>
+				<ConversationList
+					partners={partners}
+					loading={partnersLoading}
+					selected={selected}
+					unread={isUnread}
+					onSelect={(name) => selectPartner(partners.find((p) => p.name === name) ?? null)}
+					onAddPartner={() => {}}
+					onDelete={(name) => void onDeletePartner(name)}
+					onViewDetails={props.onViewDetails}
+					onDuplicate={(name) => void runCopy("duplicate", name)}
+					onFork={(name) => void runCopy("fork", name)}
+					onPromote={(name) => void onPromotePartner(name)}
+				/>
+			</div>
 			<div className="chat-window">
 				{selected ? (
 					<div className={"chat-body" + (btwAnchor ? " btw-open" : "")}>
@@ -330,6 +319,10 @@ export function App() {
 
 	useEffect(() => {
 		void rpc.request.list_editors({}).then((res) => setEditors(res.editors));
+	}, []);
+
+	useEffect(() => {
+		warmUpMarkdown();
 	}, []);
 
 	const toggleList = () => {

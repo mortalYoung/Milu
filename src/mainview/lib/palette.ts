@@ -1,6 +1,6 @@
 import { createStore } from "zustand/vanilla";
 import { fuzzyScore } from "../../shared/fuzzy";
-import { activityAt } from "./chat-preview";
+import { filterPartners } from "./chat-preview";
 import type { RevealRange } from "./dock";
 import type { PartnerItem } from "./session";
 
@@ -87,26 +87,7 @@ export function splitPath(path: string): { dir: string; name: string } {
 }
 
 export function sessionRows(partners: PartnerItem[], query: string): PaletteRow[] {
-	const q = query.trim();
-	if (!q) {
-		return [...partners].sort((a, b) => activityAt(b) - activityAt(a) || a.name.localeCompare(b.name)).map((partner) => ({ kind: "session" as const, partner }));
-	}
-	const hits: { partner: PartnerItem; name: number | null; persona: number | null; workspace: number | null }[] = [];
-	for (const partner of partners) {
-		const name = fuzzyScore(q, partner.name);
-		const persona = partner.persona ? fuzzyScore(q, partner.persona) : null;
-		const workspace = partner.workspace ? fuzzyScore(q, partner.workspace) : null;
-		if (name !== null || persona !== null || workspace !== null) hits.push({ partner, name, persona, workspace });
-	}
-	hits.sort(
-		(a, b) =>
-			Number(b.name !== null) - Number(a.name !== null) ||
-			(b.name ?? 0) - (a.name ?? 0) ||
-			(b.workspace ?? 0) - (a.workspace ?? 0) ||
-			(b.persona ?? 0) - (a.persona ?? 0) ||
-			activityAt(b.partner) - activityAt(a.partner),
-	);
-	return hits.map(({ partner }) => ({ kind: "session" as const, partner }));
+	return filterPartners(partners, query).map((partner) => ({ kind: "session" as const, partner }));
 }
 
 export function fileRows(files: PaletteFile[], query: string): PaletteRow[] {

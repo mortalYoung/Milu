@@ -307,6 +307,17 @@ body::before {
 
 	.conv-pane {
 		@apply w-60 shrink-0 h-full overflow-hidden;
+		transition: width 220ms var(--ease-out);
+	}
+	.conv-pane.collapsed {
+		@apply w-0;
+		transition: width 180ms var(--ease-out);
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.conv-pane,
+		.conv-pane.collapsed {
+			transition: none;
+		}
 	}
 
 	.conv-list-search {
@@ -324,6 +335,28 @@ body::before {
 	.conv-item.selected {
 		background: var(--color-paper-deep);
 	}
+	.conv-rows {
+		@apply flex flex-col gap-[2px] flex-1 min-h-0 overflow-y-auto;
+	}
+	.conv-skeleton {
+		@apply flex items-center gap-2.5 px-2 mr-3 py-[9px];
+	}
+	.conv-skeleton-face,
+	.conv-skeleton-line {
+		background: color-mix(in srgb, var(--color-hairline) 40%, transparent);
+	}
+	.conv-skeleton-face {
+		@apply size-[34px] rounded-full shrink-0;
+	}
+	.conv-skeleton-lines {
+		@apply flex flex-1 flex-col gap-[11px];
+	}
+	.conv-skeleton-line {
+		@apply h-[13px] w-[52%] rounded-[3px];
+	}
+	.conv-skeleton-line.preview {
+		@apply h-[11px] w-[78%];
+	}
 	.conv-avatar {
 		@apply size-[34px] rounded-full flex items-center justify-center shrink-0 font-serif text-[15px] font-semibold leading-none;
 	}
@@ -340,6 +373,23 @@ body::before {
 	}
 	.conv-avatar.avatar-sm {
 		@apply size-5 text-[11px];
+	}
+	.conv-name-wrap {
+		@apply flex items-center gap-[6px] min-w-0;
+	}
+	.conv-fork-count {
+		@apply inline-flex shrink-0 items-center gap-[2px] rounded-full border border-hairline px-[5px] h-[15px] font-mono text-[9.5px] leading-none text-body-muted cursor-pointer pointer-events-auto transition-colors;
+	}
+	.conv-fork-count:hover {
+		background: var(--color-paper-hover);
+		color: var(--color-ink);
+	}
+	.conv-fork-count[aria-expanded="true"] {
+		color: var(--color-ink);
+	}
+	.conv-fork-count:focus-visible {
+		outline: 1.5px solid var(--color-seal);
+		outline-offset: 1px;
 	}
 	.conv-main {
 		@apply flex flex-col min-w-0 flex-1 leading-tight pointer-events-none;

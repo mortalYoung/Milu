@@ -150,6 +150,7 @@
 - [ ] hover 动效包在 `@media (hover: hover) and (pointer: fine)` 内
 - [ ] 只动了 transform/opacity；没有动画 `width/height/margin/padding/top/left`
 - [ ] 快速触发组件用 transition 或 spring，不用重播 keyframes
+- [ ] 收起/展开的容器做过往返测试（收起再展开）：内部 state（展开的树、滚动位置、输入内容）不重置；收起靠 class + 过渡，不靠卸载
 - [ ] 手势/拖拽/sheet/swipe：pointer-down 即时反馈、1:1 跟手、pointer capture、velocity handoff、
       rubber-band 边界、可中断；已读 `apple-fluid-interfaces.md`
 - [ ] Framer Motion / Motion 高负载场景没有用 `x/y/scale` shorthand 造成主线程掉帧风险
@@ -172,6 +173,7 @@
 - [ ] 弹窗：焦点陷阱 + Esc + 焦点返还；危险操作有确认/撤销
 - [ ] 数字用 tabular-nums/等宽；标题 balance、正文 pretty
 - [ ] 空态/加载态/错误态/成功态齐全；超长文本不破版
+- [ ] 可滚动区域的容器自己声明了滚动（`flex-1 min-h-0 overflow-y-auto` + 等价的 `min-height: 0`），没有依赖祖先的 `overflow: hidden` 裁掉多余内容
 - [ ] 移动端：非对称布局塌缩单列；无 `h-screen`；无横向滚动条
 - [ ] 暗色页有 `color-scheme` + `theme-color`
 

@@ -42,6 +42,7 @@ export type Session = ReturnType<typeof createSession>;
 export function createSession(rpc: RPC) {
 	const store = createStore<SessionData>()(() => ({ selected: null, partners: [], origin: EMPTY_ORIGIN }));
 	const historyLoading = createInFlightBoolean();
+	const partnersLoading = createInFlightBoolean();
 
 	const get = store.getState;
 	const patchOrigin = (patch: Partial<OriginData>) => store.setState({ origin: { ...get().origin, ...patch } });
@@ -137,10 +138,15 @@ export function createSession(rpc: RPC) {
 
 	async function refreshPartners() {
 		const seq = ++partnersRefreshSeq;
-		const { partners: list } = await rpc.request.list_partners({});
-		if (seq !== partnersRefreshSeq) return;
-		store.setState({ partners: list });
-		if (get().selected != null && !list.some((p) => p.name === get().selected)) select(null);
+		partnersLoading.begin();
+		try {
+			const { partners: list } = await rpc.request.list_partners({});
+			if (seq !== partnersRefreshSeq) return;
+			store.setState({ partners: list });
+			if (get().selected != null && !list.some((p) => p.name === get().selected)) select(null);
+		} finally {
+			partnersLoading.end();
+		}
 	}
 
 	function select(partner: PartnerItem | null) {
@@ -160,6 +166,7 @@ export function createSession(rpc: RPC) {
 	return {
 		store,
 		historyLoading,
+		partnersLoading,
 		resetOrigin,
 		mutate: {
 			refreshHistory,
