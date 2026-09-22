@@ -16,6 +16,7 @@ export function createAgentEvents(
 ) {
 	const { session, status, commands, toast, openPartner } = deps;
 	const selected = () => session.store.getState().selected;
+	const escalationToasts = new Map<string, number>();
 
 	function install() {
 		rpc.addMessageListener("agent_turn", ({ partner }) => {
@@ -38,9 +39,28 @@ export function createAgentEvents(
 			void session.mutate.refreshHistory();
 		});
 
-		rpc.addMessageListener("escalation_update", ({ partner }) => {
+		rpc.addMessageListener("escalation_update", ({ partner, escalationId, command, from, to, resolved }) => {
 			if (partner === undefined || partner === selected()) void session.mutate.refreshHistory();
 			status.calibrate();
+			if (escalationId === undefined) return;
+			const open = escalationToasts.get(escalationId);
+			if (resolved) {
+				if (open !== undefined) toast.dismiss(open);
+				escalationToasts.delete(escalationId);
+				return;
+			}
+			if (partner === undefined || open !== undefined) return;
+			const shift = from === undefined || to === undefined ? "" : `${from} → ${to} · `;
+			escalationToasts.set(
+				escalationId,
+				toast.push({
+					title: `${partner} · sandbox escalation`,
+					body: `${shift}${command ?? "a tool call"} · click to approve`,
+					avatar: partner.charAt(0),
+					durationMs: 0,
+					onClick: () => void rpc.request.sandbox_respond({ id: escalationId, approved: true }),
+				}),
+			);
 		});
 
 		rpc.addMessageListener("command_update", () => {

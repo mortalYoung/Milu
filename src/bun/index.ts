@@ -482,7 +482,10 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 							},
 							Date.now(),
 						)
-						.then(() => rpc.send.escalation_update({ partner: profile.name }))
+						.then(() => {
+							rpc.send.escalation_update({ partner: profile.name, escalationId: id, command: request.command, from: request.from, to: request.to });
+							Utils.showNotification({ title: `${profile.name} · sandbox escalation`, body: request.command.slice(0, 140), subtitle: `${request.from} → ${request.to}` });
+						})
 						.catch((error) => {
 							console.error("confirmEscalation persist failed:", error);
 							pendingSandboxConfirms.delete(id);
@@ -1609,7 +1612,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				if (pending) {
 					pending.resolve(approved ? { approved: true, mode: pending.to } : { approved: false, reason: "rejected by user" });
 				}
-				rpc.send.escalation_update({ partner: pending?.partner ?? viewPartner?.name });
+				rpc.send.escalation_update({ partner: pending?.partner ?? viewPartner?.name, escalationId: id, resolved: true });
 				if (resume) void resumeApprovedEscalation(resume.entry, resume.request, resume.turn);
 				return { ok: true };
 			},

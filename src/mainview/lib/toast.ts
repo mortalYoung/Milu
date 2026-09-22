@@ -12,7 +12,7 @@ export interface ToastItem {
 	leaving?: boolean;
 }
 
-export type ToastMessage = string | { title?: string; body: string; onClick?: () => void; avatar?: string };
+export type ToastMessage = string | { title?: string; body: string; onClick?: () => void; avatar?: string; durationMs?: number };
 
 export const DEFAULT_TOAST_DURATION_MS = 4000;
 export const TOAST_EXIT_MS = 160;
@@ -45,12 +45,14 @@ export function createToast() {
 			};
 		}
 		store.setState((state) => ({ toasts: [...state.toasts, item] }));
-		if (durationMs > 0) {
+		const lifetime = typeof message === "string" ? durationMs : (message.durationMs ?? durationMs);
+		if (lifetime > 0) {
 			timers.set(
 				id,
-				setTimeout(() => dismiss(id), durationMs),
+				setTimeout(() => dismiss(id), lifetime),
 			);
 		}
+		return id;
 	}
 
 	function dismiss(id: number) {

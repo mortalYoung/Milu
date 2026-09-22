@@ -1121,7 +1121,7 @@ export type AppRPCSchema = __schema<{
 
 			sandbox_mode_update: {};
 
-			escalation_update: { partner?: string };
+			escalation_update: { partner?: string; escalationId?: string; command?: string; from?: SandboxMode; to?: SandboxMode; resolved?: boolean };
 
 			command_update: {};
 			skills_change: {};
