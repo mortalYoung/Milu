@@ -19,13 +19,24 @@ export function withFallbackPath(inherited: string, home: string): string {
 
 let shellPathPromise: Promise<string> | null = null;
 
+/** A stdio server must never inherit a cwd that no longer exists: the app can outlive the directory
+ * it was launched from (a rebuilt dist/, a removed worktree), and then `npx` dies in `uv_cwd`
+ * before the server gets to start at all. `process.cwd()` throws in exactly that case. */
+export function safeCwd(home: string): string {
+	try {
+		return process.cwd();
+	} catch {
+		return home;
+	}
+}
+
 /** The app inherits launchd's bare PATH when it is opened from Finder, so an MCP command like `npx`
  * is not on it. Ask the login shell once (that is where brew/fnm/nvm put their bin), and fall back
  * to the usual directories when the shell has nothing to say. */
 export function shellPath(): Promise<string> {
 	shellPathPromise ??= (async () => {
 		try {
-			const proc = Bun.spawn([process.env["SHELL"]?.trim() || "/bin/zsh", "-lc", 'printf %s "$PATH"'], { stdout: "pipe", stderr: "ignore" });
+			const proc = Bun.spawn([process.env["SHELL"]?.trim() || "/bin/zsh", "-lc", 'printf %s "$PATH"'], { stdout: "pipe", stderr: "ignore", cwd: safeCwd(homedir()) });
 			const text = (await new Response(proc.stdout).text()).trim();
 			await proc.exited;
 			if (text.includes("/")) return withFallbackPath(`${text}:${process.env["PATH"] ?? ""}`, homedir());
@@ -172,7 +183,7 @@ export class McpManager {
 				command: session.config.transport.command,
 				...(session.config.transport.args ? { args: session.config.transport.args } : {}),
 				env: { PATH: await shellPath(), ...session.config.transport.env },
-				...(session.config.transport.cwd ? { cwd: session.config.transport.cwd } : {}),
+				cwd: session.config.transport.cwd ?? safeCwd(homedir()),
 				maxBufferSize: this.maxBufferSize,
 			});
 			await client.connect(transport);
