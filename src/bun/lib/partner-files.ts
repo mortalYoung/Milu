@@ -62,11 +62,7 @@ export async function readPartnerGrantedSkills(dir: string): Promise<string[]> {
 	}
 }
 export async function persistPartnerGrantedSkills(dir: string, skills: string[]): Promise<void> {
-	try {
-		await writeFile(grantedSkillsFilePath(dir), JSON.stringify({ skills }, null, 2), "utf8");
-	} catch (error) {
-		console.error("persistPartnerGrantedSkills failed:", error);
-	}
+	await writeFile(grantedSkillsFilePath(dir), JSON.stringify({ skills }, null, 2), "utf8");
 }
 
 export const grantedMcpFilePath = (dir: string) => join(dir, "mcp-grants.json");
@@ -79,11 +75,7 @@ export async function readPartnerGrantedMcp(dir: string): Promise<string[]> {
 	}
 }
 export async function persistPartnerGrantedMcp(dir: string, servers: string[]): Promise<void> {
-	try {
-		await writeFile(grantedMcpFilePath(dir), JSON.stringify({ servers }, null, 2), "utf8");
-	} catch (error) {
-		console.error("persistPartnerGrantedMcp failed:", error);
-	}
+	await writeFile(grantedMcpFilePath(dir), JSON.stringify({ servers }, null, 2), "utf8");
 }
 
 // Per-partner model selection (provider + pinned model + thinking level): survives restart, restored on partner switch.

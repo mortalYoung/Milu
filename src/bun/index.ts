@@ -2249,15 +2249,18 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					const settings = await loadSettings();
 					const dir = getPartnerDir(settings, name);
 					const current = await readPartnerGrantedMcp(dir);
-					const adding = granted && !current.includes(server);
-					const removing = !granted && current.includes(server);
-					if (!adding && !removing) return { ok: true };
-					const next = adding ? [...current, server] : current.filter((entry) => entry !== server);
+					const next = granted ? (current.includes(server) ? current : [...current, server]) : current.filter((entry) => entry !== server);
+					if (next.join("\n") === current.join("\n")) return { ok: true };
 					await persistPartnerGrantedMcp(dir, next);
-					const event = { server, change: adding ? ("added" as const) : ("removed" as const), granted: next };
-					await session.scope(dir).appendMcpChanged(event, Date.now());
-					const entry = await agents.get(name);
-					if (entry) (await entry).agent.notifySystemReminder(mcpChangedText(event));
+					const event = { server, change: granted ? ("added" as const) : ("removed" as const), granted: next };
+					void session
+						.scope(dir)
+						.appendMcpChanged(event, Date.now())
+						.catch((error) => console.error("appendMcpChanged failed:", error));
+					void agents
+						.get(name)
+						?.then((entry) => entry.agent.notifySystemReminder(mcpChangedText(event)))
+						.catch((error) => console.error("mcp reminder failed:", error));
 					return { ok: true };
 				} catch (error) {
 					console.error("partner_set_mcp failed:", error);
