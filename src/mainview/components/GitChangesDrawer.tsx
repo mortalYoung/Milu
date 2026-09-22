@@ -91,9 +91,6 @@ export function GitChangesDrawer(props: {
 	if (selected) shownRef.current = selected;
 	const shownChange = shownRef.current;
 
-	const propsRef = useRef(props);
-	propsRef.current = props;
-
 	function setSelected(next: GitChangeItem | null) {
 		const partner = props.partner;
 		if (!partner) return;

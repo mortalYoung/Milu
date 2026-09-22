@@ -387,8 +387,6 @@ export function ExplorerDrawer(props: {
 	if (selected) shownFileRef.current = selected;
 	const shownFile = shownFileRef.current;
 
-	const propsRef = useRef(props);
-	propsRef.current = props;
 	const dirsRef = useRef(dirs);
 	dirsRef.current = dirs;
 	const expandedRef = useRef(expanded);

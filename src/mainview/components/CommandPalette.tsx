@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import type { PartnerAccessServer, PartnerAccessSkill } from "../../shared/rpc";
 import type { RevealRange } from "../lib/dock";
@@ -47,12 +47,9 @@ export function CommandPalette(props: {
 	if (!imeRef.current) imeRef.current = imeGuard(palette.setQuery);
 	const ime = imeRef.current;
 
-	const propsRef = useRef(props);
-	propsRef.current = props;
-
 	useEffect(() => {
 		if (!open) return;
-		setSessions(propsRef.current.partners);
+		setSessions(props.partners);
 	}, [open]);
 
 	const filesAvailable = props.partner != null && props.hasWorkspace;
@@ -119,13 +116,11 @@ export function CommandPalette(props: {
 		);
 	}, [open, mode, props.partner]);
 
-	async function toggleGrant(grant: PaletteGrant) {
+	async function toggleGrant(grant: PaletteGrant, partner: string) {
 		const next = !grant.granted;
 		const flip = (granted: boolean) => setGrants((list) => list.map((item) => (item === grant ? { ...item, granted } : item)));
 		flip(next);
 		setGrantError(null);
-		const partner = props.partner;
-		if (!partner) return;
 		try {
 			const result =
 				grant.group === "skill"
@@ -166,19 +161,16 @@ export function CommandPalette(props: {
 		palette.setIndex(positions[next]!);
 	}
 
-	const activate = useCallback(
-		(row: PaletteRow | undefined) => {
-			if (!row || row.kind === "header") return;
-			if (row.kind === "grant") {
-				if (!row.grant.alwaysOn) void toggleGrant(row.grant);
-				return;
-			}
-			palette.close();
-			if (row.kind === "session") propsRef.current.onSelectPartner(row.partner.name);
-			else propsRef.current.onRevealFile(row.file.path, parseFileQuery(palette.store.getState().query).range);
-		},
-		[palette],
-	);
+	const activate = (row: PaletteRow | undefined) => {
+		if (!row || row.kind === "header") return;
+		if (row.kind === "grant") {
+			if (!row.grant.alwaysOn && props.partner) void toggleGrant(row.grant, props.partner);
+			return;
+		}
+		palette.close();
+		if (row.kind === "session") props.onSelectPartner(row.partner.name);
+		else props.onRevealFile(row.file.path, parseFileQuery(palette.store.getState().query).range);
+	};
 
 	function onKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
 		if (event.nativeEvent.isComposing || ime.composing) return;
@@ -202,7 +194,7 @@ export function CommandPalette(props: {
 		const row = rows[index];
 		if (mode === "files" && (event.metaKey || event.ctrlKey) && row?.kind === "file") {
 			palette.close();
-			propsRef.current.onOpenFile(row.file.path);
+			props.onOpenFile(row.file.path);
 			return;
 		}
 		activate(row);
