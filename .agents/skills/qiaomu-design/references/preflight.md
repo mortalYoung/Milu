@@ -174,6 +174,7 @@
 - [ ] 数字用 tabular-nums/等宽；标题 balance、正文 pretty
 - [ ] 空态/加载态/错误态/成功态齐全；超长文本不破版
 - [ ] 可滚动区域的容器自己声明了滚动（`flex-1 min-h-0 overflow-y-auto` + 等价的 `min-height: 0`），没有依赖祖先的 `overflow: hidden` 裁掉多余内容
+- [ ] 没有 `useCallback`（P-72）：项目里没有 `React.memo`，它只买风险；`useRef(props)` 只允许出现在 React 之外的长期回调（CodeMirror extension / 观察者）里，且是写读成对的
 - [ ] 移动端：非对称布局塌缩单列；无 `h-screen`；无横向滚动条
 - [ ] 暗色页有 `color-scheme` + `theme-color`
 

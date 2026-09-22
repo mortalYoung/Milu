@@ -510,3 +510,10 @@
 - 规则：收起不许用卸载实现。退场动画结束时子树被销毁，内部 state 一起清零——展开的树、滚动位置、输入框内容、正开着的小弹窗全部回到初始值，而用户只会看到「我明明展开过」。要动效就给容器宽度 / 位移的 class + CSS 过渡（可中断、可快速往返）；收起后不想让它可聚焦或进入读屏树，用 `inert`，不要用卸载。判据：任何收起-展开做一次往返测试，内部 state 不该变化。
 - 原话摘录：「chat list 收起再展开后，所有 partner 列表状态重置了，比如有展开一个 partner 的 fork 列表，再收起 chat list，再展开 fork 列表就收起来了」
 - 收录：2026-09-22｜状态：生效（已落入 preflight C 节 + motion-craft.md 二节）
+
+### P-72 · 不用 useCallback
+- 级别：强偏好
+- 何时适用：本项目的 React 代码；组件没被 `React.memo` 包、函数也不进 hook 依赖数组时
+- 规则：不用 `useCallback`。这个项目里没有任何 `React.memo` / `memo` / `forwardRef`，所以"memo 化函数身份"买不到任何东西，只会引入 stale 闭包这一类 bug（已实锤一次：`CommandPalette` 的 `activate` 锁死了首次渲染的 `props.partner`，于是授权静默失败——勾会亮、没报错、重开就没了）。要读"当前 props"写普通函数即可（每次渲染重建）。**唯一例外**：在 **React 之外**的长期回调里读 props（CodeMirror 的 extension / updateListener / compartment，DOM 观察者）才用 `useRef(props)` —— 那类引用的存在理由是"没有 re-render 可依赖"，不是"省一次重建"；其 effect 的依赖数组是刻意不含它的（比如 `wrap` 由 Compartment 单独重配）。
+- 原话摘录：「我理解这个东西不应该使用」（要求审计全项目 useCallback 时）
+- 收录：2026-09-22｜状态：生效（已落入 preflight D 节）
