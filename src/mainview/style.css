@@ -2953,6 +2953,9 @@ body::before {
 	.command-menu-hint {
 		@apply text-muted shrink-0;
 	}
+	.command-menu-item .mention-name {
+		@apply text-ink;
+	}
 	.command-menu-header {
 		@apply px-3 pt-1.5 pb-0.5 font-sans text-[9px] uppercase tracking-[0.14em] text-muted;
 	}

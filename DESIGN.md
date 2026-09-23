@@ -140,7 +140,11 @@ Partner 是一个"数字员工"桌面应用:你选中一位同事(bob、eve、le
   (dropdown 被 `max-width: 0` 的滑槽裁掉,不可点、不进 Tab);点 icon 后 dropdown
   整体**向左滑出**(max-width 0 → 150px / 180ms ease-out,标签另有 26px 位移 +
   淡入;prefers-reduced-motion 关掉过渡),同时打开菜单;再点 icon 收起。
-  低频的 sandbox 只在 partner 详情弹窗里改。
+  低频的 sandbox 只在 partner 详情弹窗里改。另:`/` 唤起命令菜单,`@` 唤起 **partner
+  面板**(同一族外壳 = `.command-menu`:letter 纸面 + hairline + 8px 圆角 + 同一条
+  `pop-in`;行 = 20px 头像 + mono `@name` + 最近一条预览 + `writing…`,↑↓/Enter/Tab
+  选中)——它**只把 `@name ` 插回光标处并交回焦点**,不切换视图:换 partner 的键盘
+  入口仍然是命令面板(⌘P)。
   输入 Public Sans 14px "Type a message…";textarea 聚焦不展开任何 meta。
 - **partner 详情弹窗(per-partner 的家)**:820px 纸面 + hairline;左列 = 三张窗口卡
   (`· 9m`)+ Activity heatmap + Persona + Memory;右列 240px = **This session** 卡

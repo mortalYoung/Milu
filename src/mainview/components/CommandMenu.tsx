@@ -1,4 +1,5 @@
 import type { CommandDescriptor } from "../../shared/rpc";
+import { useRowInView } from "../lib/menu-scroll";
 
 type Row = { header: string } | { item: CommandDescriptor; index: number };
 
@@ -17,8 +18,11 @@ function groupItems(items: CommandDescriptor[]): Row[] {
 	return rows;
 }
 
+const ROW_ID = "composer-command-option";
+
 export function CommandMenu(props: { items: CommandDescriptor[]; selectedIndex: number; onPick: (index: number) => void; onHover: (index: number) => void }) {
 	const rows = groupItems(props.items);
+	useRowInView(ROW_ID, props.selectedIndex);
 	return (
 		<div className="command-menu" role="listbox" aria-label="Commands">
 			{rows.map((row) =>
@@ -30,6 +34,7 @@ export function CommandMenu(props: { items: CommandDescriptor[]; selectedIndex: 
 					<button
 						type="button"
 						key={`i:${row.item.name}`}
+						id={`${ROW_ID}-${row.index}`}
 						className={"command-menu-item" + (row.index === props.selectedIndex ? " selected" : "")}
 						role="option"
 						aria-selected={row.index === props.selectedIndex}

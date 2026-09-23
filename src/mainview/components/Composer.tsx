@@ -14,11 +14,13 @@ import { useSettings } from "../lib/contexts/settings-context";
 import { useSkills } from "../lib/contexts/skills-context";
 import { useToast } from "../lib/contexts/toast-context";
 import { ESCAPE_ORDER, useEscapeLayer } from "../lib/escape";
+import { filterMentions } from "../lib/mentions";
 import { detectTrigger, parseCommand } from "../lib/trigger";
 import { Button } from "./Button";
 import { CommandMenu } from "./CommandMenu";
 import { ContextMeter } from "./ContextMeter";
 import { FollowUpDock } from "./FollowUpDock";
+import { PartnerMenu } from "./PartnerMenu";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
@@ -70,6 +72,8 @@ export function Composer(props: {
 	const [menuOpen, setMenuOpen] = useState(false);
 	const [menuQuery, setMenuQuery] = useState("");
 	const [selectedIndex, setSelectedIndex] = useState(0);
+	const [mention, setMention] = useState<{ query: string; span: { start: number; end: number } } | null>(null);
+	const [mentionIndex, setMentionIndex] = useState(0);
 	const [claimed, setClaimed] = useState<CommandDescriptor | null>(null);
 	const [submitting, setSubmitting] = useState(false);
 	const [shellMode, setShellMode] = useState(false);
@@ -132,14 +136,17 @@ export function Composer(props: {
 		return [...matched, ...skillItems];
 	})();
 
+	const mentionItems = mention ? filterMentions(partners, mention.query) : [];
+
 	useEscapeLayer({
 		id: "composer.menu",
 		order: ESCAPE_ORDER.composerMenu,
-		isOpen: () => menuOpen || claimed != null,
+		isOpen: () => menuOpen || claimed != null || mention != null,
 		close: () => {
 			suppressNextSync.current = true;
 			setMenuOpen(false);
 			setClaimed(null);
+			setMention(null);
 		},
 	});
 	function resize() {
@@ -164,7 +171,7 @@ export function Composer(props: {
 	}
 
 	const commandHint = (() => {
-		if (menuOpen || shellMode || submitting) return null;
+		if (menuOpen || mention || shellMode || submitting) return null;
 		const parsed = parseCommand(text);
 		if (!parsed || parsed.rawInput.trim()) return null;
 		const cmd = commands.find((c) => c.name === parsed.name);
@@ -174,15 +181,26 @@ export function Composer(props: {
 	function syncCommandState(value: string, pos: number) {
 		if (shellMode) {
 			setMenuOpen(false);
+			setMention(null);
 			lastTriggerKey.current = null;
 			return;
 		}
 		if (claimed) {
 			if (!value.startsWith(`/${claimed.name} `)) setClaimed(null);
 			setMenuOpen(false);
+			setMention(null);
 			return;
 		}
 		const trigger = detectTrigger(value, pos);
+		if (trigger?.trigger === "@") {
+			const key = `mention:${trigger.query}`;
+			if (!mention || lastTriggerKey.current !== key) setMentionIndex(0);
+			lastTriggerKey.current = key;
+			setMention({ query: trigger.query, span: trigger.span });
+			setMenuOpen(false);
+			return;
+		}
+		setMention(null);
 		if (trigger?.trigger === "/" && trigger.position === "leading") {
 			const key = `${trigger.position}:${trigger.query}`;
 			if (!menuOpen || lastTriggerKey.current !== key) setSelectedIndex(0);
@@ -284,6 +302,26 @@ export function Composer(props: {
 		}
 	}
 
+	function pickPartner(index: number) {
+		const partner = mentionItems[index];
+		const at = mention;
+		if (!partner || !at) return;
+		const value = textareaRef.current?.value ?? text;
+		const next = `${value.slice(0, at.span.start)}@${partner.name} ${value.slice(at.span.end)}`;
+		const caret = at.span.start + partner.name.length + 2;
+		setMention(null);
+		lastTriggerKey.current = null;
+		setText(next);
+		composer.change(next);
+		queueMicrotask(() => {
+			const el = textareaRef.current;
+			if (!el) return;
+			el.focus();
+			el.setSelectionRange(caret, caret);
+			resize();
+		});
+	}
+
 	function pickCommand(index: number) {
 		const item = menuItems[index];
 		if (!item) return;
@@ -349,17 +387,22 @@ export function Composer(props: {
 	};
 
 	const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-		if (menuOpen && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+		const pickerCount = menuOpen ? menuItems.length : mentionItems.length;
+		const pick = (index: number) => (menuOpen ? pickCommand(index) : pickPartner(index));
+		if ((menuOpen || mention) && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
 			event.preventDefault();
-			if (menuItems.length > 0) {
+			if (pickerCount > 0) {
 				const delta = event.key === "ArrowDown" ? 1 : -1;
-				setSelectedIndex((i) => (i + delta + menuItems.length) % menuItems.length);
+				const current = menuOpen ? selectedIndex : mentionIndex;
+				const next = (current + delta + pickerCount) % pickerCount;
+				if (menuOpen) setSelectedIndex(next);
+				else setMentionIndex(next);
 			}
 			return;
 		}
-		if (event.key === "Tab" && !event.shiftKey && menuOpen && menuItems.length > 0) {
+		if (event.key === "Tab" && !event.shiftKey && (menuOpen || mention) && pickerCount > 0) {
 			event.preventDefault();
-			pickCommand(selectedIndex);
+			pick(menuOpen ? selectedIndex : mentionIndex);
 			return;
 		}
 		if (event.key === "Tab" && !event.shiftKey && !menuOpen && text.trim() === "") {
@@ -383,10 +426,11 @@ export function Composer(props: {
 			const parsed = parseCommand(text);
 			const exact = parsed ? commands.find((c) => c.name === parsed.name) : undefined;
 			const canExecuteLine = exact && (exact.kind === "execute" || (exact.kind === "leadingInput" && parsed!.rawInput.trim()));
-			if (canExecuteLine || !menuOpen || menuItems.length === 0) {
+			const pickerOpen = menuOpen || mention != null;
+			if (canExecuteLine || !pickerOpen || pickerCount === 0) {
 				void submit();
 			} else {
-				pickCommand(selectedIndex);
+				pick(menuOpen ? selectedIndex : mentionIndex);
 			}
 		}
 	};
@@ -397,6 +441,7 @@ export function Composer(props: {
 	return (
 		<form className="composer" id="composer" ref={rootRef} onSubmit={submitForm}>
 			{menuOpen && <CommandMenu items={menuItems} selectedIndex={selectedIndex} onPick={pickCommand} onHover={setSelectedIndex} />}
+			{mention && <PartnerMenu items={mentionItems} selectedIndex={mentionIndex} onPick={pickPartner} onHover={setMentionIndex} />}
 			{commandHint && (
 				<div className="composer-command-hint">
 					<span className="composer-command-hint-name">/{commandHint.name}</span>

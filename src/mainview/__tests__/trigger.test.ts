@@ -1,5 +1,5 @@
 /**
- * Unit tests for slash-trigger detection and command parsing.
+ * Unit tests for trigger detection ('/' commands, '@' partners) and command parsing.
  * Pure functions — no DOM, runs under bun test.
  */
 import { describe, expect, test } from "bun:test";
@@ -33,6 +33,22 @@ describe("detectTrigger caret-left scan + word boundary", () => {
 
 	test("user@host slash is not a boundary", () => {
 		expect(detectTrigger("user@host/foo", 14)).toBeNull();
+	});
+
+	test("@ opens the partner trigger", () => {
+		expect(detectTrigger("@bo", 3)).toEqual({ trigger: "@", query: "bo", position: "leading", span: { start: 0, end: 3 } });
+	});
+
+	test("@ inline after a space is a boundary", () => {
+		expect(detectTrigger("ask @bo", 7)).toEqual({ trigger: "@", query: "bo", position: "inline", span: { start: 4, end: 7 } });
+	});
+
+	test("an e-mail's @ is not a boundary", () => {
+		expect(detectTrigger("mail bob@example", 16)).toBeNull();
+	});
+
+	test("bare @ opens the picker with an empty query", () => {
+		expect(detectTrigger("@", 1)).toEqual({ trigger: "@", query: "", position: "leading", span: { start: 0, end: 1 } });
 	});
 
 	test("whitespace before the caret stops the scan", () => {

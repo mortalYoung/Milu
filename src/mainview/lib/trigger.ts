@@ -1,10 +1,10 @@
 /**
- * Slash-trigger detection (pure, DOM-free): from the caret scan left for a '/'
- * at a word boundary. This is not string.includes — URL slashes, user@host and
- * the second slash of '//' never trigger.
+ * Trigger detection (pure, DOM-free): from the caret scan left for a '/' (commands) or an '@'
+ * (partners) at a word boundary. This is not string.includes — URL slashes, user@host, an e-mail's
+ * '@' and the second slash of '//' never trigger.
  */
 export interface TriggerToken {
-	trigger: "/";
+	trigger: "/" | "@";
 	query: string;
 	position: "leading" | "inline";
 	span: { start: number; end: number };
@@ -26,10 +26,10 @@ export function detectTrigger(draft: string, caret: number): TriggerToken | null
 	for (let i = caret - 1; i >= 0; i--) {
 		const ch = draft.charAt(i);
 		if (WHITESPACE.test(ch)) return null;
-		if (ch !== "/") continue;
+		if (ch !== "/" && ch !== "@") continue;
 		if (!boundaryOk(draft, i)) continue;
 		return {
-			trigger: "/",
+			trigger: ch,
 			query: draft.slice(i + 1, caret),
 			position: i === 0 ? "leading" : "inline",
 			span: { start: i, end: caret },
