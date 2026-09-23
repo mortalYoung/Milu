@@ -82,9 +82,10 @@ function letterBody(
 				</div>
 			)}
 			{rich ? <Markdown text={card.text} files={card.files} class="md msg-letter-text" /> : <div className="msg-letter-text">{card.text}</div>}
-			{worker && (
+			{(worker || card.to) && (
 				<div className="msg-sign">
-					— {worker} · {formatHistoryTime(card.time)}
+					{worker && `— ${worker} · ${formatHistoryTime(card.time)}`}
+					{card.to && <span className="msg-to">To {card.to}</span>}
 				</div>
 			)}
 			{onBtw && card.kind === "agent" && showRail && (
@@ -281,13 +282,25 @@ export function Transcript(props: {
 		let last = -1;
 		for (let i = 0; i < entries.length; i++) {
 			const entry = entries[i]!;
-			if (entry.type === "message" && entry.message.role === "user" && typeof (entry.message as { skill?: unknown }).skill !== "string") last = i;
+			if (
+				entry.type === "message" &&
+				entry.message.role === "user" &&
+				typeof (entry.message as { skill?: unknown }).skill !== "string" &&
+				(entry.message as { from?: unknown }).from === undefined
+			)
+				last = i;
 		}
 		if (last < 0) return null;
 		let sawAborted = false;
 		for (let i = last + 1; i < entries.length; i++) {
 			const entry = entries[i]!;
-			if (entry.type === "message" && entry.message.role === "user" && typeof (entry.message as { skill?: unknown }).skill !== "string") return null;
+			if (
+				entry.type === "message" &&
+				entry.message.role === "user" &&
+				typeof (entry.message as { skill?: unknown }).skill !== "string" &&
+				(entry.message as { from?: unknown }).from === undefined
+			)
+				return null;
 			if (entry.type !== "custom") continue;
 			if (entry.customType === EVENTS.commandRun || entry.customType === EVENTS.skillRun || entry.customType === EVENTS.shellRun) return null;
 			if (entry.customType === EVENTS.agentEnd) {
@@ -478,6 +491,7 @@ export function Transcript(props: {
 											<span className="msg-user-edit-hint">{editSaving ? "resending…" : "enter save · esc cancel"}</span>
 										) : (
 											<>
+												{entry.from && <span className="msg-user-from">From {entry.from}</span>}
 												<span className="msg-user-time">{formatHistoryTime(entry.time)}</span>
 												{key === editableUserKey && !props.working && (
 													<button type="button" className="msg-user-edit-link" title="Edit message" aria-label="Edit message" onClick={() => startEdit(key, entry.text)}>
@@ -488,6 +502,17 @@ export function Transcript(props: {
 										)}
 									</span>
 									{isEditing && editError && <p className="msg-user-edit-error">{editError}</p>}
+								</div>
+							);
+						}
+						if (entry.kind === "reply") {
+							return (
+								<div className="msg-reply" data-chat-anchor-key={key}>
+									<div className="msg-reply-head">
+										<span>{entry.reply?.from} · reply</span>
+										<span className="msg-reply-time">{entry.time}</span>
+									</div>
+									<div className="msg-reply-body">{entry.text}</div>
 								</div>
 							);
 						}

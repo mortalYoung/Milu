@@ -1158,6 +1158,9 @@ body::before {
 	.msg-user-time {
 		@apply font-sans text-[10.5px] text-seal tracking-[0.05em] mt-1.5;
 	}
+	.msg-user-from {
+		@apply inline-flex h-[15px] items-center rounded-full border border-hairline px-[5px] font-mono text-[9.5px] leading-none text-body-muted;
+	}
 	.msg-user-meta {
 		@apply flex items-center gap-2 mt-1.5;
 	}
@@ -1197,6 +1200,19 @@ body::before {
 		@apply absolute right-4 bottom-4 z-20 font-mono text-[10.5px] text-seal rounded-full border border-hairline bg-letter/95 backdrop-blur px-3 py-1.5 shadow-sm cursor-pointer hover:bg-paper-hover transition-opacity;
 	}
 
+	.msg-reply {
+		@apply self-start mt-4 w-[560px] max-w-full border border-hairline rounded-[10px] bg-letter px-[18px] py-[12px];
+	}
+	.msg-reply-head {
+		@apply flex items-baseline gap-2 font-mono text-[9px] uppercase tracking-[0.12em] text-muted mb-1.5;
+	}
+	.msg-reply-time {
+		@apply ml-auto font-sans text-[10px] normal-case tracking-[0.05em];
+	}
+	.msg-reply-body {
+		@apply font-serif text-[15px] leading-[1.6] text-ink whitespace-pre-wrap;
+		overflow-wrap: anywhere;
+	}
 	.msg-escalation {
 		@apply self-start mt-4 w-[560px] max-w-full border border-hairline rounded-[10px] bg-letter px-[18px] py-[10px] font-mono text-[11px] text-ink;
 	}
@@ -1307,6 +1323,10 @@ body::before {
 
 	.msg-sign {
 		@apply font-sans text-[12px] text-seal tracking-[0.03em] text-right mt-[9px];
+	}
+
+	.msg-to {
+		@apply inline-flex h-[15px] items-center rounded-full border border-hairline px-[5px] ml-2 align-middle font-mono text-[9.5px] leading-none text-body-muted;
 	}
 
 	.msg-letter:not(.msg-speaking) .msg-postmark,

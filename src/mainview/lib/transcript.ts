@@ -2,7 +2,18 @@ import type { StoreApi } from "zustand/vanilla";
 import { createStore } from "zustand/vanilla";
 import { projectView } from "../../shared/entry-meta";
 import type { ViewItem } from "../../shared/rpc";
-import { type Entry, makeAgentEntry, makeCommandEntry, makeEscalationEntry, makeSepEntry, makeShellEntry, makeSkillEntry, makeSysEntry, makeUserEntry } from "./entries";
+import {
+	type Entry,
+	makeAgentEntry,
+	makeCommandEntry,
+	makeEscalationEntry,
+	makeReplyEntry,
+	makeSepEntry,
+	makeShellEntry,
+	makeSkillEntry,
+	makeSysEntry,
+	makeUserEntry,
+} from "./entries";
 import type { SessionData } from "./session";
 
 const WEEKDAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
@@ -54,8 +65,11 @@ export function buildView(items: ViewItem[]): Entry[] {
 		} else if (item.kind === "shell" && item.command) {
 			const entry = makeShellEntry({ text: item.text, time: item.time, command: item.command });
 			pushItem(entry, item.id);
+		} else if (item.kind === "user" && item.from && item.peerKind === "reply") {
+			const entry = makeReplyEntry({ text: item.text, time: item.time, from: item.from, ...(item.requestId ? { requestId: item.requestId } : {}) });
+			pushItem(entry, item.id);
 		} else {
-			const entry = item.kind === "user" ? makeUserEntry(item.text, item.time) : makeAgentEntry(item.text, item.time, item.files);
+			const entry = item.kind === "user" ? makeUserEntry(item.text, item.time, item.from) : makeAgentEntry(item.text, item.time, item.files, item.to);
 			pushItem(entry, item.id);
 		}
 	}

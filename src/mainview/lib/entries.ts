@@ -9,6 +9,11 @@ export interface EscalationInfo {
 	status: EscalationStatus;
 }
 
+export interface PeerReplyInfo {
+	from: string;
+	requestId?: string;
+}
+
 export interface CommandInfo {
 	commandId: string;
 	name: string;
@@ -19,9 +24,15 @@ export interface CommandInfo {
 
 export interface Entry {
 	id: number;
-	kind: "user" | "agent" | "sys" | "sep" | "escalation" | "command" | "skill" | "shell";
+	kind: "user" | "agent" | "sys" | "sep" | "escalation" | "command" | "skill" | "shell" | "reply";
 	text: string;
 	time?: string;
+	/** The letter this message came from, when another correspondent wrote it (A2A). */
+	from?: string;
+	/** The letter this message was also posted to, when it answers another correspondent (A2A). */
+	to?: string;
+	/** Set on an incoming answer from another letter: renders as a reply card, not a user bubble. */
+	reply?: PeerReplyInfo;
 	error?: boolean;
 	aborted?: boolean;
 	escalation?: EscalationInfo;
@@ -37,12 +48,22 @@ const pad = (n: number) => String(n).padStart(2, "0");
 
 const fmtDateTime = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 
-export function makeUserEntry(text: string, time = Date.now()): Entry {
-	return { id: nextId++, kind: "user", text, time: fmtDateTime(new Date(time)) };
+export function makeUserEntry(text: string, time = Date.now(), from?: string): Entry {
+	return { id: nextId++, kind: "user", text, time: fmtDateTime(new Date(time)), ...(from ? { from } : {}) };
 }
 
-export function makeAgentEntry(text: string, time = Date.now(), files?: string[]): Entry {
-	return { id: nextId++, kind: "agent", text, time: fmtDateTime(new Date(time)), ...(files ? { files } : {}) };
+export function makeReplyEntry(item: { text: string; time: number; from: string; requestId?: string }): Entry {
+	return {
+		id: nextId++,
+		kind: "reply",
+		text: item.text,
+		time: fmtDateTime(new Date(item.time)),
+		reply: { from: item.from, ...(item.requestId ? { requestId: item.requestId } : {}) },
+	};
+}
+
+export function makeAgentEntry(text: string, time = Date.now(), files?: string[], to?: string): Entry {
+	return { id: nextId++, kind: "agent", text, time: fmtDateTime(new Date(time)), ...(files ? { files } : {}), ...(to ? { to } : {}) };
 }
 
 export function makeEscalationEntry(item: { text: string; time: number; escalation: EscalationInfo }): Entry {
