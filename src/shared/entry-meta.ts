@@ -97,20 +97,26 @@ function findLast(out: ViewItem[], predicate: (item: ViewItem) => boolean): View
 function userVisit(entry: Entry, out: ViewItem[]): void {
 	if (entry.type !== "message" || entry.message.role !== "user") return;
 	const content = entry.message.content;
-	const skill = (entry.message as { skill?: unknown }).skill;
+	const meta = entry.message as { skill?: unknown; from?: unknown; peerKind?: unknown; requestId?: unknown };
 	const text = typeof content === "string" ? content : "";
 	out.push({
 		...row(entry.id, "user", text, entry.message.timestamp ?? entry.timestamp ?? 0),
-		...(typeof skill === "string" ? { skillName: skill } : {}),
+		...(typeof meta.skill === "string" ? { skillName: meta.skill } : {}),
+		...(typeof meta.from === "string" ? { from: meta.from } : {}),
+		...(meta.peerKind === "ask" || meta.peerKind === "reply" ? { peerKind: meta.peerKind } : {}),
+		...(typeof meta.requestId === "string" ? { requestId: meta.requestId } : {}),
 	});
 }
 
 function sendMessageVisit(entry: Entry, out: ViewItem[]): void {
 	if (entry.type !== "custom") return;
-	const data = entry.data as { text?: unknown; timestamp?: unknown; toolCallId?: unknown } | undefined;
+	const data = entry.data as { text?: unknown; timestamp?: unknown; toolCallId?: unknown; to?: unknown } | undefined;
 	if (!data || typeof data.text !== "string") return;
 	if (typeof data.toolCallId === "string" && data.toolCallId.startsWith("shell:")) return;
-	out.push(row(entry.id, "send_message", data.text, typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0)));
+	out.push({
+		...row(entry.id, "send_message", data.text, typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0)),
+		...(typeof data.to === "string" ? { to: data.to } : {}),
+	});
 }
 
 function agentEndVisit(entry: Entry, out: ViewItem[]): void {

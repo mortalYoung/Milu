@@ -47,6 +47,7 @@ import {
 	readMemoryRunSummaries,
 } from "./core/memory";
 import { buildMemoryOverview, readMemoryRunTrace } from "./core/memory-overview";
+import { askPeer, claimInboundAsk, closeUnansweredAsk, type PeerEndpoint, type PeerHost, peerHopFor, pendingReply, sendReply } from "./core/peer";
 import { latestPersona, organizePersona, personaTrigger, personaViewPath, readPersonaLines, rebuildPersonaView } from "./core/persona";
 import { loadRuntimeStats, saveRuntimeStats } from "./core/runtime-stats";
 import {
@@ -106,7 +107,7 @@ import { scanSkillsRoot } from "./skills/filesystem";
 import { SKILL_NAME_RE } from "./skills/frontmatter";
 import { getSkill, listSkillCandidates, listSkills } from "./skills/registry";
 import type { SkillsService } from "./skills/types";
-import { type McpAccess, type McpServerSummary, runEscalatedBash, type TaskAccess } from "./tools";
+import { type McpAccess, type McpServerSummary, type PeerAccess, runEscalatedBash, type TaskAccess } from "./tools";
 
 await loadCredentials();
 const startupSettings = await loadSettings();
@@ -424,11 +425,15 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 			onTurnStart: (turn) => rpc.send.agent_turn({ turn, partner: profile.name }),
 			onMessage: () => rpc.send.agent_message({ partner: profile.name }),
 			onQueueChange: (event) => rpc.send.inbox_update({ partner: profile.name, ...event }),
+			onPeerAsk: (item) => claimInboundAsk(profile.name, item),
 			onEnd: (error) => {
 				rejectPendingEscalations(profile.name, "run ended while awaiting approval");
 				rpc.send.agent_end({ error, partner: profile.name });
 			},
-			afterRun: () => afterAgentRun(profile.name),
+			afterRun: () => {
+				void closeUnansweredAsk(peerHost, profile.name).catch((failure) => console.error("closeUnansweredAsk failed:", failure));
+				afterAgentRun(profile.name);
+			},
 		},
 		{
 			session: scope,
@@ -442,6 +447,7 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 			grantedSkills: () => readPartnerGrantedSkills(dir),
 			skills: skillsService,
 			mcp: mcpAccess,
+			peer: peerAccess(profile.name),
 			tasks: taskAccess(profile.name),
 			onBeforeNextTurn: async (signal) => {
 				const target = await agents.get(profile.name);
@@ -1305,6 +1311,35 @@ async function promotePartnerRpc(name: string) {
 		console.error("promote_partner failed:", error);
 		return { ok: false as const, error: "Failed to promote partner" };
 	}
+}
+
+async function peerEndpoint(name: string): Promise<PeerEndpoint | undefined> {
+	const settings = await loadSettings();
+	const profile = (await listPartners(settings)).find((partner) => partner.name === name);
+	if (!profile) return undefined;
+	const entry = await ensureAgent(profile);
+	const dir = getPartnerDir(settings, name);
+	return {
+		name,
+		chat: (text, meta) => entry.agent.chat(text, meta),
+		notice: (text, details) => session.scope(dir).appendSendMessage(text, details, Date.now()),
+	};
+}
+
+const peerHost: PeerHost = { endpoint: peerEndpoint };
+
+function peerAccess(asker: string): PeerAccess {
+	return {
+		async list() {
+			const settings = await loadSettings();
+			return (await listPartners(settings))
+				.filter((partner) => partner.name !== asker)
+				.map((partner) => ({ name: partner.name, ...(partner.forkedFrom ? { forkedFrom: partner.forkedFrom } : {}) }));
+		},
+		ask: (input) => askPeer(peerHost, { from: asker, to: input.peer, text: input.text, hop: peerHopFor(asker) }),
+		pendingReply: () => pendingReply(asker),
+		reply: (input) => sendReply(peerHost, { from: asker, ...input }),
+	};
 }
 
 async function listMcpForPartner(dir: string): Promise<McpServerSummary[]> {

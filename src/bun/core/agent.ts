@@ -11,7 +11,7 @@ import { Permission, policyFor } from "../permission";
 import type { SessionScope } from "../persist";
 import type { ContextChangedEventData } from "../persist/events";
 import type { SkillsService } from "../skills/types";
-import { createTools, type McpAccess, type TaskAccess } from "../tools";
+import { createTools, type McpAccess, type PeerAccess, type TaskAccess } from "../tools";
 import type { PartnerModel } from "./agent-config";
 import { convertToLlm, resolveModel, STREAM_FN } from "./agent-config";
 import { Context } from "./context";
@@ -24,6 +24,7 @@ export interface AgentBridge {
 	onMessage: (text: string) => void;
 	onEnd: (error?: string) => void;
 	onQueueChange: (event: QueueEvent) => void;
+	onPeerAsk?: (item: QueuedMessage) => void;
 	afterRun: () => void;
 }
 
@@ -34,8 +35,21 @@ export interface QueuedMessage {
 	content: string;
 	timestamp: number;
 	failed?: boolean;
-	source?: "user" | "task";
+	source?: "user" | "task" | "peer";
 	taskId?: string;
+	peer?: string;
+	peerKind?: "ask" | "reply";
+	requestId?: string;
+	hop?: number;
+}
+
+export interface ChatMeta {
+	source?: "user" | "task" | "peer";
+	taskId?: string;
+	peer?: string;
+	peerKind?: "ask" | "reply";
+	requestId?: string;
+	hop?: number;
 }
 
 export interface ChatOutcome {
@@ -57,7 +71,7 @@ export interface AgentHandle {
 	setThinkingLevel: (level: ThinkingLevel) => void;
 	readonly runtimeStats: SessionStats["runtime"];
 	readonly tools: RequestTool[];
-	chat: (text: string, meta?: { source?: "user" | "task"; taskId?: string }) => Promise<ChatOutcome>;
+	chat: (text: string, meta?: ChatMeta) => Promise<ChatOutcome>;
 	waitForIdle: () => Promise<void>;
 	queued: () => QueuedMessage[];
 	cancelQueued: (id: string) => boolean;
@@ -93,6 +107,7 @@ export interface AgentDeps {
 	skills?: SkillsService;
 	mcp?: McpAccess;
 	tasks?: TaskAccess;
+	peer?: PeerAccess;
 	onContextOverflow?: () => Promise<boolean>;
 	onBeforeNextTurn?: (signal?: AbortSignal) => Promise<AgentMessage[] | null>;
 }
@@ -238,6 +253,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		...(deps.readMemory ? { readMemory: deps.readMemory } : {}),
 		...(deps.mcp ? { mcp: deps.mcp } : {}),
 		...(deps.tasks ? { tasks: deps.tasks } : {}),
+		...(deps.peer ? { peer: deps.peer } : {}),
 		lastFailedBash: () => failedBash.filter((failure) => failure.run === run).map(({ command, turn, at }) => ({ command, turn, at })),
 	});
 	agent.state.systemPrompt = ctx.composeSystemPrompt();
@@ -253,6 +269,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	function autoDeliver(assistant: AssistantMessage) {
 		const text = assistantText(assistant);
 		if (!text) return;
+		if (deps.peer?.pendingReply()) return;
 		const hasToolCalls = assistant.content.some((block) => block.type === "toolCall");
 		if (hasToolCalls && runHasDelivered && ctx.visibleElapsedMs() < (deps.deliverIntervalMs?.() ?? Number.POSITIVE_INFINITY)) return;
 		runHasDelivered = true;
@@ -261,13 +278,16 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	}
 	function deliverText(text: string) {
 		const timestamp = Date.now();
+		const pending = deps.peer?.pendingReply() ?? null;
 		void deps.session
-			.appendSendMessage(text, { toolCallId: "harness-delivery" }, timestamp)
+			.appendSendMessage(text, { toolCallId: "harness-delivery", ...(pending ? { to: pending.to, requestId: pending.requestId, hop: pending.hop } : {}) }, timestamp)
 			.then(() => {
 				ctx.markVisible();
 				bridge.onMessage(text);
 			})
 			.catch((error) => console.error("session appendSendMessage failed:", error));
+		if (pending && deps.peer)
+			void deps.peer.reply({ to: pending.to, text, requestId: pending.requestId, hop: pending.hop }).catch((error) => console.error("peer reply failed:", error));
 	}
 
 	function enforceDelivery(event: Extract<AgentEvent, { type: "agent_end" }>) {
@@ -281,7 +301,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		}
 		if (!assistant) return;
 		if (assistant.stopReason === "error" || assistant.stopReason === "aborted") return;
-		if (assistant.content.some((b) => b.type === "toolCall")) return;
+		if (!deps.peer?.pendingReply() && assistant.content.some((b) => b.type === "toolCall")) return;
 		if (delivered.has(assistant)) return;
 		const text = assistantText(assistant);
 		if (!text) return;
@@ -326,7 +346,10 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 				const claimed = claimQueued(event.message);
 				if (!claimed) break;
 				if (prompting === claimed) prompting = null;
-				return persistUser(claimed.content, { timestamp: claimed.timestamp }).then(() => bridge.onQueueChange({ kind: "claimed", id: claimed.id }));
+				if (claimed.source === "peer" && claimed.peerKind === "ask") bridge.onPeerAsk?.(claimed);
+				return persistUser(claimed.content, { timestamp: claimed.timestamp, from: claimed.peer, peerKind: claimed.peerKind, requestId: claimed.requestId, hop: claimed.hop }).then(
+					() => bridge.onQueueChange({ kind: "claimed", id: claimed.id }),
+				);
 			}
 			case "message_update": {
 				const update = event.assistantMessageEvent;
@@ -446,9 +469,15 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 
 	agent.subscribe(handleEvent);
 
-	async function persistUser(text: string, meta?: { skill?: string; timestamp?: number }) {
+	async function persistUser(text: string, meta?: { skill?: string; timestamp?: number; from?: string; peerKind?: "ask" | "reply"; requestId?: string; hop?: number }) {
 		try {
-			await deps.session.appendUser(text, meta?.timestamp ?? Date.now(), meta?.skill ? { skill: meta.skill } : undefined);
+			await deps.session.appendUser(text, meta?.timestamp ?? Date.now(), {
+				...(meta?.skill ? { skill: meta.skill } : {}),
+				...(meta?.from ? { from: meta.from } : {}),
+				...(meta?.peerKind ? { peerKind: meta.peerKind } : {}),
+				...(meta?.requestId ? { requestId: meta.requestId } : {}),
+				...(meta?.hop !== undefined ? { hop: meta.hop } : {}),
+			});
 		} catch (error) {
 			console.error("session appendUser failed:", error);
 		}
@@ -480,8 +509,18 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		}
 	}
 
-	function enqueue(text: string, meta?: { source?: "user" | "task"; taskId?: string }): QueuedMessage {
-		const item = { id: uuidv7(), content: text, timestamp: Date.now(), ...(meta?.source ? { source: meta.source } : {}), ...(meta?.taskId ? { taskId: meta.taskId } : {}) };
+	function enqueue(text: string, meta?: ChatMeta): QueuedMessage {
+		const item: QueuedMessage = {
+			id: uuidv7(),
+			content: text,
+			timestamp: Date.now(),
+			...(meta?.source ? { source: meta.source } : {}),
+			...(meta?.taskId ? { taskId: meta.taskId } : {}),
+			...(meta?.peer ? { peer: meta.peer } : {}),
+			...(meta?.peerKind ? { peerKind: meta.peerKind } : {}),
+			...(meta?.requestId ? { requestId: meta.requestId } : {}),
+			...(meta?.hop !== undefined ? { hop: meta.hop } : {}),
+		};
 		inbox.push(item);
 		return item;
 	}
@@ -739,7 +778,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 				console.error("agent.continue failed:", error);
 			}
 		},
-		async chat(text: string, meta?: { source?: "user" | "task"; taskId?: string }): Promise<ChatOutcome> {
+		async chat(text: string, meta?: ChatMeta): Promise<ChatOutcome> {
 			if (text.trim() === "") return { queued: false };
 			await pushTimeGapReminderIfNeeded();
 			ctx.markUserMessage();

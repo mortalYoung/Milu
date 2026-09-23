@@ -74,7 +74,7 @@ export interface AssistantMeta {
 }
 
 export interface SessionScope {
-	appendUser(content: string, timestamp: number, meta?: { skill?: string }): Promise<void>;
+	appendUser(content: string, timestamp: number, meta?: { skill?: string; from?: string; peerKind?: "ask" | "reply"; requestId?: string; hop?: number }): Promise<void>;
 	appendAssistant(meta: AssistantMeta, timestamp: number): Promise<void>;
 	appendSendMessage(content: string, details: Record<string, unknown>, timestamp: number): Promise<void>;
 	appendSystemPrompt(text: string, timestamp: number): Promise<void>;
@@ -214,7 +214,16 @@ export function createSessionStore(): SessionStore {
 	function scope(dir: string): SessionScope {
 		return {
 			async appendUser(content, timestamp, meta) {
-				await appendMessage(dir, { role: "user", content, timestamp, ...(meta?.skill ? { skill: meta.skill } : {}) });
+				await appendMessage(dir, {
+					role: "user",
+					content,
+					timestamp,
+					...(meta?.skill ? { skill: meta.skill } : {}),
+					...(meta?.from ? { from: meta.from } : {}),
+					...(meta?.peerKind ? { peerKind: meta.peerKind } : {}),
+					...(meta?.requestId ? { requestId: meta.requestId } : {}),
+					...(meta?.hop !== undefined ? { hop: meta.hop } : {}),
+				});
 			},
 			async appendAssistant(meta, timestamp) {
 				const assistant: AssistantMessage & { timing?: AssistantTiming } = {

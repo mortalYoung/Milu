@@ -80,8 +80,11 @@ export interface QueuedMessageRpc {
 	content: string;
 	timestamp: number;
 	failed?: boolean;
-	source?: "user" | "task";
+	source?: "user" | "task" | "peer";
 	taskId?: string;
+	peer?: string;
+	requestId?: string;
+	hop?: number;
 }
 
 export interface TaskSummary {
@@ -102,6 +105,12 @@ export interface ViewItem {
 	text: string;
 	time: number;
 	skillName?: string;
+	/** Set when the message came from another letter (A2A): the sender's name. */
+	from?: string;
+	/** Set when this message was also posted to another letter (A2A): the recipient's name. */
+	to?: string;
+	peerKind?: "ask" | "reply";
+	requestId?: string;
 	escalation?: {
 		id: string;
 		command: string;

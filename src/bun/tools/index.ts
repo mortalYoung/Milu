@@ -20,6 +20,7 @@ export interface ToolDeps {
 	skills?: { list(): Promise<SkillSummary[]>; get(name: string): Promise<SkillDefinition | undefined> };
 	readMemory?: (opts: QueryMemoryOptions) => Promise<MemoryRecord[]>;
 	mcp?: McpAccess;
+	peer?: PeerAccess;
 	tasks?: TaskAccess;
 	lastFailedBash?: () => { command: string; turn: number; at: number }[];
 }
@@ -45,6 +46,18 @@ export interface McpServerSummary {
 export interface McpAccess {
 	list(): Promise<McpServerSummary[]>;
 	call(server: string, tool: string, args: unknown, signal?: AbortSignal): Promise<{ content: string; isError: boolean }>;
+}
+
+export interface PeerMember {
+	name: string;
+	forkedFrom?: string;
+}
+
+export interface PeerAccess {
+	list(): Promise<PeerMember[]>;
+	ask(input: { peer: string; text: string }): Promise<{ ok: true; requestId: string } | { ok: false; error: string }>;
+	pendingReply(): { to: string; requestId: string; hop: number } | null;
+	reply(input: { to: string; text: string; requestId: string; hop: number }): Promise<void>;
 }
 
 const MAX_OUTPUT_CHARS = 50 * 1024;
@@ -474,6 +487,46 @@ function mcpCallTool(deps: ToolDeps): AgentTool<typeof mcpCallSchema, McpCallDet
 	};
 }
 
+const peerSchema = Type.Object({
+	op: Type.Union([Type.Literal("list"), Type.Literal("ask")], {
+		description: 'What to do: "list" the letters you can write to, or "ask" one of them something.',
+	}),
+	peer: Type.Optional(Type.String({ description: "ask: the letter to write to (a name from list)" })),
+	text: Type.Optional(Type.String({ description: "ask: what to ask it. Its answer arrives later, as a new message." })),
+});
+type PeerDetails = { ok: boolean; error?: string; requestId?: string };
+
+function peerTool(deps: ToolDeps): AgentTool<typeof peerSchema, PeerDetails> {
+	return {
+		name: "peer",
+		label: "Peer",
+		description:
+			"Write to another letter. It is a separate correspondent with its own workspace, persona and tools: it decides whether and how to answer, and its answer arrives later as a new message. The call is asynchronous — after asking, end your turn and never answer on its behalf.",
+		parameters: peerSchema,
+		async execute(_toolCallId, params) {
+			if (!deps.peer) return { content: [{ type: "text", text: "No other letters are reachable from this session." }], details: { ok: false, error: "unavailable" } };
+			try {
+				if (params.op === "list") {
+					const members = await deps.peer.list();
+					const text =
+						members.length === 0 ? "(no other letters)" : members.map((member) => (member.forkedFrom ? `${member.name} (fork of ${member.forkedFrom})` : member.name)).join("\n");
+					return { content: [{ type: "text", text }], details: { ok: true } };
+				}
+				if (!params.peer || !params.text) return { content: [{ type: "text", text: 'peer ask needs both "peer" and "text".' }], details: { ok: false, error: "missing-field" } };
+				const result = await deps.peer.ask({ peer: params.peer, text: params.text });
+				if (!result.ok) return { content: [{ type: "text", text: `peer ask failed: ${result.error}` }], details: { ok: false, error: result.error } };
+				return {
+					content: [{ type: "text", text: `delivered to ${params.peer} (${result.requestId}). Its answer will arrive as a new message; do not write it yourself.` }],
+					details: { ok: true, requestId: result.requestId },
+				};
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return { content: [{ type: "text", text: `peer failed: ${message}` }], details: { ok: false, error: message } };
+			}
+		},
+	};
+}
+
 const taskSchema = Type.Object({
 	op: Type.Union([Type.Literal("read"), Type.Literal("subscribe"), Type.Literal("stop")], {
 		description: 'What to do with the task: "read" its output tail, "subscribe" to be notified when it ends, or "stop" it.',
@@ -538,6 +591,7 @@ export function createTools(deps: ToolDeps): AgentTool[] {
 		mcpCallTool(deps),
 		rmTool(deps),
 		taskTool(deps),
+		peerTool(deps),
 	];
 }
 
