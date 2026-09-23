@@ -1,7 +1,7 @@
-import { ArrowUp, SlidersHorizontal, Square, Terminal } from "lucide-react";
+import { ArrowUp, ChevronDown, ChevronLeft, Cpu, Square, Terminal } from "lucide-react";
 import { type ChangeEvent, type CompositionEvent, type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
-import type { CommandDescriptor, SandboxMode } from "../../shared/rpc";
+import type { CommandDescriptor } from "../../shared/rpc";
 import { filterCommands } from "../lib/commands";
 import { shouldSendOnEnter } from "../lib/composer-input";
 import { EMPTY_STATUS, useAgentStatus } from "../lib/contexts/agent-status-context";
@@ -15,11 +15,9 @@ import { useSkills } from "../lib/contexts/skills-context";
 import { useToast } from "../lib/contexts/toast-context";
 import { ESCAPE_ORDER, useEscapeLayer } from "../lib/escape";
 import { detectTrigger, parseCommand } from "../lib/trigger";
-import { formatTokens } from "../lib/utils";
 import { Button } from "./Button";
 import { CommandMenu } from "./CommandMenu";
 import { ContextMeter } from "./ContextMeter";
-import { EditorPathButton } from "./EditorPathButton";
 import { FollowUpDock } from "./FollowUpDock";
 import {
 	DropdownMenu,
@@ -32,7 +30,7 @@ import {
 	DropdownMenuSubTrigger,
 	DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import { Select } from "./ui/select";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 const MAX_HEIGHT = 120;
 
@@ -40,11 +38,9 @@ export function Composer(props: {
 	onSend: (text: string) => void;
 	onStop: () => void;
 	onShell?: (command: string) => Promise<{ ok: boolean; error?: string; shellId?: string }>;
-	onOpenPath?: (path: string, editorId?: string) => void;
 	onTasks?: () => void;
 	hasTasks?: boolean;
 	taskRunning?: number;
-	editors?: { id: string; name: string }[];
 }) {
 	const metrics = useMetrics();
 	const agent = useAgentStatus();
@@ -61,7 +57,6 @@ export function Composer(props: {
 	const writing = useStore(agent.store, (state) => state.writing);
 	const partners = useStore(session.store, (state) => state.partners);
 	const pendingPrefill = useStore(composer.store, (state) => state.pendingPrefill);
-	const panelOpen = useStore(composer.store, (state) => state.panelOpen);
 	const metricsData = useStore(metrics.store, (state) => state.data);
 	const commands = useStore(commandDirectory.store, (state) => state.commands);
 	const skillList = useStore(skillDirectory.store, (state) => state.skills);
@@ -78,6 +73,9 @@ export function Composer(props: {
 	const [claimed, setClaimed] = useState<CommandDescriptor | null>(null);
 	const [submitting, setSubmitting] = useState(false);
 	const [shellMode, setShellMode] = useState(false);
+	const [modelExpanded, setModelExpanded] = useState(false);
+	const [modelTipOpen, setModelTipOpen] = useState(false);
+	const [modelMenuOpen, setModelMenuOpen] = useState(false);
 
 	const textareaRef = useRef<HTMLTextAreaElement>(null);
 	const rootRef = useRef<HTMLFormElement>(null);
@@ -144,25 +142,6 @@ export function Composer(props: {
 			setClaimed(null);
 		},
 	});
-	useEscapeLayer({
-		id: "composer.panel",
-		order: ESCAPE_ORDER.composerPanel,
-		isOpen: () => composer.store.getState().panelOpen,
-		close: () => composer.setPanelOpen(false),
-	});
-
-	useEffect(() => {
-		if (!panelOpen) return;
-		const onPointerDown = (event: PointerEvent) => {
-			const target = event.target;
-			if (target instanceof Node && rootRef.current?.contains(target)) return;
-			if (target instanceof Element && target.closest('[role="menu"], [data-radix-popper-content-wrapper]')) return;
-			composer.setPanelOpen(false);
-		};
-		document.addEventListener("pointerdown", onPointerDown);
-		return () => document.removeEventListener("pointerdown", onPointerDown);
-	}, [panelOpen, composer]);
-
 	function resize() {
 		const el = textareaRef.current;
 		if (!el) return;
@@ -185,7 +164,7 @@ export function Composer(props: {
 	}
 
 	const commandHint = (() => {
-		if (menuOpen || panelOpen || shellMode || submitting) return null;
+		if (menuOpen || shellMode || submitting) return null;
 		const parsed = parseCommand(text);
 		if (!parsed || parsed.rawInput.trim()) return null;
 		const cmd = commands.find((c) => c.name === parsed.name);
@@ -330,7 +309,6 @@ export function Composer(props: {
 		}
 		const skillMatch = /^\/skill:([a-z0-9_-]+)(?:\s+(.*))?$/.exec(trimmed);
 		if (skillMatch) {
-			composer.setPanelOpen(false);
 			await executeSkill(skillMatch[1]!, skillMatch[2]?.trim() || undefined);
 			return;
 		}
@@ -361,7 +339,6 @@ export function Composer(props: {
 			return;
 		}
 
-		composer.setPanelOpen(false);
 		clearText();
 		props.onSend(trimmed);
 	}
@@ -415,20 +392,6 @@ export function Composer(props: {
 	};
 
 	const showSend = text.trim() !== "" || busy;
-
-	const stats = metricsData?.stats ?? null;
-	const statsLine = (() => {
-		if (!stats || !stats.usage) return null;
-		const usage = stats.usage;
-		const billed = usage.input + usage.cacheRead + usage.cacheWrite;
-		const hit = billed > 0 ? (usage.cacheRead / billed) * 100 : null;
-		const parts = [`in ${formatTokens(usage.input)} tok`, `out ${formatTokens(usage.output)} tok`];
-		if (hit != null) parts.push(`cache ${hit.toFixed(2)}%`);
-		if (stats.runtime.avgTtftMs != null) parts.push(`ttft ${(stats.runtime.avgTtftMs / 1000).toFixed(1)}s`);
-		if (stats.runtime.avgTps != null) parts.push(`${Math.round(stats.runtime.avgTps)} tok/s`);
-		return parts.join(" · ");
-	})();
-
 	const modelLabel = agentData.model?.modelId ?? "default model";
 
 	return (
@@ -442,17 +405,6 @@ export function Composer(props: {
 			)}
 			<FollowUpDock />
 			<div className="composer-row">
-				<Button
-					variant="ghost"
-					size="icon"
-					class="composer-toggle"
-					title={panelOpen ? "Hide runtime context" : "Runtime context"}
-					aria-label="Runtime context"
-					aria-expanded={panelOpen}
-					aria-controls="composer-panel"
-					icon={<SlidersHorizontal size={15} />}
-					onClick={() => composer.setPanelOpen(!panelOpen)}
-				/>
 				{props.hasTasks && (
 					<div className="composer-task-slot">
 						<Button variant="ghost" size="icon" class="composer-toggle" title="Tasks" aria-label="Tasks" icon={<Terminal size={15} />} onClick={() => props.onTasks?.()} />
@@ -502,60 +454,53 @@ export function Composer(props: {
 						spellCheck={false}
 						aria-label="Message"
 					/>
-					{metricsData?.contextUsage ? <ContextMeter usage={metricsData.contextUsage} /> : null}
-					{showSend && (
-						<Button
-							variant={busy ? "outline" : "seal"}
-							class={`size-[34px] p-0 rounded-full shrink-0 ${busy ? "composer-stop" : ""}`}
-							title={busy ? "Stop" : "Send"}
-							icon={busy ? <Square size={14} /> : <ArrowUp size={14} />}
-							onClick={() => (busy ? props.onStop() : void submit())}
-						/>
-					)}
-				</div>
-			</div>
-			{panelOpen && (
-				<div id="composer-panel" className="composer-panel" role="group" aria-label="Runtime context">
-					{(agentData.workspace_path || agentData.storage_path) && (
-						<div className="composer-panel-path">
-							<span
-								className="composer-path"
-								title={[agentData.workspace_path && `workspace: ${agentData.workspace_path}`, agentData.storage_path && `storage: ${agentData.storage_path}`]
-									.filter(Boolean)
-									.join("\n")}
-							>
-								{agentData.workspace_path && (
-									<EditorPathButton label="ws" path={agentData.workspace_path} class="-mx-1 px-1" editors={props.editors} onOpenPath={props.onOpenPath} />
-								)}
-								{agentData.workspace_path && agentData.storage_path && <span className="composer-path-sep">·</span>}
-								{agentData.storage_path && <EditorPathButton label="st" path={agentData.storage_path} class="-mx-1 px-1" editors={props.editors} onOpenPath={props.onOpenPath} />}
-							</span>
-						</div>
-					)}
-					<div className="composer-panel-row">
-						{agentData.models.length > 0 && (
-							<DropdownMenu>
-								<DropdownMenuTrigger
-									className="shrink-0 min-w-0 max-w-[200px] inline-flex h-[30px] items-center justify-between gap-2 rounded-[8px] border border-hairline bg-transparent px-2.5 font-mono text-[10px] text-ink-soft outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-letter data-[state=open]:border-seal"
-									title="Model / Effort (per partner)"
-								>
-									<span className="truncate">
-										{modelLabel}·{agentData.thinking_level}
-									</span>
-									<svg
-										xmlns="http://www.w3.org/2000/svg"
-										viewBox="0 0 8 8"
-										fill="none"
-										stroke="currentColor"
-										strokeWidth="1.2"
-										strokeLinecap="round"
-										strokeLinejoin="round"
-										className="size-2 shrink-0 text-muted"
+					{selected && agentData.models.length > 0 && (
+						<div className={"composer-model" + (modelExpanded ? " expanded" : "")}>
+							<Tooltip delayDuration={150} open={modelExpanded ? false : modelTipOpen} onOpenChange={setModelTipOpen}>
+								<TooltipTrigger asChild>
+									<button
+										type="button"
+										className="composer-model-icon"
+										aria-expanded={modelExpanded}
+										aria-label={modelExpanded ? "Collapse model and effort" : `Model and effort: ${modelLabel} · ${agentData.thinking_level}`}
+										onClick={() => {
+											if (modelExpanded) {
+												setModelExpanded(false);
+												textareaRef.current?.focus();
+											} else {
+												setModelExpanded(true);
+												setModelMenuOpen(true);
+											}
+										}}
 									>
-										<path d="M1 2.5 4 5.5 7 2.5" />
-									</svg>
-								</DropdownMenuTrigger>
-								<DropdownMenuContent portalMount={rootRef.current} className="min-w-40">
+										{modelExpanded ? <ChevronLeft size={13} /> : <Cpu size={13} />}
+									</button>
+								</TooltipTrigger>
+								<TooltipContent side="top" className="font-mono">
+									{modelExpanded ? "collapse" : `${modelLabel} · ${agentData.thinking_level}`}
+								</TooltipContent>
+							</Tooltip>
+							<DropdownMenu open={modelMenuOpen} onOpenChange={setModelMenuOpen}>
+								<span className="composer-model-slide">
+									<span className="composer-model-sep" aria-hidden="true" />
+									<DropdownMenuTrigger asChild>
+										<button type="button" className="composer-model-drop" tabIndex={modelExpanded ? 0 : -1} title="Model / Effort">
+											<span className="composer-model-label">
+												{modelLabel}·{agentData.thinking_level}
+											</span>
+											<ChevronDown size={9} className="shrink-0 text-muted" />
+										</button>
+									</DropdownMenuTrigger>
+								</span>
+								<DropdownMenuContent
+									portalMount={rootRef.current}
+									align="end"
+									className="min-w-40"
+									onCloseAutoFocus={(event) => {
+										event.preventDefault();
+										textareaRef.current?.focus();
+									}}
+								>
 									<DropdownMenuSub>
 										<DropdownMenuSubTrigger className="font-mono text-[10px]">Models</DropdownMenuSubTrigger>
 										<DropdownMenuSubContent portalMount={rootRef.current}>
@@ -566,7 +511,7 @@ export function Composer(props: {
 														<DropdownMenuItem
 															key={model.id}
 															className="font-mono text-[10px] text-ink-soft"
-															onSelect={() => void agent.mutateModel({ provider: group.provider, modelId: model.id })}
+															onSelect={() => void agent.setModel(selected, { provider: group.provider, modelId: model.id })}
 														>
 															{model.name}
 														</DropdownMenuItem>
@@ -579,7 +524,7 @@ export function Composer(props: {
 										<DropdownMenuSubTrigger className="font-mono text-[10px]">Effort</DropdownMenuSubTrigger>
 										<DropdownMenuSubContent portalMount={rootRef.current}>
 											{agentData.thinking_levels.map((level) => (
-												<DropdownMenuItem key={level} className="font-mono text-[10px] text-ink-soft" onSelect={() => void agent.mutateThinkingLevel(level)}>
+												<DropdownMenuItem key={level} className="font-mono text-[10px] text-ink-soft" onSelect={() => void agent.setThinkingLevel(selected, level)}>
 													<span>{level}</span>
 													{level === agentData.thinking_level && <span className="ml-auto text-seal">✓</span>}
 												</DropdownMenuItem>
@@ -588,34 +533,20 @@ export function Composer(props: {
 									</DropdownMenuSub>
 								</DropdownMenuContent>
 							</DropdownMenu>
-						)}
-						<Select
-							class="shrink-0"
-							title="Sandbox mode (file writes)"
-							ariaLabel="Sandbox mode"
-							value={agentData.sandbox_mode}
-							portalMount={rootRef.current}
-							onChange={(value) => void agent.mutateSandboxMode(value as SandboxMode)}
-							options={[
-								{ value: "read-only", label: "read-only" },
-								{ value: "workspace-write", label: "workspace-write" },
-								{ value: "danger-full-access", label: "full access" },
-							]}
-						/>
-					</div>
-					{(busy || statsLine) && (
-						<div className="composer-panel-foot">
-							{busy && (
-								<span className="composer-status">
-									<span className="composer-status-dot" />
-									<span>writing…</span>
-								</span>
-							)}
-							{statsLine && <span className="composer-stats">{statsLine}</span>}
 						</div>
 					)}
+					{metricsData?.contextUsage ? <ContextMeter usage={metricsData.contextUsage} /> : null}
+					{showSend && (
+						<Button
+							variant={busy ? "outline" : "seal"}
+							class={`size-[34px] p-0 rounded-full shrink-0 ${busy ? "composer-stop" : ""}`}
+							title={busy ? "Stop" : "Send"}
+							icon={busy ? <Square size={14} /> : <ArrowUp size={14} />}
+							onClick={() => (busy ? props.onStop() : void submit())}
+						/>
+					)}
 				</div>
-			)}
+			</div>
 		</form>
 	);
 }

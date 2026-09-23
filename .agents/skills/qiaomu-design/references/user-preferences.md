@@ -517,3 +517,78 @@
 - 规则：不用 `useCallback`。这个项目里没有任何 `React.memo` / `memo` / `forwardRef`，所以"memo 化函数身份"买不到任何东西，只会引入 stale 闭包这一类 bug（已实锤一次：`CommandPalette` 的 `activate` 锁死了首次渲染的 `props.partner`，于是授权静默失败——勾会亮、没报错、重开就没了）。要读"当前 props"写普通函数即可（每次渲染重建）。**唯一例外**：在 **React 之外**的长期回调里读 props（CodeMirror 的 extension / updateListener / compartment，DOM 观察者）才用 `useRef(props)` —— 那类引用的存在理由是"没有 re-render 可依赖"，不是"省一次重建"；其 effect 的依赖数组是刻意不含它的（比如 `wrap` 由 Compartment 单独重配）。
 - 原话摘录：「我理解这个东西不应该使用」（要求审计全项目 useCallback 时）
 - 收录：2026-09-22｜状态：生效（已落入 preflight D 节）
+
+### P-73 · 并排 diff：折叠开关住在行号列，整行改动只留 wash
+- 级别：强偏好（P-67 四层语言在并排模式下的更新版）
+- 何时适用：本项目 git 详情层的 diff —— 并排（双栏）模式；单栏仍走 @codemirror/merge 自带的折叠与变更条
+- 规则：
+  1. **不要 gutter 变更条**（`gutter: false`）。两侧各有一列行号已经足够定位，色条是多余的第三列；「整行改动」交给行底 wash 表达，字符级高亮只留给**没被重写的行**。判据必须**按行**算、不能按单条 change 算：`chunk.changes` 是行内子改动，新增/删除行的 change 从上一行的换行符开始，按单条判会把它们当成部分改动照画字符档。正解 = 取落在同一行的所有改动的**并集**，裁掉该行首尾空白后：并集盖住整行内容 → 整行；否则再看**未改动残渣**占比，≤ 25% 也算整行（`const value = computeThing(a,b)` → `const result = await doIt()` 只留 `const `，读起来就是重写）。阈值是常量（本项目 `WHOLE_LINE_RESIDUE = 0.25`），松紧只调这一个数。
+  2. **未改动区**：收起态是一条发丝线 + 纸色带的 band（保持 P-67 那条不变）；展开态那几行铺**中性底色**（`--color-paper-hover`）作为标识。**两个状态的开关图标都住在行号列里**（行号 + 一个 11px 的 chevron 槽），不放进 band 文字。展开后必须能再收回：库只导出 `uncollapseUnchanged`、没有反向，所以折叠集合要自己持有，并对两侧同时派发 —— 否则两栏折叠状态不一致，行号就错位了。折叠范围必须按**两侧共同的 run** 决定（一侧不可折就整对放弃），索引才对得上；run 要按**整行**算，用原始 offset 算会多算 1–2 行上下文、把可折的空白段误杀。三条定死的口径：① **上下文只在真有改动的那一侧留** —— 文件头/尾没有改动可对照，就不留 margin（1..214 的 run 只留下方 2 行，藏 1..212）；② **空块（纯插入/纯删除的一侧）落在行边界上就不触及任何行**，落在行内才触及该行 —— 否则插入点所在的行会被当成本侧上下文，两侧 run 长度差 1，出现一侧 112 一侧 113 这种不对称；③ 判定标准是**两侧藏同一批对应行、显示同一个行数**（run 按对应行计数）。现口径 `FOLD_MARGIN = 3`、`FOLD_MIN_LINES = 4`（2026-09-23 定为 3；这份 diff 的结果：211/211、111/111、94/94、55/55、2072/2072 —— 注意文件头那段因此是 `214 − 3 = 211` 而不是 212，这是「头尾不留上下文」这条口径的直接后果）。
+  4. **单栏（inline）的改动要走同一套层**：`allowInlineDiffs: false` + `highlightChanges: false` + `gutter: false` —— 一个改动块在单栏里也是「旧行整块 wash + 新行 wash + 局部改动的字符档」，判定跟并排共用同一份 `lineTells()`；**不要**用库的 inline 呈现（它把旧文字行内塞进新行、字符档由库自己画，不受我们的规则控制）。单栏的折叠 margin 也用同一个 `FOLD_MARGIN`。
+  5. **已知缺口**：单栏里「整块删掉的那些行」内部目前没有字符档（那段文字不在 b 文档里，库那套又被关掉）—— 要补就得在库生成的 `.cm-deletedLine` DOM 里按同一规则插 span。
+  6. **另一侧没有对应行的地方画斜线块**：两栏的行对齐由 `@codemirror/merge` 的 alignment spacer（`.cm-mergeSpacer`）负责，库本来就会在「行数少的那一侧」插一个等高的空白块 —— 把它画成斜线 hatch（`repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in srgb, var(--color-muted) 22%, transparent) 5px 6px)`），让缺口读成「这一侧没有内容」，而不是「这里有个空行」。朝向：本项目 a=原始在左、b=当前在右，所以右侧新增的行 → **左侧**出现斜线块，左侧删除的行 → **右侧**出现斜线块。与折叠不冲突：斜线块落在改动旁的可见上下文里，折叠段两端各留了 margin。
+  3. 折叠计划**必须在 extension 里懒算**（`mergeViewSiblings(view)` 读成对的两份文档 + `getChunks(state)`），不能在建视图的同一拍之外先算一次：那时兄弟视图/chunk 还没就位，算出空计划 = 一个都不折（本轮实锤：全部展开）。组件侧只需在两侧都建好后补一个事务（加一次 `requestMeasure()`，让 gutter 按新的块结构重算）把它催出来。
+  4. **字符档和行底 wash 必须同高**：字符档是内联盒、wash 是行盒，行高一旦大于 1（本项目 `1 + lineGap`），字符档就浮在行中间。按**字体实测盒高**补，不要按 1.2em 或 1em 估：JetBrains Mono 12px 的字体盒是 **16.4px（1.37em）**（实测：padding 5px/侧 → 26px；0/侧 → 16px），正解是 `padding-block: calc((var(--explorer-line-height, 1.2) - 1.37) * 0.5em)` —— 行高 1.7 时每侧 2px，总高 20.4px。换字体就重测这一个数。
+- 原话摘录：「移除 gutter 变更条」/「展开的无改动行有背景色做标识，同时支持收起，icon 放在 linenumber」/「如果是整行改动，则不需要字符级高亮，只需要行底 wash」/「字符级高亮目前没有和行底 wash 保持高度统一」
+- 收录：2026-09-23｜状态：生效（已落入 preflight A6.1）
+
+### P-74 · 浮层的 z 阶梯必须和 ESCAPE_ORDER 一致
+- 级别：硬禁令
+- 何时适用：本项目的所有浮层（palette / 对话框 / toast / 抽屉 / composer 面板 / 菜单 / 气泡）
+- 规则：视觉压在上面的那一层，Esc 必须先关它 —— `z-index` 与 `lib/escape.ts` 的 `ESCAPE_ORDER` 是同一份栈的两种写法，改一个就得改另一个。当前实际阶梯（高→低）：palette 60 · 对话框/toast/slash 菜单/context meter 50 · **trajectory 抽屉 48** · **runtime config（composer 面板）45** · follow-up dock / skills 40 · dock 20。反例（2026-09-23 修）：runtime config 是 z-50、trajectory 是 z-20，而 ESCAPE_ORDER 里 `composerPanel 84 > trajectory 80` —— 抽屉被压在面板底下，Esc 还会先去关被压在底下的那个。
+- 原话摘录：「我发现 runtime config 的 z-index > trajectory，修改一下，期望是 trajectory 在 runtime config 之上」
+- 收录：2026-09-23｜状态：生效
+
+### P-75 · 浮层内部按语义分行，可截断的长文本项不许用 `flex: 1`
+- 级别：强偏好
+- 何时适用：宽度随容器变化的浮层 / 面板（本项目 composer 浮层族尤其：窗口缩放、pin 住 dock 后 `.composer-row` 会从 60% 变成整列宽）；含「强控件 + 可截断长文本」的横排布局
+- 规则：① 可截断的长文本项不能用 `flex: 1`（= `flex-basis: 0`）——basis 0 的项永远「放得下」，于是它永远留在同一行、把自己压成省略号，从不换行；要它能换行必须给真实 basis（如 `flex: 1 1 24ch` + `min-width: 0`）。② 更稳的解法是**按语义分行**（控件行 / 上下文行 / 遥测行各占一行，宽度靠容器拉伸），不要指望靠内容宽度挤一条带子：一条带子里两组内容被推到两端、中间留洞，读起来就是「没设计」。③ 浮层内部结构随自身宽度自适应，不用视口断点——浮层的可用宽度由 pin / 分栏决定，与视口无固定关系
+- 证据（自发现 2026-09-23）：`.composer-panel-path { flex: 1 }` + `min-w-0` —— 宽屏 736px 时路径撑开、把两个控件推到带子右端，中间留一段空洞；窄屏（pin 住 dock 时 row 仅约 350px，模型 200 + 沙箱 126 已占满）时路径只剩约 5px，`ws`/`st` 两个路径同时变成「…」。改为控件行 / 路径行 / 遥测行三行堆叠（`flex-col` + 整行拉伸）后，宽窄两种宽度结构一致，路径行拿到整行宽度
+- 收录：2026-09-23｜状态：生效（已落入 preflight B 节）
+
+### P-76 · 可展开面板只装"能改的设置"；搬任何数据上来先过三关
+- 级别：强偏好
+- 何时适用：任何"点开才出现"的设置 / 上下文面板（本项目 composer 的 runtime-settings 面板、dock 面板、详情弹窗的信息区块）；决定一块数据该不该从详情/仪表盘搬到高频入口时
+- 规则：
+  1. **面板的契约是"能改的设置"**，不是只读仪表。只读数据默认留在它的归属处（详情弹窗、专属页面、仪表盘），不进输入条旁边的面板。
+  2. 一件只读数据够格当"快捷查看"，必须同时过三关：**会变**（静态事实不需要实时入口）、**在你做下一件事的那一刻会改变你的动作**、**不会自己冒出来**（失败/缺失会自己报出来的，入口就是多余的）。
+  3. 搬之前先查它**现在有几个入口**——不要只核"RPC 谁在调"，信息可能已被另一个页面呈现（本项目：per-partner MCP 授权与连接状态除了详情弹窗，Skills 页的 MCP 子视图才是它的归属与修改处；skills 授权同理）。前提错的快捷入口，等于给已有入口加一层重复。
+  4. 面板里的**速率 / 延迟 / token 数必须写清窗口**（本次会话累计、session 均值），禁止与"正在运行"的语境同排冒充实时——P-60 的面板版。
+- 证据（2026-09-23）：原 composer 面板三行五类数据，逐条核过后只剩 model/effort/sandbox（全 app 唯一可改处；P-42 已定它们住折叠面板）：`ws`/`st` 路径与详情弹窗 Status 卡是**同一个 `EditorPathButton`**；`writing…` 与聊天 header 的 Writing… 重复；脚注的 `ttft 1.2s`/`237 tok/s` 是 `runtimeStats` 的**整个 session 均值**（且持久化）、`in/out tok` 是本次会话累计，却排在"写作中"的脚注里。自纠一次：MCP 异常行曾被提议常驻，核查后发现 Skills 页 MCP 子视图已管授权 + 连接状态，前提不成立，未做。
+- 收录：2026-09-23｜状态：生效（已落入 preflight B 节）
+
+### P-77 · 全景归仪表盘，per-partner 的设置与指标归 partner 自己那一页
+- 级别：强偏好
+- 何时适用：本项目里"某个 partner 的设置 / 指标该放哪"的决策；回答"这个数去哪看"时
+- 规则：
+  1. **仪表盘 = 全景**：把所有 partner 放进同一个窗口做横向比较，一次性 view all。它不是"查单个 partner"的地方 —— 不能拿"去仪表盘看"回答单个 partner 的问题（用户原话立场）。
+  2. **单个 partner 的设置与指标归 partner 自己的上下文**：详情弹窗（header 点名字或 ⌘E，一次点击）就是 per-partner 的家 —— 窗口量（3 张卡 + heatmap）、**本会话量**（token / cache share / TTFT / 吞吐）、**可改的 model·effort 与 sandbox**、Skills / MCP、Persona / Memory 全在这里。加数据加在这里，不加回输入条旁的面板。
+  3. **composer 面板整体取消**：一枚 toggle + 一层浮层，只为了两颗控件，不划算（P-75/P-76 的结论继续成立：面板只装能改的设置；而没有需要面板的设置了，面板就不该存在）。设置以"per-partner 数据按 partner 名寻址"为前提：`set_partner_model` / `set_thinking_level` / `set_sandbox_mode` 必须带 `name`，不允许再隐式作用于"当前选中的 partner"。
+  4. per-partner 的指标一律写清窗口：窗口卡写 `· 9m`，会话卡标题写 **This session**，均值/样本进 tooltip（P-60 的面板版）。
+- 证据（2026-09-23）：用户连续三轮把 runtime config 从"三行五类数据"砍到"两颗控件"，再问"还有必要吗 / 要不要换形式"，最后定案拆掉整个面板、把 model·effort·sandbox 移进详情弹窗，同时要求详情弹窗补 "This session" 指标。实现：删 `panelOpen` store/`ESCAPE_ORDER.composerPanel`/z-45 面板/菜单项 `letters.runtime-config`/面板 CSS；`get_status` 改为确保该 partner 的 agent 已加载（否则弹窗会显示默认值而不是磁盘真值）；`partner_runtime` 端点随之删除。
+- 收录：2026-09-23｜状态：生效（已落入 preflight B 节；P-74 的 z 阶梯里 runtime config 一项随面板一起删除）
+- 2026-09-23 修订（用户反馈「高频的修改,至少 model+effort 应该在 composer 可以修改」）：规则 2 的「只在这里」修正为**按频率分家** —— `sandbox` 是 set-once，只在 partner 详情页；`model·effort` 是高频（换任务就换），必须能在输入条里直接改：落在输入药丸**内右侧**一枚 `model·effort ▾` chip（mono 10px / muted / hover ink，点开 Models / Effort 两层菜单，就地按 name 写回 + refetch），既不占常驻行 chrome、也不重开浮层。判据沿用 P-42 的频率：高频 → 靠近输入，低频 → 实体自己的页。
+- 2026-09-23 再修订（用户反馈「默认展示一个 icon，hover 查看详情；点击展开后和目前的交互一致；展开后点收起按钮可以再收起来」）：composer 侧的高频控件是**两态** —— 静态态只占一颗图标（13px `Cpu`，`title` 报出「模型·档位」，凭 hover 就能读、不占宽度），点击展开成带值的 chip（点开 Models / Effort 菜单照旧，选完焦点回输入框），chip 尾部一枚 `❯` 收起钮把它折回图标。这是把 P-40 的「icon + 点击展开」搬进药丸内部：既没有常驻文字 chrome，也不用 hover 去触发「展开」本身（hover 只供读）。
+- 2026-09-23 三次修订（用户反馈「icon 状态下 hover 用 tooltip；点击向左滑动展示刚才那种 Select」＋「status 的文字大小不正确」）：① hover 用**自绘 tooltip**（Radix，150ms），不用原生 `title`（延迟长、不可控）；② 「展开」动效 = 标签从图标处**向左滑出**（`max-width: 0 → 132px` / 180ms ease-out，`prefers-reduced-motion` 关掉过渡），图标本身换成菜单 caret，收起点折回图标；③ **卡片内的控件必须继承该卡的排版尺度** —— 详情页的值是 mono 10.5px，新塞进去的 model/sandbox 控件就不许自带 10px（Select 的 trigger 与弹出项要一起改，P-43）。
+
+### P-78 · 改间距前先确认容器真的包住了那些行
+- 级别：强偏好（工程 × 设计）
+- 何时适用：调卡片 / 面板内部间距（`gap` / `space-y` / margin）时；用脚本批量改 JSX 结构之后
+- 规则：**"包住"取决于闭合标签的位置，不取决于缩进。** 缩进看着对、闭合标签早了一层，后面的元素就成了容器的兄弟节点：`gap` 只对仅剩的那一个子元素生效，视觉上等于什么都没改（改的人还以为生效了）。所以：① 改间距前先数这个容器的**直接子元素**是不是你要调的那些行；② 批量改结构后必须核对嵌套（按深度遍历一遍，或交给 `biome format` 自动纠正缩进后复查），不能拿缩进当证据。
+- 证据（自发现 2026-09-23）：`PartnerDetailsDialog` 的 Status 卡里，`grid gap-3` 的闭合标签落在第一行 Workspace 之后 —— Storage / Size / Model / Effort / Sandbox / Skills / MCP servers 七行全是这个 grid 的**兄弟**，落在卡片那个普通 block div 里，既无 gap 也无 margin（所以那张卡一直"挤"，而 `gap-2 → gap-3`、`mb-2 → mb-3` 全部静默无效）。用户连问两轮"什么都没有改变"。修法：把闭合标签挪到最后一行之后，grid 的直接子元素从 1 个变成 8 个。
+- 收录：2026-09-23｜状态：生效（已落入 preflight B 节）
+- 2026-09-23 四次修订（用户反馈「modelTrigger 你应该写成 icon | dropdown 这样子」）：composer 上这个控件**不许用一个按钮在 icon 与文字之间变形**，必须拆成两段 DOM：`icon`（常驻、自己带 tooltip、自己负责展开/收起）+ 发丝分隔 + `dropdown`（值 + caret，负责开菜单）。收起时 dropdown 用 `max-width: 0` 的滑槽整个裁掉（不可点、`tabIndex=-1`，不是只把文字藏起来），展开时整体向左滑出。判据：一个控件里如果两半触发的是**不同的动作**，就该是两个元素，不要靠"形态切换"兼职。（后续微调：展开后 `icon` 换成折叠 chevron `❮`；卡片内行距按本项目的 8px 基准走，`gap-2`）
+
+### P-79 · 入场动画不许用 `transform` 写位移，会顶掉定位用的 transform
+- 级别：强禁令（工程）
+- 何时适用：给"靠 `transform` 定位"的元素写入场动效时 —— 本项目的手写居中就是这一类：`left: 50% + transform: translateX(-50%)`、`top: 50% + transform: translateY(-50%)`（`.command-menu` / `.followup-dock` / `.composer-command-hint` 等）
+- 规则：**入场/退场位移一律动独立的 `translate`（或 `scale` / `rotate`）属性，不要动 `transform`** —— 这些独立属性与 `transform` 是相乘关系，互不覆盖；写进 `transform` 则动画期间会把定位用的 `translateX(-50%)` 整个顶掉（元素先落在错误位置，动画结束 `fill-mode: none` 恢复声明值时才"跳"回正确位置，看起来就是"先出现在别处，然后移过来"）。判据：写 keyframes 前先 grep 目标元素有没有 `transform:`。
+- 证据（用户报 2026-09-23：「command list 出现后先是在最右边，然后才移到 composer 上面」）：三个浮层都是 `left: 50%; transform: translateX(-50%); animation: pop-in …`，而 `pop-in` 的 from/to 写的是 `transform: translateY(6px) → 0` → 180ms 内只有 Y 位移、没有 -50%，元素贴在容器中线右侧；结束后才跳回居中。修法：keyframes 改用 `translate: 0 6px → 0 0`，`transform` 全程不动。同一处修改同时治好三个浮层。
+- 收录：2026-09-23｜状态：生效（已落入 preflight C 节）
+
+### P-80 · 随文件大小线性增长的 CPU 工作不许放在渲染主线程
+- 级别：强禁令（工程 / 性能）
+- 何时适用：任何按文档长度做全量计算的渲染工作（语法高亮、markdown 渲染、diff 计算、大 JSON 解析）——本项目尤其 code reader 与 diff
+- 规则：渲染进程只有一个线程，它就是绘制 + 输入 + 动画的那个线程；**把 O(文件长度) 的同步 CPU 放在那里，就是整个界面停住**（不是"掉帧"，是零响应）。这类工作要么挪出主线程（Web Worker / 主进程），要么按行分块跨帧让出，要么设上限干脆不做。判据：先量这个函数在**最大允许输入**下的耗时（本项目 diff 每侧上限 512 KB），再决定它配不配待在主线程。
+- 证据（用户报 2026-09-23「打开 changes 特别的卡，整个页面都会 block」）：`highlightCodeToLines` 在主线程同步 `codeToTokens` 整份文件，而一次 diff 跑两次（旧侧 + 新侧），两个 await 落在同一批 microtask 里、中间浏览器无法绘制 → 实测 102 KB / 2.5k 行 = 579 ms（会话内冷启 2487 ms）、512 KB = 2813 ms **每侧**，合计 1.2–5.6 s 全界面冻结；同一路径也是 reader 的路径，而且没有缓存、每次重开重算。对照：`@codemirror/merge` 的行 diff ~0 ms，装饰构建 12–28 ms。修法：分词搬进 `shiki.worker.ts`（主线程只剩 10–45 ms 的 clone + 12–28 ms 装饰构建），按 lang + 内容缓存，worker 起不来时退回主线程实例（慢，但不丢色）。
+- 收录：2026-09-23｜状态：生效（已落入 preflight D 节）

@@ -159,8 +159,9 @@ function MessageStack(props: {
 	const previousLength = useRef(props.cards.length);
 
 	if (props.cards.length !== previousLength.current) {
+		const grew = props.cards.length > previousLength.current;
 		previousLength.current = props.cards.length;
-		setCurrent(props.cards.length - 1);
+		if (grew || current >= props.cards.length) setCurrent(props.cards.length - 1);
 	}
 
 	const previous = () => setCurrent(Math.max(0, current - 1));

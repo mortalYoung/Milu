@@ -167,7 +167,6 @@ export function createSession(rpc: RPC) {
 		store,
 		historyLoading,
 		partnersLoading,
-		resetOrigin,
 		mutate: {
 			refreshHistory,
 			loadOlderHistory,

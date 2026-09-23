@@ -51,12 +51,16 @@ export function selectPartner(partner: PartnerItem | null) {
 	session.mutate.select(partner);
 }
 
+export const openChat: { run: (name: string) => void } = {
+	run: (name) => selectPartner(session.store.getState().partners.find((p) => p.name === name) ?? null),
+};
+
 export const agentEvents = createAgentEvents(rpc, {
 	session,
 	status,
 	commands,
 	toast,
-	openPartner: (name) => selectPartner(session.store.getState().partners.find((p) => p.name === name) ?? null),
+	openPartner: (name) => openChat.run(name),
 });
 
 export function boot() {
@@ -64,6 +68,7 @@ export function boot() {
 	installMarkdownClickHandler({ rpc, toast, dock, originBaseDir: () => session.store.getState().origin.baseDir });
 	agentEvents.install();
 	status.install();
+	settings.install();
 	skills.install();
 	unread.install();
 	inbox.install();
@@ -74,6 +79,14 @@ export function boot() {
 	void settings.refresh();
 	void metrics.refresh();
 	watchMenuState(rpc, session.store, status);
+	let foregroundTimer: ReturnType<typeof setTimeout> | undefined;
+	const refreshPartnersOnVisible = () => {
+		if (document.visibilityState !== "visible") return;
+		clearTimeout(foregroundTimer);
+		foregroundTimer = setTimeout(() => void session.mutate.refreshPartners(), 150);
+	};
+	window.addEventListener("focus", refreshPartnersOnVisible);
+	document.addEventListener("visibilitychange", refreshPartnersOnVisible);
 	void session.mutate.refreshPartners();
 	void session.mutate.refreshHistory();
 }

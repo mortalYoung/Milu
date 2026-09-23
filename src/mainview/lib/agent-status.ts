@@ -77,20 +77,14 @@ export function createAgentStatus(rpc: RPC, session: StoreApi<SessionData>) {
 		return name ? (store.getState().writing[name] ?? partnerWriting(name)) : false;
 	};
 	const workingFor = (name: string) => store.getState().writing[name] ?? partnerWriting(name);
-	const sinceFor = (name: string) => store.getState().starts[name] ?? null;
 
-	async function mutateSandboxMode(mode: SandboxMode) {
-		const res = await rpc.request.set_sandbox_mode({ mode });
+	async function setModel(name: string, next: { provider: string; modelId?: string }) {
+		const res = await rpc.request.set_partner_model({ name, model: next });
 		if (res.ok) void refetch();
 	}
 
-	async function mutateModel(next: { provider: string; modelId?: string }) {
-		const res = await rpc.request.set_partner_model({ model: next });
-		if (res.ok) void refetch();
-	}
-
-	async function mutateThinkingLevel(level: ThinkingLevel) {
-		const res = await rpc.request.set_thinking_level({ level });
+	async function setThinkingLevel(name: string, level: ThinkingLevel) {
+		const res = await rpc.request.set_thinking_level({ name, level });
 		if (res.ok) void refetch();
 	}
 
@@ -127,12 +121,9 @@ export function createAgentStatus(rpc: RPC, session: StoreApi<SessionData>) {
 		settled,
 		isBusyForSelected,
 		workingFor,
-		sinceFor,
 		calibrate,
-		refetch,
-		mutateSandboxMode,
-		mutateModel,
-		mutateThinkingLevel,
+		setModel,
+		setThinkingLevel,
 		beginTurn,
 		endTurn,
 		releaseTurn,

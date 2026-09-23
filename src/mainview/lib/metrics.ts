@@ -1,11 +1,10 @@
 import { createStore, type StoreApi } from "zustand/vanilla";
-import type { ContextSnapshot, SessionStats } from "../../shared/rpc";
+import type { ContextSnapshot } from "../../shared/rpc";
 import type { RPC } from "./rpc";
 import type { SessionData } from "./session";
 
 export interface MetricsData {
 	contextUsage: ContextSnapshot | null;
-	stats: SessionStats | null;
 }
 
 export function createMetrics(rpc: RPC, session: StoreApi<SessionData>) {
@@ -15,13 +14,13 @@ export function createMetrics(rpc: RPC, session: StoreApi<SessionData>) {
 	async function refresh() {
 		const name = session.getState().selected;
 		if (!name) {
-			store.setState({ data: { contextUsage: null, stats: null } });
+			store.setState({ data: { contextUsage: null } });
 			return;
 		}
 		const seq = ++refreshSeq;
-		const [contextUsage, stats] = await Promise.all([rpc.request.context_usage({ name }), rpc.request.stats({ name })]);
+		const contextUsage = await rpc.request.context_usage({ name });
 		if (seq !== refreshSeq) return;
-		store.setState({ data: { contextUsage, stats } });
+		store.setState({ data: { contextUsage } });
 	}
 
 	function install() {

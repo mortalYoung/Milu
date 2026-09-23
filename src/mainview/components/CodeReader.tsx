@@ -7,7 +7,8 @@ import { useEffect, useRef, useState } from "react";
 import { foldLanguage } from "../lib/code-languages";
 import type { RevealRange } from "../lib/dock";
 import { ESCAPE_ORDER, useEscapeLayer } from "../lib/escape";
-import { type HighlightLine, highlightCodeToLines } from "../lib/markdown";
+import { highlightCodeToLines } from "../lib/shiki-remote";
+import type { HighlightLine } from "../lib/shiki-setup";
 import { setTokens, tokenPainter } from "../lib/shiki-tokens";
 
 export function PreviewBusy(props: { when: boolean }) {

@@ -122,7 +122,8 @@
 ## A6.1 代码阅读面门禁（reader / diff，P-64~67）
 
 - [ ] diff 两侧分色：旧侧删=红、新侧增=绿；没有一条规则同时套两侧（旧侧被删的行画成绿 = 语义错误，P-67）
-- [ ] 改动的四层信号齐全：行号、变更条、行底 wash、字符级高亮；文字保持 ink，只有 `+/-` 记号本身染色
+- [ ] 改动的信号齐全：行号（并排模式下同时是折叠开关）、行底 wash、字符级高亮（**仅当改动短于整行**；整行改动只留 wash，见 P-73）；单栏保留变更条；文字保持 ink，只有 `+/-` 记号本身染色
+- [ ] 并排模式无 gutter 变更条；未改动区收起/展开两态都有行号列里的折叠开关，且两侧折叠集合一致（P-73）
 - [ ] 行底 wash 与字符高亮是两个档位（本项目 10% / 24%），不是同一种颜色叠两层
 - [ ] 折叠未改动区是一条安静的 rule（发丝线 + 纸色带 + hover 变 ink），且库自带的装饰字形已关掉
 - [ ] 选区在 diff 里可见（`drawSelection()` + theme 里那三条 `::selection`），与 reader 同一枚 wash
@@ -136,6 +137,12 @@
 - [ ] 全页主题锁定：一页只有一个明暗主题，不混
 - [ ] 新增块的内容对齐到应用既有内容列（本项目 `clamp(560px, 46vw, 760px)`），没有无理由的满宽撑满；浮层归 composer 浮层族（`bottom: calc(100% + 8px)` + `width: 60%` + 同 clamp + 白卡全边框）；行内 gutter 用列内边距而不是负偏移（P-57）
 - [ ] 浮层与 chrome（窗框 / 页头 / 工具条）之间留 8px gutter，与它所覆盖的内容之间不留（P-62）
+- [ ] 浮层内部按语义分行（控件行 / 上下文行 / 遥测行），行内可截断的长文本项没有用 `flex: 1`（basis 0 永不换行，只会被压成省略号）；浮层结构随自身宽度自适应，不用视口断点（P-75）
+- [ ] 改卡片 / 面板内部间距前，已确认那个容器的**直接子元素**就是这些行（闭合标签位置，不是缩进）——容器只剩一个子元素时 `gap` 等于没写（P-78）
+- [ ] 可展开面板只装「能改的设置」：只读数据留在详情弹窗 / 专属页面 / 仪表盘；搬任何数据上来之前已过三关（会变 × 会改变当下动作 × 不会自己冒出来）并查过它现在有几个入口（P-76）
+- [ ] per-partner 的设置与指标按**频率**分家：高频的 model·effort 在输入药丸里的 chip（就地改），低频的 sandbox 与全部指标在 partner 自己的详情页（header 点名字 / ⌘E）；没有用「去仪表盘看」回答单个 partner 的指标问题（仪表盘只管全景横向比较，P-77）
+- [ ] per-partner 的设置 RPC 都带 `name`（按 partner 寻址），不隐式作用于「当前选中」的 partner（P-77）
+- [ ] 面板 / 脚注里的速率、延迟、token 数写清了窗口（本次会话累计 / 均值），没有与「正在运行」同排冒充实时（P-60 / P-76）
 - [ ] pin 住的详情隐藏所有关闭该文件/详情的可见出口（面板 `×`、头部 `← 返回`），只留 pin 按钮；Esc 仍可作为逃生口并逐层关闭（P-61）
 - [ ] 能一句话说出这一页的**记忆点**是什么
 - [ ] 动效气质与视觉气质一致（cohesion）
@@ -149,6 +156,7 @@
 - [ ] `prefers-reduced-motion` 兜底存在
 - [ ] hover 动效包在 `@media (hover: hover) and (pointer: fine)` 内
 - [ ] 只动了 transform/opacity；没有动画 `width/height/margin/padding/top/left`
+- [ ] 入场/过渡位移用的是独立的 `translate` / `scale`（不是 `transform`），没有顶掉元素定位用的 `transform: translateX(-50%)` 之类；写完 grep 过目标元素是否也有 `transform:`（P-79）
 - [ ] 快速触发组件用 transition 或 spring，不用重播 keyframes
 - [ ] 收起/展开的容器做过往返测试（收起再展开）：内部 state（展开的树、滚动位置、输入内容）不重置；收起靠 class + 过渡，不靠卸载
 - [ ] 手势/拖拽/sheet/swipe：pointer-down 即时反馈、1:1 跟手、pointer capture、velocity handoff、
@@ -174,6 +182,7 @@
 - [ ] 数字用 tabular-nums/等宽；标题 balance、正文 pretty
 - [ ] 空态/加载态/错误态/成功态齐全；超长文本不破版
 - [ ] 可滚动区域的容器自己声明了滚动（`flex-1 min-h-0 overflow-y-auto` + 等价的 `min-height: 0`），没有依赖祖先的 `overflow: hidden` 裁掉多余内容
+- [ ] 按文档长度做全量计算的渲染工作（高亮 / markdown / diff / 大 JSON）不在渲染主线程：要么 worker，要么分块让出，要么设上限；下判断前先量**最大允许输入**下的耗时（P-80）
 - [ ] 没有 `useCallback`（P-72）：项目里没有 `React.memo`，它只买风险；`useRef(props)` 只允许出现在 React 之外的长期回调（CodeMirror extension / 观察者）里，且是写读成对的
 - [ ] 移动端：非对称布局塌缩单列；无 `h-screen`；无横向滚动条
 - [ ] 暗色页有 `color-scheme` + `theme-color`

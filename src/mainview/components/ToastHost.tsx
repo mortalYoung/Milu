@@ -35,6 +35,18 @@ export function ToastHost(props: { toasts: readonly ToastItem[]; placement: Toas
 								{toast.title && <h2 className="toast-title">{toast.title}</h2>}
 								<p className="toast-body">{toast.body}</p>
 							</div>
+							{toast.action && (
+								<button
+									type="button"
+									className="toast-action"
+									onClick={(event) => {
+										event.stopPropagation();
+										toast.action?.onClick();
+									}}
+								>
+									{toast.action.label}
+								</button>
+							)}
 							<button type="button" className="toast-close" aria-label="Close toast" onClick={() => props.onDismiss(toast.id)}>
 								<X size={14} />
 							</button>

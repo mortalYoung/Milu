@@ -12,7 +12,7 @@ Guidance for agents working in this repository — a design, not a rulebook. Dec
 
 ## UI philosophy
 
-Render only the information the user needs immediately — everything else is collapsed behind a toggle, hover, or focus. _Applied today: composer paths/sandbox/stats live behind a settings toggle (click to open; outside click / Esc / send to close); per-letter postmarks and signatures reveal on hover; heavy panels (Replies outline, trajectory drawer) open only on demand._
+Render only the information the user needs immediately — everything else is collapsed behind a toggle, hover, or focus. _Applied today: a partner's model/effort/sandbox and its session metrics live on that partner's own details page (header click or ⌘E); per-letter postmarks and signatures reveal on hover; heavy panels (Replies outline, trajectory drawer) open only on demand._
 
 ## Prompt philosophy
 

@@ -1,8 +1,8 @@
-import { MergeView, unifiedMergeView } from "@codemirror/merge";
-import { Compartment, EditorState, type Extension } from "@codemirror/state";
-import { drawSelection, EditorView, lineNumbers } from "@codemirror/view";
+import { type Chunk, getChunks, MergeView, mergeViewSiblings, unifiedMergeView } from "@codemirror/merge";
+import { Compartment, EditorState, type Extension, type Range, StateEffect, StateField, Text } from "@codemirror/state";
+import { Decoration, type DecorationSet, drawSelection, EditorView, GutterMarker, gutter, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 import { useEffect, useRef } from "react";
-import { highlightCodeToLines } from "../lib/markdown";
+import { highlightCodeToLines } from "../lib/shiki-remote";
 import { setTokens, tokenPainter } from "../lib/shiki-tokens";
 
 const SELECTION = "light-dark(#f2ded8, #3d2a23)";
@@ -10,9 +10,13 @@ const ADD_LINE = "color-mix(in srgb, var(--git-add) 10%, transparent)";
 const DEL_LINE = "color-mix(in srgb, var(--git-del) 10%, transparent)";
 const ADD_TEXT = "color-mix(in srgb, var(--git-add) 24%, transparent)";
 const DEL_TEXT = "color-mix(in srgb, var(--git-del) 24%, transparent)";
+/** Same two chevrons the reader's fold buttons use: the affordance should read the same in both places. */
+const CHEVRON_RIGHT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>';
+const CHEVRON_DOWN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
 
-const EXPAND_ICON =
-	"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E\")";
+/** The character wash answers to the line box, not to the font box. JetBrains Mono's own box is 16.4px at
+ * 12px (measured: a 26px band with 5px of padding each side), so half the difference goes on each side. */
+const TEXT_PAD = "calc((var(--explorer-line-height, 1.2) - 1.37) * 0.5em)";
 
 const diffTheme = EditorView.theme({
 	"&": { height: "100%" },
@@ -30,63 +34,420 @@ const diffTheme = EditorView.theme({
 	".cm-gutters": { background: "var(--color-letter)", border: "none", color: "var(--color-muted)" },
 	".cm-gutters.cm-gutters-before": { borderRightWidth: "0" },
 	".cm-lineNumbers .cm-gutterElement": {
-		padding: "0 7px 0 6px",
+		display: "flex",
+		alignItems: "center",
+		justifyContent: "flex-end",
+		gap: "4px",
+		padding: "0 7px 0 5px",
 		minWidth: "20px",
-		textAlign: "right",
 		whiteSpace: "nowrap",
 		userSelect: "none",
 		fontVariantNumeric: "tabular-nums",
 	},
+	".cm-foldCell": { display: "flex", alignItems: "center", justifyContent: "flex-end", gap: "4px" },
+	".cm-foldCell > span:first-child": { lineHeight: "1" },
+	".cm-foldSlot": { width: "14px", height: "14px", flex: "none", display: "flex", alignItems: "center", justifyContent: "center" },
+	".cm-foldToggle": {
+		display: "flex",
+		alignItems: "center",
+		justifyContent: "center",
+		width: "14px",
+		height: "14px",
+		flex: "none",
+		padding: "0",
+		border: "0",
+		borderRadius: "3px",
+		background: "transparent",
+		color: "var(--color-muted)",
+		cursor: "pointer",
+	},
+	".cm-foldToggle svg": { width: "12px", height: "12px" },
+	".cm-foldToggle:hover": { color: "var(--color-ink)", background: "var(--color-paper-hover)" },
+	".cm-foldToggle:focus-visible": { outline: "1px solid var(--color-seal)", outlineOffset: "-1px" },
 	"&.cm-merge-a .cm-changedLine": { backgroundColor: DEL_LINE },
 	"&.cm-merge-b .cm-changedLine, & .cm-inlineChangedLine": { backgroundColor: ADD_LINE },
 	"& .cm-deletedChunk": { backgroundColor: DEL_LINE, paddingLeft: "0" },
 	"&.cm-merge-a .cm-deletedLine, &.cm-merge-b .cm-insertedLine, & .cm-deletedChunk .cm-deletedLine": { backgroundColor: "transparent" },
-	"&.cm-editor.cm-merge-a .cm-changedText": { background: DEL_TEXT },
-	"&.cm-editor.cm-merge-b .cm-changedText": { background: ADD_TEXT },
-	"&.cm-editor.cm-merge-b .cm-deletedText, &.cm-editor.cm-merge-b .cm-deletedChunk .cm-deletedText, &.cm-editor.cm-merge-b .cm-deletedChunk del": {
-		background: DEL_TEXT,
-		textDecoration: "none",
+	"&.cm-editor.cm-merge-a .cm-changedText": { background: DEL_TEXT, paddingBlock: TEXT_PAD },
+	"&.cm-editor.cm-merge-b .cm-changedText": { background: ADD_TEXT, paddingBlock: TEXT_PAD },
+	".cm-unfoldedLine": { backgroundColor: "var(--color-paper-hover)" },
+	// Where one side has no lines at all, the library aligns the columns with a spacer: hatch it, so a gap
+	// reads as "nothing on this side" instead of a blank line.
+	".cm-mergeSpacer": {
+		background: "repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in srgb, var(--color-muted) 22%, transparent) 5px 6px)",
 	},
-	".cm-changeGutter": { width: "3px", padding: "0" },
-	"&.cm-merge-a .cm-changedLineGutter, & .cm-deletedLineGutter": { background: "var(--git-del)" },
-	"&.cm-merge-b .cm-changedLineGutter, & .cm-inlineChangedLineGutter": { background: "var(--git-add)" },
 	".cm-collapsedLines": {
 		display: "flex",
 		alignItems: "center",
-		justifyContent: "flex-start",
-		gap: "6px",
-		padding: "1px 8px 1px 3px",
+		padding: "1px 8px",
 		fontFamily: "var(--font-mono)",
 		fontSize: "10px",
 		color: "var(--color-muted)",
 		background: "var(--color-paper-hover)",
 		borderTop: "1px solid var(--color-hairline-soft)",
 		borderBottom: "1px solid var(--color-hairline-soft)",
-		"&:before": {
-			content: '""',
-			width: "11px",
-			height: "11px",
-			flex: "none",
-			marginInlineEnd: "0",
-			backgroundColor: "currentColor",
-			WebkitMaskImage: EXPAND_ICON,
-			WebkitMaskRepeat: "no-repeat",
-			WebkitMaskPosition: "center",
-			WebkitMaskSize: "contain",
-			maskImage: EXPAND_ICON,
-			maskRepeat: "no-repeat",
-			maskPosition: "center",
-			maskSize: "contain",
-		},
-		"&:after": { content: "none" },
+		cursor: "pointer",
 	},
-	"& .cm-collapsedLines:hover": { color: "var(--color-ink)", background: "var(--color-paper-deep)" },
+	".cm-collapsedLines:hover": { color: "var(--color-ink)", background: "var(--color-paper-deep)" },
 });
 
-function side(doc: string, wrapping: Extension, compartment: Compartment) {
+// ——— unchanged runs: folded into a band, or spread out and lit ———
+
+/** Lines of context left unfolded on either side of a change. */
+const FOLD_MARGIN = 3;
+const FOLD_MIN_LINES = 4;
+
+interface FoldGap {
+	/** First hidden line's start, in this side's coordinates. */
+	from: number;
+	/** Last hidden line's end. */
+	to: number;
+	/** Line number of `from`, for the band's gutter marker. */
+	number: number;
+	lines: number;
+}
+
+/** Both sides' view of the same run, so one fold index means one region in both columns. */
+interface FoldPlan {
+	a: FoldGap[];
+	b: FoldGap[];
+}
+
+interface SideSpan {
+	/** First line the chunk touches (the line it sits on, when it touches none). */
+	start: number;
+	/** First line of the run that follows it. */
+	next: number;
+}
+
+/** Where a chunk sits in one side, in lines. An insertion between two lines touches neither of them. */
+function chunkSpan(doc: Text, from: number, end: number): SideSpan {
+	const clamp = (pos: number) => Math.min(Math.max(pos, 0), doc.length);
+	const line = doc.lineAt(clamp(from));
+	if (from === end) {
+		// Empty on this side: it sits before a line boundary (touching nothing) or inside one line (touching it).
+		const onBoundary = clamp(from) === line.from;
+		return { start: line.number, next: onBoundary ? line.number : line.number + 1 };
+	}
+	return { start: line.number, next: doc.lineAt(clamp(end - 1)).number + 1 };
+}
+
+function gapOf(doc: Text, first: number, last: number): FoldGap {
+	return { from: doc.line(first).from, to: doc.line(last).to, number: first, lines: last - first + 1 };
+}
+
+/** Unchanged runs, in whole lines, trimmed by the context margin. A run one side cannot trim is dropped as a pair.
+ * The margin is only owed where a change actually is: the file's own head and tail get no context. */
+function buildFoldPlan(a: Text, b: Text, chunks: readonly Chunk[]): FoldPlan {
+	const plan: FoldPlan = { a: [], b: [] };
+	const runs: { aFirst: number; aLast: number; bFirst: number; bLast: number }[] = [];
+	let aCursor = 1;
+	let bCursor = 1;
+	for (const chunk of chunks) {
+		const aSpan = chunkSpan(a, chunk.fromA, chunk.endA);
+		const bSpan = chunkSpan(b, chunk.fromB, chunk.endB);
+		runs.push({ aFirst: aCursor, aLast: aSpan.start - 1, bFirst: bCursor, bLast: bSpan.start - 1 });
+		aCursor = aSpan.next;
+		bCursor = bSpan.next;
+	}
+	runs.push({ aFirst: aCursor, aLast: a.lines, bFirst: bCursor, bLast: b.lines });
+	for (const run of runs) {
+		const aStart = run.aFirst > 1 ? run.aFirst + FOLD_MARGIN : run.aFirst;
+		const aEnd = run.aLast < a.lines ? run.aLast - FOLD_MARGIN : run.aLast;
+		const bStart = run.bFirst > 1 ? run.bFirst + FOLD_MARGIN : run.bFirst;
+		const bEnd = run.bLast < b.lines ? run.bLast - FOLD_MARGIN : run.bLast;
+		if (aEnd - aStart + 1 < FOLD_MIN_LINES || bEnd - bStart + 1 < FOLD_MIN_LINES) continue;
+		plan.a.push(gapOf(a, aStart, aEnd));
+		plan.b.push(gapOf(b, bStart, bEnd));
+	}
+	return plan;
+}
+
+/** This side's runs, handed in by the view host once both sides exist. */
+const setFoldPlan = StateEffect.define<readonly FoldGap[]>();
+
+const foldPlanField = StateField.define<readonly FoldGap[]>({
+	create: () => [],
+	update(value, transaction) {
+		for (const effect of transaction.effects) if (effect.is(setFoldPlan)) return effect.value;
+		return value;
+	},
+});
+
+/** The fold set is shared by both columns, so one toggle means one region in both. Null = every gap folded. */
+const setFolded = StateEffect.define<readonly number[] | null>();
+
+const foldedField = StateField.define<readonly number[] | null>({
+	create: () => null,
+	update(value, transaction) {
+		for (const effect of transaction.effects) if (effect.is(setFolded)) return effect.value;
+		return value;
+	},
+});
+
+function foldedNow(state: EditorState, count: number): Set<number> {
+	const stored = state.field(foldedField, false) ?? null;
+	if (stored === null) return new Set(Array.from({ length: count }, (_, index) => index));
+	return new Set(stored);
+}
+
+function gapIndexAt(gaps: readonly FoldGap[], pos: number): number {
+	let low = 0;
+	let high = gaps.length - 1;
+	while (low <= high) {
+		const mid = (low + high) >> 1;
+		const gap = gaps[mid]!;
+		if (pos < gap.from) high = mid - 1;
+		else if (pos > gap.to) low = mid + 1;
+		else return mid;
+	}
+	return -1;
+}
+
+function chunksArrived(update: ViewUpdate): boolean {
+	return getChunks(update.startState) === null && getChunks(update.state) !== null;
+}
+
+/** Folding is a state concern: the view refuses block widgets that come from a plugin (RangeError). */
+function foldRanges(state: EditorState): DecorationSet {
+	const gaps = state.field(foldPlanField, false) ?? [];
+	if (gaps.length === 0) return Decoration.none;
+	const folded = foldedNow(state, gaps.length);
+	const ranges: Range<Decoration>[] = [];
+	gaps.forEach((gap, index) => {
+		if (!folded.has(index)) {
+			for (let pos = gap.from; ; ) {
+				const line = state.doc.lineAt(pos);
+				ranges.push(Decoration.line({ class: "cm-unfoldedLine" }).range(line.from));
+				if (line.to >= gap.to) break;
+				pos = line.to + 1;
+			}
+			return;
+		}
+		ranges.push(Decoration.replace({ block: true, widget: new FoldBand(gap, index) }).range(gap.from, gap.to));
+	});
+	return Decoration.set(ranges, true);
+}
+
+const foldDecorations = StateField.define<DecorationSet>({
+	create: (state) => foldRanges(state),
+	update(decorations, transaction) {
+		const planChanged = transaction.startState.field(foldPlanField, false) !== transaction.state.field(foldPlanField, false);
+		const foldsChanged = transaction.startState.field(foldedField, false) !== transaction.state.field(foldedField, false);
+		if (planChanged || foldsChanged) return foldRanges(transaction.state);
+		return transaction.docChanged ? decorations.map(transaction.changes) : decorations;
+	},
+	provide: (field) => EditorView.decorations.from(field),
+});
+
+/** Flip one run in both columns — the two sides hold the same list, so an index means the same region. */
+function toggleFold(view: EditorView, index: number) {
+	const count = (view.state.field(foldPlanField, false) ?? []).length;
+	const folded = new Set(view.state.field(foldedField, false) ?? Array.from({ length: count }, (_, i) => i));
+	if (folded.has(index)) folded.delete(index);
+	else folded.add(index);
+	const next = [...folded].sort((a, b) => a - b);
+	const siblings = mergeViewSiblings(view);
+	const targets = siblings ? [siblings.a, siblings.b] : [view];
+	for (const target of targets) if (target) target.dispatch({ effects: setFolded.of(next) });
+}
+
+class FoldBand extends WidgetType {
+	constructor(
+		readonly gap: FoldGap,
+		readonly index: number,
+	) {
+		super();
+	}
+	eq(other: FoldBand) {
+		return other.gap.lines === this.gap.lines && other.gap.number === this.gap.number;
+	}
+	toDOM(view: EditorView) {
+		const band = document.createElement("div");
+		band.className = "cm-collapsedLines";
+		band.textContent = `${this.gap.lines} unchanged lines`;
+		band.addEventListener("mousedown", (event) => {
+			event.preventDefault();
+			toggleFold(view, this.index);
+		});
+		return band;
+	}
+	ignoreEvent(event: Event) {
+		return event instanceof MouseEvent;
+	}
+}
+
+class FoldNumberMarker extends GutterMarker {
+	constructor(
+		readonly number: number,
+		readonly fold: "open" | "closed" | null,
+		readonly index: number | null,
+	) {
+		super();
+	}
+	eq(other: FoldNumberMarker) {
+		return other.number === this.number && other.fold === this.fold;
+	}
+	toDOM(view: EditorView) {
+		const cell = document.createElement("span");
+		cell.className = "cm-foldCell";
+		const label = document.createElement("span");
+		label.textContent = String(this.number);
+		cell.appendChild(label);
+		const slot = document.createElement("span");
+		slot.className = "cm-foldSlot";
+		if (this.fold) {
+			const index = this.index;
+			const button = document.createElement("button");
+			button.type = "button";
+			button.tabIndex = -1;
+			button.className = "cm-foldToggle";
+			button.setAttribute("aria-label", this.fold === "closed" ? "Show unchanged lines" : "Hide unchanged lines");
+			button.innerHTML = this.fold === "closed" ? CHEVRON_RIGHT : CHEVRON_DOWN;
+			button.addEventListener("mousedown", (event) => {
+				event.preventDefault();
+				event.stopPropagation();
+				if (index != null) toggleFold(view, index);
+			});
+			slot.appendChild(button);
+		}
+		cell.appendChild(slot);
+		return cell;
+	}
+}
+
+/** Line numbers that also carry the fold toggle, so one column holds the coordinate and its control. */
+function numberedFoldGutter() {
+	return gutter({
+		class: "cm-lineNumbers",
+		lineMarker(view, line) {
+			const gaps = view.state.field(foldPlanField, false) ?? [];
+			const index = gapIndexAt(gaps, line.from);
+			const starts = index >= 0 && gaps[index]!.from === line.from;
+			return new FoldNumberMarker(view.state.doc.lineAt(line.from).number, starts ? "open" : null, starts ? index : null);
+		},
+		widgetMarker(view, widget) {
+			if (!(widget instanceof FoldBand)) return null;
+			const gaps = view.state.field(foldPlanField, false) ?? [];
+			const index = gapIndexAt(gaps, widget.gap.from);
+			return new FoldNumberMarker(widget.gap.number, "closed", index < 0 ? null : index);
+		},
+		lineMarkerChange: (update) =>
+			update.docChanged ||
+			update.startState.field(foldPlanField, false) !== update.state.field(foldPlanField, false) ||
+			update.startState.field(foldedField, false) !== update.state.field(foldedField, false),
+		initialSpacer: (view) => new FoldNumberMarker(view.state.doc.lines, null, null),
+	});
+}
+
+// ——— character-level marks: only where the change is shorter than its line ———
+
+/** Unchanged share of a line under which the line reads as rewritten: the wash says it, no character tell. */
+const WHOLE_LINE_RESIDUE = 0.25;
+
+function mergeSpans(spans: { from: number; to: number }[]): { from: number; to: number }[] {
+	const sorted = [...spans].sort((a, b) => a.from - b.from);
+	const out: { from: number; to: number }[] = [];
+	for (const span of sorted) {
+		const last = out[out.length - 1];
+		if (last && span.from <= last.to) last.to = Math.max(last.to, span.to);
+		else out.push({ ...span });
+	}
+	return out;
+}
+
+interface LineTells {
+	/** Where this side's changes land, per line (clipped to the line). */
+	spans: Map<number, { from: number; to: number }[]>;
+	/** Lines whose trimmed content the changes swallow — the line wash already says it. */
+	whole: Set<number>;
+}
+
+/** The per-line judgement both presentations use: which spans get a character tell, and which lines are rewritten
+ * whole. Indentation and trailing space are not part of the tell, so a line is measured after trimming them. */
+function lineTells(state: EditorState, side: "a" | "b"): LineTells {
+	const spans = new Map<number, { from: number; to: number }[]>();
+	const whole = new Set<number>();
+	const info = getChunks(state);
+	if (!info) return { spans, whole };
+	for (const chunk of info.chunks) {
+		const base = side === "a" ? chunk.fromA : chunk.fromB;
+		for (const change of chunk.changes) {
+			const from = base + (side === "a" ? change.fromA : change.fromB);
+			const to = base + (side === "a" ? change.toA : change.toB);
+			if (from >= to) continue;
+			const first = state.doc.lineAt(from).number;
+			const last = state.doc.lineAt(Math.min(to - 1, state.doc.length)).number;
+			for (let number = first; number <= last; number += 1) {
+				const line = state.doc.line(number);
+				const onLine = spans.get(number) ?? [];
+				onLine.push({ from: Math.max(from, line.from), to: Math.min(to, line.to) });
+				spans.set(number, onLine);
+			}
+		}
+	}
+	for (const [number, onLine] of spans) {
+		const line = state.doc.line(number);
+		const trimmedFrom = line.from + (line.text.length - line.text.trimStart().length);
+		const trimmedTo = line.to - (line.text.length - line.text.trimEnd().length);
+		const trimmed = Math.max(0, trimmedTo - trimmedFrom);
+		const covered = mergeSpans(onLine.filter((span) => span.from < span.to));
+		if (covered.some((span) => span.from <= trimmedFrom && span.to >= trimmedTo)) {
+			whole.add(number);
+			continue;
+		}
+		const told = covered.reduce((sum, span) => sum + Math.max(0, Math.min(span.to, trimmedTo) - Math.max(span.from, trimmedFrom)), 0);
+		if (trimmed > 0 && (trimmed - told) / trimmed <= WHOLE_LINE_RESIDUE) whole.add(number);
+	}
+	return { spans, whole };
+}
+
+/** The character tell, kept only where it says something the line wash does not: on lines that were not rewritten. */
+function charMarks(side: "a" | "b") {
+	return ViewPlugin.fromClass(
+		class {
+			decorations: DecorationSet = Decoration.none;
+
+			constructor(view: EditorView) {
+				this.build(view);
+			}
+
+			update(update: ViewUpdate) {
+				if (update.docChanged || chunksArrived(update) || !getChunks(update.state)) this.build(update.view);
+			}
+
+			private build(view: EditorView) {
+				const { spans, whole } = lineTells(view.state, side);
+				const ranges: Range<Decoration>[] = [];
+				for (const [number, onLine] of spans) {
+					if (whole.has(number)) continue;
+					for (const span of onLine) if (span.from < span.to) ranges.push(Decoration.mark({ class: "cm-changedText" }).range(span.from, span.to));
+				}
+				this.decorations = Decoration.set(ranges, true);
+			}
+		},
+		{ decorations: (plugin) => plugin.decorations },
+	);
+}
+
+// ——— the sides ———
+
+function side(doc: string, wrapping: Extension, compartment: Compartment, extra: Extension[]) {
 	return {
 		doc,
-		extensions: [EditorState.readOnly.of(true), EditorView.editable.of(false), drawSelection(), lineNumbers(), tokenPainter(), compartment.of(wrapping), diffTheme],
+		extensions: [
+			EditorState.readOnly.of(true),
+			EditorView.editable.of(false),
+			drawSelection(),
+			tokenPainter(),
+			foldPlanField,
+			foldedField,
+			foldDecorations,
+			numberedFoldGutter(),
+			compartment.of(wrapping),
+			...extra,
+			diffTheme,
+		],
 	};
 }
 
@@ -130,14 +491,33 @@ export function CodeDiff(props: { original: string; modified: string; lang: stri
 
 		if (props.sideBySide) {
 			const merged = new MergeView({
-				a: side(props.original, wrapping, wrapCompartment.current),
-				b: side(props.modified, wrapping, wrapCompartment.current),
+				a: side(props.original, wrapping, wrapCompartment.current, [charMarks("a")]),
+				b: side(props.modified, wrapping, wrapCompartment.current, [charMarks("b")]),
 				parent: host,
 				orientation: "a-b",
-				highlightChanges: true,
-				gutter: true,
-				collapseUnchanged: { margin: 2 },
+				highlightChanges: false,
+				gutter: false,
 			});
+			// Both sides exist now, so the runs of each can be measured and handed to its own state. An empty
+			// answer with no chunks yet is retried for a few frames, so a quiet plan can't be mistaken for none.
+			const handOver = () => {
+				const chunks = getChunks(merged.b.state)?.chunks ?? getChunks(merged.a.state)?.chunks;
+				if (!chunks) return false;
+				const plan = buildFoldPlan(merged.a.state.doc, merged.b.state.doc, chunks);
+				merged.a.dispatch({ effects: setFoldPlan.of(plan.a) });
+				merged.b.dispatch({ effects: setFoldPlan.of(plan.b) });
+				// The measure that follows is what brings the bands into the gutters, which sync off block structure.
+				merged.a.requestMeasure();
+				merged.b.requestMeasure();
+				return true;
+			};
+			if (!handOver()) {
+				let tries = 0;
+				const retry = () => {
+					if (alive && !handOver() && (tries += 1) < 4) requestAnimationFrame(retry);
+				};
+				requestAnimationFrame(retry);
+			}
 			const unmirror = mirrorScroll(merged.a, merged.b);
 			mounted.current = [merged.a, merged.b];
 			paint(merged.a, props.original);
@@ -159,21 +539,39 @@ export function CodeDiff(props: { original: string; modified: string; lang: stri
 					wrapCompartment.current.of(wrapping),
 					unifiedMergeView({
 						original: props.original,
-						highlightChanges: true,
-						gutter: true,
+						highlightChanges: false,
+						gutter: false,
 						mergeControls: false,
-						allowInlineDiffs: true,
+						allowInlineDiffs: false,
 						syntaxHighlightDeletions: false,
-						collapseUnchanged: { margin: 2 },
 					}),
 					drawSelection(),
-					lineNumbers(),
 					tokenPainter(),
+					foldPlanField,
+					foldedField,
+					foldDecorations,
+					numberedFoldGutter(),
+					charMarks("b"),
 					diffTheme,
 				],
 			}),
 			parent: host,
 		});
+		// Same runs as the side-by-side's second column, so both modes hide and count the same lines.
+		const handOver = () => {
+			const chunks = getChunks(view.state)?.chunks;
+			if (!chunks) return false;
+			view.dispatch({ effects: setFoldPlan.of(buildFoldPlan(Text.of(props.original.split("\n")), view.state.doc, chunks).b) });
+			view.requestMeasure();
+			return true;
+		};
+		if (!handOver()) {
+			let tries = 0;
+			const retry = () => {
+				if (alive && !handOver() && (tries += 1) < 4) requestAnimationFrame(retry);
+			};
+			requestAnimationFrame(retry);
+		}
 		mounted.current = [view];
 		paint(view, props.modified);
 		return () => {

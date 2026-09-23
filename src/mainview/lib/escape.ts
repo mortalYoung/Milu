@@ -10,7 +10,6 @@ export interface EscapeLayer {
 export const ESCAPE_ORDER = {
 	palette: 90,
 	composerMenu: 85,
-	composerPanel: 84,
 	meter: 83,
 	trajectoryRow: 82,
 	trajectory: 80,

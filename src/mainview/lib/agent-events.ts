@@ -49,16 +49,17 @@ export function createAgentEvents(
 				escalationToasts.delete(escalationId);
 				return;
 			}
-			if (partner === undefined || open !== undefined) return;
+			if (partner === undefined || partner === selected() || open !== undefined) return;
 			const shift = from === undefined || to === undefined ? "" : `${from} → ${to} · `;
 			escalationToasts.set(
 				escalationId,
 				toast.push({
 					title: `${partner} · sandbox escalation`,
-					body: `${shift}${command ?? "a tool call"} · click to approve`,
+					body: `${shift}${command ?? "a tool call"} · click to open`,
 					avatar: partner.charAt(0),
 					durationMs: 0,
-					onClick: () => void rpc.request.sandbox_respond({ id: escalationId, approved: true }),
+					onClick: () => openPartner(partner),
+					action: { label: "Approve", onClick: () => void rpc.request.sandbox_respond({ id: escalationId, approved: true }) },
 				}),
 			);
 		});

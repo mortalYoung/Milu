@@ -8,10 +8,9 @@ export interface ComposerPrefill {
 }
 
 export function createComposer(session: StoreApi<SessionData>) {
-	const store = createStore<{ drafts: Record<string, string>; pendingPrefill: ComposerPrefill | null; panelOpen: boolean }>()(() => ({
+	const store = createStore<{ drafts: Record<string, string>; pendingPrefill: ComposerPrefill | null }>()(() => ({
 		drafts: {},
 		pendingPrefill: null,
-		panelOpen: false,
 	}));
 	let prefillSeq = 0;
 
@@ -37,5 +36,5 @@ export function createComposer(session: StoreApi<SessionData>) {
 		if (store.getState().pendingPrefill?.id === id) store.setState({ pendingPrefill: null });
 	}
 
-	return { store, change, clear, prefill, consumePrefill, setPanelOpen: (panelOpen: boolean) => store.setState({ panelOpen }) };
+	return { store, change, clear, prefill, consumePrefill };
 }

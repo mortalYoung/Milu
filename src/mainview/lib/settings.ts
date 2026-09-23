@@ -52,6 +52,33 @@ const EMPTY = { settings: null as SettingsData | null, runtime: null as RuntimeI
 
 export function createSettings(rpc: RPC, toast: Toast) {
 	const store = createStore<{ snapshot: typeof EMPTY; open: boolean }>()(() => ({ snapshot: EMPTY, open: false }));
+	let flipTimer: ReturnType<typeof setTimeout> | undefined;
+
+	function applyTheme(theme: ThemeMode) {
+		const root = document.documentElement;
+		if (root.dataset["theme"] === theme) return;
+		const flipping = root.dataset["theme"] !== undefined;
+		root.dataset["theme"] = theme;
+		clearTimeout(flipTimer);
+		if (flipping) {
+			root.classList.add("theme-flip");
+			flipTimer = setTimeout(() => root.classList.remove("theme-flip"), 300);
+		}
+	}
+
+	function applySnapshot() {
+		const settings = store.getState().snapshot.settings;
+		applyTheme(settings?.theme ?? "system");
+		if (typeof settings?.toastDurationMs === "number") toast.setDurationMs(settings.toastDurationMs);
+	}
+
+	function install() {
+		applySnapshot();
+		store.subscribe((state, previous) => {
+			if (state.snapshot === previous.snapshot) return;
+			applySnapshot();
+		});
+	}
 
 	async function refresh() {
 		try {
@@ -72,6 +99,7 @@ export function createSettings(rpc: RPC, toast: Toast) {
 	return {
 		store,
 		refresh,
+		install,
 		open: () => store.getState().open,
 		mutate: { setOpen: (open: boolean) => store.setState({ open }), save },
 	};

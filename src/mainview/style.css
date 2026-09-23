@@ -1493,6 +1493,16 @@ body::before {
 	.toast-content--actionable {
 		cursor: pointer;
 	}
+	.toast-action {
+		@apply shrink-0 rounded-[6px] border border-seal px-2 py-1 font-sans text-[11px] leading-none text-seal transition-colors;
+	}
+	.toast-action:hover {
+		background: color-mix(in srgb, var(--color-seal) 10%, transparent);
+	}
+	.toast-action:focus-visible {
+		outline: 2px solid var(--color-seal);
+		outline-offset: 1px;
+	}
 	.toast-title {
 		@apply text-[13px] font-medium leading-tight;
 	}
@@ -2286,7 +2296,7 @@ body::before {
 		@apply mb-1 font-sans text-[9px] uppercase tracking-[0.14em] text-muted;
 	}
 	.traj-drawer {
-		@apply absolute top-0 right-0 bottom-0 z-20 w-[440px] max-w-[72vw] bg-letter border-l border-hairline flex flex-col py-4;
+		@apply absolute top-0 right-0 bottom-0 z-[48] w-[440px] max-w-[72vw] bg-letter border-l border-hairline flex flex-col py-4;
 	}
 
 	.traj-enter {
@@ -2773,7 +2783,7 @@ body::before {
 	}
 	.composer-row {
 		max-width: clamp(560px, 46vw, 760px);
-		@apply flex items-center gap-2 w-[60%] min-w-0;
+		@apply relative flex items-center gap-2 w-[60%] min-w-0;
 	}
 
 	.composer-toggle {
@@ -2782,35 +2792,79 @@ body::before {
 	.composer-toggle:hover {
 		color: var(--color-ink);
 	}
-	.composer-toggle[aria-expanded="true"] {
-		color: var(--color-seal);
-	}
 
 	.composer-stop {
 		@apply border-seal text-seal hover:bg-seal/10;
+	}
+
+	.composer-model {
+		@apply inline-flex h-7 shrink-0 items-center rounded-full transition-colors;
+	}
+	.composer-model:hover {
+		@apply bg-paper-hover;
+	}
+	.composer-model-icon {
+		@apply grid size-7 shrink-0 place-items-center rounded-full text-muted transition-colors;
+	}
+	.composer-model-icon:hover,
+	.composer-model-icon[aria-expanded="true"] {
+		@apply text-ink;
+	}
+	.composer-model-icon:focus-visible,
+	.composer-model-drop:focus-visible {
+		outline: 2px solid var(--color-seal);
+		outline-offset: 1px;
+	}
+	.composer-model-sep {
+		width: 1px;
+		height: 12px;
+		background: var(--color-hairline);
+	}
+	.composer-model-slide {
+		@apply inline-flex min-w-0 items-center overflow-hidden;
+		max-width: 0;
+		transition: max-width 180ms cubic-bezier(0.23, 1, 0.32, 1);
+	}
+	.composer-model.expanded .composer-model-slide {
+		max-width: 150px;
+	}
+	.composer-model-drop {
+		@apply inline-flex h-7 min-w-0 shrink items-center gap-1 pl-2 pr-1.5 font-mono text-[10px] text-muted transition-colors;
+	}
+	.composer-model-drop:hover {
+		@apply text-ink;
+	}
+	.composer-model-label {
+		@apply block min-w-0 overflow-hidden text-ellipsis whitespace-nowrap;
+		transform: translateX(26px);
+		opacity: 0;
+		transition:
+			transform 180ms cubic-bezier(0.23, 1, 0.32, 1),
+			opacity 120ms cubic-bezier(0.23, 1, 0.32, 1);
+	}
+	.composer-model.expanded .composer-model-label {
+		transform: none;
+		opacity: 1;
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.composer-model-slide,
+		.composer-model-label {
+			transition: none;
+		}
 	}
 
 	.composer-field {
 		@apply flex items-center gap-2 flex-1 min-h-11 bg-letter border border-hairline rounded-[22px] px-[14px] py-0 transition-colors focus-within:border-seal;
 	}
 
-	.composer-panel {
-		position: absolute;
-		bottom: calc(100% + 8px);
-		left: 50%;
-		transform: translateX(-50%);
-		width: 60%;
-		@apply bg-letter border border-hairline rounded-[8px] px-3 py-2 flex flex-col gap-2 z-50;
-		animation: composer-panel-in 180ms cubic-bezier(0.23, 1, 0.32, 1);
-	}
-	@keyframes composer-panel-in {
+	@keyframes pop-in {
 		from {
 			opacity: 0;
-			transform: translate(-50%, 6px);
+			translate: 0 6px;
 		}
 		to {
 			opacity: 1;
-			transform: translate(-50%, 0);
+			translate: 0 0;
 		}
 	}
 
@@ -2822,7 +2876,7 @@ body::before {
 		width: 60%;
 		max-width: clamp(560px, 46vw, 760px);
 		@apply bg-letter border border-hairline rounded-[8px] py-1 max-h-[200px] overflow-y-auto z-40;
-		animation: composer-panel-in 180ms cubic-bezier(0.23, 1, 0.32, 1);
+		animation: pop-in 180ms cubic-bezier(0.23, 1, 0.32, 1);
 	}
 	.followup-dock-head {
 		@apply px-3 pt-1 pb-1;
@@ -2882,7 +2936,7 @@ body::before {
 		transform: translateX(-50%);
 		width: 60%;
 		@apply bg-letter border border-hairline rounded-[8px] py-1 z-50 max-h-[240px] overflow-y-auto;
-		animation: composer-panel-in 180ms cubic-bezier(0.23, 1, 0.32, 1);
+		animation: pop-in 180ms cubic-bezier(0.23, 1, 0.32, 1);
 	}
 	.command-menu-item {
 		@apply flex items-center gap-2 w-full px-3 py-1.5 text-left font-mono text-[11px] text-ink cursor-pointer hover:bg-paper-hover;
@@ -2914,7 +2968,7 @@ body::before {
 		left: 50%;
 		transform: translateX(-50%);
 		@apply flex items-center gap-2 bg-letter border border-hairline rounded-[8px] px-3 py-1 z-40 font-mono text-[10px];
-		animation: composer-panel-in 180ms cubic-bezier(0.23, 1, 0.32, 1);
+		animation: pop-in 180ms cubic-bezier(0.23, 1, 0.32, 1);
 	}
 	.composer-command-hint-name {
 		@apply text-seal shrink-0;
@@ -2923,19 +2977,11 @@ body::before {
 		@apply text-muted shrink-0;
 	}
 	@media (prefers-reduced-motion: reduce) {
-		.composer-panel,
 		.composer-command-hint,
 		.command-menu,
 		.followup-dock {
 			animation: none;
 		}
-	}
-	.composer-panel-path {
-		@apply flex items-center min-w-0;
-	}
-
-	.composer-path {
-		@apply font-mono text-[10px] text-body-muted truncate min-w-0;
 	}
 	.path-label {
 		@apply text-muted;
@@ -2959,24 +3005,25 @@ body::before {
 		outline: 2px solid var(--color-seal);
 		outline-offset: 1px;
 	}
-	.composer-path-sep {
-		@apply mx-1 text-hairline;
+	.runtime-value {
+		@apply inline-flex items-center gap-1 min-w-0 font-mono text-[10.5px] text-ink cursor-pointer transition-colors;
 	}
-	.composer-panel-row {
-		@apply flex items-center gap-2 min-w-0;
+	.runtime-value:hover {
+		@apply text-seal;
+		text-decoration: underline;
+		text-underline-offset: 2px;
 	}
-	.composer-panel-foot {
-		@apply flex items-center gap-3 min-w-0 whitespace-nowrap font-mono text-[10px] text-body-muted;
+	.runtime-value:focus-visible {
+		outline: 2px solid var(--color-seal);
+		outline-offset: 1px;
+	}
+	.runtime-caret {
+		opacity: 0.55;
+	}
+	.runtime-value:hover .runtime-caret {
+		opacity: 1;
 	}
 
-	.composer-status {
-		@apply flex items-center gap-1.5;
-	}
-	.composer-status-dot {
-		@apply size-[5px] rounded-full;
-		background: var(--color-seal);
-		animation: work-dot 1.2s infinite;
-	}
 	.composer-input {
 		@apply flex-1 min-w-0 bg-transparent border-none outline-none font-sans text-[14px] leading-[20px] text-ink placeholder:text-muted resize-none py-[11px];
 

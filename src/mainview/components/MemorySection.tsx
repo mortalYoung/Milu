@@ -6,9 +6,9 @@ import { rpc } from "../lib/rpc";
 import { formatTokens } from "../lib/utils";
 import { MemoryTrajectoryDialog } from "./MemoryTrajectoryDialog";
 
-const EYEBROW = "font-sans text-[9.5px] font-semibold uppercase tracking-[0.12em] text-muted";
+const EYEBROW = "font-sans text-[11px] font-semibold uppercase tracking-[0.12em] text-muted";
 const CARD = "border border-hairline bg-letter rounded-md";
-const KIND_CHIP = "shrink-0 rounded-[3px] border border-hairline px-1 py-[1px] font-mono text-[9.5px] uppercase tracking-[0.06em] text-body-muted";
+const KIND_CHIP = "shrink-0 rounded-[3px] border border-hairline px-1 py-[1px] font-mono text-[10.5px] uppercase tracking-[0.06em] text-body-muted";
 const ROW_BUTTON = "memory-row flex w-full items-baseline gap-2 px-3 py-1.5 text-left hover:bg-paper-hover";
 
 type Overview = Awaited<ReturnType<typeof rpc.request.memory_overview>>["overview"];
@@ -119,7 +119,7 @@ export function MemorySection(props: { partner: string }) {
 											<span className={KIND_CHIP}>{record.kind}</span>
 											<span className={"min-w-0 flex-1 truncate font-sans text-[12px] " + (record.superseded ? "text-muted line-through" : "text-ink")}>{record.summary}</span>
 											{record.overRecallCap && (
-												<span className="shrink-0 font-mono text-[9.5px] text-seal" title={`detail is longer than the ${overview.agentDetailLimit} chars the agent can recall`}>
+												<span className="shrink-0 font-mono text-[10.5px] text-seal" title={`detail is longer than the ${overview.agentDetailLimit} chars the agent can recall`}>
 													truncated
 												</span>
 											)}

@@ -722,17 +722,6 @@ export type AppRPCSchema = __schema<{
 				};
 			};
 
-			partner_runtime: {
-				params: { name: string };
-				response: {
-					workspace_path: string | null;
-					storage_path: string | null;
-					sandbox_mode: SandboxMode;
-					model: { provider: string; modelId?: string } | null;
-					thinking_level: ThinkingLevel;
-				};
-			};
-
 			partner_usage: {
 				params: { name: string };
 				response: { bytes: number; parts: { label: string; bytes: number }[] };
@@ -764,16 +753,16 @@ export type AppRPCSchema = __schema<{
 			};
 
 			set_sandbox_mode: {
-				params: { mode: SandboxMode };
+				params: { name: string; mode: SandboxMode };
 				response: { ok: boolean; error?: string };
 			};
 
 			set_partner_model: {
-				params: { model: { provider: string; modelId?: string } };
+				params: { name: string; model: { provider: string; modelId?: string } };
 				response: { ok: boolean; error?: string };
 			};
 			set_thinking_level: {
-				params: { level: ThinkingLevel };
+				params: { name: string; level: ThinkingLevel };
 				response: { ok: boolean; error?: string };
 			};
 

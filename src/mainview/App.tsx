@@ -37,6 +37,7 @@ import {
 	dock,
 	inbox,
 	metrics,
+	openChat,
 	palette,
 	scroll,
 	selectPartner,
@@ -104,14 +105,6 @@ function onSend(text: string) {
 	});
 }
 
-async function onCreatePartner(data: PartnerFormData): Promise<string | null> {
-	const res = await rpc.request.create_partner(data);
-	if (!res.ok) return res.error ?? "Failed to create partner";
-	void session.mutate.refreshPartners();
-	if (res.profile) selectPartner(res.profile);
-	return null;
-}
-
 function onOpenPath(path: string, editorId?: string) {
 	void rpc.request.open_path({ path, editorId }).then((res) => {
 		if (!res.ok) toast.push({ title: "Couldn't open folder", body: res.error ?? "No supported editor found" }, "error");
@@ -122,8 +115,8 @@ function ChatView(props: {
 	selected: string | null;
 	editors: { id: string; name: string }[];
 	onViewDetails: (name: string) => void;
+	onAddPartner: () => void;
 	listCollapsed: boolean;
-	onToggleList: () => void;
 }) {
 	const settingsCtl = useSettings();
 	const settingsSnapshot = useStore(settingsCtl.store, (state) => state.snapshot);
@@ -188,6 +181,10 @@ function ChatView(props: {
 		void tasksCtl.refresh(selected);
 	}, [selected, taskVersion]);
 
+	useEffect(() => {
+		if (selected) void inbox.refresh(selected);
+	}, [selected]);
+
 	const isUnread = (name: string) => {
 		const partner = partners.find((p) => p.name === name);
 		return partner?.lastMessageAt != null && partner.lastMessageAt > (readAt[name] ?? 0);
@@ -202,7 +199,7 @@ function ChatView(props: {
 					selected={selected}
 					unread={isUnread}
 					onSelect={(name) => selectPartner(partners.find((p) => p.name === name) ?? null)}
-					onAddPartner={() => {}}
+					onAddPartner={props.onAddPartner}
 					onDelete={(name) => void onDeletePartner(name)}
 					onViewDetails={props.onViewDetails}
 					onDuplicate={(name) => void runCopy("duplicate", name)}
@@ -237,11 +234,9 @@ function ChatView(props: {
 											scroll.pin(true);
 											return rpc.request.shell_execute({ command });
 										}}
-										onOpenPath={onOpenPath}
 										onTasks={() => setTaskOpen(true)}
 										hasTasks={taskList.length > 0}
 										taskRunning={taskList.filter((task) => task.status === "running").length}
-										editors={props.editors}
 									/>
 									<TaskLogDialog open={taskOpen} onOpenChange={setTaskOpen} tasks={taskList} partner={selected} version={taskVersion} output={taskOutput} />
 								</div>
@@ -296,13 +291,15 @@ function ChatView(props: {
 	);
 }
 
+type ViewId = Exclude<RailTabId, "settings">;
+
 function closeCurrentChat() {
 	if (!session.store.getState().selected) return;
 	selectPartner(null);
 }
 
 export function App() {
-	const [view, setView] = useState<RailTabId>("chat");
+	const [view, setView] = useState<ViewId>("chat");
 	const [editors, setEditors] = useState<{ id: string; name: string }[]>([]);
 	const [listCollapsed, setListCollapsed] = useState(() => localStorage.getItem("chatlist.collapsed") === "1");
 	const [showModal, setShowModal] = useState(false);
@@ -324,6 +321,13 @@ export function App() {
 	useEffect(() => {
 		warmUpMarkdown();
 	}, []);
+
+	useEffect(() => {
+		openChat.run = (name) => {
+			setView("chat");
+			selectPartner(partners.find((p) => p.name === name) ?? null);
+		};
+	}, [partners]);
 
 	const toggleList = () => {
 		setListCollapsed((collapsed) => {
@@ -355,7 +359,7 @@ export function App() {
 	useEffect(() => {
 		rpc.addMessageListener("menu_command", ({ action }) => {
 			if (action === "letters.view-chat" || action === "letters.view-skills" || action === "letters.view-dashboard") {
-				setView(action.slice("letters.view-".length) as RailTabId);
+				setView(action.slice("letters.view-".length) as ViewId);
 				return;
 			}
 			if (action === "letters.settings") {
@@ -383,9 +387,6 @@ export function App() {
 				case "letters.replies":
 					dock.open("replies");
 					return;
-				case "letters.runtime-config":
-					composer.setPanelOpen(true);
-					return;
 				case "letters.workspace":
 					dock.open("explorer");
 					return;
@@ -404,6 +405,14 @@ export function App() {
 		setShowModal(true);
 	};
 	const openDetails = (name: string) => setDetailsPartner(partners.find((p) => p.name === name) ?? null);
+	const onCreatePartner = async (data: PartnerFormData): Promise<string | null> => {
+		const res = await rpc.request.create_partner(data);
+		if (!res.ok) return res.error ?? "Failed to create partner";
+		setShowModal(false);
+		void session.mutate.refreshPartners();
+		if (res.profile) selectPartner(res.profile);
+		return null;
+	};
 
 	const isUnread = (name: string) => {
 		const partner = partners.find((p) => p.name === name);
@@ -432,18 +441,20 @@ export function App() {
 																		<SessionBar view={view} />
 																	)}
 																	<div className="relative flex min-h-0 flex-1">
-																		<AppRail active={view} onSelect={setView} />
+																		<AppRail
+																			active={view}
+																			onSelect={(tab) => {
+																				if (tab === "settings") settings.mutate.setOpen(true);
+																				else setView(tab);
+																			}}
+																		/>
 																		<main className="flex min-w-0 flex-1 flex-col bg-qw-bg">
-																			{view === "chat" ? (
-																				<ChatView selected={selected} editors={editors} onViewDetails={openDetails} listCollapsed={listCollapsed} onToggleList={toggleList} />
-																			) : view === "dashboard" ? (
+																			{view === "dashboard" ? (
 																				<DashboardView unread={isUnread} onSelect={(name) => selectPartner(partners.find((p) => p.name === name) ?? null)} />
 																			) : view === "skills" ? (
 																				<SkillsView />
 																			) : (
-																				<div className="grid flex-1 place-items-center">
-																					<span className="font-mono text-[11px] text-muted">{view}</span>
-																				</div>
+																				<ChatView selected={selected} editors={editors} onViewDetails={openDetails} onAddPartner={openAddPartner} listCollapsed={listCollapsed} />
 																			)}
 																			<ToastHost toasts={toasts} placement={settingsSnapshot.settings?.toastPlacement ?? "bottomcenter"} onDismiss={toast.dismiss} />
 																		</main>

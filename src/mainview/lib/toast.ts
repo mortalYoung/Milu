@@ -8,11 +8,12 @@ export interface ToastItem {
 	body: string;
 	variant: ToastVariant;
 	onClick?: () => void;
+	action?: { label: string; onClick: () => void };
 	avatar?: string;
 	leaving?: boolean;
 }
 
-export type ToastMessage = string | { title?: string; body: string; onClick?: () => void; avatar?: string; durationMs?: number };
+export type ToastMessage = string | { title?: string; body: string; onClick?: () => void; action?: { label: string; onClick: () => void }; avatar?: string; durationMs?: number };
 
 export const DEFAULT_TOAST_DURATION_MS = 4000;
 export const TOAST_EXIT_MS = 160;

@@ -65,7 +65,7 @@ import {
 import { createTaskRegistry, DEFAULT_REMIND_AFTER_SEC, type TaskHistoryRecord } from "./core/tasks";
 import { aggregateUsage, lastUsage } from "./core/trajectory";
 import { deleteApiKey, getApiKey, loadCredentials, setApiKey } from "./lib/credentials";
-import { ensureModel, ensureSandboxMode, ensureStoragePath, ensureWorkspace, hasInvalidPersistedWorkspace, isThinkingLevel, readSandboxMode } from "./lib/ensure";
+import { ensureModel, ensureSandboxMode, ensureStoragePath, ensureWorkspace, hasInvalidPersistedWorkspace, isThinkingLevel } from "./lib/ensure";
 import { listChildren, readFilePreview, readImageDataUrl } from "./lib/explorer";
 import { gitChanges, gitDiff, gitFileSides, gitOverview, gitWorktrees } from "./lib/git-changes";
 import { listInstalledEditors, openInCodeEditor } from "./lib/open-in-editor";
@@ -212,6 +212,7 @@ const respondedSandboxIds = new Set<string>();
 
 const escalationNonce = Date.now().toString(36);
 let sandboxConfirmSeq = 0;
+let appFocused = true;
 
 interface PartnerAgent {
 	profile: PartnerInput;
@@ -330,6 +331,17 @@ interface HistoryViewCache {
 const historyViewCache = new Map<string, HistoryViewCache>();
 const HISTORY_CACHE_MAX = 64;
 
+async function notifyRunEnd(name: string, dir: string, error?: string): Promise<void> {
+	try {
+		const last = await session.lastMessage(dir);
+		const spoken = last?.kind === "send_message" ? last.text : "";
+		const body = error || spoken || "Click to view the conversation";
+		Utils.showNotification({ title: `${name} · ${error ? "run ended with an error" : "finished"}`, body: body.slice(0, 140) });
+	} catch (failure) {
+		console.error("run-end notification failed:", failure);
+	}
+}
+
 function rejectPendingEscalations(partner: string, reason: string) {
 	const timestamp = Date.now();
 	for (const [id, pending] of pendingSandboxConfirms) {
@@ -360,6 +372,11 @@ function tildify(path: string): string {
 	if (path === home) return "~";
 	if (path.startsWith(home + sep)) return `~${path.slice(home.length)}`;
 	return path;
+}
+
+async function findPartner(name: string): Promise<PartnerInput | undefined> {
+	const settings = await loadSettings();
+	return (await listPartners(settings)).find((partner) => partner.name === name);
 }
 
 function ensureAgent(profile: PartnerInput): Promise<PartnerAgent> {
@@ -429,6 +446,7 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 			onEnd: (error) => {
 				rejectPendingEscalations(profile.name, "run ended while awaiting approval");
 				rpc.send.agent_end({ error, partner: profile.name });
+				if (!appFocused) void notifyRunEnd(profile.name, dir, error);
 			},
 			afterRun: () => {
 				void closeUnansweredAsk(peerHost, profile.name).catch((failure) => console.error("closeUnansweredAsk failed:", failure));
@@ -490,7 +508,8 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 						)
 						.then(() => {
 							rpc.send.escalation_update({ partner: profile.name, escalationId: id, command: request.command, from: request.from, to: request.to });
-							Utils.showNotification({ title: `${profile.name} · sandbox escalation`, body: request.command.slice(0, 140), subtitle: `${request.from} → ${request.to}` });
+							if (!appFocused)
+								Utils.showNotification({ title: `${profile.name} · sandbox escalation`, body: request.command.slice(0, 140), subtitle: `${request.from} → ${request.to}` });
 						})
 						.catch((error) => {
 							console.error("confirmEscalation persist failed:", error);
@@ -1514,7 +1533,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				const settings = await loadSettings();
 				const partnersList = await listPartners(settings);
 				const profile = partnersList.find((p) => p.name === name);
-				const entry = profile ? await agents.get(name) : undefined;
+				const entry = profile ? await ensureAgent(profile) : undefined;
 				const addedProviders = settings.providers ?? [];
 				const workspacePath = entry?.agent.workspacePath ?? null;
 				const git = workspacePath ? await gitOverview(workspacePath).catch(() => null) : null;
@@ -1531,23 +1550,6 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					models: addedProviders.map((p) => ({ provider: p, models: providerModels(p) })),
 				};
 			},
-			partner_runtime: async ({ name }) => {
-				const settings = await loadSettings();
-				const profile = (await listPartners(settings)).find((p) => p.name === name);
-				if (!profile) return { workspace_path: null, storage_path: null, sandbox_mode: "workspace-write" as const, model: null, thinking_level: "high" as const };
-				const dir = getPartnerDir(settings, name);
-				const workspace = await ensureWorkspace(dir);
-				const model = await ensureModel(dir);
-				const defaultMode = isSandboxMode(settings.defaultSandboxMode) ? settings.defaultSandboxMode : "workspace-write";
-				return {
-					workspace_path: workspace ? tildify(workspace) : null,
-					storage_path: tildify(join(dir, "storage")),
-					sandbox_mode: (await readSandboxMode(dir)) ?? defaultMode,
-					model: model ? { provider: model.provider, ...(model.modelId ? { modelId: model.modelId } : {}) } : null,
-					thinking_level: model?.thinkingLevel ?? "high",
-				};
-			},
-
 			partner_usage: async ({ name }) => {
 				const settings = await loadSettings();
 				return partnerUsage(getPartnerDir(settings, name));
@@ -1568,9 +1570,10 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				if (!profile) return { run: null };
 				return { run: await readMemoryRunTrace(getPartnerDir(settings, name), runId) };
 			},
-			set_partner_model: async ({ model }) => {
-				if (!viewPartner) return { ok: false, error: "no partner selected" };
-				const entry = await ensureAgent(viewPartner.profile);
+			set_partner_model: async ({ name, model }) => {
+				const profile = await findPartner(name);
+				if (!profile) return { ok: false, error: "unknown partner" };
+				const entry = await ensureAgent(profile);
 				const normalized = { provider: model.provider, ...(model.modelId ? { modelId: model.modelId } : {}) };
 				try {
 					entry.agent.setModel(normalized);
@@ -1582,10 +1585,11 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				rpc.send.origin_update({ partner: entry.profile.name });
 				return { ok: true };
 			},
-			set_thinking_level: async ({ level }) => {
-				if (!viewPartner) return { ok: false, error: "no partner selected" };
+			set_thinking_level: async ({ name, level }) => {
 				if (!isThinkingLevel(level)) return { ok: false, error: "invalid level" };
-				const entry = await ensureAgent(viewPartner.profile);
+				const profile = await findPartner(name);
+				if (!profile) return { ok: false, error: "unknown partner" };
+				const entry = await ensureAgent(profile);
 				const ctx = entry.agent.context;
 				ctx.setThinkingLevel(level);
 				await persistModel(entry.dir, {
@@ -1597,10 +1601,11 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				rpc.send.context_changed({ partner: entry.profile.name, workspace: entry.agent.workspacePath });
 				return { ok: true };
 			},
-			set_sandbox_mode: async ({ mode }) => {
-				if (!viewPartner) return { ok: false, error: "no partner selected" };
+			set_sandbox_mode: async ({ name, mode }) => {
 				if (!isSandboxMode(mode)) return { ok: false, error: "invalid mode" };
-				const entry = await ensureAgent(viewPartner.profile);
+				const profile = await findPartner(name);
+				if (!profile) return { ok: false, error: "unknown partner" };
+				const entry = await ensureAgent(profile);
 				entry.agent.setSandboxMode(mode);
 				await persistSandboxMode(entry.dir, mode);
 				rpc.send.sandbox_mode_update({});
@@ -2489,7 +2494,6 @@ function buildMenu(): AppMenuItem[] {
 				{ type: "divider" },
 				{ label: "Open trajectory", action: "letters.trajectory", enabled: menuState.partner },
 				{ label: "Open replies", action: "letters.replies", enabled: menuState.partner },
-				{ label: "Open runtime config", action: "letters.runtime-config", enabled: menuState.partner },
 				{ type: "divider" },
 				{ label: "Open workspace", action: "letters.workspace", enabled: menuState.workspace },
 				{ label: "Open git changes", action: "letters.git-changes", enabled: menuState.git },
@@ -2569,5 +2573,11 @@ const mainWindow: BrowserWindow = new BrowserWindow({
 });
 
 electrobunApp.on("before-quit", () => taskRegistry.reapAll());
+mainWindow.on("focus", () => {
+	appFocused = true;
+});
+mainWindow.on("blur", () => {
+	appFocused = false;
+});
 
 console.log("\x1b[32mletters started — agent ready\x1b[0m");
