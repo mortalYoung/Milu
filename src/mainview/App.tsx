@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
+import type { RailView } from "../shared/rpc";
 import { AppHeader } from "./components/AppHeader";
-import { AppRail, type RailTabId } from "./components/AppRail";
+import { AppRail } from "./components/AppRail";
 import { CommandPalette } from "./components/CommandPalette";
 import { Composer } from "./components/Composer";
 import { ConversationList } from "./components/ConversationList";
@@ -295,7 +296,7 @@ function ChatView(props: {
 	);
 }
 
-type ViewId = Exclude<RailTabId, "settings">;
+type ViewId = RailView;
 
 function closeCurrentChat() {
 	if (!session.store.getState().selected) return;
@@ -325,6 +326,10 @@ export function App() {
 	useEffect(() => {
 		warmUpMarkdown();
 	}, []);
+
+	useEffect(() => {
+		void rpc.request.set_view({ view });
+	}, [view]);
 
 	useEffect(() => {
 		openChat.run = (name) => {

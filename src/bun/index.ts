@@ -10,7 +10,7 @@ import { getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
 import { ApplicationMenu, BrowserView, BrowserWindow, app as electrobunApp, Utils } from "electrobun/main";
 import { mcpChangedText } from "../shared/events";
 import { projectOrigin } from "../shared/origin";
-import type { AppRPCSchema, ChatPreviewKind } from "../shared/rpc";
+import type { AppRPCSchema, ChatPreviewKind, RailView } from "../shared/rpc";
 import { loadCustomCommands, mergeCommandDefinitions } from "./commands/custom";
 import { defaultCommands } from "./commands/defaults";
 import { createCommandRegistry } from "./commands/registry";
@@ -214,6 +214,7 @@ const respondedSandboxIds = new Set<string>();
 const escalationNonce = Date.now().toString(36);
 let sandboxConfirmSeq = 0;
 let appFocused = true;
+let railView: RailView = "chat";
 
 interface PartnerAgent {
 	profile: PartnerInput;
@@ -223,6 +224,10 @@ interface PartnerAgent {
 }
 
 let viewPartner: { name: string; dir: string; profile: PartnerInput } | null = null;
+
+function looking(partner: string): boolean {
+	return appFocused && railView === "chat" && viewPartner?.name === partner;
+}
 
 const agents = new Map<string, Promise<PartnerAgent>>();
 
@@ -446,7 +451,7 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 			onEnd: (error) => {
 				rejectPendingEscalations(profile.name, "run ended while awaiting approval");
 				rpc.send.agent_end({ error, partner: profile.name });
-				if (!appFocused) void notifyRunEnd(profile.name, dir, error);
+				if (!looking(profile.name)) void notifyRunEnd(profile.name, dir, error);
 			},
 			afterRun: () => {
 				void closeUnansweredAsk(peerHost, profile.name).catch((failure) => console.error("closeUnansweredAsk failed:", failure));
@@ -508,7 +513,7 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 						)
 						.then(() => {
 							rpc.send.escalation_update({ partner: profile.name, escalationId: id, command: request.command, from: request.from, to: request.to });
-							if (!appFocused)
+							if (!looking(profile.name))
 								Utils.showNotification({ title: `${profile.name} · sandbox escalation`, body: request.command.slice(0, 140), subtitle: `${request.from} → ${request.to}` });
 						})
 						.catch((error) => {
@@ -2384,6 +2389,11 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				refreshMenu();
 				return { ok: true };
 			},
+			set_view: async ({ view }) => {
+				railView = view;
+				return { ok: true };
+			},
+
 			set_partner: async ({ profile }) => {
 				if (profile) {
 					const dir = await partnerDirFor(profile.name);

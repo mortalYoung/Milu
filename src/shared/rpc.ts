@@ -146,6 +146,8 @@ export interface SandboxSettings {
 	network?: SandboxNetworkSettings;
 }
 
+export type RailView = "chat" | "skills" | "dashboard";
+
 export type EscalationStatus = "pending" | "approved" | "rejected" | "dropped";
 
 export interface RequestTool {
@@ -1023,6 +1025,11 @@ export type AppRPCSchema = __schema<{
 
 			set_menu_state: {
 				params: { partner: boolean; workspace: boolean; git: boolean };
+				response: { ok: boolean };
+			};
+
+			set_view: {
+				params: { view: RailView };
 				response: { ok: boolean };
 			};
 

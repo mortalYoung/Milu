@@ -1,6 +1,7 @@
 import { Activity, Feather, MessageSquare, Settings } from "lucide-react";
+import type { RailView } from "../../shared/rpc";
 
-export type RailTabId = "chat" | "skills" | "dashboard" | "settings";
+export type RailTabId = RailView | "settings";
 
 const TABS: { id: RailTabId; title: string; icon: typeof MessageSquare }[] = [
 	{ id: "chat", title: "Chat", icon: MessageSquare },
