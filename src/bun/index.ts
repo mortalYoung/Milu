@@ -2574,7 +2574,10 @@ const mainWindow: BrowserWindow = new BrowserWindow({
 	},
 });
 
-electrobunApp.on("before-quit", () => taskRegistry.reapAll());
+electrobunApp.on("before-quit", () => {
+	taskRegistry.reapAll();
+	void sandbox.release();
+});
 mainWindow.on("focus", () => {
 	appFocused = true;
 });

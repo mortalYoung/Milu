@@ -77,9 +77,9 @@ async function bashTimeoutSec(requested?: number): Promise<number> {
 async function runBash(
 	env: ExecutionEnv,
 	command: string,
-	options: { timeout?: number; abortSignal?: AbortSignal; sandboxMode?: SandboxMode },
+	options: { timeout?: number; abortSignal?: AbortSignal; sandboxMode?: SandboxMode; commandId?: string },
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-	const opts: SandboxedExecOptions = { timeout: options.timeout, abortSignal: options.abortSignal, sandboxMode: options.sandboxMode };
+	const opts: SandboxedExecOptions = { timeout: options.timeout, abortSignal: options.abortSignal, sandboxMode: options.sandboxMode, commandId: options.commandId };
 	const result = await env.exec(command, opts);
 	if (!result.ok) {
 		if (result.error.code === "aborted") throw new Error("Command aborted");
@@ -237,7 +237,7 @@ function bashTool(deps: ToolDeps): AgentHarnessTool<ExecutionToolContext, TSchem
 			"Execute a bash command. Runs in the working directory when one is set, otherwise in the storage scratch directory. Returns stdout and stderr (last ~50KB, truncated), or a task id at once when `background` is set." +
 			` Deleting files: move them to the trash instead of unlinking — \`mv <path> ${trashDirOf(deps) ?? "~/.Trash"}/\`. In strict delete mode a \`rm\`/\`rmdir\` command is refused before it runs; the rm tool is the fallback for when the trash move itself fails.` +
 			(deps.permission?.isConfining()
-				? " Sandboxed: writes outside the working directory/storage are denied by the kernel and return `[sandbox: file access denied under <mode> mode]`. On a denial you may retry ONCE in the same turn with a strictly wider `sandbox_mode` plus a `justification` — a human must approve."
+				? " Sandboxed: writes outside the working directory/storage are denied by the kernel and return `[sandbox: file access denied under <mode> mode]`; the network is fenced too — only hosts the user allow-listed are reachable, and a refused connection comes back as a `<sandbox_violations>` block in stderr. On a denial you may retry ONCE in the same turn with a strictly wider `sandbox_mode` plus a `justification` — a human must approve."
 				: ""),
 		parameters: schema,
 		async execute(toolCallId, params, signal, _onUpdate, context) {
@@ -300,7 +300,7 @@ function bashTool(deps: ToolDeps): AgentHarnessTool<ExecutionToolContext, TSchem
 				}
 				const timeoutSec =
 					timeout !== undefined && timeout > 0 ? timeout : settings.bash?.timeoutSec && settings.bash.timeoutSec > 0 ? settings.bash.timeoutSec : DEFAULT_BASH_TIMEOUT_SEC;
-				const { stdout, stderr, exitCode } = await runBash(env, command, { timeout: timeoutSec, abortSignal: signal, sandboxMode: grantedMode });
+				const { stdout, stderr, exitCode } = await runBash(env, command, { timeout: timeoutSec, abortSignal: signal, sandboxMode: grantedMode, commandId: toolCallId });
 				const out = tail([stdout, stderr].filter((s) => s).join("\n"));
 				let text = out.text || "(no output)";
 				if (exitCode !== 0 && exitCode !== undefined) text += `\n\nCommand exited with code ${exitCode}`;

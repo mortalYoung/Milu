@@ -77,13 +77,10 @@ export function gitRoots(workspace: string | null): string[] {
 	try {
 		const common = readFileSync(join(gitDir, "commondir"), "utf8").trim();
 		if (common !== "") roots.push(resolve(gitDir, common));
-	} catch {
-		// pre-worktree git keeps everything in the gitdir itself
-	}
+	} catch {}
 	return roots;
 }
 
-/** The writable roots a confined command may write under `workspace-write` (canonicalized + deduped). */
 export function writableRoots(policy: PermissionPolicy): string[] {
 	if (policy.mode !== "workspace-write") return [];
 	const roots = [policy.workspace, policy.storage, policy.trash, ...gitRoots(policy.workspace), "/tmp", tmpdir()].filter((r): r is string => r != null && r !== "");

@@ -1,5 +1,5 @@
 import { createStore } from "zustand/vanilla";
-import type { CustomProvider, SandboxMode, ThemeMode, ToastPlacement } from "../../shared/rpc";
+import type { CustomProvider, SandboxMode, SandboxSettings, ThemeMode, ToastPlacement } from "../../shared/rpc";
 import type { RPC } from "./rpc";
 import type { Toast } from "./toast";
 
@@ -36,6 +36,7 @@ export interface SettingsData {
 	explorer?: { lineGap?: number; fold?: { braces?: boolean; markdown?: boolean } };
 	highlight?: { tokenizeMaxLineLength?: number; tokenizeTimeLimit?: number };
 	palette?: { searchIgnoreDirs?: string[] };
+	sandbox?: SandboxSettings;
 }
 
 export interface RuntimeInfo {

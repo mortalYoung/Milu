@@ -48,7 +48,7 @@ export const seatbeltBackend: SandboxBackend = {
 			return false;
 		}
 	},
-	confine(argv: string[], policy: PermissionPolicy): ConfinedArgv {
+	async confine(argv: string[], policy: PermissionPolicy): Promise<ConfinedArgv> {
 		return {
 			argv: [SEATBELT, ...seatbeltProfileArgs(policy), "--", ...argv],
 			enforcement: "full",

@@ -1,7 +1,7 @@
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { SandboxMode } from "../permission";
+import type { SandboxMode, SandboxNetwork } from "../permission";
 
 export type ThemeMode = "system" | "light" | "dark";
 
@@ -61,6 +61,14 @@ export interface Settings {
 	explorer?: { lineGap?: number; fold?: { braces?: boolean; markdown?: boolean } };
 	highlight?: { tokenizeMaxLineLength?: number; tokenizeTimeLimit?: number };
 	palette?: { searchIgnoreDirs?: string[] };
+	sandbox?: {
+		network?: {
+			allowedDomains?: string[];
+			deniedDomains?: string[];
+			allowLocalBinding?: boolean;
+			allowUnixSockets?: string[];
+		};
+	};
 }
 
 export const DEFAULT_PALETTE_IGNORE_DIRS = [".git", ".DS_Store", "node_modules", "dist", "build", ".next", "out", "target", ".cache", "__pycache__", ".venv", "venv"];
@@ -86,9 +94,23 @@ const DEFAULT_SETTINGS: Settings = {
 	delete: { strict: true },
 	explorer: { lineGap: 0.2, fold: { braces: true, markdown: true } },
 	highlight: { tokenizeMaxLineLength: 3000, tokenizeTimeLimit: 500 },
+	sandbox: { network: { allowedDomains: [], deniedDomains: [], allowLocalBinding: false, allowUnixSockets: [] } },
 };
 
 const SETTINGS_PATH = join(homedir(), ".config", "letters", "settings.json");
+
+const domainList = (value: string[] | undefined): string[] =>
+	Array.isArray(value) ? value.filter((domain): domain is string => typeof domain === "string" && domain.trim() !== "") : [];
+
+export function sandboxNetworkFrom(settings: Settings): SandboxNetwork {
+	const network = settings.sandbox?.network;
+	return {
+		allowedDomains: domainList(network?.allowedDomains),
+		deniedDomains: domainList(network?.deniedDomains),
+		allowLocalBinding: network?.allowLocalBinding === true,
+		allowUnixSockets: domainList(network?.allowUnixSockets),
+	};
+}
 
 export async function loadSettings(): Promise<Settings> {
 	try {

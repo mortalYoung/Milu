@@ -209,6 +209,7 @@ export function SettingsView() {
 	const [highlightMaxLineLength, setHighlightMaxLineLength] = useState(() => String(initial?.highlight?.tokenizeMaxLineLength ?? DEFAULTS.highlightMaxLineLength));
 	const [highlightTimeLimit, setHighlightTimeLimit] = useState(() => String(initial?.highlight?.tokenizeTimeLimit ?? DEFAULTS.highlightTimeLimit));
 	const [paletteIgnoreDirs, setPaletteIgnoreDirs] = useState(() => initial?.palette?.searchIgnoreDirs?.join(", ") ?? "");
+	const [sandboxDomains, setSandboxDomains] = useState<string[]>(() => initial?.sandbox?.network?.allowedDomains ?? []);
 	const [instructionsFile, setInstructionsFile] = useState(() => initial?.detect_instructions_file ?? "");
 	const [defaultSandboxMode, setDefaultSandboxMode] = useState<SandboxMode>(() => initial?.defaultSandboxMode ?? DEFAULTS.sandbox);
 	const [theme, setTheme] = useState<ThemeMode>(() => initial?.theme ?? DEFAULTS.theme);
@@ -270,6 +271,7 @@ export function SettingsView() {
 			if (s.toastPlacement !== undefined) setToastPlacement(s.toastPlacement);
 			if (s.dockSide !== undefined) setDockSide(s.dockSide);
 			if (s.toastDurationMs !== undefined) setToastDurationMs(String(s.toastDurationMs));
+			if (s.sandbox?.network?.allowedDomains !== undefined) setSandboxDomains(s.sandbox.network.allowedDomains);
 			if (s.skills_dirs !== undefined) setSkillsDirs(s.skills_dirs);
 			if (typeof s.skills_watch === "boolean") setSkillsWatch(s.skills_watch);
 			if (typeof s.skills_watch_delay_ms === "number") setSkillsWatchDelay(String(s.skills_watch_delay_ms));
@@ -309,6 +311,7 @@ export function SettingsView() {
 			partner_profile_path: path.trim() || "~/.partner/",
 			detect_instructions_file: instructionsFile.trim() || "AGENTS.md",
 			defaultSandboxMode,
+			sandbox: { ...(current?.sandbox ?? {}), network: { ...(current?.sandbox?.network ?? {}), allowedDomains: sandboxDomains.map((domain) => domain.trim()).filter(Boolean) } },
 			providers: added,
 			customProviders: customProviders ?? undefined,
 			theme,
@@ -378,6 +381,13 @@ export function SettingsView() {
 		void persist({ ...currentSettings(), skills_dirs: dirs });
 	}
 
+	function persistSandboxDomains(next?: string[]) {
+		const domains = (next ?? sandboxDomains).map((domain) => domain.trim()).filter(Boolean);
+		if (next) setSandboxDomains(next);
+		const sandbox = settingsData?.sandbox ?? {};
+		void persist({ ...currentSettings(), sandbox: { ...sandbox, network: { ...sandbox.network, allowedDomains: domains } } });
+	}
+
 	function persistExplorer(patch: { lineGap?: number; fold?: { braces?: boolean; markdown?: boolean } }) {
 		const current = currentSettings();
 		const explorer = current.explorer ?? {};
@@ -390,6 +400,14 @@ export function SettingsView() {
 		const next = skillsDirs.filter((_, idx) => idx !== i);
 		setSkillsDirs(next);
 		persistSkillsDirs(next);
+	};
+
+	const updateSandboxDomain = (i: number, value: string) => setSandboxDomains((prev) => prev.map((domain, idx) => (idx === i ? value : domain)));
+	const addSandboxDomain = () => setSandboxDomains((prev) => [...prev, ""]);
+	const removeSandboxDomain = (i: number) => {
+		const next = sandboxDomains.filter((_, idx) => idx !== i);
+		setSandboxDomains(next);
+		persistSandboxDomains(next);
 	};
 
 	const configured = (id: string) => runtime?.providers.find((p) => p.id === id)?.configured ?? false;
@@ -643,6 +661,59 @@ export function SettingsView() {
 						{ value: "danger-full-access", label: "danger-full-access" },
 					]}
 				/>
+			),
+		},
+		{
+			id: "sandboxNetworkDomains",
+			title: "Bash network allowlist",
+			desc: "Hosts a confined bash command may reach. `*.example.com` and `host:port` both work; empty means bash gets no network at all.",
+			cats: ["permission"],
+			stacked: true,
+			modified: sandboxDomains.map((domain) => domain.trim()).filter(Boolean).length > 0,
+			control: (
+				<div className="flex flex-col gap-1.5">
+					<table className="w-full text-left">
+						<thead>
+							<tr>
+								<th className="pb-1 font-sans text-[10px] uppercase tracking-[0.14em] text-muted">Domain</th>
+								<th className="w-10 pb-1" />
+							</tr>
+						</thead>
+						<tbody>
+							{sandboxDomains.map((domain, i) => (
+								<tr key={i}>
+									<td className="pb-1 pr-2">
+										<TextField className="w-full">
+											<TextFieldInput
+												variant="compact"
+												className="w-full"
+												value={domain}
+												onChange={(event) => updateSandboxDomain(i, event.currentTarget.value)}
+												placeholder="api.anthropic.com"
+												aria-label="Allowed domain"
+												spellCheck={false}
+												onBlur={() => persistSandboxDomains()}
+												onKeyDown={(event) => {
+													if (event.key === "Enter" || event.key === "Escape") event.currentTarget.blur();
+												}}
+											/>
+										</TextField>
+									</td>
+									<td className="pb-1 text-right">
+										<Button variant="ghost" size="sm" title="Remove domain" onClick={() => removeSandboxDomain(i)}>
+											×
+										</Button>
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+					<div>
+						<Button variant="outline" size="sm" onClick={addSandboxDomain}>
+							Add domain
+						</Button>
+					</div>
+				</div>
 			),
 		},
 		{

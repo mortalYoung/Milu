@@ -48,29 +48,32 @@ export class Permission {
 		return this.policy().trash ?? null;
 	}
 
-	/** True when a confining backend is mounted — gates whether escalation params appear in tool schemas. */
 	isConfining(): boolean {
 		return this.sandbox?.isConfining() ?? false;
 	}
 
-	/** The fs fence: judge a file operation against the policy (target must be absolute). */
 	checkFile(target: string, op: "read" | "write"): PermissionDecision {
 		return checkPath(target, op, this.policy(), this.sandbox != null);
 	}
 
-	/** Best-effort sensitive-file scan for a shell command. */
 	checkCommand(command: string): PermissionDecision {
 		return commandMentionsSensitive(command) ? deny("sensitive_file", "Sensitive file access is not allowed (except inside the storage path)") : { allowed: true };
 	}
 
-	/** Confine argv under the policy, or a per-call escalation mode (danger-full-access bypasses the seam). */
-	async confine(argv: string[], options?: { sandboxMode?: SandboxMode }): Promise<ConfinedArgv> {
+	async confine(argv: string[], options?: { sandboxMode?: SandboxMode; commandId?: string }): Promise<ConfinedArgv> {
 		if (!this.sandbox) return { argv, enforcement: "none", denialSignatures: [], runnerFailureRules: [] };
 		const mode = options?.sandboxMode ?? this.getMode();
-		return this.sandbox.confine(argv, { ...this.policy(), mode });
+		return this.sandbox.confine(argv, { ...this.policy(), mode }, options?.commandId ? { commandId: options.commandId } : undefined);
 	}
 
-	/** Escalation: capability gate → strictly-wider → justification → the human gate. */
+	async release(): Promise<void> {
+		await this.sandbox?.release();
+	}
+
+	annotateStderr(commandId: string, stderr: string): string {
+		return this.sandbox?.annotateStderr(commandId, stderr) ?? stderr;
+	}
+
 	escalate(request: { command: string; to: SandboxMode; justification: string; toolCallId: string }): Promise<EscalationResult> {
 		return escalate(request, {
 			getMode: () => this.getMode(),
@@ -104,6 +107,7 @@ export type {
 	PermissionPolicy,
 	SandboxBackend,
 	SandboxMode,
+	SandboxNetwork,
 } from "./types";
 export { PermissionError } from "./types";
 export { sandboxFilePath, validateWorkspace, workspaceFilePath } from "./workspace";
