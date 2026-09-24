@@ -6,9 +6,91 @@
     <meta name="theme-color" content="#f7f3ea" media="(prefers-color-scheme: light)">
     <meta name="theme-color" content="#141210" media="(prefers-color-scheme: dark)">
     <title>LETTERS</title>
+    <style>
+        @layer boot {
+            html,
+            body {
+                height: 100%;
+                margin: 0;
+                background: #f7f3ea;
+            }
+            #app {
+                display: flex;
+                height: 100%;
+                flex-direction: column;
+            }
+            @media (prefers-color-scheme: dark) {
+                html,
+                body {
+                    background: #141210;
+                }
+            }
+        }
+        .boot {
+            display: flex;
+            flex: 1;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+        }
+        .boot-mark {
+            font-family: "Newsreader", Georgia, serif;
+            font-size: 15px;
+            letter-spacing: 0.42em;
+            text-indent: 0.42em;
+            color: #8d8474;
+        }
+        .boot-dots {
+            display: flex;
+            gap: 4px;
+            color: #8d8474;
+        }
+        .boot-dots i {
+            display: block;
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: currentColor;
+            animation: boot-dot 1.2s infinite;
+        }
+        .boot-dots i:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+        .boot-dots i:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+        @keyframes boot-dot {
+            0%,
+            60%,
+            100% {
+                opacity: 0.25;
+            }
+            30% {
+                opacity: 1;
+            }
+        }
+        @media (prefers-color-scheme: dark) {
+            .boot-mark,
+            .boot-dots {
+                color: #8f8574;
+            }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .boot-dots i {
+                animation: none;
+                opacity: 0.6;
+            }
+        }
+    </style>
 </head>
 <body class="h-full">
-    <main class="h-full flex flex-col" id="app"></main>
+    <main class="h-full flex flex-col" id="app">
+        <div class="boot" role="status" aria-label="Starting">
+            <span class="boot-mark">LETTERS</span>
+            <span class="boot-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        </div>
+    </main>
     <script type="module" src="/main.tsx"></script>
 </body>
 </html>
