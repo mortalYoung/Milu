@@ -931,6 +931,7 @@ export type AppRPCSchema = __schema<{
 				response: {
 					servers: Array<
 						McpServerConfig & {
+							builtin: boolean;
 							state: "stopped" | "connecting" | "connected" | "error";
 							toolCount: number;
 							error?: string;

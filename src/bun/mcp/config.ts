@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { DEFAULT_MCP_CONFIG_PATH, loadSettings, type Settings } from "../lib/settings";
+import { BUILTIN_MCP_SERVERS, isBuiltinMcp } from "./builtin";
 import type { McpConfig, McpLifecycle, McpServerConfig } from "./types";
 
 const SERVER_NAME_RE = /^[A-Za-z0-9_-]{1,64}$/;
@@ -24,13 +25,13 @@ export async function loadMcpConfig(): Promise<McpConfig> {
 		const parsed = JSON.parse(await readFile(mcpConfigPath(settings), "utf8")) as Partial<McpConfig>;
 		const servers = Array.isArray(parsed.servers) ? parsed.servers : [];
 		return {
-			servers: servers.filter(isServerConfig),
+			servers: [...BUILTIN_MCP_SERVERS, ...servers.filter(isServerConfig).filter((server) => !isBuiltinMcp(server.name))],
 			...(typeof parsed.idleTimeoutSec === "number" && Number.isFinite(parsed.idleTimeoutSec) ? { idleTimeoutSec: parsed.idleTimeoutSec } : {}),
 			...(parsed.defaultLifecycle && LIFECYCLES.includes(parsed.defaultLifecycle) ? { defaultLifecycle: parsed.defaultLifecycle } : {}),
 			...(typeof parsed.maxBufferSize === "number" && Number.isFinite(parsed.maxBufferSize) ? { maxBufferSize: parsed.maxBufferSize } : {}),
 		};
 	} catch {
-		return { servers: [] };
+		return { servers: [...BUILTIN_MCP_SERVERS] };
 	}
 }
 
@@ -38,7 +39,8 @@ export async function saveMcpConfig(config: McpConfig): Promise<void> {
 	const settings = await loadSettings();
 	const path = mcpConfigPath(settings);
 	await mkdir(dirname(path), { recursive: true });
-	await writeFile(path, JSON.stringify(config, null, 2) + "\n", "utf8");
+	const servers = config.servers.filter((server) => !isBuiltinMcp(server.name));
+	await writeFile(path, JSON.stringify({ ...config, servers }, null, 2) + "\n", "utf8");
 }
 
 function isServerConfig(value: unknown): value is McpServerConfig {

@@ -93,6 +93,10 @@ export function McpServersPanel() {
 			setError("Name and command are required");
 			return;
 		}
+		if (!editing && servers.some((server) => server.builtin && server.name === trimmedName)) {
+			setError(`"${trimmedName}" is built in`);
+			return;
+		}
 		setBusy(true);
 		try {
 			const env = parseEnvText(envText);
@@ -129,6 +133,7 @@ export function McpServersPanel() {
 							},
 							state: "stopped",
 							toolCount: 0,
+							builtin: false,
 							grantedPartners: [],
 						},
 					];
@@ -275,6 +280,7 @@ export function McpServersPanel() {
 								</span>
 							</span>
 							<span className="shrink-0 font-mono text-[10px] text-muted">{server.lifecycle ?? "lazy"}</span>
+							{server.builtin && <span className="shrink-0 rounded-[6px] bg-paper-deep px-1.5 py-0.5 font-mono text-[10px] text-muted">builtin</span>}
 							<span className="shrink-0 font-mono text-[10px] text-muted">{server.toolCount} tools</span>
 							{testResult[server.name] && <span className="shrink-0 font-mono text-[10px] text-muted">{testResult[server.name]}</span>}
 							<button
@@ -285,20 +291,24 @@ export function McpServersPanel() {
 							>
 								{testing[server.name] ? "…" : "test"}
 							</button>
-							<button
-								type="button"
-								className="h-6 rounded-[8px] px-1.5 font-mono text-[10px] text-muted transition-colors hover:bg-paper-hover hover:text-ink"
-								onClick={() => startEdit(server)}
-							>
-								edit
-							</button>
-							<button
-								type="button"
-								className="h-6 rounded-[8px] px-1.5 font-mono text-[10px] text-muted transition-colors hover:bg-paper-hover hover:text-seal"
-								onClick={() => void removeServer(server)}
-							>
-								delete
-							</button>
+							{!server.builtin && (
+								<button
+									type="button"
+									className="h-6 rounded-[8px] px-1.5 font-mono text-[10px] text-muted transition-colors hover:bg-paper-hover hover:text-ink"
+									onClick={() => startEdit(server)}
+								>
+									edit
+								</button>
+							)}
+							{!server.builtin && (
+								<button
+									type="button"
+									className="h-6 rounded-[8px] px-1.5 font-mono text-[10px] text-muted transition-colors hover:bg-paper-hover hover:text-seal"
+									onClick={() => void removeServer(server)}
+								>
+									delete
+								</button>
+							)}
 						</div>
 						{server.error && <div className="mt-2 rounded-[6px] bg-seal-soft px-2 py-1 font-mono text-[10px] text-seal">{server.error}</div>}
 						<div className="mt-2 flex flex-wrap gap-1">
@@ -321,11 +331,6 @@ export function McpServersPanel() {
 						</div>
 					</div>
 				))}
-				{servers.length === 0 && !formOpen && (
-					<div className="rounded-[10px] border border-dashed border-hairline px-4 py-8 text-center font-sans text-[12px] text-muted">
-						No MCP servers configured — add one above.
-					</div>
-				)}
 			</div>
 		</div>
 	);

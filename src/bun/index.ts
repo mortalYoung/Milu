@@ -96,6 +96,7 @@ import {
 	saveSettings,
 	sendMessageIntervalMs,
 } from "./lib/settings";
+import { isBuiltinMcp } from "./mcp/builtin";
 import { loadMcpConfig, saveMcpConfig } from "./mcp/config";
 import { McpManager } from "./mcp/manager";
 import { copyPartner, createPartner, deletePartner, listPartners, PartnerError, type PartnerInput, promotePartner } from "./partners";
@@ -2192,6 +2193,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 						const status = byName.get(server.name);
 						return {
 							...server,
+							builtin: isBuiltinMcp(server.name),
 							lifecycle: status?.lifecycle ?? server.lifecycle ?? "lazy",
 							state: status?.state ?? "stopped",
 							toolCount: status?.toolCount ?? 0,
