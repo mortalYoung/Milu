@@ -1,6 +1,7 @@
+import { join } from "node:path";
 import { SandboxManager } from "@anthropic-ai/sandbox-runtime";
 import { loadSettings, sandboxNetworkFrom } from "../../lib/settings";
-import { writableRoots } from "../roots";
+import { gitRoots, writableRoots } from "../roots";
 import type { ConfineCall, ConfinedArgv, PermissionPolicy, SandboxBackend, SandboxNetwork } from "../types";
 
 const DENIAL_SIGNATURES = ["operation not permitted"];
@@ -8,7 +9,16 @@ const RUNNER_FAILURE_RULES = ["sandbox-exec: "];
 
 let sessionNetwork: string | null = null;
 
-const sessionFilesystem = { denyRead: [], allowRead: [], allowWrite: [], denyWrite: [] };
+const sessionFilesystem = { denyRead: [], allowRead: [], allowWrite: [], denyWrite: [], allowGitConfig: true };
+
+function wrapFilesystem(policy: PermissionPolicy) {
+	return {
+		denyRead: [],
+		allowRead: [],
+		allowWrite: writableRoots(policy),
+		denyWrite: gitRoots(policy.workspace).map((root) => join(root, "hooks")),
+	};
+}
 
 function sessionConfig(network: SandboxNetwork) {
 	return {
@@ -46,14 +56,9 @@ export const srtBackend: SandboxBackend = {
 		const [shell, flag, command] = argv;
 		if (argv.length !== 3 || flag !== "-c" || command === undefined) throw new Error("the srt backend expects a shell command argv");
 		await ensureNetwork(sandboxNetworkFrom(await loadSettings()));
-		const { argv: wrapped, env } = await SandboxManager.wrapWithSandboxArgv(
-			command,
-			shell,
-			{ filesystem: { ...sessionFilesystem, allowWrite: writableRoots(policy) } },
-			undefined,
-			undefined,
-			{ ...(call?.commandId ? { commandId: call.commandId } : {}) },
-		);
+		const { argv: wrapped, env } = await SandboxManager.wrapWithSandboxArgv(command, shell, { filesystem: wrapFilesystem(policy) }, undefined, undefined, {
+			...(call?.commandId ? { commandId: call.commandId } : {}),
+		});
 		return { argv: wrapped, enforcement: "full", denialSignatures: DENIAL_SIGNATURES, runnerFailureRules: RUNNER_FAILURE_RULES, env };
 	},
 	async release(): Promise<void> {
