@@ -1,8 +1,3 @@
-/**
- * Workspace boundary rules + the persisted policy file locations.
- * validateWorkspace is the workspace policy-change resolution; the file
- * paths are the policy's persisted state (per partner), so they live with the policy.
- */
 import { statSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { isInside } from "./roots";

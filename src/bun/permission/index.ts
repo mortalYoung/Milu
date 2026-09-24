@@ -1,9 +1,3 @@
-/**
- * The Permission facade — the single public API for every permission decision:
- * the fs fence, the bash sensitive scan, the OS confinement seam, escalation
- * rules, and the workspace policy-change resolution. Consumers never touch
- * the guards or backends directly (see docs/2026-08-25-permission-module.md).
- */
 import { resolve } from "node:path";
 import { escalate } from "./escalate";
 import { checkPath, commandMentionsSensitive, deny } from "./guard";
@@ -12,11 +6,8 @@ import type { ConfinedArgv, EscalationDecision, EscalationRequest, EscalationRes
 import { validateWorkspace } from "./workspace";
 
 export interface PermissionOptions {
-	/** OS confinement seam; absent ⇒ confined calls run unconfined (enforcement "none"). */
 	sandbox?: SandboxManager;
-	/** The effective policy — resolved per call so workspace/mode changes apply immediately. */
 	getPolicy: () => PermissionPolicy;
-	/** Human approval gate for escalation retries (RPC orchestration; absent ⇒ escalation unavailable). */
 	confirmEscalation?: (request: EscalationRequest) => Promise<EscalationDecision>;
 }
 
@@ -35,7 +26,6 @@ export class Permission {
 		return this.policy().mode;
 	}
 
-	/** The policy's writable roots — the env's path base for relative resolution. */
 	workspaceRoot(): string | null {
 		return this.policy().workspace;
 	}

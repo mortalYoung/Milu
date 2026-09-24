@@ -22,13 +22,11 @@ export interface GitChangeItem {
 	status: GitChangeStatus;
 	staged: boolean;
 	untracked?: boolean;
-	/** For a rename or copy: the name the file had before. */
 	from?: string;
 }
 
 export interface GitWorktreeItem {
 	path: string;
-	/** Short branch name, or null when the worktree has a detached HEAD. */
 	branch: string | null;
 	head: string | null;
 }
@@ -105,9 +103,7 @@ export interface ViewItem {
 	text: string;
 	time: number;
 	skillName?: string;
-	/** Set when the message came from another letter (A2A): the sender's name. */
 	from?: string;
-	/** Set when this message was also posted to another letter (A2A): the recipient's name. */
 	to?: string;
 	peerKind?: "ask" | "reply";
 	requestId?: string;
@@ -340,7 +336,6 @@ export interface DashboardLastRun {
 	durationMs: number;
 }
 
-/** Per-letter rollup. Counts come from one activity scan, so the rows sum to the totals. */
 export interface DashboardPartnerStats {
 	name: string;
 	turns: number;
@@ -353,7 +348,6 @@ export interface DashboardPartnerStats {
 	tps: number | null;
 	memory: DashboardMemorySizes;
 	lastRun: DashboardLastRun | null;
-	/** Turns per day, index-aligned to `DashboardOverview.days`. */
 	days: number[];
 }
 
@@ -369,18 +363,15 @@ export interface DashboardTotals {
 	ttftSamples: number;
 	tps: number | null;
 	memory: DashboardMemorySizes;
-	/** First day with recorded activity — the window label is derived from this. */
 	since: number | null;
 }
 
 export interface DashboardOverview {
 	partners: DashboardPartnerStats[];
 	totals: DashboardTotals;
-	/** The trailing day window the curve draws; its label is derived from `windowDays`. */
 	days: PartnerActivityDay[];
 	windowDays: number;
 	activityWeeks: number;
-	/** Dense calendar series (Monday-aligned through today) for the heatmap. */
 	heatmap: PartnerActivityDay[];
 }
 
@@ -684,7 +675,6 @@ export type AppRPCSchema = __schema<{
 					binary?: boolean;
 					truncated?: boolean;
 					size?: number;
-					/** Markdown only: the head split off so the preview can draw it instead of dumping raw YAML. */
 					frontmatter?: { end: number; raw: string; data: Record<string, unknown> | null };
 				};
 			};
@@ -996,7 +986,6 @@ export type AppRPCSchema = __schema<{
 
 						lastMessageKind?: ChatPreviewKind;
 
-						/** When the current session began; the row's time when a cleared chat has no message left. */
 						startedAt?: number;
 
 						readAt?: number;

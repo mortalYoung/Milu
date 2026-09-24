@@ -10,7 +10,6 @@ export class SandboxUnavailableError extends Error {
 }
 
 export interface SandboxManagerOptions {
-	/** Backend chain override; defaults to the per-platform chain. */
 	backends?: SandboxBackend[];
 }
 

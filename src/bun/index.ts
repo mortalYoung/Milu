@@ -284,7 +284,6 @@ async function notifyTask(partner: string, taskId: string, reason: "exit" | "dea
 	await entry.agent.chat([head, `$ ${command}`, tail].join("\n"), { source: "task", taskId }).catch(() => {});
 }
 
-/** Tasks live in session-log events once they are gone: the process dies with the app, the record does not. */
 async function taskHistory(partner: string): Promise<TaskHistoryRecord[]> {
 	const dir = getPartnerDir(settingsCache ?? startupSettings, partner);
 	const entries = await session.rawEntries(dir);
@@ -2434,7 +2433,6 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 						if (viewPartner?.name === target) viewPartner = null;
 					}
 
-					// 在飞的后台收尾会写回已删目录（memory 的 ensureMemoryDir 会把 .memory/ 建回来），先等它们落地再 rm
 					let inFlight = draining;
 					for (let round = 0; inFlight.length > 0 && round < 3; round += 1) {
 						await Promise.allSettled(inFlight);

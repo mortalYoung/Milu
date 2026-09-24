@@ -10,12 +10,9 @@ const ADD_LINE = "color-mix(in srgb, var(--git-add) 10%, transparent)";
 const DEL_LINE = "color-mix(in srgb, var(--git-del) 10%, transparent)";
 const ADD_TEXT = "color-mix(in srgb, var(--git-add) 24%, transparent)";
 const DEL_TEXT = "color-mix(in srgb, var(--git-del) 24%, transparent)";
-/** Same two chevrons the reader's fold buttons use: the affordance should read the same in both places. */
 const CHEVRON_RIGHT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>';
 const CHEVRON_DOWN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
 
-/** The character wash answers to the line box, not to the font box. JetBrains Mono's own box is 16.4px at
- * 12px (measured: a 26px band with 5px of padding each side), so half the difference goes on each side. */
 const TEXT_PAD = "calc((var(--explorer-line-height, 1.2) - 1.37) * 0.5em)";
 
 const diffTheme = EditorView.theme({
@@ -71,8 +68,6 @@ const diffTheme = EditorView.theme({
 	"&.cm-editor.cm-merge-a .cm-changedText": { background: DEL_TEXT, paddingBlock: TEXT_PAD },
 	"&.cm-editor.cm-merge-b .cm-changedText": { background: ADD_TEXT, paddingBlock: TEXT_PAD },
 	".cm-unfoldedLine": { backgroundColor: "var(--color-paper-hover)" },
-	// Where one side has no lines at all, the library aligns the columns with a spacer: hatch it, so a gap
-	// reads as "nothing on this side" instead of a blank line.
 	".cm-mergeSpacer": {
 		background: "repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in srgb, var(--color-muted) 22%, transparent) 5px 6px)",
 	},
@@ -93,30 +88,23 @@ const diffTheme = EditorView.theme({
 
 // ——— unchanged runs: folded into a band, or spread out and lit ———
 
-/** Lines of context left unfolded on either side of a change. */
 const FOLD_MARGIN = 3;
 const FOLD_MIN_LINES = 4;
 
 interface FoldGap {
-	/** First hidden line's start, in this side's coordinates. */
 	from: number;
-	/** Last hidden line's end. */
 	to: number;
-	/** Line number of `from`, for the band's gutter marker. */
 	number: number;
 	lines: number;
 }
 
-/** Both sides' view of the same run, so one fold index means one region in both columns. */
 interface FoldPlan {
 	a: FoldGap[];
 	b: FoldGap[];
 }
 
 interface SideSpan {
-	/** First line the chunk touches (the line it sits on, when it touches none). */
 	start: number;
-	/** First line of the run that follows it. */
 	next: number;
 }
 
@@ -138,7 +126,6 @@ function lineStarts(text: string): number[] {
 	return starts;
 }
 
-/** A position in a trimmed copy → the same position in the real text, line by line. */
 function mapOffset(pos: number, starts: readonly number[], lead: readonly number[]): number {
 	let low = 0;
 	let high = starts.length - 1;
@@ -151,9 +138,6 @@ function mapOffset(pos: number, starts: readonly number[], lead: readonly number
 	return start + (lead[low] ?? 0) + (pos - start);
 }
 
-/** Diff as if every line were trimmed, so a change that only moves leading or trailing whitespace is no change. The
- * offsets come back in the real documents' coordinates — the character wash would otherwise slide by however much
- * whitespace was dropped in front of it. */
 const trimWhitespaceDiff: NonNullable<DiffConfig["override"]> = (a, b) => {
 	const left = trimLines(a);
 	const right = trimLines(b);
@@ -170,12 +154,10 @@ const trimWhitespaceDiff: NonNullable<DiffConfig["override"]> = (a, b) => {
 	);
 };
 
-/** Where a chunk sits in one side, in lines. An insertion between two lines touches neither of them. */
 function chunkSpan(doc: Text, from: number, end: number): SideSpan {
 	const clamp = (pos: number) => Math.min(Math.max(pos, 0), doc.length);
 	const line = doc.lineAt(clamp(from));
 	if (from === end) {
-		// Empty on this side: it sits before a line boundary (touching nothing) or inside one line (touching it).
 		const onBoundary = clamp(from) === line.from;
 		return { start: line.number, next: onBoundary ? line.number : line.number + 1 };
 	}
@@ -186,8 +168,6 @@ function gapOf(doc: Text, first: number, last: number): FoldGap {
 	return { from: doc.line(first).from, to: doc.line(last).to, number: first, lines: last - first + 1 };
 }
 
-/** Unchanged runs, in whole lines, trimmed by the context margin. A run one side cannot trim is dropped as a pair.
- * The margin is only owed where a change actually is: the file's own head and tail get no context. */
 function buildFoldPlan(a: Text, b: Text, chunks: readonly Chunk[]): FoldPlan {
 	const plan: FoldPlan = { a: [], b: [] };
 	const runs: { aFirst: number; aLast: number; bFirst: number; bLast: number }[] = [];
@@ -213,7 +193,6 @@ function buildFoldPlan(a: Text, b: Text, chunks: readonly Chunk[]): FoldPlan {
 	return plan;
 }
 
-/** This side's runs, handed in by the view host once both sides exist. */
 const setFoldPlan = StateEffect.define<readonly FoldGap[]>();
 
 const foldPlanField = StateField.define<readonly FoldGap[]>({
@@ -224,7 +203,6 @@ const foldPlanField = StateField.define<readonly FoldGap[]>({
 	},
 });
 
-/** The fold set is shared by both columns, so one toggle means one region in both. Null = every gap folded. */
 const setFolded = StateEffect.define<readonly number[] | null>();
 
 const foldedField = StateField.define<readonly number[] | null>({
@@ -258,7 +236,6 @@ function chunksArrived(update: ViewUpdate): boolean {
 	return getChunks(update.startState) === null && getChunks(update.state) !== null;
 }
 
-/** Folding is a state concern: the view refuses block widgets that come from a plugin (RangeError). */
 function foldRanges(state: EditorState): DecorationSet {
 	const gaps = state.field(foldPlanField, false) ?? [];
 	if (gaps.length === 0) return Decoration.none;
@@ -290,7 +267,6 @@ const foldDecorations = StateField.define<DecorationSet>({
 	provide: (field) => EditorView.decorations.from(field),
 });
 
-/** Flip one run in both columns — the two sides hold the same list, so an index means the same region. */
 function toggleFold(view: EditorView, index: number) {
 	const count = (view.state.field(foldPlanField, false) ?? []).length;
 	const folded = new Set(view.state.field(foldedField, false) ?? Array.from({ length: count }, (_, i) => i));
@@ -366,7 +342,6 @@ class FoldNumberMarker extends GutterMarker {
 	}
 }
 
-/** Line numbers that also carry the fold toggle, so one column holds the coordinate and its control. */
 function numberedFoldGutter() {
 	return gutter({
 		class: "cm-lineNumbers",
@@ -392,7 +367,6 @@ function numberedFoldGutter() {
 
 // ——— character-level marks: only where the change is shorter than its line ———
 
-/** Unchanged share of a line under which the line reads as rewritten: the wash says it, no character tell. */
 const WHOLE_LINE_RESIDUE = 0.25;
 
 function mergeSpans(spans: { from: number; to: number }[]): { from: number; to: number }[] {
@@ -407,14 +381,10 @@ function mergeSpans(spans: { from: number; to: number }[]): { from: number; to: 
 }
 
 interface LineTells {
-	/** Where this side's changes land, per line (clipped to the line). */
 	spans: Map<number, { from: number; to: number }[]>;
-	/** Lines whose trimmed content the changes swallow — the line wash already says it. */
 	whole: Set<number>;
 }
 
-/** The per-line judgement both presentations use: which spans get a character tell, and which lines are rewritten
- * whole. Indentation and trailing space are not part of the tell, so a line is measured after trimming them. */
 function lineTells(state: EditorState, side: "a" | "b"): LineTells {
 	const spans = new Map<number, { from: number; to: number }[]>();
 	const whole = new Set<number>();
@@ -452,7 +422,6 @@ function lineTells(state: EditorState, side: "a" | "b"): LineTells {
 	return { spans, whole };
 }
 
-/** The character tell, kept only where it says something the line wash does not: on lines that were not rewritten. */
 function charMarks(side: "a" | "b") {
 	return ViewPlugin.fromClass(
 		class {
@@ -541,7 +510,6 @@ export function CodeDiff(props: { original: string; modified: string; lang: stri
 				view.scrollDOM.scrollLeft = saved.left;
 			});
 		};
-		/** A rebuild from a view option is the same diff again: keep the reader where they were. A new file starts at the top. */
 		const keepScroll = () => {
 			const next = propsRef.current;
 			savedScroll.current =
@@ -568,15 +536,12 @@ export function CodeDiff(props: { original: string; modified: string; lang: stri
 				gutter: false,
 				...(props.ignoreWhitespace ? { diffConfig: { override: trimWhitespaceDiff } } : {}),
 			});
-			// Both sides exist now, so the runs of each can be measured and handed to its own state. An empty
-			// answer with no chunks yet is retried for a few frames, so a quiet plan can't be mistaken for none.
 			const handOver = () => {
 				const chunks = getChunks(merged.b.state)?.chunks ?? getChunks(merged.a.state)?.chunks;
 				if (!chunks) return false;
 				const plan = buildFoldPlan(merged.a.state.doc, merged.b.state.doc, chunks);
 				merged.a.dispatch({ effects: setFoldPlan.of(plan.a) });
 				merged.b.dispatch({ effects: setFoldPlan.of(plan.b) });
-				// The measure that follows is what brings the bands into the gutters, which sync off block structure.
 				merged.a.requestMeasure();
 				merged.b.requestMeasure();
 				return true;
@@ -630,7 +595,6 @@ export function CodeDiff(props: { original: string; modified: string; lang: stri
 			}),
 			parent: host,
 		});
-		// Same runs as the side-by-side's second column, so both modes hide and count the same lines.
 		const handOver = () => {
 			const chunks = getChunks(view.state)?.chunks;
 			if (!chunks) return false;

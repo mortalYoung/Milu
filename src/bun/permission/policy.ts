@@ -1,7 +1,3 @@
-/**
- * Policy resolution — the one place the run's inputs become an effective
- * PermissionPolicy (per call, so workspace/mode changes apply immediately).
- */
 import { homedir } from "node:os";
 import { join } from "node:path";
 import type { PermissionPolicy, SandboxMode } from "./types";

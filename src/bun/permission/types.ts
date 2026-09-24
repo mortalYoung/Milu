@@ -60,13 +60,10 @@ export type PermissionCode =
 	| "escalation_rejected"
 	| "workspace_validation";
 
-/** Structured answer to "may I?" — allowed, or a code + the human-readable reason. */
 export type PermissionDecision = { allowed: true } | { allowed: false; code: PermissionCode; reason: string };
 
-/** Escalation verdict: granted mode on approval, or a denial code + reason. */
 export type EscalationResult = { allowed: true; mode: SandboxMode } | { allowed: false; code: PermissionCode; reason: string };
 
-/** FileError carrying the permission code — pi's FileError stays untouched (subclass adapter, not a replacement). */
 export class PermissionError extends FileError {
 	readonly permissionCode: PermissionCode;
 	constructor(message: string, path: string, permissionCode: PermissionCode) {

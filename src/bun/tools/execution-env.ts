@@ -416,7 +416,6 @@ async function readStream(stream: ReadableStream<Uint8Array>, onChunk?: (chunk: 
 	return text;
 }
 
-/** Same as readStream but drops the text: a background task's output is unbounded, so it must never accumulate. */
 async function drainStream(stream: ReadableStream<Uint8Array>, onChunk?: (chunk: string) => void): Promise<void> {
 	const reader = stream.getReader();
 	const decoder = new TextDecoder();

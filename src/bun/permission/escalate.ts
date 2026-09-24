@@ -1,18 +1,8 @@
-/**
- * Escalation rules — the permission system on top of the kernel. One retry per
- * turn with a strictly wider mode plus a justification, behind the human gate
- * (the gate itself is RPC orchestration injected by the caller, not a rule here).
- */
 import { isStrictlyWider } from "./modes";
 import type { EscalationDecision, EscalationRequest, EscalationResult, SandboxMode } from "./types";
 
 export const ESCALATION_UNAVAILABLE_TEXT = "[sandbox: escalation unavailable — no confining backend mounted]";
 
-/**
- * Decide an escalation retry: capability gate → strictly-wider check →
- * justification check → the human gate. Rejection texts are byte-identical to
- * what the bash tool has always returned.
- */
 export async function escalate(
 	request: { command: string; to: SandboxMode; justification: string; toolCallId: string },
 	deps: {
