@@ -3127,24 +3127,32 @@ body::before {
 
 .transcript,
 .home-page,
-.traj-all {
+.traj-all,
+.dashboard-runs ul,
+.dashboard-table-scroll {
 	scrollbar-width: thin;
 	scrollbar-color: var(--color-hairline) transparent;
 }
 .transcript::-webkit-scrollbar,
 .home-page::-webkit-scrollbar,
-.traj-all::-webkit-scrollbar {
+.traj-all::-webkit-scrollbar,
+.dashboard-runs ul::-webkit-scrollbar,
+.dashboard-table-scroll::-webkit-scrollbar {
 	width: 6px;
 }
 .transcript::-webkit-scrollbar-thumb,
 .home-page::-webkit-scrollbar-thumb,
-.traj-all::-webkit-scrollbar-thumb {
+.traj-all::-webkit-scrollbar-thumb,
+.dashboard-runs ul::-webkit-scrollbar-thumb,
+.dashboard-table-scroll::-webkit-scrollbar-thumb {
 	background: var(--color-hairline);
 	border-radius: 3px;
 }
 .transcript::-webkit-scrollbar-track,
 .home-page::-webkit-scrollbar-track,
-.traj-all::-webkit-scrollbar-track {
+.traj-all::-webkit-scrollbar-track,
+.dashboard-runs ul::-webkit-scrollbar-track,
+.dashboard-table-scroll::-webkit-scrollbar-track {
 	background: transparent;
 }
 
@@ -3211,9 +3219,31 @@ html.theme-flip *::after {
 .dashboard-seg.small button {
 	@apply px-[6px] py-[1px] text-[9px];
 }
-.dashboard-skeleton {
-	@apply mt-4 h-[420px] rounded-[6px];
-	background: color-mix(in srgb, var(--color-hairline) 40%, transparent);
+.dashboard-skel {
+	@apply mt-4 flex flex-col gap-4;
+}
+.dashboard-sk {
+	@apply block rounded-[3px];
+	background: var(--color-paper-deep);
+	animation: dashboard-sk 1.5s var(--ease-out) infinite;
+}
+.dashboard-sk.fill {
+	@apply min-h-0 flex-1;
+}
+@keyframes dashboard-sk {
+	0%,
+	100% {
+		opacity: 0.45;
+	}
+	50% {
+		opacity: 1;
+	}
+}
+@media (prefers-reduced-motion: reduce) {
+	.dashboard-sk {
+		animation: none;
+		opacity: 0.7;
+	}
 }
 
 /* now */
@@ -3296,6 +3326,10 @@ html.theme-flip *::after {
 .dashboard-charts {
 	@apply mt-5 grid gap-4;
 	grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.dashboard-charts.loading .dashboard-card {
+	opacity: 0.55;
+	transition: opacity 120ms ease-out;
 }
 .dashboard-card {
 	@apply rounded-[6px] border border-hairline-soft bg-letter px-3 pt-2 pb-2;
@@ -3393,6 +3427,13 @@ html.theme-flip *::after {
 	@apply mt-5 grid gap-4;
 	grid-template-columns: 1.6fr minmax(0, 1fr);
 }
+.dashboard-split > .dashboard-card {
+	@apply flex flex-col overflow-hidden;
+	height: 340px;
+}
+.dashboard-table-scroll {
+	@apply min-h-0 flex-1 overflow-y-auto;
+}
 .dashboard-controls {
 	@apply flex items-center gap-2;
 }
@@ -3407,6 +3448,9 @@ html.theme-flip *::after {
 }
 .dashboard-table th {
 	@apply border-b border-ink pb-[5px] font-mono text-[9px] font-medium uppercase tracking-[0.12em] text-body-muted;
+}
+.dashboard-table thead th {
+	@apply sticky top-0 z-[1] bg-letter;
 }
 .dashboard-table th.r,
 .dashboard-table td.r {
@@ -3438,7 +3482,7 @@ html.theme-flip *::after {
 	@apply h-[3px];
 }
 .dashboard-runs ul {
-	@apply mt-1;
+	@apply mt-1 min-h-0 flex-1 overflow-y-auto;
 }
 .dashboard-runs li {
 	@apply grid items-baseline gap-x-2 border-b border-hairline-soft py-[4px] text-[11px] text-ink-soft;

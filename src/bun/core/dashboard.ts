@@ -1,5 +1,5 @@
 import { open, stat } from "node:fs/promises";
-import type { DashboardMemorySizes, DashboardOverview, DashboardPartnerStats, DashboardTotals, PartnerActivityDay } from "../../shared/rpc";
+import type { DashboardMemorySizes, DashboardOverview, DashboardPartnerStats, DashboardRun, DashboardTotals, PartnerActivityDay } from "../../shared/rpc";
 import { getPartnerDir, loadSettings } from "../lib/settings";
 import { listPartners } from "../partners";
 import type { SessionStore } from "../persist";
@@ -11,9 +11,7 @@ import { scenesFilePath } from "./scenes";
 
 export const DASHBOARD_WINDOW_DAYS = 7;
 export const DASHBOARD_WINDOW_MAX_DAYS = 120;
-/** Calendar horizon for the heatmap: Monday-aligned through today. Must stay ≥ the widest `weeks` a caller passes to ActivityHeatmap (the dashboard asks for a year). */
 export const DASHBOARD_HEATMAP_WEEKS = 53;
-/** dailyActivity takes weeks and clamps at 104 — two years covers every recorded day. */
 const ACTIVITY_WEEKS = 104;
 const DAY_MS = 86_400_000;
 const RUN_TAIL_STEPS = [64 * 1024, 512 * 1024, 4 * 1024 * 1024];
@@ -49,7 +47,7 @@ async function tailLines(path: string, bytes: number): Promise<{ lines: string[]
 	}
 }
 
-function parseRun(line: string): DashboardPartnerStats["lastRun"] {
+function parseRun(line: string): Omit<DashboardRun, "partner"> | null {
 	try {
 		const parsed = JSON.parse(line) as Partial<MemoryRunRecord>;
 		if (typeof parsed.runId !== "string" || typeof parsed.stage !== "string" || typeof parsed.reason !== "string" || typeof parsed.startedAt !== "number") return null;
@@ -65,17 +63,25 @@ function parseRun(line: string): DashboardPartnerStats["lastRun"] {
 	}
 }
 
-/** A run line carries its whole trajectory, so the last line alone can run to hundreds of KB: widen until a complete line appears. */
-async function lastMemoryRun(dir: string): Promise<DashboardPartnerStats["lastRun"]> {
+async function runsSince(dir: string, since: number): Promise<Omit<DashboardRun, "partner">[]> {
 	const path = memoryRunsFilePath(dir);
+	const found: Omit<DashboardRun, "partner">[] = [];
 	for (const bytes of RUN_TAIL_STEPS) {
 		const { lines, truncated } = await tailLines(path, bytes);
+		found.length = 0;
+		let reachedHead = !truncated;
 		for (let i = lines.length - 1; i >= (truncated ? 1 : 0); i--) {
 			const run = parseRun(lines[i] ?? "");
-			if (run) return run;
+			if (!run) continue;
+			if (run.startedAt < since) {
+				reachedHead = true;
+				break;
+			}
+			found.push(run);
 		}
+		if (reachedHead) break;
 	}
-	return null;
+	return found;
 }
 
 async function memorySizes(dir: string): Promise<DashboardMemorySizes> {
@@ -115,6 +121,8 @@ export async function buildDashboardOverview(session: SessionReader, requestedDa
 	const settings = await loadSettings();
 	const profiles = await listPartners(settings);
 	const partners: DashboardPartnerStats[] = [];
+	const runs: DashboardRun[] = [];
+	const dayStart = midnight(Date.now());
 	const ttfts: number[] = [];
 	const merged = new Map<number, PartnerActivityDay>();
 	const memory: DashboardMemorySizes = { memories: 0, scenes: 0, persona: 0, runs: 0, total: 0 };
@@ -146,7 +154,8 @@ export async function buildDashboardOverview(session: SessionReader, requestedDa
 			merged.set(day.ts, bucket);
 		}
 
-		const [runtime, sizes, lastRun] = await Promise.all([loadRuntimeStats(dir), memorySizes(dir), lastMemoryRun(dir)]);
+		const [runtime, sizes, todayRuns] = await Promise.all([loadRuntimeStats(dir), memorySizes(dir), runsSince(dir, dayStart)]);
+		for (const run of todayRuns) runs.push({ partner: profile.name, ...run });
 		const output = sum(runtime.speedOutputs);
 		const generationMs = sum(runtime.speedDurationsMs);
 		const samples = [...runtime.ttfts].sort((a, b) => a - b);
@@ -161,7 +170,6 @@ export async function buildDashboardOverview(session: SessionReader, requestedDa
 			ttftSamples: samples.length,
 			tps: generationMs > 0 ? output / (generationMs / 1000) : null,
 			memory: sizes,
-			lastRun,
 			days: activity.slice(-windowDays).map((day) => day.turns),
 		});
 
@@ -180,8 +188,6 @@ export async function buildDashboardOverview(session: SessionReader, requestedDa
 	}
 
 	const recorded = [...merged.keys()].sort((a, b) => a - b);
-	// Dense calendar: Monday through today, one entry per day, so the heatmap grid never has to
-	// invent a column layout. Advance with setDate to stay correct across DST.
 	const today = midnight(Date.now());
 	const start = mondayOf(today) - (DASHBOARD_HEATMAP_WEEKS - 1) * 7 * DAY_MS;
 	const heatmap: PartnerActivityDay[] = [];
@@ -206,5 +212,6 @@ export async function buildDashboardOverview(session: SessionReader, requestedDa
 		memory,
 		since: recorded[0] ?? null,
 	};
-	return { partners, totals, days, windowDays, activityWeeks: ACTIVITY_WEEKS, heatmap };
+	runs.sort((a, b) => b.startedAt - a.startedAt);
+	return { partners, totals, days, runs, windowDays, activityWeeks: ACTIVITY_WEEKS, heatmap };
 }

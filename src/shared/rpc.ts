@@ -328,7 +328,8 @@ export interface DashboardMemorySizes {
 	total: number;
 }
 
-export interface DashboardLastRun {
+export interface DashboardRun {
+	partner: string;
 	stage: MemoryRunStage;
 	reason: MemoryRunEndReason;
 	added: number;
@@ -347,7 +348,6 @@ export interface DashboardPartnerStats {
 	ttftSamples: number;
 	tps: number | null;
 	memory: DashboardMemorySizes;
-	lastRun: DashboardLastRun | null;
 	days: number[];
 }
 
@@ -370,6 +370,7 @@ export interface DashboardOverview {
 	partners: DashboardPartnerStats[];
 	totals: DashboardTotals;
 	days: PartnerActivityDay[];
+	runs: DashboardRun[];
 	windowDays: number;
 	activityWeeks: number;
 	heatmap: PartnerActivityDay[];
