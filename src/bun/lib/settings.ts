@@ -73,6 +73,8 @@ export interface Settings {
 
 export const DEFAULT_PALETTE_IGNORE_DIRS = [".git", ".DS_Store", "node_modules", "dist", "build", ".next", "out", "target", ".cache", "__pycache__", ".venv", "venv"];
 
+export const DEFAULT_ALLOWED_DOMAINS = ["github.com", "*.github.com", "lfs.github.com", "api.github.com", "npmjs.org", "*.npmjs.org"];
+
 const DEFAULT_SETTINGS: Settings = {
 	partner_profile_path: "~/.partner/",
 	detect_instructions_file: "AGENTS.md",
@@ -94,7 +96,7 @@ const DEFAULT_SETTINGS: Settings = {
 	delete: { strict: true },
 	explorer: { lineGap: 0.2, fold: { braces: true, markdown: true } },
 	highlight: { tokenizeMaxLineLength: 3000, tokenizeTimeLimit: 500 },
-	sandbox: { network: { allowedDomains: [], deniedDomains: [], allowLocalBinding: false, allowUnixSockets: [] } },
+	sandbox: { network: { allowedDomains: [...DEFAULT_ALLOWED_DOMAINS], deniedDomains: [], allowLocalBinding: false, allowUnixSockets: [] } },
 };
 
 const SETTINGS_PATH = join(homedir(), ".config", "letters", "settings.json");
@@ -105,7 +107,7 @@ const domainList = (value: string[] | undefined): string[] =>
 export function sandboxNetworkFrom(settings: Settings): SandboxNetwork {
 	const network = settings.sandbox?.network;
 	return {
-		allowedDomains: domainList(network?.allowedDomains),
+		allowedDomains: network?.allowedDomains === undefined ? [...DEFAULT_ALLOWED_DOMAINS] : domainList(network.allowedDomains),
 		deniedDomains: domainList(network?.deniedDomains),
 		allowLocalBinding: network?.allowLocalBinding === true,
 		allowUnixSockets: domainList(network?.allowUnixSockets),

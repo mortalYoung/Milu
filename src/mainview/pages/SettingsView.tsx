@@ -49,6 +49,7 @@ const DEFAULTS = {
 	explorerFoldMarkdown: true,
 	highlightMaxLineLength: 3000,
 	highlightTimeLimit: 500,
+	sandboxDomains: ["github.com", "*.github.com", "lfs.github.com", "api.github.com", "npmjs.org", "*.npmjs.org"],
 };
 
 const EMPTY_CP = { id: "", name: "", baseUrl: "", models: [{ id: "", window: "" }], window: "", maxTokens: "" };
@@ -669,7 +670,7 @@ export function SettingsView() {
 			desc: "Hosts a confined bash command may reach. `*.example.com` and `host:port` both work; empty means bash gets no network at all.",
 			cats: ["permission"],
 			stacked: true,
-			modified: sandboxDomains.map((domain) => domain.trim()).filter(Boolean).length > 0,
+			modified: JSON.stringify(sandboxDomains.map((domain) => domain.trim()).filter(Boolean)) !== JSON.stringify(DEFAULTS.sandboxDomains),
 			control: (
 				<div className="flex flex-col gap-1.5">
 					<table className="w-full text-left">
