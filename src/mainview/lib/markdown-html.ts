@@ -15,6 +15,11 @@ const SLOT_OPEN = "\uE000";
 const SLOT_CLOSE = "\uE001";
 const SLOT_RE = /\uE000(\d+)\uE001/g;
 const BLOCK_SLOT_RE = /<p>\s*\uE000(\d+)\uE001\s*<\/p>/g;
+const CODE_OPEN = "\uE002";
+const CODE_CLOSE = "\uE003";
+const CODE_RE = /\uE002(\d+)\uE003/g;
+const FENCE_RE = /(^|\n)(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:\n\2[^\n]*|$)/g;
+const CODE_SPAN_RE = /(`+)(?!`)([\s\S]*?)(?<!`)\1(?!`)/g;
 
 export interface SubsetEnv {
 	/** Raw `src` → data URL, for relative images the renderer itself cannot read. */
@@ -60,9 +65,10 @@ function safeHref(raw: string | undefined): string | null {
 
 export function renderImageHtml(src: string, alt: string, attrs: Record<string, string>, images: SubsetEnv["images"]): string {
 	const width = /^\d{1,4}$/.test(attrs["width"] ?? "") ? ` width="${attrs["width"]}"` : "";
+	const height = /^\d{1,4}$/.test(attrs["height"] ?? "") ? ` style="height:${attrs["height"]}px"` : "";
 	const resolved = images?.get(src);
-	if (resolved) return `<img src="${escapeHtml(resolved)}" alt="${escapeHtml(alt)}"${width} loading="lazy">`;
-	if (/^https?:/i.test(src)) return `<img src="${escapeHtml(src)}" alt="${escapeHtml(alt)}"${width} loading="lazy" referrerpolicy="no-referrer">`;
+	if (resolved) return `<img src="${escapeHtml(resolved)}" alt="${escapeHtml(alt)}"${width}${height} loading="lazy">`;
+	if (/^https?:/i.test(src)) return `<img src="${escapeHtml(src)}" alt="${escapeHtml(alt)}"${width}${height} loading="lazy" referrerpolicy="no-referrer">`;
 	// A relative path names a file the view cannot read on its own; it becomes a chip that says so,
 	// and the preview upgrades it to a real image once it has resolved the bytes.
 	return `<span class="md-image" data-md-src="${escapeHtml(src)}" title="${escapeHtml(alt || src)}">${escapeHtml(alt || src)}</span>`;
@@ -84,7 +90,28 @@ export function extractHtmlSubset(source: string): { source: string; slots: Slot
 		return `${SLOT_OPEN}${slots.length - 1}${SLOT_CLOSE}`;
 	};
 
-	let out = source;
+	const code: string[] = [];
+	const stash = (match: string): string => {
+		code.push(match);
+		return `${CODE_OPEN}${code.length - 1}${CODE_CLOSE}`;
+	};
+
+	let out = source.replace(FENCE_RE, stash).replace(CODE_SPAN_RE, stash);
+
+	// <div align="center"> … </div>
+	out = out.replace(/<div\s+([^>]*?)>([\s\S]*?)<\/div>/gi, (match, rawAttrs: string, inner: string) => {
+		const align = (attributesOf(rawAttrs)["align"] ?? "").trim().toLowerCase();
+		if (align !== "center") return match;
+		return hold(true, (ctx) => `<div class="md-center">${ctx.render(inner)}</div>`);
+	});
+
+	// <h1>…</h1> through <h6>
+	out = out.replace(/<h([1-6])(?:\s[^>]*)?>([\s\S]*?)<\/h\1>/gi, (_match, level: string, inner: string) =>
+		hold(true, (ctx) => `<h${level}>${ctx.renderInline(inner)}</h${level}>`),
+	);
+
+	// <sub>…</sub> / <sup>…</sup>
+	out = out.replace(/<(sub|sup)(?:\s[^>]*)?>([\s\S]*?)<\/\1>/gi, (_match, tag: string, inner: string) => hold(false, (ctx) => `<${tag}>${ctx.renderInline(inner)}</${tag}>`));
 
 	// <details open?> … <summary>…</summary> …body… </details>
 	out = out.replace(/<details(\s[^>]*?)?>([\s\S]*?)<\/details>/gi, (_match, rawAttrs: string | undefined, inner: string) => {
@@ -130,7 +157,7 @@ export function extractHtmlSubset(source: string): { source: string; slots: Slot
 
 	out = out.replace(/<br\s*\/?>/gi, () => hold(false, () => "<br>"));
 
-	return { source: out, slots };
+	return { source: out.replace(CODE_RE, (_match, digits: string) => code[Number(digits)] ?? ""), slots };
 }
 
 /** Put the constructed tags back, unwrapping the paragraph markdown-it wrapped around block slots. */

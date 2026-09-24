@@ -531,7 +531,11 @@ body::before {
 	/* Allowlisted HTML from a document: images, linked screenshots, disclosures, in-page anchors. */
 	.md img {
 		@apply my-1.5 max-w-full rounded-[4px] border border-hairline align-middle;
+		display: inline-block;
 		height: auto;
+	}
+	.md-center {
+		@apply text-center;
 	}
 	.md-image {
 		@apply inline-flex items-baseline gap-1.5 rounded-[4px] border border-dashed border-hairline px-1.5 py-0.5 font-sans text-[11px] text-body-muted align-middle;
