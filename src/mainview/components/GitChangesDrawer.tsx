@@ -1,4 +1,4 @@
-import { Columns2, Pin, WrapText } from "lucide-react";
+import { Columns2, LocateFixed, Pin, Space, WrapText } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
@@ -73,6 +73,9 @@ export function GitChangesDrawer(props: {
 	onToggleSideBySide: () => void;
 	wrap: boolean;
 	onToggleWrap: () => void;
+	ignoreWhitespace: boolean;
+	onToggleIgnoreWhitespace: () => void;
+	onRevealInExplorer: (path: string) => void;
 }) {
 	const settings = useSettings();
 	const settingsSnapshot = useStore(settings.store, (state) => state.snapshot);
@@ -284,6 +287,15 @@ export function GitChangesDrawer(props: {
 										{stats.del > 0 && <span className="del">−{stats.del}</span>}
 									</span>
 								)}
+								<button
+									type="button"
+									className="dock-btn"
+									aria-label="Reveal this file in the explorer"
+									title="Reveal this file in the explorer"
+									onClick={() => props.onRevealInExplorer(shownChange.path)}
+								>
+									<LocateFixed size={11} />
+								</button>
 								{comparable && (
 									<button
 										type="button"
@@ -306,10 +318,27 @@ export function GitChangesDrawer(props: {
 								>
 									<WrapText size={11} />
 								</button>
+								<button
+									type="button"
+									className={"dock-btn" + (props.ignoreWhitespace ? " on" : "")}
+									aria-pressed={props.ignoreWhitespace}
+									aria-label="Ignore leading and trailing whitespace"
+									title={props.ignoreWhitespace ? "Show whitespace changes" : "Ignore leading and trailing whitespace"}
+									onClick={props.onToggleIgnoreWhitespace}
+								>
+									<Space size={11} />
+								</button>
 								{sidesError && <span className="git-diff-error">{sidesError}</span>}
 							</div>
 							{comparable && both ? (
-								<CodeDiff original={both.original} modified={both.modified} lang={languageForPath(shownChange.path)} sideBySide={props.sideBySide} wrap={props.wrap} />
+								<CodeDiff
+									original={both.original}
+									modified={both.modified}
+									lang={languageForPath(shownChange.path)}
+									sideBySide={props.sideBySide}
+									wrap={props.wrap}
+									ignoreWhitespace={props.ignoreWhitespace}
+								/>
 							) : sidesLoading ? (
 								<div className="git-diff-note">
 									<span className="work-dot" />

@@ -18,6 +18,7 @@ const LETTER_WIDTH_KEY = "explorer.letterWidth";
 const PANE_WIDTH_KEY = "dock.paneWidth";
 const WRAP_KEY = "reader.wrap";
 const SIDE_BY_SIDE_KEY = "reader.sideBySide";
+const IGNORE_WS_KEY = "reader.ignoreWhitespace";
 
 export const DOCK_PANE_MIN = 200;
 export const DOCK_PANE_MAX = 420;
@@ -31,6 +32,7 @@ export interface DockState {
 	letterWidth: number | null;
 	wrap: boolean;
 	sideBySide: boolean;
+	ignoreWhitespace: boolean;
 }
 
 function storedLetterWidth(): number | null {
@@ -52,6 +54,7 @@ export function createDock(options: { onOpen?: () => void; partner?: () => strin
 		letterWidth: storedLetterWidth(),
 		wrap: localStorage.getItem(WRAP_KEY) !== "0",
 		sideBySide: localStorage.getItem(SIDE_BY_SIDE_KEY) !== "0",
+		ignoreWhitespace: localStorage.getItem(IGNORE_WS_KEY) === "1",
 	}));
 	let seq = 0;
 
@@ -121,6 +124,13 @@ export function createDock(options: { onOpen?: () => void; partner?: () => strin
 		});
 	}
 
+	function toggleIgnoreWhitespace() {
+		store.setState((state) => {
+			localStorage.setItem(IGNORE_WS_KEY, state.ignoreWhitespace ? "0" : "1");
+			return { ignoreWhitespace: !state.ignoreWhitespace };
+		});
+	}
+
 	function revealInExplorer(path: string, range?: RevealRange | null) {
 		const partner = current();
 		if (!partner) return;
@@ -144,6 +154,7 @@ export function createDock(options: { onOpen?: () => void; partner?: () => strin
 		commitPaneWidth,
 		toggleWrap,
 		toggleSideBySide,
+		toggleIgnoreWhitespace,
 		revealInExplorer,
 	};
 }

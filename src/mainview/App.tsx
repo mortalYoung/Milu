@@ -132,6 +132,7 @@ function ChatView(props: {
 	const letterWidth = useStore(dock.store, (state) => state.letterWidth);
 	const wrap = useStore(dock.store, (state) => state.wrap);
 	const sideBySide = useStore(dock.store, (state) => state.sideBySide);
+	const ignoreWhitespace = useStore(dock.store, (state) => state.ignoreWhitespace);
 	const agentSnapshot = useStore(status.store, (state) => state.snapshot);
 	const workspaceReady = useStore(status.store, (state) => state.snapshot.partner) === props.selected;
 
@@ -275,6 +276,9 @@ function ChatView(props: {
 								onToggleSideBySide={dock.toggleSideBySide}
 								wrap={wrap}
 								onToggleWrap={dock.toggleWrap}
+								ignoreWhitespace={ignoreWhitespace}
+								onToggleIgnoreWhitespace={dock.toggleIgnoreWhitespace}
+								onRevealInExplorer={(path) => dock.revealInExplorer(path)}
 							/>
 						</div>
 					</div>

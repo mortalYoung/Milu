@@ -1,4 +1,4 @@
-import { type Chunk, getChunks, MergeView, mergeViewSiblings, unifiedMergeView } from "@codemirror/merge";
+import { Change, type Chunk, type DiffConfig, diff, getChunks, MergeView, mergeViewSiblings, unifiedMergeView } from "@codemirror/merge";
 import { Compartment, EditorState, type Extension, type Range, StateEffect, StateField, Text } from "@codemirror/state";
 import { Decoration, type DecorationSet, drawSelection, EditorView, GutterMarker, gutter, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
 import { useEffect, useRef } from "react";
@@ -119,6 +119,56 @@ interface SideSpan {
 	/** First line of the run that follows it. */
 	next: number;
 }
+
+const WHITESPACE_SCAN_LIMIT = 500;
+
+function trimLines(text: string): { text: string; lead: number[] } {
+	const lead: number[] = [];
+	const lines = text.split("\n").map((line) => {
+		const start = line.length - line.trimStart().length;
+		lead.push(start);
+		return line.slice(start).trimEnd();
+	});
+	return { text: lines.join("\n"), lead };
+}
+
+function lineStarts(text: string): number[] {
+	const starts = [0];
+	for (let i = 0; i < text.length; i += 1) if (text[i] === "\n") starts.push(i + 1);
+	return starts;
+}
+
+/** A position in a trimmed copy → the same position in the real text, line by line. */
+function mapOffset(pos: number, starts: readonly number[], lead: readonly number[]): number {
+	let low = 0;
+	let high = starts.length - 1;
+	while (low < high) {
+		const mid = (low + high + 1) >> 1;
+		if ((starts[mid] ?? 0) <= pos) low = mid;
+		else high = mid - 1;
+	}
+	const start = starts[low] ?? 0;
+	return start + (lead[low] ?? 0) + (pos - start);
+}
+
+/** Diff as if every line were trimmed, so a change that only moves leading or trailing whitespace is no change. The
+ * offsets come back in the real documents' coordinates — the character wash would otherwise slide by however much
+ * whitespace was dropped in front of it. */
+const trimWhitespaceDiff: NonNullable<DiffConfig["override"]> = (a, b) => {
+	const left = trimLines(a);
+	const right = trimLines(b);
+	const startsA = lineStarts(left.text);
+	const startsB = lineStarts(right.text);
+	return diff(left.text, right.text, { scanLimit: WHITESPACE_SCAN_LIMIT }).map(
+		(change) =>
+			new Change(
+				mapOffset(change.fromA, startsA, left.lead),
+				mapOffset(change.toA, startsA, left.lead),
+				mapOffset(change.fromB, startsB, right.lead),
+				mapOffset(change.toB, startsB, right.lead),
+			),
+	);
+};
 
 /** Where a chunk sits in one side, in lines. An insertion between two lines touches neither of them. */
 function chunkSpan(doc: Text, from: number, end: number): SideSpan {
@@ -467,19 +517,38 @@ function mirrorScroll(a: EditorView, b: EditorView): () => void {
 	};
 }
 
-export function CodeDiff(props: { original: string; modified: string; lang: string | null; sideBySide: boolean; wrap: boolean }) {
+export function CodeDiff(props: { original: string; modified: string; lang: string | null; sideBySide: boolean; wrap: boolean; ignoreWhitespace: boolean }) {
 	const hostEl = useRef<HTMLDivElement>(null);
 	const wrapCompartment = useRef(new Compartment());
 	const mounted = useRef<EditorView[]>([]);
+	const savedScroll = useRef<{ top: number; left: number }[] | null>(null);
 	const propsRef = useRef(props);
 	propsRef.current = props;
 
 	useEffect(() => {
 		const host = hostEl.current;
 		if (!host) return;
+		const restore = savedScroll.current;
+		savedScroll.current = null;
 		host.replaceChildren();
 
 		let alive = true;
+		const restoreScroll = () => {
+			mounted.current.forEach((view, index) => {
+				const saved = restore?.[index];
+				if (!saved) return;
+				view.scrollDOM.scrollTop = saved.top;
+				view.scrollDOM.scrollLeft = saved.left;
+			});
+		};
+		/** A rebuild from a view option is the same diff again: keep the reader where they were. A new file starts at the top. */
+		const keepScroll = () => {
+			const next = propsRef.current;
+			savedScroll.current =
+				next.original === props.original && next.modified === props.modified
+					? mounted.current.map((view) => ({ top: view.scrollDOM.scrollTop, left: view.scrollDOM.scrollLeft }))
+					: null;
+		};
 		const wrapping = propsRef.current.wrap ? EditorView.lineWrapping : [];
 		const paint = (view: EditorView, doc: string) => {
 			void highlightCodeToLines(doc, props.lang)
@@ -497,6 +566,7 @@ export function CodeDiff(props: { original: string; modified: string; lang: stri
 				orientation: "a-b",
 				highlightChanges: false,
 				gutter: false,
+				...(props.ignoreWhitespace ? { diffConfig: { override: trimWhitespaceDiff } } : {}),
 			});
 			// Both sides exist now, so the runs of each can be measured and handed to its own state. An empty
 			// answer with no chunks yet is retried for a few frames, so a quiet plan can't be mistaken for none.
@@ -520,10 +590,12 @@ export function CodeDiff(props: { original: string; modified: string; lang: stri
 			}
 			const unmirror = mirrorScroll(merged.a, merged.b);
 			mounted.current = [merged.a, merged.b];
+			restoreScroll();
 			paint(merged.a, props.original);
 			paint(merged.b, props.modified);
 			return () => {
 				alive = false;
+				keepScroll();
 				unmirror();
 				merged.destroy();
 				mounted.current = [];
@@ -544,6 +616,7 @@ export function CodeDiff(props: { original: string; modified: string; lang: stri
 						mergeControls: false,
 						allowInlineDiffs: false,
 						syntaxHighlightDeletions: false,
+						...(props.ignoreWhitespace ? { diffConfig: { override: trimWhitespaceDiff } } : {}),
 					}),
 					drawSelection(),
 					tokenPainter(),
@@ -573,13 +646,15 @@ export function CodeDiff(props: { original: string; modified: string; lang: stri
 			requestAnimationFrame(retry);
 		}
 		mounted.current = [view];
+		restoreScroll();
 		paint(view, props.modified);
 		return () => {
 			alive = false;
+			keepScroll();
 			view.destroy();
 			mounted.current = [];
 		};
-	}, [props.original, props.modified, props.lang, props.sideBySide]);
+	}, [props.original, props.modified, props.lang, props.sideBySide, props.ignoreWhitespace]);
 
 	useEffect(() => {
 		const wrapping = props.wrap ? EditorView.lineWrapping : [];
