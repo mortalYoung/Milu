@@ -375,6 +375,7 @@ export function ExplorerDrawer(props: {
 	const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
 	const [fileData, setFileData] = useState<FileData | null>(null);
 	const [fileLoading, setFileLoading] = useState(false);
+	const readKey = useRef<string | null>(null);
 
 	const tokens = useRef(new Map<string, number>());
 	const treeEl = useRef<HTMLDivElement>(null);
@@ -494,13 +495,31 @@ export function ExplorerDrawer(props: {
 		});
 	}, [props.open]);
 
+	const [fileRev, setFileRev] = useState(0);
+	const shownPathRef = useRef<string | null>(null);
+	shownPathRef.current = shownFile?.path ?? null;
+
+	useEffect(() => {
+		rpc.addMessageListener("file_changed", ({ path }) => {
+			if (path === shownPathRef.current) setFileRev((rev) => rev + 1);
+		});
+	}, []);
+
+	useEffect(() => {
+		if (!props.partner) return;
+		void rpc.request.watch_file({ name: props.partner, root: "workspace", path: props.open && shownFile ? shownFile.path : null });
+	}, [props.open, props.partner, shownFile]);
+
 	useEffect(() => {
 		if (!shownFile || !props.partner) {
 			setFileData(null);
+			readKey.current = null;
 			return;
 		}
 		let cancelled = false;
-		setFileLoading(true);
+		const key = `${props.partner}|${shownFile.path}`;
+		if (readKey.current !== key) setFileLoading(true);
+		readKey.current = key;
 		void rpc.request.explorer_read_file({ name: props.partner, root: "workspace", path: shownFile.path }).then((res) => {
 			if (cancelled) return;
 			setFileData(res.ok ? res : { error: res.error ?? "failed to read file" });
@@ -509,7 +528,7 @@ export function ExplorerDrawer(props: {
 		return () => {
 			cancelled = true;
 		};
-	}, [shownFile, props.partner]);
+	}, [shownFile, props.partner, fileRev]);
 
 	useEscapeLayer({
 		id: "explorer.detail",

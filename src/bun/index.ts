@@ -67,6 +67,7 @@ import { aggregateUsage, lastUsage } from "./core/trajectory";
 import { deleteApiKey, getApiKey, loadCredentials, setApiKey } from "./lib/credentials";
 import { ensureModel, ensureSandboxMode, ensureStoragePath, ensureWorkspace, hasInvalidPersistedWorkspace, isThinkingLevel } from "./lib/ensure";
 import { listChildren, readFilePreview, readImageDataUrl } from "./lib/explorer";
+import { createFileWatch } from "./lib/file-watch";
 import { gitChanges, gitDiff, gitFileSides, gitOverview, gitWorktrees } from "./lib/git-changes";
 import { listInstalledEditors, openInCodeEditor } from "./lib/open-in-editor";
 import {
@@ -174,6 +175,8 @@ async function refreshSkillsChanged() {
 	}
 	rpc.send.skills_change({});
 }
+
+const fileWatch = createFileWatch((path) => rpc.send.file_changed({ path }));
 
 async function armSkillsWatchers() {
 	const settings = settingsCache ?? (await ensureSettings());
@@ -1932,6 +1935,14 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				return { ok: true as const };
 			},
 
+			watch_file: async ({ name, root, path }) => {
+				const entry = await agents.get(name);
+				if (!entry) return { ok: false as const, error: "no partner selected" };
+				const rootPath = root === "workspace" ? entry.agent.workspacePath : entry.agent.storagePath;
+				if (!rootPath) return { ok: false as const, error: root === "workspace" ? "workspace not set" : "storage not set" };
+				return fileWatch.arm({ key: `${name}|${root}|${path ?? ""}`, rootPath, relPath: path });
+			},
+
 			explorer_read_file: async ({ name, root, path }) => {
 				const entry = await agents.get(name);
 				if (!entry) return { ok: false as const, error: "no partner selected" };
@@ -2584,6 +2595,7 @@ const mainWindow: BrowserWindow = new BrowserWindow({
 
 electrobunApp.on("before-quit", () => {
 	taskRegistry.reapAll();
+	fileWatch.stop();
 	void sandbox.release();
 });
 mainWindow.on("focus", () => {

@@ -154,6 +154,11 @@ async function containedRealPath(rootPath: string, relativePath: string): Promis
 	return { rootReal, targetReal };
 }
 
+export async function fileWatchTarget(rootPath: string, relativePath: string): Promise<string> {
+	const { targetReal } = await containedRealPath(rootPath, relativePath);
+	return targetReal;
+}
+
 function sortEntries(a: ExplorerEntry, b: ExplorerEntry): number {
 	if (a.kind === "dir" && b.kind !== "dir") return -1;
 	if (a.kind !== "dir" && b.kind === "dir") return 1;

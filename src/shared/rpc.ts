@@ -669,6 +669,11 @@ export type AppRPCSchema = __schema<{
 				response: { ok: boolean; error?: string };
 			};
 
+			watch_file: {
+				params: { name: string; root: ExplorerRoot; path: string | null };
+				response: { ok: boolean; error?: string };
+			};
+
 			explorer_read_file: {
 				params: { name: string; root: ExplorerRoot; path: string };
 				response: {
@@ -1127,6 +1132,8 @@ export type AppRPCSchema = __schema<{
 			context_changed: { partner?: string; workspace?: string | null };
 
 			agent_end: { error?: string; partner: string };
+
+			file_changed: { path: string };
 
 			sandbox_mode_update: {};
 
