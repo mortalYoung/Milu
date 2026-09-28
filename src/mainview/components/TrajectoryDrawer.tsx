@@ -7,7 +7,7 @@ import { scan } from "../../shared/trajectory";
 import { useSession } from "../lib/contexts/session-context";
 import { useTrajectory } from "../lib/contexts/trajectory-context";
 import { ESCAPE_ORDER, useEscapeLayer } from "../lib/escape";
-import { rowAnchorAt, rowAnchorTop, rowTopForIndex } from "../lib/scroll-anchor";
+import { rowAnchorAt, rowAnchorTop } from "../lib/scroll-anchor";
 import { createScrollFollower } from "../lib/scroll-follower";
 import type { TrajectoryMode } from "../lib/trajectory";
 import { ScrollRegion } from "./ScrollRegion";
@@ -27,15 +27,11 @@ type DisplayRow = {
 	tone: TrajectoryTone;
 	caption: string;
 	details: TrajectoryDetail[];
-	band?: "cell" | "tool" | "think";
 };
 
 type FlatRow = DisplayRow & { runStart: boolean };
 
 const ROW_H = 28;
-const BAND_COL = 18;
-const BAND_WINDOW = 80;
-const BAND_BUFFER = 30;
 const GRID_CLASS = "traj-grid";
 
 /** Content offset of the first virtual row: the grid sits below the load-earlier button, so the
@@ -85,12 +81,9 @@ function DrawerContent(props: {
 }) {
 	const [selectedKey, setSelectedKey] = useState<string | null>(null);
 	const [popStyle, setPopStyle] = useState<{ top: number; arrowY: number; showArrow: boolean } | null>(null);
-	const [bandStart, setBandStart] = useState(0);
-	const [fade, setFade] = useState({ left: false, right: false });
 
 	const trajectory = useTrajectory();
 
-	const bandRef = useRef<HTMLDivElement>(null);
 	const drawerRef = useRef<HTMLDivElement>(null);
 	const popRef = useRef<HTMLDivElement>(null);
 	const rowsRef = useRef<FlatRow[]>([]);
@@ -98,7 +91,6 @@ function DrawerContent(props: {
 	const summary = useMemo(() => scan(props.records), [props.records]);
 	const rows = summary.data;
 	const turns = summary.turns;
-	const summaryFor = (record: TrajectoryRecord) => turns.find((t) => t.run === record.run && t.turn === record.turn);
 
 	const flatRows = useMemo<FlatRow[]>(() => {
 		const out: DisplayRow[] = [];
@@ -116,7 +108,6 @@ function DrawerContent(props: {
 						tone: part.tone ?? presentation.tone,
 						caption: part.caption ?? "",
 						details: part.details ?? [],
-						...(part.band === undefined ? {} : { band: part.band }),
 					});
 					marksPending = 0;
 				}
@@ -130,7 +121,6 @@ function DrawerContent(props: {
 				tone: presentation.tone,
 				caption: presentation.caption,
 				details: presentation.details,
-				...(presentation.band === undefined ? {} : { band: presentation.band }),
 			});
 		}
 		return out.map((row, i) => ({ ...row, runStart: i === 0 || out[i - 1]!.record.run !== row.record.run }));
@@ -166,23 +156,10 @@ function DrawerContent(props: {
 	const virtualItems = virtualizer.getVirtualItems();
 	const totalSize = virtualizer.getTotalSize();
 
-	const bandView = useMemo(() => {
-		const start = bandStart;
-		return { start, rows: flatRows.slice(start, start + BAND_WINDOW), total: flatRows.length };
-	}, [flatRows, bandStart]);
-
 	const selectedRow = selectedKey != null ? (flatRows.find((row) => row.key === selectedKey) ?? null) : null;
 
 	const toggleSelect = (row: FlatRow) => {
 		setSelectedKey((key) => (key === row.key ? null : row.key));
-	};
-
-	const locate = (key: string) => {
-		const index = flatRows.findIndex((row) => row.key === key);
-		const el = scroll.store.getState().containerEl;
-		if (index < 0 || !el) return;
-		scroll.seek(rowTopForIndex(index, ROW_H, rowOrigin(el), el.clientHeight));
-		setSelectedKey(key);
 	};
 
 	const updatePopover = () => {
@@ -227,36 +204,6 @@ function DrawerContent(props: {
 		return () => window.removeEventListener("resize", onResize);
 	}, [selectedKey]);
 
-	const checkFade = () => {
-		const el = bandRef.current;
-		if (!el) return;
-		setFade({ left: el.scrollLeft > 1, right: el.scrollLeft < el.scrollWidth - el.clientWidth - 1 });
-	};
-
-	const onBandScroll = () => {
-		if (selectedKey != null) setSelectedKey(null);
-		const el = bandRef.current;
-		if (!el) return;
-		const start = Math.max(0, Math.floor(el.scrollLeft / BAND_COL) - BAND_BUFFER);
-		setBandStart(Math.min(start, Math.max(0, flatRows.length - BAND_WINDOW)));
-		checkFade();
-	};
-
-	useEffect(() => {
-		if (!scroll.store.getState().following) return;
-		const el = bandRef.current;
-		if (el) el.scrollLeft = el.scrollWidth;
-		checkFade();
-	}, [flatRows, scroll]);
-
-	useEffect(() => {
-		const el = bandRef.current;
-		if (!el) return;
-		const observer = new ResizeObserver(checkFade);
-		observer.observe(el);
-		return () => observer.disconnect();
-	}, []);
-
 	useEscapeLayer({
 		id: "trajectory.row",
 		order: ESCAPE_ORDER.trajectoryRow,
@@ -276,36 +223,6 @@ function DrawerContent(props: {
 				? `view · ${props.records.length} rows shown`
 				: `origin · all ${props.total} entries · ${turns.length} turns`;
 	const footText = props.mode === "slice" ? "model context (slice)" : props.mode === "view" ? "chat view" : "whole log · paged";
-
-	const rowColumn = (row: DisplayRow, i: number) => {
-		const previous = i > 0 ? flatRows[i - 1]!.record : null;
-		const boundary = previous !== null && (previous.run !== row.record.run || previous.turn !== row.record.turn) ? <span className="traj-boundary" /> : null;
-		const hot = selectedKey === row.key;
-		const title = `R${row.record.run} T${row.record.turn} · ${short(row.caption)}`;
-		if (row.band !== undefined) {
-			const part = row.band === "tool" ? " tool" : row.band === "think" ? " think" : "";
-			return (
-				<span key={row.key}>
-					{boundary}
-					<button
-						type="button"
-						className={"traj-cell " + (summaryFor(row.record)?.density ?? "l1") + part + (hot ? " hot" : "")}
-						data-row={row.key}
-						title={title}
-						onClick={() => locate(row.key)}
-					/>
-				</span>
-			);
-		}
-		return (
-			<span key={row.key}>
-				{boundary}
-				<span className={"traj-marker" + (hot ? " hot" : "")} data-row={row.key}>
-					<button type="button" className={`traj-tone-${row.tone}`} title={title} onClick={() => locate(row.key)} />
-				</span>
-			</span>
-		);
-	};
 
 	const detailBody = (detail: TrajectoryDetail) => {
 		const label = detail.label !== undefined && detail.label !== "" ? detail.label : null;
@@ -420,41 +337,23 @@ function DrawerContent(props: {
 			) : rows.length === 0 ? (
 				<div className="traj-empty">no log entries yet — run a conversation first</div>
 			) : (
-				<>
-					<div className="traj-band-wrap">
-						<div className="traj-scroll" ref={bandRef} onScroll={onBandScroll}>
-							<div
-								className="traj-band"
-								style={{
-									paddingLeft: `${bandStart * BAND_COL}px`,
-									paddingRight: `${(bandView.total - bandView.start - bandView.rows.length) * BAND_COL}px`,
-								}}
-							>
-								{bandView.rows.map((row, i) => rowColumn(row, bandView.start + i))}
-							</div>
-						</div>
-						{fade.left && <span className="traj-fade left" />}
-						{fade.right && <span className="traj-fade right" />}
+				<ScrollRegion scroll={scroll} class="traj-all" onScroll={() => selectedKey != null && setSelectedKey(null)}>
+					{props.hasMore && (
+						<button type="button" className="traj-load-earlier" onClick={loadOlder} disabled={props.loadingOlder}>
+							{props.loadingOlder ? "loading…" : "↑ load earlier"}
+						</button>
+					)}
+					<div className={GRID_CLASS} style={{ height: `${totalSize}px`, position: "relative", width: "100%" }}>
+						{virtualItems.map((item) => {
+							const row = flatRows[item.index];
+							return (
+								<div key={item.key} style={{ position: "absolute", top: 0, transform: `translateY(${item.start}px)`, width: "100%" }} data-index={item.index}>
+									{row ? listRow(row, selectedKey === row.key) : null}
+								</div>
+							);
+						})}
 					</div>
-
-					<ScrollRegion scroll={scroll} class="traj-all" onScroll={() => selectedKey != null && setSelectedKey(null)}>
-						{props.hasMore && (
-							<button type="button" className="traj-load-earlier" onClick={loadOlder} disabled={props.loadingOlder}>
-								{props.loadingOlder ? "loading…" : "↑ load earlier"}
-							</button>
-						)}
-						<div className={GRID_CLASS} style={{ height: `${totalSize}px`, position: "relative", width: "100%" }}>
-							{virtualItems.map((item) => {
-								const row = flatRows[item.index];
-								return (
-									<div key={item.key} style={{ position: "absolute", top: 0, transform: `translateY(${item.start}px)`, width: "100%" }} data-index={item.index}>
-										{row ? listRow(row, selectedKey === row.key) : null}
-									</div>
-								);
-							})}
-						</div>
-					</ScrollRegion>
-				</>
+				</ScrollRegion>
 			)}
 
 			<div className="traj-foot">

@@ -47,7 +47,6 @@ export interface TrajectoryDetail {
 }
 
 export interface TrajectoryRow {
-	band?: "cell" | "tool" | "think";
 	chip?: string;
 	tone?: TrajectoryTone;
 	caption?: string;
@@ -55,7 +54,6 @@ export interface TrajectoryRow {
 }
 
 export interface TrajectoryNode {
-	band?: "cell" | "tool" | "think";
 	chip?: string;
 	tone?: TrajectoryTone;
 	caption?: string;
@@ -645,7 +643,7 @@ function assistantNode(record: TrajectoryRecord): TrajectoryNode {
 	for (const block of record.blocks) {
 		if (block.type !== "thinking") continue;
 		const thinking = String(block.thinking ?? "");
-		rows.push({ band: "think", chip: "THINK", tone: "plain", caption: firstLine(thinking), details: [textDetail(thinking)] });
+		rows.push({ chip: "THINK", tone: "plain", caption: firstLine(thinking), details: [textDetail(thinking)] });
 	}
 	if (record.sliceMessage !== undefined) {
 		for (const block of record.blocks) {
@@ -653,7 +651,6 @@ function assistantNode(record: TrajectoryRecord): TrajectoryNode {
 			const name = String(block.name ?? "");
 			const args = stringifyArgs(block.arguments).replace(/\s+/g, " ").trim();
 			rows.push({
-				band: "tool",
 				chip: "TOOL",
 				tone: "plain",
 				caption: args ? `${name} · ${args}` : name,
@@ -665,7 +662,6 @@ function assistantNode(record: TrajectoryRecord): TrajectoryNode {
 	const others = record.blocks.filter((block) => block.type !== "text" && block.type !== "toolCall" && block.type !== "thinking");
 	const caption = firstLine(texts.join("\n")) || record.blocks.find((block) => block.type === "toolCall")?.name?.toString() || "assistant";
 	rows.push({
-		band: "cell",
 		chip: "MSG",
 		tone: "plain",
 		caption: firstLine(texts.join("\n")) || "assistant",
@@ -711,7 +707,6 @@ function toolCallNode(record: TrajectoryRecord): TrajectoryNode {
 	const name = recordText(record, "data.name");
 	const args = stringifyArgs(recordField(record, "data.args")).replace(/\s+/g, " ").trim();
 	return {
-		band: "tool",
 		chip: "TOOL",
 		tone: "plain",
 		caption: args ? `${name} · ${args}` : name,

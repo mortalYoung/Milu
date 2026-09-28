@@ -2,7 +2,7 @@
  * Unit tests for trajectory build: Entry[] → TrajectoryRecord[].
  * Coverage: the total build (every pi entry kind becomes a record, nothing dropped),
  * run/turn stamping, toolResult passthrough, and the scan view model (run and
- * turn assignment, request dots, density summaries).
+ * turn assignment, request dots).
  */
 import { describe, expect, test } from "bun:test";
 import type { Entry } from "@earendil-works/pi-agent-core";
@@ -283,7 +283,7 @@ describe("scan whole-log view model", () => {
 		]);
 	});
 
-	test("turn summaries: one per assistant turn, bucketed by tokens", () => {
+	test("turn summaries: one per assistant turn", () => {
 		const { turns } = scan(
 			buildData([
 				userEntry("analyse the project"),
@@ -312,9 +312,6 @@ describe("scan whole-log view model", () => {
 			[1, 2],
 			[2, 1],
 		]);
-		expect(turns[0].density).toBe("l1"); // 700 total
-		expect(turns[1].density).toBe("l2"); // 3,100
-		expect(turns[2].density).toBe("l3"); // 6,400
 	});
 
 	test("records between a turn's assistant and its tool results keep that turn", () => {

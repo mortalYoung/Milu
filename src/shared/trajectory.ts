@@ -1,17 +1,15 @@
 /**
  * The scan: one pass that turns folded records into the rows the trajectory view shows, plus the
- * per-turn summaries for the density band. Curation rules live on the event metadata — `hidden`
+ * per-turn summaries. Curation rules live on the event metadata — `hidden`
  * drops the record, `dedupe` keeps the first of its kind, `pin` moves the first of its kind right
  * after another key — so the scan applies them without knowing any event by name.
  */
 import { EVENT_META } from "./entry-meta";
 import type { TrajectoryRecord } from "./rpc";
 
-/** One turn's summary for the density band. */
 export interface TurnSummary {
 	run: number;
 	turn: number;
-	density: "l1" | "l2" | "l3";
 }
 
 export interface ScanResult {
@@ -22,7 +20,7 @@ export interface ScanResult {
 export function scan(records: TrajectoryRecord[]): ScanResult {
 	const turns: TurnSummary[] = [];
 	for (const record of records) {
-		if (record.kind === "assistant") turns.push({ run: record.run, turn: record.turn, density: tokensToDensity(record.usage?.totalTokens ?? 0) });
+		if (record.kind === "assistant") turns.push({ run: record.run, turn: record.turn });
 	}
 
 	const data: TrajectoryRecord[] = [];
@@ -52,11 +50,4 @@ export function scan(records: TrajectoryRecord[]): ScanResult {
 		if (record.kind === "user" && record.metaKey === "role:user") record.marks = 1;
 	}
 	return { data, turns };
-}
-
-/** Bucket by token workload: <1k light, <4k medium, else heavy (visual budget goes to what varies). */
-function tokensToDensity(tokens: number): "l1" | "l2" | "l3" {
-	if (tokens < 1000) return "l1";
-	if (tokens < 4000) return "l2";
-	return "l3";
 }

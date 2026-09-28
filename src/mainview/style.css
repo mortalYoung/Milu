@@ -2336,128 +2336,6 @@ body::before {
 	.traj-close {
 		@apply font-sans text-[15px] leading-none text-body-muted hover:text-ink cursor-pointer bg-transparent border-0 p-0 ml-2;
 	}
-	.traj-scroll {
-		@apply overflow-x-auto px-4;
-		scrollbar-width: none;
-	}
-	.traj-scroll::-webkit-scrollbar {
-		display: none;
-	}
-	.traj-band-wrap {
-		@apply relative;
-	}
-	.traj-fade {
-		@apply absolute top-0 bottom-0 w-6 pointer-events-none z-10;
-	}
-	.traj-fade.left {
-		left: 0;
-		background: linear-gradient(to right, var(--color-letter), transparent);
-	}
-	.traj-fade.right {
-		right: 0;
-		background: linear-gradient(to left, var(--color-letter), transparent);
-	}
-	.traj-band {
-		@apply flex items-end gap-[2px] h-[42px] pt-2 pb-1.5 min-w-max;
-	}
-	.traj-cell {
-		@apply flex-none w-4 h-full rounded-t-[2px] cursor-pointer border-0 p-0;
-		transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
-	}
-	.traj-cell:hover {
-		transform: translateY(-2px);
-	}
-	.traj-cell.l1 {
-		background: var(--color-paper-deep);
-	}
-	.traj-cell.l2 {
-		background: var(--color-ink-soft);
-	}
-	.traj-cell.l3 {
-		background: var(--color-ink);
-	}
-	.traj-cell.tool {
-		height: 70%;
-		border-bottom: 3px solid var(--color-seal);
-	}
-	.traj-cell.think {
-		height: 55%;
-		outline: 1.5px dashed var(--color-seal);
-		outline-offset: -1.5px;
-	}
-	.traj-cell.hot {
-		background: var(--color-seal);
-		outline: 1.5px solid var(--color-seal);
-		outline-offset: 1px;
-	}
-	.traj-marker {
-		@apply flex-none w-4;
-		height: 40%;
-		align-self: flex-end;
-	}
-	.traj-marker.hot {
-		outline: 1.5px solid var(--color-seal);
-		outline-offset: 1px;
-		border-radius: 3px;
-	}
-	.traj-marker button {
-		@apply block w-full h-full border-0 p-0 cursor-pointer;
-		transition: transform 100ms cubic-bezier(0.23, 1, 0.32, 1);
-	}
-	.traj-marker button:hover {
-		transform: translateY(-2px);
-	}
-	.traj-marker .traj-tone-plain {
-		background: var(--color-hairline);
-		border-radius: 2px 2px 0 0;
-	}
-	.traj-marker .traj-tone-user {
-		background: var(--color-seal);
-		border-radius: 2px 2px 0 0;
-	}
-	.traj-marker .traj-tone-skill {
-		background: var(--color-seal);
-		border: 1.5px solid var(--color-seal);
-		border-radius: 2px 2px 0 0;
-	}
-	.traj-marker .traj-tone-system {
-		background: var(--color-ink);
-		border-radius: 2px 2px 0 0;
-	}
-	.traj-marker .traj-tone-reminder {
-		border: 1.5px dashed var(--color-seal);
-		border-radius: 2px 2px 0 0;
-	}
-	.traj-marker .traj-tone-message {
-		background: var(--color-seal-soft);
-		border: 1px solid var(--color-seal);
-		border-radius: 2px 2px 0 0;
-	}
-	.traj-marker .traj-tone-request {
-		border: 1.5px solid var(--color-seal);
-		border-radius: 2px 2px 0 0;
-	}
-	.traj-marker .traj-tone-result {
-		border: 1px solid var(--color-ink-soft);
-		border-radius: 2px 2px 0 0;
-	}
-	.traj-marker .traj-tone-change {
-		background: var(--color-ink-soft);
-		border-radius: 2px 2px 0 0;
-	}
-	.traj-marker .traj-tone-compact {
-		border: 1.5px dashed var(--color-seal);
-		border-radius: 2px 2px 0 0;
-	}
-	.traj-marker .traj-tone-custom {
-		border: 1.5px dotted var(--color-ink-soft);
-		border-radius: 2px 2px 0 0;
-	}
-
-	.traj-boundary {
-		@apply w-px self-stretch bg-hairline flex-none;
-	}
-
 	.traj-all {
 		@apply flex-1 min-h-0 overflow-y-auto pt-2;
 	}
@@ -2750,7 +2628,6 @@ body::before {
 		@apply flex-1 flex items-center justify-center px-4 font-serif text-[14px] text-muted;
 	}
 	@media (prefers-reduced-motion: reduce) {
-		.traj-cell,
 		.traj-body,
 		.traj-run-enter {
 			animation: none;
