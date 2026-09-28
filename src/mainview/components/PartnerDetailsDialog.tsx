@@ -1,11 +1,13 @@
 import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { activityWindow } from "../../shared/activity";
 import type { SandboxMode, ThinkingLevel } from "../../shared/rpc";
 import { renderMarkdown } from "../lib/markdown";
 import { mcpStateColor } from "../lib/mcp";
 import { rpc } from "../lib/rpc";
-import { formatBytes, formatTokens } from "../lib/utils";
+import { digits, formatBytes, formatTokens, percent } from "../lib/utils";
 import { ActivityHeatmap, HEATMAP_WEEKS } from "./ActivityHeatmap";
+import { AnimatedNumber } from "./AnimatedNumber";
 import { Button } from "./Button";
 import type { PartnerItem } from "./ConversationList";
 import { EditorPathButton } from "./EditorPathButton";
@@ -18,6 +20,9 @@ const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "
 
 const ACTIVITY_WINDOW = `${Math.round(HEATMAP_WEEKS / 4.345)} months`;
 const ACTIVITY_WINDOW_SHORT = `${Math.round(HEATMAP_WEEKS / 4.345)}m`;
+
+const seconds = (value: number) => `${(value / 1000).toFixed(1)}s`;
+const tokensPerSecond = (value: number) => `${Math.round(value)} tok/s`;
 
 const FACT_LINE = "flex items-baseline justify-between gap-3";
 const FACT_VALUE = "text-ink font-mono text-[10.5px] min-w-0 truncate";
@@ -137,6 +142,8 @@ export function PartnerDetailsDialog(props: {
 		};
 	}, [days]);
 
+	const heatmapDays = useMemo(() => days ?? activityWindow(HEATMAP_WEEKS), [days]);
+
 	const sessionUsage = stats?.usage ?? null;
 	const billed = sessionUsage ? sessionUsage.input + sessionUsage.cacheRead + sessionUsage.cacheWrite : 0;
 	const cacheShare = sessionUsage && billed > 0 ? (sessionUsage.cacheRead / billed) * 100 : null;
@@ -144,9 +151,9 @@ export function PartnerDetailsDialog(props: {
 	const ttftTitle = meanTtftMs != null ? `mean ${(meanTtftMs / 1000).toFixed(1)}s over ${stats?.runtime.turns ?? 0} turn${stats?.runtime.turns === 1 ? "" : "s"}` : undefined;
 
 	const metricCards = [
-		{ label: `Active days · ${ACTIVITY_WINDOW_SHORT}`, value: String(metrics.activeDays), delta: "tokens > 0" },
-		{ label: `Turns · ${ACTIVITY_WINDOW_SHORT}`, value: formatTokens(metrics.turns), delta: `${formatTokens(metrics.tools)} tools` },
-		{ label: `Tokens · ${ACTIVITY_WINDOW_SHORT}`, value: formatTokens(metrics.tokens), delta: `last ${ACTIVITY_WINDOW}` },
+		{ label: `Active days · ${ACTIVITY_WINDOW_SHORT}`, value: metrics.activeDays, format: digits, delta: "tokens > 0" },
+		{ label: `Turns · ${ACTIVITY_WINDOW_SHORT}`, value: metrics.turns, format: formatTokens, delta: `${formatTokens(metrics.tools)} tools` },
+		{ label: `Tokens · ${ACTIVITY_WINDOW_SHORT}`, value: metrics.tokens, format: formatTokens, delta: `last ${ACTIVITY_WINDOW}` },
 	];
 
 	return (
@@ -171,7 +178,9 @@ export function PartnerDetailsDialog(props: {
 								{metricCards.map((card) => (
 									<div className="border border-hairline bg-letter rounded-md px-3 py-2.5" key={card.label}>
 										<div className="font-sans text-[11px] uppercase tracking-[0.1em] text-muted">{card.label}</div>
-										<div className="font-mono text-[20px] text-ink leading-tight mt-1">{card.value}</div>
+										<div className="font-mono text-[20px] text-ink leading-tight mt-1">
+											<AnimatedNumber value={card.value} format={card.format} />
+										</div>
 										<div className="font-mono text-[10px] text-seal mt-0.5">{card.delta}</div>
 									</div>
 								))}
@@ -180,7 +189,9 @@ export function PartnerDetailsDialog(props: {
 							<div className="px-5 pt-2.5">
 								<div className={CARD + " p-3"}>
 									<p className="font-sans text-[11px] font-semibold uppercase tracking-[0.12em] text-muted mb-2">Activity · last {ACTIVITY_WINDOW}</p>
-									<div className="activity-slot">{days && <ActivityHeatmap days={days} />}</div>
+									<div className="activity-slot">
+										<ActivityHeatmap days={heatmapDays} />
+									</div>
 								</div>
 							</div>
 
@@ -233,7 +244,13 @@ export function PartnerDetailsDialog(props: {
 															: undefined
 													}
 												>
-													{sessionUsage ? `in ${formatTokens(sessionUsage.input)} · out ${formatTokens(sessionUsage.output)}` : "—"}
+													{sessionUsage ? (
+														<>
+															in <AnimatedNumber value={sessionUsage.input} format={formatTokens} /> · out <AnimatedNumber value={sessionUsage.output} format={formatTokens} />
+														</>
+													) : (
+														"—"
+													)}
 												</span>
 											</div>
 											<div className={FACT_LINE}>
@@ -242,19 +259,19 @@ export function PartnerDetailsDialog(props: {
 													className={FACT_VALUE}
 													title={cacheShare != null ? `cache read of billed tokens · ${formatTokens(sessionUsage?.cacheRead ?? 0)} of ${formatTokens(billed)}` : undefined}
 												>
-													{cacheShare != null ? `${cacheShare.toFixed(1)}%` : "—"}
+													{cacheShare != null ? <AnimatedNumber value={cacheShare} format={percent} /> : "—"}
 												</span>
 											</div>
 											<div className={FACT_LINE}>
 												<span className="text-[11px] text-body-muted">TTFT</span>
 												<span className={FACT_VALUE} title={ttftTitle}>
-													{stats?.runtime.lastTtftMs != null ? `${(stats.runtime.lastTtftMs / 1000).toFixed(1)}s` : "—"}
+													{stats?.runtime.lastTtftMs != null ? <AnimatedNumber value={stats.runtime.lastTtftMs} format={seconds} /> : "—"}
 												</span>
 											</div>
 											<div className={FACT_LINE}>
 												<span className="text-[11px] text-body-muted">Throughput</span>
 												<span className={FACT_VALUE} title="output ÷ generation time · session mean">
-													{stats?.runtime.avgTps != null ? `${Math.round(stats.runtime.avgTps)} tok/s` : "—"}
+													{stats?.runtime.avgTps != null ? <AnimatedNumber value={stats.runtime.avgTps} format={tokensPerSecond} /> : "—"}
 												</span>
 											</div>
 										</div>
@@ -283,7 +300,9 @@ export function PartnerDetailsDialog(props: {
 												<Tooltip delayDuration={120}>
 													<TooltipTrigger asChild>
 														<span tabIndex={-1} className={FACT_VALUE}>
-															<span className="underline decoration-dotted decoration-ink/30 underline-offset-2">{usage ? formatBytes(usage.bytes) : "-"}</span>
+															<span className="underline decoration-dotted decoration-ink/30 underline-offset-2">
+																{usage ? <AnimatedNumber value={usage.bytes} format={formatBytes} /> : "-"}
+															</span>
 														</span>
 													</TooltipTrigger>
 													<TooltipContent side="top" className="leading-snug">

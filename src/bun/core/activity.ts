@@ -1,33 +1,11 @@
 import type { Entry } from "@earendil-works/pi-agent-core";
+import { activityWindow, midnight } from "../../shared/activity";
 import type { PartnerActivityDay } from "../../shared/rpc";
 import { toUsage } from "../../shared/timeline";
 
-const DAY_MS = 86_400_000;
-
-function midnight(ts: number): number {
-	const d = new Date(ts);
-	d.setHours(0, 0, 0, 0);
-	return d.getTime();
-}
-
-function monday(ts: number): number {
-	const d = new Date(midnight(ts));
-	d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-	return d.getTime();
-}
-
 export function dailyActivity(entries: Entry[], weeks: number): PartnerActivityDay[] {
-	const today = midnight(Date.now());
-	const start = monday(today) - (Math.max(1, Math.min(weeks, 104)) - 1) * 7 * DAY_MS;
-	const cursor = new Date(start);
-	const days: PartnerActivityDay[] = [];
-	const byDay = new Map<number, PartnerActivityDay>();
-	while (cursor.getTime() <= today) {
-		const day = { ts: cursor.getTime(), tokens: 0, freshTokens: 0, turns: 0, tools: 0 };
-		days.push(day);
-		byDay.set(day.ts, day);
-		cursor.setDate(cursor.getDate() + 1);
-	}
+	const days = activityWindow(weeks);
+	const byDay = new Map(days.map((day) => [day.ts, day]));
 	for (const entry of entries) {
 		if (entry.type !== "message") continue;
 		const msg = entry.message;

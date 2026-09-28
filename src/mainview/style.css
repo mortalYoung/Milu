@@ -716,6 +716,12 @@ body::before {
 	}
 	.activity-cell {
 		@apply rounded-[1.5px] bg-hairline/60 hover:outline hover:outline-seal;
+		transition: background-color 240ms var(--ease-out);
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.activity-cell {
+			transition: none;
+		}
 	}
 	.hlv-1 {
 		background: color-mix(in srgb, var(--color-seal) 22%, transparent);

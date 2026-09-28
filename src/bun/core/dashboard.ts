@@ -1,4 +1,5 @@
 import { open, stat } from "node:fs/promises";
+import { midnight, monday } from "../../shared/activity";
 import type { DashboardMemorySizes, DashboardOverview, DashboardPartnerStats, DashboardRun, DashboardTotals, PartnerActivityDay } from "../../shared/rpc";
 import { getPartnerDir, loadSettings } from "../lib/settings";
 import { listPartners } from "../partners";
@@ -100,18 +101,6 @@ function quantile(sorted: number[], q: number): number | null {
 	return sorted[at] ?? null;
 }
 
-function midnight(ts: number): number {
-	const date = new Date(ts);
-	date.setHours(0, 0, 0, 0);
-	return date.getTime();
-}
-
-function mondayOf(ts: number): number {
-	const date = new Date(midnight(ts));
-	date.setDate(date.getDate() - ((date.getDay() + 6) % 7));
-	return date.getTime();
-}
-
 const EMPTY_DAY = (ts: number): PartnerActivityDay => ({ ts, tokens: 0, freshTokens: 0, turns: 0, tools: 0 });
 
 const sum = (xs: number[]) => xs.reduce((total, x) => total + x, 0);
@@ -189,7 +178,7 @@ export async function buildDashboardOverview(session: SessionReader, requestedDa
 
 	const recorded = [...merged.keys()].sort((a, b) => a - b);
 	const today = midnight(Date.now());
-	const start = mondayOf(today) - (DASHBOARD_HEATMAP_WEEKS - 1) * 7 * DAY_MS;
+	const start = monday(today) - (DASHBOARD_HEATMAP_WEEKS - 1) * 7 * DAY_MS;
 	const heatmap: PartnerActivityDay[] = [];
 	for (const cursor = new Date(start); cursor.getTime() <= today; cursor.setDate(cursor.getDate() + 1)) {
 		const ts = cursor.getTime();

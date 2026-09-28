@@ -8,7 +8,7 @@ import { useAgentStatus } from "../lib/contexts/agent-status-context";
 import { useDashboard } from "../lib/contexts/dashboard-context";
 import { useInbox } from "../lib/contexts/inbox-context";
 import { useSession } from "../lib/contexts/session-context";
-import { formatBytes, formatTokens } from "../lib/utils";
+import { digits, formatBytes, formatTokens, percent } from "../lib/utils";
 
 const CAP = "font-mono text-[9px] font-medium uppercase tracking-[0.16em] text-body-muted";
 const NUM = "font-mono tabular-nums";
@@ -64,9 +64,6 @@ function windows(days: PartnerActivityDay[], span: number) {
 		fresh: { now: sum(recent, (day) => day.freshTokens), before: sum(previous, (day) => day.freshTokens) },
 	};
 }
-
-const digits = (value: number) => Math.round(value).toLocaleString("en-US");
-const percent = (value: number) => `${value.toFixed(1)}%`;
 
 const isWorking = (writing: Record<string, boolean | undefined>, partners: { name: string; writing?: boolean }[], name: string) =>
 	writing[name] ?? partners.find((partner) => partner.name === name)?.writing ?? false;
