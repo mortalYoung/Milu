@@ -15,6 +15,8 @@ const SLOT_OPEN = "\uE000";
 const SLOT_CLOSE = "\uE001";
 const SLOT_RE = /\uE000(\d+)\uE001/g;
 const BLOCK_SLOT_RE = /<p>\s*\uE000(\d+)\uE001\s*<\/p>/g;
+const BLOCK_LEAD = "^([ \\t]*(?:[-*+]|\\d{1,9}[.)]|>)?[ \\t]*)";
+const BLOCK_TAIL = "[ \\t]*\\r?$";
 const CODE_OPEN = "\uE002";
 const CODE_CLOSE = "\uE003";
 const CODE_RE = /\uE002(\d+)\uE003/g;
@@ -99,31 +101,38 @@ export function extractHtmlSubset(source: string): { source: string; slots: Slot
 	let out = source.replace(FENCE_RE, stash).replace(CODE_SPAN_RE, stash);
 
 	// <div align="center"> … </div>
-	out = out.replace(/<div\s+([^>]*?)>([\s\S]*?)<\/div>/gi, (match, rawAttrs: string, inner: string) => {
+	out = out.replace(new RegExp(`${BLOCK_LEAD}<div\\s+([^>]*?)>([\\s\\S]*?)<\\/div>${BLOCK_TAIL}`, "gim"), (match, lead: string, rawAttrs: string, inner: string) => {
 		const align = (attributesOf(rawAttrs)["align"] ?? "").trim().toLowerCase();
 		if (align !== "center") return match;
-		return hold(true, (ctx) => `<div class="md-center">${ctx.render(inner)}</div>`);
+		return lead + hold(true, (ctx) => `<div class="md-center">${ctx.render(inner)}</div>`);
 	});
 
 	// <h1>…</h1> through <h6>
-	out = out.replace(/<h([1-6])(?:\s[^>]*)?>([\s\S]*?)<\/h\1>/gi, (_match, level: string, inner: string) =>
-		hold(true, (ctx) => `<h${level}>${ctx.renderInline(inner)}</h${level}>`),
+	out = out.replace(
+		new RegExp(`${BLOCK_LEAD}<h([1-6])(?:\\s[^>]*)?>([\\s\\S]*?)<\\/h\\2>${BLOCK_TAIL}`, "gim"),
+		(_match, lead: string, level: string, inner: string) => lead + hold(true, (ctx) => `<h${level}>${ctx.renderInline(inner)}</h${level}>`),
 	);
 
 	// <sub>…</sub> / <sup>…</sup>
 	out = out.replace(/<(sub|sup)(?:\s[^>]*)?>([\s\S]*?)<\/\1>/gi, (_match, tag: string, inner: string) => hold(false, (ctx) => `<${tag}>${ctx.renderInline(inner)}</${tag}>`));
 
 	// <details open?> … <summary>…</summary> …body… </details>
-	out = out.replace(/<details(\s[^>]*?)?>([\s\S]*?)<\/details>/gi, (_match, rawAttrs: string | undefined, inner: string) => {
-		const open = "open" in attributesOf(rawAttrs);
-		const summary = /<summary[^>]*>([\s\S]*?)<\/summary>/i.exec(inner);
-		const body = summary ? inner.slice(0, summary.index) + inner.slice(summary.index + summary[0].length) : inner;
-		const title = (summary?.[1] ?? "details").replace(/<[^>]*>/g, "").trim();
-		return hold(true, (ctx) => {
-			const label = summary ? ctx.renderInline(title) : escapeHtml(title);
-			return `<details${open ? " open" : ""}><summary>${label}</summary>${ctx.render(body)}</details>`;
-		});
-	});
+	out = out.replace(
+		new RegExp(`${BLOCK_LEAD}<details(\\s[^>]*?)?>([\\s\\S]*?)<\\/details>${BLOCK_TAIL}`, "gim"),
+		(_match, lead: string, rawAttrs: string | undefined, inner: string) => {
+			const open = "open" in attributesOf(rawAttrs);
+			const summary = /<summary[^>]*>([\s\S]*?)<\/summary>/i.exec(inner);
+			const body = summary ? inner.slice(0, summary.index) + inner.slice(summary.index + summary[0].length) : inner;
+			const title = (summary?.[1] ?? "details").replace(/<[^>]*>/g, "").trim();
+			return (
+				lead +
+				hold(true, (ctx) => {
+					const label = summary ? ctx.renderInline(title) : escapeHtml(title);
+					return `<details${open ? " open" : ""}><summary>${label}</summary>${ctx.render(body)}</details>`;
+				})
+			);
+		},
+	);
 
 	// <a name="x"></a> / <a id="x"></a> — an in-page jump target, invisible by nature.
 	out = out.replace(/<a\s+(?:name|id)\s*=\s*(?:"([^"]*)"|'([^']*)')\s*>\s*<\/a>/gi, (_match, double: string | undefined, single: string | undefined) => {

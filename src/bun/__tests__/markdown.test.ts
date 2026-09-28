@@ -138,3 +138,23 @@ describe("renderMarkdown emphasis-wrapped headings", () => {
 		expect(renderMarkdown("```md\n**## 业务系统的设计**\n```")).toContain("**## 业务系统的设计**");
 	});
 });
+
+describe("renderMarkdown HTML subset blocks", () => {
+	test("a block tag that owns its line is rendered", () => {
+		expect(renderMarkdown("<h2>x</h2>")).toContain("<h2>x</h2>");
+		expect(renderMarkdown('<div align="center">x</div>')).toContain('<div class="md-center">');
+		expect(renderMarkdown("- <details><summary>a</summary>b</details>")).toContain("<details><summary>a</summary>");
+	});
+
+	test("a block tag keeps its list marker", () => {
+		const html = renderMarkdown("- <h2>x</h2>");
+		expect(html).toContain("<ul>");
+		expect(html).toContain("<li><h2>x</h2></li>");
+	});
+
+	test("a block tag sharing its line with anything else stays text", () => {
+		expect(renderMarkdown("<li><h2>x</h2></li>")).toContain("&lt;li&gt;&lt;h2&gt;x&lt;/h2&gt;&lt;/li&gt;");
+		expect(renderMarkdown("文本 <h2>x</h2> 文本")).toContain("&lt;h2&gt;x&lt;/h2&gt;");
+		expect(renderMarkdown('文本 <div align="center">x</div> 文本')).not.toContain("md-center");
+	});
+});
