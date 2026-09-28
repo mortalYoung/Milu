@@ -42,6 +42,7 @@ export interface Settings {
 	skills_watch_delay_ms?: number;
 	sendMessageIntervalSec?: number | null;
 	shellContinuous?: boolean;
+	rememberSession?: boolean;
 	memoryEnabled?: boolean;
 	memoryIdleMinutes?: number;
 	memoryMaxScenes?: number;
@@ -79,6 +80,7 @@ const DEFAULT_SETTINGS: Settings = {
 	skills_watch: true,
 	skills_watch_delay_ms: 300,
 	shellContinuous: true,
+	rememberSession: true,
 	memoryEnabled: true,
 	memoryIdleMinutes: 5,
 	memoryMaxScenes: DEFAULT_MEMORY_MAX_SCENES,

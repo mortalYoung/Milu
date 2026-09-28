@@ -40,6 +40,7 @@ const DEFAULTS = {
 	skills_watch: true,
 	skills_watch_delay_ms: 300,
 	shellContinuous: true,
+	rememberSession: true,
 	memoryEnabled: true,
 	memoryIdleMinutes: 5,
 	memoryMaxScenes: 15,
@@ -219,6 +220,7 @@ export function SettingsView() {
 	const [skillsWatch, setSkillsWatch] = useState(() => initial?.skills_watch ?? DEFAULTS.skills_watch);
 	const [skillsWatchDelay, setSkillsWatchDelay] = useState(() => String(initial?.skills_watch_delay_ms ?? DEFAULTS.skills_watch_delay_ms));
 	const [shellContinuous, setShellContinuous] = useState(() => initial?.shellContinuous ?? DEFAULTS.shellContinuous);
+	const [rememberSession, setRememberSession] = useState(() => initial?.rememberSession ?? DEFAULTS.rememberSession);
 	const [memoryEnabled, setMemoryEnabled] = useState(() => initial?.memoryEnabled ?? DEFAULTS.memoryEnabled);
 	const [memoryIdleMinutes, setMemoryIdleMinutes] = useState(() => String(initial?.memoryIdleMinutes ?? DEFAULTS.memoryIdleMinutes));
 	const [memoryMaxScenes, setMemoryMaxScenes] = useState(() => String(initial?.memoryMaxScenes ?? DEFAULTS.memoryMaxScenes));
@@ -274,6 +276,7 @@ export function SettingsView() {
 			if (typeof s.skills_watch === "boolean") setSkillsWatch(s.skills_watch);
 			if (typeof s.skills_watch_delay_ms === "number") setSkillsWatchDelay(String(s.skills_watch_delay_ms));
 			if (typeof s.shellContinuous === "boolean") setShellContinuous(s.shellContinuous);
+			if (typeof s.rememberSession === "boolean") setRememberSession(s.rememberSession);
 			if (typeof s.memoryEnabled === "boolean") setMemoryEnabled(s.memoryEnabled);
 			if (typeof s.memoryMaxScenes === "number") setMemoryMaxScenes(String(s.memoryMaxScenes));
 			if (typeof s.memoryIdleMinutes === "number") setMemoryIdleMinutes(String(s.memoryIdleMinutes));
@@ -320,6 +323,7 @@ export function SettingsView() {
 			skills_watch_delay_ms: parsePositiveInt(skillsWatchDelay, DEFAULTS.skills_watch_delay_ms),
 			sendMessageIntervalSec: deliveryMode === "unlimited" ? null : parsedDeliverySec(),
 			shellContinuous,
+			rememberSession,
 			memoryEnabled,
 			memoryIdleMinutes: parsePositiveInt(memoryIdleMinutes, DEFAULTS.memoryIdleMinutes),
 			memoryMaxScenes: parsePositiveInt(memoryMaxScenes, DEFAULTS.memoryMaxScenes),
@@ -1112,6 +1116,22 @@ export function SettingsView() {
 					onChange={(on) => {
 						setShellContinuous(on);
 						void persist({ ...currentSettings(), shellContinuous: on });
+					}}
+				/>
+			),
+		},
+		{
+			id: "rememberSession",
+			title: "Remember last session",
+			desc: "On launch, reopen the conversation you had open and put the window back where it was.",
+			cats: ["general"],
+			modified: rememberSession !== DEFAULTS.rememberSession,
+			control: (
+				<SwitchToggle
+					checked={rememberSession}
+					onChange={(on) => {
+						setRememberSession(on);
+						void persist({ ...currentSettings(), rememberSession: on });
 					}}
 				/>
 			),

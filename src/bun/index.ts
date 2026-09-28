@@ -69,6 +69,7 @@ import { ensureModel, ensureSandboxMode, ensureStoragePath, ensureWorkspace, has
 import { listChildren, readFilePreview, readImageDataUrl } from "./lib/explorer";
 import { createFileWatch } from "./lib/file-watch";
 import { gitChanges, gitDiff, gitFileSides, gitOverview, gitWorktrees } from "./lib/git-changes";
+import { clearLastSession, type LastSession, readLastSession, type WindowFrame, writeLastSession } from "./lib/last-session";
 import { listInstalledEditors, openInCodeEditor } from "./lib/open-in-editor";
 import {
 	partnerDirFor,
@@ -2129,6 +2130,8 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					}
 					await saveSettings(settings);
 					settingsCache = settings;
+					rememberSession = settings.rememberSession !== false;
+					if (!rememberSession) clearLastSession();
 					void armSkillsWatchers();
 					for (const removed of prevProviders.filter((p) => !nextProviders.includes(p))) {
 						await deleteApiKey(removed);
@@ -2417,8 +2420,13 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					viewPartner = null;
 					void armSkillsWatchers();
 				}
+				if (rememberSession) {
+					lastSession = { ...lastSession, partner: profile?.name ?? null };
+					writeLastSession(lastSession);
+				}
 				return { ok: true };
 			},
+			last_partner: () => ({ partner: rememberSession ? lastSession.partner : null }),
 			duplicate_partner: async ({ name }) => copyPartnerRpc(name, "duplicate"),
 			fork_partner: async ({ name }) => copyPartnerRpc(name, "fork"),
 			promote_partner: async ({ name }) => promotePartnerRpc(name),
@@ -2578,6 +2586,11 @@ void armSkillsWatchers();
 
 let restoreFrame: { x: number; y: number; width: number; height: number } | null = null;
 
+const DEFAULT_FRAME: WindowFrame = { x: 120, y: 60, width: 1200, height: 800 };
+let rememberSession = startupSettings.rememberSession !== false;
+let lastSession: LastSession = (rememberSession ? readLastSession() : null) ?? { frame: DEFAULT_FRAME, maximized: false, partner: null };
+let frameTimer: ReturnType<typeof setTimeout> | undefined;
+
 const mainWindow: BrowserWindow = new BrowserWindow({
 	title: "Letters",
 
@@ -2585,17 +2598,26 @@ const mainWindow: BrowserWindow = new BrowserWindow({
 	trafficLightOffset: { x: 0, y: 10 },
 	url: "views://mainview/index.html",
 	rpc,
-	frame: {
-		width: 1200,
-		height: 800,
-		x: 120,
-		y: 60,
-	},
+	frame: { ...lastSession.frame },
 });
+
+if (lastSession.maximized) mainWindow.maximize();
+
+function rememberWindowFrame(): void {
+	if (!rememberSession) return;
+	lastSession = { ...lastSession, frame: mainWindow.getFrame(), maximized: mainWindow.isMaximized() };
+	clearTimeout(frameTimer);
+	frameTimer = setTimeout(() => writeLastSession(lastSession), 400);
+}
+
+mainWindow.on("resize", rememberWindowFrame);
+mainWindow.on("move", rememberWindowFrame);
 
 electrobunApp.on("before-quit", () => {
 	taskRegistry.reapAll();
 	fileWatch.stop();
+	clearTimeout(frameTimer);
+	if (rememberSession) writeLastSession({ ...lastSession, frame: mainWindow.getFrame(), maximized: mainWindow.isMaximized() });
 });
 mainWindow.on("focus", () => {
 	appFocused = true;

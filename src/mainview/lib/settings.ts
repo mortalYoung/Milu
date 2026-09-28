@@ -18,6 +18,7 @@ export interface SettingsData {
 	skills_watch_delay_ms?: number;
 	sendMessageIntervalSec?: number | null;
 	shellContinuous?: boolean;
+	rememberSession?: boolean;
 	memoryEnabled?: boolean;
 	memoryIdleMinutes?: number;
 	memoryMaxScenes?: number;

@@ -41,6 +41,7 @@ export type Session = ReturnType<typeof createSession>;
 
 export function createSession(rpc: RPC) {
 	const store = createStore<SessionData>()(() => ({ selected: null, partners: [], origin: EMPTY_ORIGIN }));
+	let resumeChecked = false;
 	const historyLoading = createInFlightBoolean();
 	const partnersLoading = createInFlightBoolean();
 
@@ -144,9 +145,19 @@ export function createSession(rpc: RPC) {
 			if (seq !== partnersRefreshSeq) return;
 			store.setState({ partners: list });
 			if (get().selected != null && !list.some((p) => p.name === get().selected)) select(null);
+			else void reopenLastChat(list);
 		} finally {
 			partnersLoading.end();
 		}
+	}
+
+	async function reopenLastChat(list: PartnerItem[]) {
+		if (resumeChecked) return;
+		resumeChecked = true;
+		const { partner: name } = await rpc.request.last_partner({});
+		if (name === null || get().selected != null) return;
+		const partner = list.find((p) => p.name === name);
+		if (partner) select(partner);
 	}
 
 	function select(partner: PartnerItem | null) {

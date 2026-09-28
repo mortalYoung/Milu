@@ -826,6 +826,7 @@ export type AppRPCSchema = __schema<{
 						skills_watch_delay_ms?: number;
 						sendMessageIntervalSec?: number | null;
 						shellContinuous?: boolean;
+						rememberSession?: boolean;
 						memoryEnabled?: boolean;
 						memoryIdleMinutes?: number;
 						memoryMaxScenes?: number;
@@ -871,6 +872,7 @@ export type AppRPCSchema = __schema<{
 						skills_watch_delay_ms?: number;
 						sendMessageIntervalSec?: number | null;
 						shellContinuous?: boolean;
+						rememberSession?: boolean;
 						memoryEnabled?: boolean;
 						memoryIdleMinutes?: number;
 						memoryMaxScenes?: number;
@@ -1013,6 +1015,11 @@ export type AppRPCSchema = __schema<{
 					profile: { name: string; persona?: string } | null;
 				};
 				response: { ok: boolean };
+			};
+
+			last_partner: {
+				params: Record<string, never>;
+				response: { partner: string | null };
 			};
 
 			set_menu_state: {
