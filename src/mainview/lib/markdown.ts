@@ -20,6 +20,7 @@ import MarkdownIt, { type Env, type MarkdownIt as MarkdownItType, type Renderer,
 import { parseLineRange, resolveMentionToken, workspacePath, workspaceRelativePath } from "../../shared/file-mentions";
 import type { Dock } from "./dock";
 import { extractHtmlSubset, renderImageHtml, restoreHtmlSubset, type SubsetEnv } from "./markdown-html";
+import { normalizeMarkdownSource } from "./markdown-source";
 import type { RPC } from "./rpc";
 import { clearTokenCache } from "./shiki-remote";
 import { getHighlighter, getHighlightLimits, type HighlightLimits, SHIKI_OPTIONS, setHighlightLimits as setLimits } from "./shiki-setup";
@@ -373,7 +374,7 @@ function envFor(files?: readonly string[], images?: ReadonlyMap<string, string>)
 /** One render: HTML is drawn from an allowlist around markdown, never passed through raw.
  * Recursion carries raw HTML (no copy buttons) so the outer pass wraps each block exactly once. */
 function renderWith(md: MarkdownItType, src: string, env: Env): string {
-	const { source, slots } = extractHtmlSubset(src);
+	const { source, slots } = extractHtmlSubset(normalizeMarkdownSource(src));
 	const html = md.render(source, env);
 	return restoreHtmlSubset(html, slots, {
 		env: env as SubsetEnv,

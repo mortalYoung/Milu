@@ -114,3 +114,27 @@ describe("renderMarkdown code blocks (shiki highlighting)", () => {
 		expect(html).not.toContain("<script>alert");
 	});
 });
+
+describe("renderMarkdown emphasis-wrapped headings", () => {
+	test("**## x** becomes a heading that keeps the emphasis", () => {
+		const html = renderMarkdown("**## 业务系统的设计**\n\n正文。");
+		expect(html).toContain("<h2><strong>业务系统的设计</strong></h2>");
+		expect(html).not.toContain("## 业务系统的设计</strong>");
+	});
+
+	test("the level comes from the hashes inside", () => {
+		expect(renderMarkdown("**### 1.2 数据模型**")).toContain("<h3><strong>1.2 数据模型</strong></h3>");
+		expect(renderMarkdown("__# 标题__")).toContain("<h1><strong>标题</strong></h1>");
+	});
+
+	test("mid-sentence emphasis is left alone", () => {
+		const html = renderMarkdown("这段说明 **## 不是** 标题语法。");
+		expect(html).toContain("<p>");
+		expect(html).toContain("<strong>## 不是</strong>");
+		expect(html).not.toContain("<h2>");
+	});
+
+	test("a code fence keeps its sample verbatim", () => {
+		expect(renderMarkdown("```md\n**## 业务系统的设计**\n```")).toContain("**## 业务系统的设计**");
+	});
+});
