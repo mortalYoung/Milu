@@ -2596,7 +2596,6 @@ const mainWindow: BrowserWindow = new BrowserWindow({
 electrobunApp.on("before-quit", () => {
 	taskRegistry.reapAll();
 	fileWatch.stop();
-	void sandbox.release();
 });
 mainWindow.on("focus", () => {
 	appFocused = true;

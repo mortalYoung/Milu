@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { writableRoots } from "../roots";
+import { join } from "node:path";
+import { gitRoots, writableRoots } from "../roots";
 import type { ConfinedArgv, PermissionPolicy, SandboxBackend } from "../types";
 
 const SEATBELT = "/usr/bin/sandbox-exec";
@@ -18,6 +19,10 @@ export function seatbeltProfileArgs(policy: PermissionPolicy): string[] {
 		const subpaths = roots.map((r) => `(subpath "${sbplEscape(r)}")`).join(" ");
 		forms.push(`(allow file-write* ${subpaths})`);
 	}
+	const hooks = gitRoots(policy.workspace)
+		.map((root) => `(subpath "${sbplEscape(join(root, "hooks"))}")`)
+		.join(" ");
+	if (hooks !== "") forms.push(`(deny file-write* ${hooks})`);
 	return ["-p", forms.join(" ")];
 }
 

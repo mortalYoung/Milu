@@ -7,7 +7,6 @@ import { Permission, PermissionError, SandboxUnavailableError, sandboxDenialMark
 
 export interface SandboxedExecOptions extends ShellExecOptions {
 	sandboxMode?: SandboxMode;
-	commandId?: string;
 }
 
 export interface RunningProcess {
@@ -85,15 +84,13 @@ export function createExecutionEnv(cwd: string, permission?: Permission): TaskEx
 		let denialSignatures: string[] = [];
 		let runnerFailureRules: string[] = [];
 		let marker: string | undefined;
-		let confinedEnv: NodeJS.ProcessEnv | undefined;
 		if (permission) {
 			const mode = opts.sandboxMode ?? permission.getMode();
 			try {
-				const confined = await permission.confine(argv, { sandboxMode: mode, ...(opts.commandId ? { commandId: opts.commandId } : {}) });
+				const confined = await permission.confine(argv, { sandboxMode: mode });
 				argv = confined.argv;
 				denialSignatures = confined.denialSignatures;
 				runnerFailureRules = confined.runnerFailureRules;
-				confinedEnv = confined.env;
 				if (confined.enforcement !== "none") marker = sandboxDenialMarker(mode);
 			} catch (e) {
 				if (e instanceof SandboxUnavailableError) {
@@ -103,7 +100,6 @@ export function createExecutionEnv(cwd: string, permission?: Permission): TaskEx
 			}
 		}
 		const env = opts.inheritEnv === false ? { ...(opts.env ?? {}) } : { ...process.env, ...(opts.env ?? {}) };
-		if (confinedEnv) Object.assign(env, confinedEnv);
 		return ok({ argv, env, denialSignatures, runnerFailureRules, marker });
 	};
 
@@ -358,11 +354,10 @@ export function createExecutionEnv(cwd: string, permission?: Permission): TaskEx
 				if (runnerFailureRules.some((r) => lower.includes(r.toLowerCase()))) {
 					return err(new ExecutionError("spawn_error", "sandbox unavailable — the sandbox runner failed before executing the command"));
 				}
-				const noted = opts.commandId && permission ? permission.annotateStderr(opts.commandId, stderr) : stderr;
 				if (marker && denialSignatures.some((r) => lower.includes(r.toLowerCase()))) {
-					return ok({ stdout, stderr: noted ? `${noted}\n${marker}` : marker, exitCode });
+					return ok({ stdout, stderr: stderr ? `${stderr}\n${marker}` : marker, exitCode });
 				}
-				return ok({ stdout, stderr: noted, exitCode });
+				return ok({ stdout, stderr, exitCode });
 			} catch (e) {
 				if (opts.abortSignal?.aborted) {
 					return err(new ExecutionError("aborted", "Command aborted"));

@@ -50,18 +50,10 @@ export class Permission {
 		return commandMentionsSensitive(command) ? deny("sensitive_file", "Sensitive file access is not allowed (except inside the storage path)") : { allowed: true };
 	}
 
-	async confine(argv: string[], options?: { sandboxMode?: SandboxMode; commandId?: string }): Promise<ConfinedArgv> {
+	async confine(argv: string[], options?: { sandboxMode?: SandboxMode }): Promise<ConfinedArgv> {
 		if (!this.sandbox) return { argv, enforcement: "none", denialSignatures: [], runnerFailureRules: [] };
 		const mode = options?.sandboxMode ?? this.getMode();
-		return this.sandbox.confine(argv, { ...this.policy(), mode }, options?.commandId ? { commandId: options.commandId } : undefined);
-	}
-
-	async release(): Promise<void> {
-		await this.sandbox?.release();
-	}
-
-	annotateStderr(commandId: string, stderr: string): string {
-		return this.sandbox?.annotateStderr(commandId, stderr) ?? stderr;
+		return this.sandbox.confine(argv, { ...this.policy(), mode });
 	}
 
 	escalate(request: { command: string; to: SandboxMode; justification: string; toolCallId: string }): Promise<EscalationResult> {
@@ -97,7 +89,6 @@ export type {
 	PermissionPolicy,
 	SandboxBackend,
 	SandboxMode,
-	SandboxNetwork,
 } from "./types";
 export { PermissionError } from "./types";
 export { sandboxFilePath, validateWorkspace, workspaceFilePath } from "./workspace";

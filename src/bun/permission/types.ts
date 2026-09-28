@@ -9,32 +9,18 @@ export interface PermissionPolicy {
 	mode: SandboxMode;
 }
 
-export interface SandboxNetwork {
-	allowedDomains: string[];
-	deniedDomains: string[];
-	allowLocalBinding: boolean;
-	allowUnixSockets: string[];
-}
-
-export interface ConfineCall {
-	commandId?: string;
-}
-
 export interface ConfinedArgv {
 	argv: string[];
 	enforcement: "full" | "partial" | "none";
 	denialSignatures: string[];
 	runnerFailureRules: string[];
-	env?: NodeJS.ProcessEnv;
 }
 
 export interface SandboxBackend {
 	readonly id: string;
 	readonly platforms: NodeJS.Platform[];
 	probe(): boolean;
-	confine(argv: string[], policy: PermissionPolicy, call?: ConfineCall): Promise<ConfinedArgv>;
-	release?(): Promise<void>;
-	annotateStderr?(commandId: string, stderr: string): string;
+	confine(argv: string[], policy: PermissionPolicy): Promise<ConfinedArgv>;
 }
 
 export interface EscalationRequest {

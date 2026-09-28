@@ -11,7 +11,6 @@ them, each with its own desk, memory, and mail.
 [![][electrobun-shield]][electrobun-link]
 [![][typescript-shield]][typescript-link]
 [![][tailwind-shield]][tailwind-link]<br/>
-[![][srt-shield]][srt-link]
 [![][mcp-shield]][mcp-link]
 
 [Design system](./DESIGN.md) · [Repo conventions](./CLAUDE.md) · [Icon pipeline](./assets/README.md) · [Report Bug][github-issues-link]
@@ -62,9 +61,9 @@ One decision underneath all of it: the agent as correspondent, not chat box.
   scheduler, and a self-healing cursor.
 - **Letters between letters** — `peer { op: "list" | "ask" }`, answers delivered into
   the asker's own conversation, a four-hop cap on an exchange.
-- **Kernel-level confinement** — file writes and the network both fenced, a closed
-  network by default, a host allowlist in settings, human approval for one wider
-  command, the reason attached to every refusal.
+- **Kernel-level confinement** — writes outside the workspace and the storage are
+  denied by the kernel, a git repository's hooks stay read-only, one wider command
+  needs human approval, and the refusal says what it was.
 - **Everything as a log** — append-only JSONL sessions, the transcript as a
   projection of that file, any view rebuildable from it.
 - **An inspectable desk** — a per-partner dashboard (turns, tokens, TTFT, memory on
@@ -77,7 +76,7 @@ One decision underneath all of it: the agent as correspondent, not chat box.
 
 <div align="center">
 
-**Built on** — [pi](https://pi.dev) · [pi-agent-core](https://www.npmjs.com/package/@earendil-works/pi-agent-core) · [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai) · [Electrobun](https://electrobun.dev) · [sandbox-runtime](https://github.com/anthropics/sandbox-runtime) · [MCP](https://modelcontextprotocol.io) · [CodeMirror](https://codemirror.net/) · [Shiki](https://shiki.style/)
+**Built on** — [pi](https://pi.dev) · [pi-agent-core](https://www.npmjs.com/package/@earendil-works/pi-agent-core) · [pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai) · [Electrobun](https://electrobun.dev) · [MCP](https://modelcontextprotocol.io) · [CodeMirror](https://codemirror.net/) · [Shiki](https://shiki.style/)
 
 <sub>Made with a fountain pen.</sub>
 
@@ -92,7 +91,5 @@ One decision underneath all of it: the agent as correspondent, not chat box.
 [typescript-link]: https://www.typescriptlang.org
 [tailwind-shield]: https://img.shields.io/badge/Tailwind-v4-38bdf8?labelColor=black&logo=tailwindcss&logoColor=white&style=flat-square
 [tailwind-link]: https://tailwindcss.com
-[srt-shield]: https://img.shields.io/badge/sandbox--runtime-0.0.77-b03a2e?labelColor=black&style=flat-square
-[srt-link]: https://github.com/anthropics/sandbox-runtime
 [mcp-shield]: https://img.shields.io/badge/MCP-stdio-2f6f9f?labelColor=black&style=flat-square
 [mcp-link]: https://modelcontextprotocol.io

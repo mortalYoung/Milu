@@ -135,17 +135,6 @@ export interface GlobalSkillDescriptor {
 	grantedPartners: string[];
 }
 
-export interface SandboxNetworkSettings {
-	allowedDomains?: string[];
-	deniedDomains?: string[];
-	allowLocalBinding?: boolean;
-	allowUnixSockets?: string[];
-}
-
-export interface SandboxSettings {
-	network?: SandboxNetworkSettings;
-}
-
 export type RailView = "chat" | "skills" | "dashboard";
 
 export type EscalationStatus = "pending" | "approved" | "rejected" | "dropped";
@@ -855,7 +844,6 @@ export type AppRPCSchema = __schema<{
 						explorer?: { lineGap?: number; fold?: { braces?: boolean; markdown?: boolean } };
 						highlight?: { tokenizeMaxLineLength?: number; tokenizeTimeLimit?: number };
 						palette?: { searchIgnoreDirs?: string[] };
-						sandbox?: SandboxSettings;
 						dockSide?: "left" | "right";
 					};
 					runtime: {
@@ -901,7 +889,6 @@ export type AppRPCSchema = __schema<{
 						explorer?: { lineGap?: number; fold?: { braces?: boolean; markdown?: boolean } };
 						highlight?: { tokenizeMaxLineLength?: number; tokenizeTimeLimit?: number };
 						palette?: { searchIgnoreDirs?: string[] };
-						sandbox?: SandboxSettings;
 						dockSide?: "left" | "right";
 					};
 
