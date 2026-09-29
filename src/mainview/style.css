@@ -306,12 +306,15 @@ body::before {
 	}
 
 	.conv-pane {
-		@apply w-60 shrink-0 h-full overflow-hidden;
+		@apply shrink-0 h-full overflow-hidden;
 		transition: width 220ms var(--ease-out);
 	}
 	.conv-pane.collapsed {
 		@apply w-0;
 		transition: width 180ms var(--ease-out);
+	}
+	.chat-page:has(.conv-grip.dragging) .conv-pane {
+		transition: none;
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.conv-pane,
@@ -1790,6 +1793,10 @@ body::before {
 	.dock-grip.dragging i {
 		width: 2px;
 		background: var(--color-seal);
+	}
+	/* The chat list sits on paper, and its grip is the divider the pane's own border used to draw. */
+	.conv-grip {
+		background: var(--color-paper);
 	}
 	.dock-grip:focus-visible {
 		outline: none;

@@ -6,6 +6,7 @@ import { AppRail } from "./components/AppRail";
 import { CommandPalette } from "./components/CommandPalette";
 import { Composer } from "./components/Composer";
 import { ConversationList } from "./components/ConversationList";
+import { DockGrip } from "./components/DockGrip";
 import { ExplorerDrawer } from "./components/ExplorerDrawer";
 import { GitChangesDrawer } from "./components/GitChangesDrawer";
 import { PartnerDetailsDialog } from "./components/PartnerDetailsDialog";
@@ -53,8 +54,10 @@ import {
 	transcript,
 	unread,
 } from "./lib/controllers";
+import { LIST_DEFAULT, LIST_MAX, LIST_MIN } from "./lib/dock";
 import { ESCAPE_ORDER, type EscapeLayer, escapeTop } from "./lib/escape";
 import { useFindRouter } from "./lib/find";
+import { GRIP_WIDTH } from "./lib/grip";
 import { useKeybindings } from "./lib/keybindings";
 import { warmUpMarkdown } from "./lib/markdown";
 import type { PartnerFormData } from "./lib/partner-form";
@@ -115,6 +118,8 @@ function onOpenPath(path: string, editorId?: string) {
 	});
 }
 
+const CHAT_MIN_WIDTH = 592;
+
 function ChatView(props: {
 	selected: string | null;
 	editors: { id: string; name: string }[];
@@ -151,7 +156,11 @@ function ChatView(props: {
 	const taskVersion = useStore(tasksCtl.store, (state) => state.version);
 	const taskOutput = useStore(tasksCtl.store, (state) => state.output);
 	const taskList = useStore(tasksCtl.store, (state) => state.tasks);
+	const listWidth = useStore(dock.store, (state) => state.listWidth);
 	const composerObserver = useRef<ResizeObserver | null>(null);
+	const rowObserver = useRef<ResizeObserver | null>(null);
+	const rowEl = useRef<HTMLDivElement>(null);
+	const [rowWidth, setRowWidth] = useState(0);
 
 	const selected = props.selected;
 	const panel = selected ? (panels[selected] ?? null) : null;
@@ -169,7 +178,24 @@ function ChatView(props: {
 		setComposerHeight(el.clientHeight);
 	}
 
-	useEffect(() => () => composerObserver.current?.disconnect(), []);
+	function bindRow(el: HTMLDivElement | null) {
+		rowEl.current = el;
+		rowObserver.current?.disconnect();
+		rowObserver.current = null;
+		if (!el) return;
+		const observer = new ResizeObserver(() => setRowWidth(el.clientWidth));
+		observer.observe(el);
+		rowObserver.current = observer;
+		setRowWidth(el.clientWidth);
+	}
+
+	useEffect(
+		() => () => {
+			composerObserver.current?.disconnect();
+			rowObserver.current?.disconnect();
+		},
+		[],
+	);
 
 	useEffect(() => {
 		if (!workspaceReady) return;
@@ -200,9 +226,12 @@ function ChatView(props: {
 		return partner?.lastMessageAt != null && partner.lastMessageAt > (readAt[name] ?? 0);
 	};
 
+	const listMax = rowWidth === 0 ? LIST_MAX : Math.max(LIST_MIN, Math.min(LIST_MAX, rowWidth - CHAT_MIN_WIDTH - GRIP_WIDTH));
+	const listWidthNow = Math.min(listWidth, listMax);
+
 	return (
-		<div className="chat-page">
-			<div className={"conv-pane" + (props.listCollapsed ? " collapsed" : "")} inert={props.listCollapsed}>
+		<div className="chat-page" ref={bindRow}>
+			<div className={"conv-pane" + (props.listCollapsed ? " collapsed" : "")} style={{ width: props.listCollapsed ? undefined : listWidthNow }} inert={props.listCollapsed}>
 				<ConversationList
 					partners={partners}
 					loading={partnersLoading}
@@ -217,6 +246,20 @@ function ChatView(props: {
 					onPromote={(name) => void onPromotePartner(name)}
 				/>
 			</div>
+			{!props.listCollapsed && (
+				<DockGrip
+					class="conv-grip"
+					host={() => rowEl.current}
+					width={() => listWidthNow}
+					min={LIST_MIN}
+					max={listMax}
+					side="left"
+					label="Resize the chat list"
+					half={() => LIST_DEFAULT}
+					onResize={dock.setListWidth}
+					onCommit={dock.commitListWidth}
+				/>
+			)}
 			<div className="chat-window">
 				{selected ? (
 					<div className={"chat-body" + (btwAnchor ? " btw-open" : "")}>

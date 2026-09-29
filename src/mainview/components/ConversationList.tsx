@@ -269,12 +269,7 @@ export function ConversationList(props: {
 		});
 
 	return (
-		<aside
-			className="w-60 shrink-0 h-full bg-paper border-r border-hairline flex flex-col pl-3 pt-3"
-			ref={attachRoot}
-			tabIndex={-1}
-			onClick={(event) => event.currentTarget.focus()}
-		>
+		<aside className="w-full shrink-0 h-full bg-paper flex flex-col pl-3 pt-3" ref={attachRoot} tabIndex={-1} onClick={(event) => event.currentTarget.focus()}>
 			<div className="conv-list-search">
 				<input
 					ref={searchRef}

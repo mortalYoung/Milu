@@ -16,6 +16,7 @@ export interface RevealTarget {
 
 const LETTER_WIDTH_KEY = "explorer.letterWidth";
 const PANE_WIDTH_KEY = "dock.paneWidth";
+const LIST_WIDTH_KEY = "chatlist.width";
 const WRAP_KEY = "reader.wrap";
 const SIDE_BY_SIDE_KEY = "reader.sideBySide";
 const IGNORE_WS_KEY = "reader.ignoreWhitespace";
@@ -23,6 +24,9 @@ const IGNORE_WS_KEY = "reader.ignoreWhitespace";
 export const DOCK_PANE_MIN = 200;
 export const DOCK_PANE_MAX = 420;
 export const DOCK_PANE_DEFAULT = 280;
+export const LIST_MIN = 200;
+export const LIST_MAX = 480;
+export const LIST_DEFAULT = 240;
 
 export interface DockState {
 	panels: Record<string, DockPanel | null>;
@@ -30,6 +34,7 @@ export interface DockState {
 	pins: Record<string, Partial<Record<DockPanel, boolean>>>;
 	paneWidth: number;
 	letterWidth: number | null;
+	listWidth: number;
 	wrap: boolean;
 	sideBySide: boolean;
 	ignoreWhitespace: boolean;
@@ -45,6 +50,11 @@ function storedPaneWidth(): number {
 	return Number.isFinite(stored) && stored > 0 ? clampPaneWidth(stored, DOCK_PANE_MIN, DOCK_PANE_MAX) : DOCK_PANE_DEFAULT;
 }
 
+function storedListWidth(): number {
+	const stored = Number(localStorage.getItem(LIST_WIDTH_KEY));
+	return Number.isFinite(stored) && stored > 0 ? clampPaneWidth(stored, LIST_MIN, LIST_MAX) : LIST_DEFAULT;
+}
+
 export function createDock(options: { onOpen?: () => void; partner?: () => string | null } = {}) {
 	const store = createStore<DockState>()(() => ({
 		panels: {},
@@ -52,6 +62,7 @@ export function createDock(options: { onOpen?: () => void; partner?: () => strin
 		pins: {},
 		paneWidth: storedPaneWidth(),
 		letterWidth: storedLetterWidth(),
+		listWidth: storedListWidth(),
 		wrap: localStorage.getItem(WRAP_KEY) !== "0",
 		sideBySide: localStorage.getItem(SIDE_BY_SIDE_KEY) !== "0",
 		ignoreWhitespace: localStorage.getItem(IGNORE_WS_KEY) === "1",
@@ -110,6 +121,14 @@ export function createDock(options: { onOpen?: () => void; partner?: () => strin
 		localStorage.setItem(PANE_WIDTH_KEY, String(Math.round(store.getState().paneWidth)));
 	}
 
+	function setListWidth(width: number) {
+		store.setState({ listWidth: width });
+	}
+
+	function commitListWidth() {
+		localStorage.setItem(LIST_WIDTH_KEY, String(Math.round(store.getState().listWidth)));
+	}
+
 	function toggleWrap() {
 		store.setState((state) => {
 			localStorage.setItem(WRAP_KEY, state.wrap ? "0" : "1");
@@ -152,6 +171,8 @@ export function createDock(options: { onOpen?: () => void; partner?: () => strin
 		commitLetterWidth,
 		setPaneWidth,
 		commitPaneWidth,
+		setListWidth,
+		commitListWidth,
 		toggleWrap,
 		toggleSideBySide,
 		toggleIgnoreWhitespace,
