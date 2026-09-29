@@ -53,6 +53,12 @@ export function DockShell(props: {
 	const canPin = rowWidth >= PIN_MIN;
 	const letterHost = () => dockEl.current?.parentElement ?? null;
 
+	function halfWidth() {
+		const row = letterHost();
+		if (!row) return 0;
+		return Math.round((row.clientWidth - GRIP_WIDTH) / 2);
+	}
+
 	function letterWidthNow() {
 		const row = letterHost();
 		const dock = dockEl.current;
@@ -135,6 +141,7 @@ export function DockShell(props: {
 					max={letterMax}
 					side={props.side === "right" ? "left" : "right"}
 					label="Resize the letter column"
+					half={halfWidth}
 					onResize={props.setLetterWidth}
 					onCommit={props.commitLetterWidth}
 				/>
@@ -149,6 +156,7 @@ export function DockShell(props: {
 					max={props.max}
 					side={props.side}
 					label={props.resizeLabel}
+					half={halfWidth}
 					onResize={props.onResize}
 					onCommit={props.onCommit}
 				/>

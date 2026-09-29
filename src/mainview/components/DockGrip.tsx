@@ -12,6 +12,7 @@ export function DockGrip(props: {
 	side: "left" | "right";
 	label: string;
 	class?: string;
+	half: () => number;
 	onResize: (width: number) => void;
 	onCommit: () => void;
 }) {
@@ -51,6 +52,13 @@ export function DockGrip(props: {
 		props.onCommit();
 	};
 
+	const onDoubleClick = () => {
+		const target = props.half();
+		if (target <= 0) return;
+		props.onResize(clampPaneWidth(target, props.min, props.max));
+		props.onCommit();
+	};
+
 	const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
 		const direction = event.key === "ArrowLeft" ? 1 : event.key === "ArrowRight" ? -1 : 0;
 		if (direction === 0) return;
@@ -70,6 +78,7 @@ export function DockGrip(props: {
 			aria-valuemax={props.max}
 			aria-valuenow={props.width()}
 			tabIndex={0}
+			onDoubleClick={onDoubleClick}
 			onPointerDown={onPointerDown}
 			onPointerMove={onPointerMove}
 			onPointerUp={onPointerUp}
