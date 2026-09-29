@@ -1837,8 +1837,6 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 
 			task_stop: ({ name, id }) => taskRegistry.stop(id, "user", name),
 
-			task_search: ({ name, id, query, limit }) => taskRegistry.search(id, query, { partner: name, ...(limit !== undefined ? { limit } : {}) }),
-
 			open_path: async ({ path, editorId }) => {
 				const opened = await openInCodeEditor(path, editorId);
 				return opened ? { ok: true } : { ok: false, error: "No supported code editor found" };

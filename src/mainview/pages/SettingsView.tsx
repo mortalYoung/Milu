@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import type { CustomModel, CustomProvider, SandboxMode, ThemeMode, ToastPlacement } from "../../shared/rpc";
 import { Button } from "../components/Button";
@@ -7,8 +7,11 @@ import { PickFile } from "../components/PickFile";
 import { Select } from "../components/ui/select";
 import { Switch as SwitchToggle } from "../components/ui/switch";
 import { TextField, TextFieldInput } from "../components/ui/text-field";
+import { registerSurfaceRoot } from "../lib/active-surface";
 import { useSettings } from "../lib/contexts/settings-context";
+import { useFindHandler } from "../lib/find";
 import type { SettingsData } from "../lib/settings";
+import { SURFACE } from "../lib/surfaces";
 import { cn } from "../lib/utils";
 
 const CATS = [
@@ -243,8 +246,27 @@ export function SettingsView() {
 
 	const errorTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 	const rootRef = useRef<HTMLDivElement>(null);
+	const attachRoot = useCallback((element: HTMLDivElement | null) => {
+		rootRef.current = element;
+		if (!element) return;
+		return registerSurfaceRoot(element.closest("[role='dialog']") ?? element, SURFACE.settings);
+	}, []);
 	const saveChain = useRef<Promise<unknown>>(Promise.resolve());
 	const applied = useRef(initial != null);
+
+	const focusSearch = useCallback(() => {
+		const input = rootRef.current?.querySelector<HTMLInputElement>("input[aria-label='Search settings']");
+		if (!input) return false;
+		input.focus();
+		input.select();
+		return true;
+	}, []);
+
+	useFindHandler(SURFACE.settings, focusSearch);
+
+	useEffect(() => {
+		focusSearch();
+	}, [focusSearch]);
 
 	useEffect(() => {
 		const s = settingsData;
@@ -1664,7 +1686,7 @@ export function SettingsView() {
 	return (
 		<div
 			className="flex h-full min-h-0"
-			ref={rootRef}
+			ref={attachRoot}
 			onKeyDown={(event) => {
 				if (event.key !== "Escape") return;
 				const hadEdit = adding || editingId != null || keyEditId != null;

@@ -2001,20 +2001,8 @@ body::before {
 		@apply bg-ink-soft text-paper;
 	}
 	.dock-btn:focus-visible,
-	.explorer-tool:focus-visible {
-		outline: 2px solid var(--color-ring);
-		outline-offset: -2px;
-	}
-	.explorer-reader-tools {
-		@apply flex h-[24px] flex-none items-center gap-px border-b px-3;
-		border-color: var(--color-hairline-soft);
-		background: var(--color-paper-hover);
-	}
-	.explorer-tool {
-		@apply flex size-[18px] flex-none cursor-pointer items-center justify-center rounded-[5px] border-0 bg-transparent text-muted hover:bg-paper-hover hover:text-ink;
-	}
 	.explorer-metrics {
-		@apply ml-auto font-mono text-[9.5px] text-muted whitespace-nowrap;
+		@apply shrink-0 font-mono text-[9.5px] text-muted whitespace-nowrap;
 	}
 	.explorer-reader-note {
 		@apply flex flex-1 items-center justify-center gap-[3px] px-4 py-3 font-mono text-[11px] text-muted;
@@ -2102,7 +2090,7 @@ body::before {
 		word-break: normal;
 	}
 	.explorer-code-pane {
-		@apply flex h-full flex-col;
+		@apply relative flex h-full flex-col;
 	}
 	/* The reader's CodeMirror skin lives in CodeReader.tsx (EditorView.theme): CodeMirror mounts its own
 	   theme after this file, so a rule of equal specificity here would lose. */
@@ -2116,43 +2104,45 @@ body::before {
 		--color-selection: transparent;
 		--color-selection-ink: initial;
 	}
-	.explorer-find-input {
-		@apply w-[112px] min-w-0 border-0 bg-transparent px-1 py-0.5 font-mono text-[11px] text-ink outline-none;
-		caret-color: var(--color-seal);
-	}
-	.explorer-find-input::placeholder {
-		@apply text-muted;
-	}
-	.explorer-find-input.invalid {
-		@apply text-seal;
-	}
-	.explorer-find-toggle {
-		@apply flex size-[20px] shrink-0 items-center justify-center rounded-[5px] border-0 bg-transparent text-muted cursor-pointer transition-colors duration-100 hover:bg-paper-hover hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring;
-	}
-	.explorer-find-toggle.on,
-	.explorer-find-toggle.on:hover {
-		@apply bg-ink text-paper;
-	}
-	.explorer-find-toggle.error,
-	.explorer-find-toggle.error:hover {
-		@apply bg-seal text-paper;
-	}
-	.explorer-find-count {
-		@apply min-w-[42px] shrink-0 select-none px-1 text-center font-mono text-[10px] text-muted;
-		font-variant-numeric: tabular-nums;
-	}
-	.explorer-find-nav {
+	.float-find-nav {
 		@apply flex size-[20px] shrink-0 items-center justify-center rounded-[5px] border-0 bg-transparent text-muted cursor-pointer transition-colors duration-100 hover:bg-paper-hover hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-muted;
 	}
-	.explorer-find-close {
+	.float-find-close {
 		@apply flex size-[20px] shrink-0 items-center justify-center rounded-full border-0 bg-transparent text-muted cursor-pointer transition-colors duration-100 hover:bg-paper-hover hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring;
 	}
-	.explorer-find-match {
-		background: color-mix(in srgb, var(--color-seal) 26%, transparent);
-		border-radius: 2px;
+	.float-find {
+		@apply absolute right-4 top-3 z-30 flex h-9 items-center gap-1 rounded-[8px] border border-hairline bg-letter/95 pl-3 pr-1 shadow-sm backdrop-blur;
+		transform-origin: top right;
 	}
-	.explorer-find-match.current {
-		background: color-mix(in srgb, var(--color-seal) 60%, transparent);
+	.float-find-field {
+		@apply relative h-full w-[200px] shrink-0;
+	}
+	.float-find-input {
+		@apply h-full w-full min-w-0 border-0 bg-transparent pr-[44px] font-mono text-[12px] text-ink outline-none;
+		caret-color: var(--color-seal);
+	}
+	.float-find-input::placeholder {
+		@apply text-muted;
+	}
+	.float-find-input.invalid {
+		@apply text-seal;
+	}
+	.float-find-count {
+		@apply pointer-events-none absolute inset-y-0 right-0 flex select-none items-center font-mono text-[10.5px] text-body-muted;
+		font-variant-numeric: tabular-nums;
+	}
+	.float-find-count.empty {
+		@apply text-seal;
+	}
+	.float-find-divider {
+		@apply mx-1 h-[16px] w-px shrink-0;
+		background: var(--color-hairline);
+	}
+	::highlight(find) {
+		background-color: color-mix(in srgb, var(--color-seal) 26%, transparent);
+	}
+	::highlight(find-active) {
+		background-color: color-mix(in srgb, var(--color-seal) 60%, transparent);
 	}
 	/* git's own palette, on the two places that read it: the change list and the diff. */
 	.git-body,
@@ -2164,6 +2154,9 @@ body::before {
 	/* The two-sided diff is a CodeMirror merge view; it fills the detail body and scrolls on its own. Only
 	   the merge view carries a height: its own contract is one scroller around both panes, and giving the
 	   row of editors a height too would clip them at the pane bottom instead of scrolling the document. */
+	.git-diff-area {
+		@apply relative flex flex-1 min-h-0 flex-col;
+	}
 	.git-diff-host {
 		@apply relative flex-1 min-h-0;
 	}

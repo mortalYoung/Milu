@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronRight, Folder, FolderOpen, FolderSymlink, MessageSquareQuote, Pilcrow, Pin, WrapText } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { AnimatePresence } from "motion/react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
 import type { ExplorerEntry } from "../../shared/rpc";
@@ -11,10 +12,13 @@ import type { RevealRange, RevealTarget } from "../lib/dock";
 import { DOCK_PANE_MAX, DOCK_PANE_MIN } from "../lib/dock";
 import { ESCAPE_ORDER, useEscapeLayer } from "../lib/escape";
 import { fileGlyph, linkGlyph } from "../lib/file-icons";
+import { domFindEngine, useFindBar, useFindHandler } from "../lib/find";
 import { languageForPath, paintMarkdown, renderMarkdown, renderMarkdownReady } from "../lib/markdown";
 import { rpc } from "../lib/rpc";
+import { SURFACE } from "../lib/surfaces";
 import { CodeReader, PreviewBusy } from "./CodeReader";
 import { type DockListControls, DockShell } from "./DockShell";
+import { FloatFind } from "./FloatFind";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "./ui/context-menu";
 
 interface DirState {
@@ -175,7 +179,21 @@ function MarkdownFile(props: { content: string; frontmatter?: Frontmatter; partn
 	const images = useRef(new Map<string, string>());
 	const failures = useRef(new Map<string, string>());
 	const ref = useRef<HTMLDivElement>(null);
+	const scrollRef = useRef<HTMLDivElement | null>(null);
 	const body = props.frontmatter ? props.content.slice(props.frontmatter.end) : props.content;
+
+	const findEngine = useCallback(() => domFindEngine(scrollRef.current), []);
+	const find = useFindBar({ engine: findEngine, canClaim: () => body.trim() !== "" });
+	useFindHandler(SURFACE.reader, () => find.claim());
+
+	useEffect(() => {
+		if (!find.open) return;
+		const el = scrollRef.current;
+		if (!el) return;
+		const observer = new MutationObserver(() => find.refresh());
+		observer.observe(el, { subtree: true, childList: true, characterData: true });
+		return () => observer.disconnect();
+	}, [find.open, find.refresh]);
 
 	async function resolveImages(el: HTMLElement) {
 		const partner = props.partner;
@@ -225,10 +243,11 @@ function MarkdownFile(props: { content: string; frontmatter?: Frontmatter; partn
 
 	return (
 		<>
-			<div className="explorer-md-scroll">
+			<div className="explorer-md-scroll" ref={scrollRef}>
 				{props.frontmatter && <FrontmatterHeader frontmatter={props.frontmatter} />}
 				<div ref={ref} className="md explorer-md" />
 			</div>
+			<AnimatePresence>{find.open ? <FloatFind {...find.props} /> : null}</AnimatePresence>
 			<PreviewBusy when={busy && props.content !== ""} />
 		</>
 	);
@@ -663,6 +682,7 @@ export function ExplorerDrawer(props: {
 			onResize={props.onPaneResize}
 			onCommit={props.onPaneCommit}
 			title="Explorer"
+			surface={SURFACE.reader}
 			onClose={props.onClose}
 			detail={{
 				open: selected != null,
@@ -728,6 +748,7 @@ export function ExplorerDrawer(props: {
 										</button>
 									</>
 								)}
+								<span className="explorer-metrics">{metrics}</span>
 								{rawToggle && (
 									<button
 										type="button"
@@ -763,11 +784,6 @@ export function ExplorerDrawer(props: {
 								<div className="explorer-reader-note">{fileData.error}</div>
 							) : (
 								<>
-									{rendered && (
-										<div className="explorer-reader-tools">
-											<span className="explorer-metrics">{metrics}</span>
-										</div>
-									)}
 									{rendered ? (
 										<div className="explorer-file-body">
 											<MarkdownFile content={fileData?.content ?? ""} frontmatter={fileData?.frontmatter} partner={props.partner} path={shownFile.path} />
@@ -788,7 +804,6 @@ export function ExplorerDrawer(props: {
 												lang={languageForPath(shownFile.path) ?? null}
 												fold={foldable}
 												locate={shownFile.range ?? null}
-												metrics={metrics}
 												panelOpen={props.open}
 												wrap={props.wrap}
 												onSelection={(range) => setLiveRange(range)}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import type { RailView } from "../shared/rpc";
 import { AppHeader } from "./components/AppHeader";
@@ -18,6 +18,7 @@ import { TrajectoryDrawer } from "./components/TrajectoryDrawer";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./components/ui/dialog";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { Transcript } from "./layouts/Transcript";
+import { registerSurfaceRoot } from "./lib/active-surface";
 import { AgentStatusProvider } from "./lib/contexts/agent-status-context";
 import { CommandDirectoryProvider } from "./lib/contexts/commands-context";
 import { ComposerProvider } from "./lib/contexts/composer-context";
@@ -53,11 +54,13 @@ import {
 	unread,
 } from "./lib/controllers";
 import { ESCAPE_ORDER, type EscapeLayer, escapeTop } from "./lib/escape";
+import { useFindRouter } from "./lib/find";
 import { useKeybindings } from "./lib/keybindings";
 import { warmUpMarkdown } from "./lib/markdown";
 import type { PartnerFormData } from "./lib/partner-form";
 import { rpc } from "./lib/rpc";
 import type { PartnerItem } from "./lib/session";
+import { SURFACE } from "./lib/surfaces";
 import { DashboardView } from "./pages/DashboardView";
 import { SettingsView } from "./pages/SettingsView";
 import { SkillsView } from "./pages/SkillsView";
@@ -136,6 +139,11 @@ function ChatView(props: {
 	const ignoreWhitespace = useStore(dock.store, (state) => state.ignoreWhitespace);
 	const agentSnapshot = useStore(status.store, (state) => state.snapshot);
 	const workspaceReady = useStore(status.store, (state) => state.snapshot.partner) === props.selected;
+
+	const emptyWindow = useCallback((element: HTMLDivElement | null) => {
+		if (!element) return;
+		return registerSurfaceRoot(element, SURFACE.chatList);
+	}, []);
 
 	const [btwAnchor, setBtwAnchor] = useState<string | null>(null);
 	const [composerHeight, setComposerHeight] = useState(0);
@@ -221,6 +229,7 @@ function ChatView(props: {
 									<Transcript
 										working={busy}
 										historyLoading={loading}
+										dockOpen={panel != null}
 										worker={selected}
 										onEscalationRespond={(id, approved) => void rpc.request.sandbox_respond({ id, approved })}
 										onBtw={setBtwAnchor}
@@ -284,7 +293,7 @@ function ChatView(props: {
 						</div>
 					</div>
 				) : (
-					<div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+					<div className="flex flex-1 flex-col items-center justify-center gap-3 text-center" ref={emptyWindow}>
 						<p className="font-serif text-[17px] text-ink-soft">— select a partner to begin —</p>
 						<p className="eyebrow">the directory is on the left</p>
 					</div>
@@ -304,6 +313,7 @@ function closeCurrentChat() {
 }
 
 export function App() {
+	const finds = useFindRouter();
 	const [view, setView] = useState<ViewId>("chat");
 	const [editors, setEditors] = useState<{ id: string; name: string }[]>([]);
 	const [listCollapsed, setListCollapsed] = useState(() => localStorage.getItem("chatlist.collapsed") === "1");
@@ -354,6 +364,14 @@ export function App() {
 				event.preventDefault();
 				if (handledAbove) return;
 				escapeTop(escapeLayers);
+			},
+		},
+		{
+			key: "f",
+			meta: true,
+			preventDefault: false,
+			handler: (event) => {
+				if (finds.dispatch()) event.preventDefault();
 			},
 		},
 		{ key: ",", meta: true, handler: () => settings.mutate.setOpen(true) },
@@ -470,7 +488,10 @@ export function App() {
 																	</div>
 																</div>
 																<Dialog open={settingsOpen} onOpenChange={settings.mutate.setOpen}>
-																	<DialogContent className="w-[820px] max-w-none h-[640px] grid-rows-[auto_1fr] overflow-hidden bg-letter border-print-line p-0">
+																	<DialogContent
+																		className="w-[820px] max-w-none h-[640px] grid-rows-[auto_1fr] overflow-hidden bg-letter border-print-line p-0"
+																		onOpenAutoFocus={(event) => event.preventDefault()}
+																	>
 																		<DialogHeader className="px-4 pt-4">
 																			<DialogTitle className="font-serif text-[15px]">Settings</DialogTitle>
 																		</DialogHeader>

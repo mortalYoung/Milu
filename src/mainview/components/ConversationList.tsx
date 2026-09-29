@@ -1,11 +1,14 @@
 import { ArrowUpFromLine, ChevronDown, ChevronRight, Copy, CopyPlus, Files, GitFork, Info, MoreVertical, Plus, Trash2 } from "lucide-react";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
+import { registerSurfaceRoot } from "../lib/active-surface";
 import { activityAt, convTime, filterPartners, previewFor } from "../lib/chat-preview";
 import { useAgentStatus } from "../lib/contexts/agent-status-context";
+import { useFindHandler } from "../lib/find";
 import { imeGuard } from "../lib/ime";
 import { Show } from "../lib/jsx";
 import type { PartnerItem } from "../lib/session";
+import { SURFACE } from "../lib/surfaces";
 import { Button } from "./Button";
 import { Avatar } from "./ui/avatar";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
@@ -208,11 +211,24 @@ export function ConversationList(props: {
 	const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 	const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
 	const [query, setQuery] = useState("");
+	const searchRef = useRef<HTMLInputElement>(null);
+	const attachRoot = useCallback((element: HTMLElement | null) => {
+		if (!element) return;
+		return registerSurfaceRoot(element, SURFACE.chatList);
+	}, []);
 	const imeRef = useRef<ReturnType<typeof imeGuard> | null>(null);
 	if (!imeRef.current) imeRef.current = imeGuard(setQuery);
 	const ime = imeRef.current;
 
 	const workingFor = (name: string) => writing[name] ?? props.partners.find((p) => p.name === name)?.writing ?? false;
+
+	useFindHandler(SURFACE.chatList, () => {
+		const input = searchRef.current;
+		if (!input || input.closest("[inert]")) return false;
+		input.focus();
+		input.select();
+		return true;
+	});
 
 	useEffect(() => {
 		const selected = props.selected;
@@ -253,9 +269,15 @@ export function ConversationList(props: {
 		});
 
 	return (
-		<aside className="w-60 shrink-0 h-full bg-paper border-r border-hairline flex flex-col pl-3 pt-3">
+		<aside
+			className="w-60 shrink-0 h-full bg-paper border-r border-hairline flex flex-col pl-3 pt-3"
+			ref={attachRoot}
+			tabIndex={-1}
+			onClick={(event) => event.currentTarget.focus()}
+		>
 			<div className="conv-list-search">
 				<input
+					ref={searchRef}
 					className="conv-list-input"
 					type="text"
 					placeholder="Search correspondence…"

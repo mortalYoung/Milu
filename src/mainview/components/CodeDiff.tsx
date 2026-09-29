@@ -1,9 +1,15 @@
 import { Change, type Chunk, type DiffConfig, diff, getChunks, MergeView, mergeViewSiblings, unifiedMergeView } from "@codemirror/merge";
+import { search } from "@codemirror/search";
 import { Compartment, EditorState, type Extension, type Range, StateEffect, StateField, Text } from "@codemirror/state";
 import { Decoration, type DecorationSet, drawSelection, EditorView, GutterMarker, gutter, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view";
-import { useEffect, useRef } from "react";
+import { AnimatePresence } from "motion/react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { type HiddenSpans, searchMatchHighlighter } from "../lib/cm6-find";
+import { cm6FindEngine, useFindBar, useFindHandler } from "../lib/find";
 import { highlightCodeToLines } from "../lib/shiki-remote";
 import { setTokens, tokenPainter } from "../lib/shiki-tokens";
+import { SURFACE } from "../lib/surfaces";
+import { FloatFind } from "./FloatFind";
 
 const SELECTION = "light-dark(#f2ded8, #3d2a23)";
 const ADD_LINE = "color-mix(in srgb, var(--git-add) 10%, transparent)";
@@ -15,8 +21,18 @@ const CHEVRON_DOWN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
 
 const TEXT_PAD = "calc((var(--explorer-line-height, 1.2) - 1.37) * 0.5em)";
 
+function hiddenGaps(state: EditorState): { from: number; to: number }[] {
+	const plan = state.field(foldPlanField, false) ?? [];
+	const closed = foldedNow(state, plan.length);
+	return plan.filter((_, index) => closed.has(index)).map((gap) => ({ from: gap.from, to: gap.to }));
+}
+
+const diffHidden: HiddenSpans = hiddenGaps;
+
 const diffTheme = EditorView.theme({
 	"&": { height: "100%" },
+	".cm-searchMatch": { background: "color-mix(in srgb, var(--color-seal) 26%, transparent)", borderRadius: "2px" },
+	".cm-searchMatch-selected": { background: "color-mix(in srgb, var(--color-seal) 60%, transparent)" },
 	"&.cm-focused": { outline: "none" },
 	".cm-scroller": { fontFamily: "var(--font-mono)", fontSize: "12px", lineHeight: "var(--explorer-line-height, 1.2)" },
 	".cm-content": { padding: "0" },
@@ -465,6 +481,8 @@ function side(doc: string, wrapping: Extension, compartment: Compartment, extra:
 			numberedFoldGutter(),
 			compartment.of(wrapping),
 			...extra,
+			search(),
+			searchMatchHighlighter(diffHidden),
 			diffTheme,
 		],
 	};
@@ -490,9 +508,22 @@ export function CodeDiff(props: { original: string; modified: string; lang: stri
 	const hostEl = useRef<HTMLDivElement>(null);
 	const wrapCompartment = useRef(new Compartment());
 	const mounted = useRef<EditorView[]>([]);
+	const [viewEpoch, setViewEpoch] = useState(0);
 	const savedScroll = useRef<{ top: number; left: number }[] | null>(null);
 	const propsRef = useRef(props);
 	propsRef.current = props;
+
+	const findEngine = useCallback(() => cm6FindEngine(mounted.current.at(-1) ?? null, diffHidden), [viewEpoch]);
+	const find = useFindBar({ engine: findEngine, canClaim: () => mounted.current.length > 0 });
+	useFindHandler(SURFACE.diff, () => find.claim());
+
+	useEffect(() => {
+		if (find.open) {
+			find.refresh();
+			return;
+		}
+		for (const view of mounted.current) view.dispatch({ selection: { anchor: view.state.selection.main.head } });
+	}, [find.open, find.refresh, viewEpoch]);
 
 	useEffect(() => {
 		const host = hostEl.current;
@@ -555,6 +586,7 @@ export function CodeDiff(props: { original: string; modified: string; lang: stri
 			}
 			const unmirror = mirrorScroll(merged.a, merged.b);
 			mounted.current = [merged.a, merged.b];
+			setViewEpoch((n) => n + 1);
 			restoreScroll();
 			paint(merged.a, props.original);
 			paint(merged.b, props.modified);
@@ -590,6 +622,8 @@ export function CodeDiff(props: { original: string; modified: string; lang: stri
 					foldDecorations,
 					numberedFoldGutter(),
 					charMarks("b"),
+					search(),
+					searchMatchHighlighter(diffHidden),
 					diffTheme,
 				],
 			}),
@@ -610,6 +644,7 @@ export function CodeDiff(props: { original: string; modified: string; lang: stri
 			requestAnimationFrame(retry);
 		}
 		mounted.current = [view];
+		setViewEpoch((n) => n + 1);
 		restoreScroll();
 		paint(view, props.modified);
 		return () => {
@@ -625,5 +660,10 @@ export function CodeDiff(props: { original: string; modified: string; lang: stri
 		for (const view of mounted.current) view.dispatch({ effects: wrapCompartment.current.reconfigure(wrapping) });
 	}, [props.wrap]);
 
-	return <div className="git-diff-host" ref={hostEl} />;
+	return (
+		<div className="git-diff-area">
+			<div className="git-diff-host" ref={hostEl} />
+			<AnimatePresence>{find.open ? <FloatFind {...find.props} /> : null}</AnimatePresence>
+		</div>
+	);
 }

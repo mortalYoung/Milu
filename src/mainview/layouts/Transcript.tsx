@@ -1,19 +1,23 @@
 import { Check, ChevronRight, CircleStop, Pencil } from "lucide-react";
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "motion/react";
-import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { EVENTS } from "../../shared/events";
 import { BtwPanel } from "../components/BtwPanel";
+import { FloatFind } from "../components/FloatFind";
 import { ScrollRegion } from "../components/ScrollRegion";
 import { Dialog, DialogContent, DialogTitle } from "../components/ui/dialog";
+import { registerSurfaceRoot } from "../lib/active-surface";
 import { useScroll } from "../lib/contexts/scroll-context";
 import { useSession } from "../lib/contexts/session-context";
 import { useSkills } from "../lib/contexts/skills-context";
 import { useTranscript } from "../lib/contexts/transcript-context";
 import { type Entry, type EscalationInfo, formatHistoryTime, parseStamp } from "../lib/entries";
+import { domFindEngine, revealRange, useFindBar, useFindHandler } from "../lib/find";
 import { For, Show } from "../lib/jsx";
 import { markdownFilesKey, paintMarkdown, renderMarkdown, renderMarkdownReady } from "../lib/markdown";
 import { rpc } from "../lib/rpc";
+import { SURFACE } from "../lib/surfaces";
 import { blockKey, type ChatBlock } from "../lib/transcript";
 import { cn } from "../lib/utils";
 
@@ -21,6 +25,8 @@ const STACK_CARD_MIN_HEIGHT = 96;
 const STACK_PEEK = 10;
 const STACK_PEEK_STEP = 5;
 const STACK_MAX_ROTATION = 2.8;
+
+const TRANSCRIPT_SKIP = [".load-earlier", ".md-copy", ".btw-cell", ".msg-rail", ".msg-stack-nav"];
 
 function seededUnit(seed: number): number {
 	const x = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
@@ -224,6 +230,7 @@ function MessageStack(props: {
 export function Transcript(props: {
 	working: boolean;
 	historyLoading: boolean;
+	dockOpen?: boolean;
 	worker?: string;
 	onEscalationRespond?: (id: string, approved: boolean) => void;
 	onBtw?: (anchorId: string) => void;
@@ -252,6 +259,40 @@ export function Transcript(props: {
 
 	const userEditEls = useRef(new Map<string, HTMLDivElement>());
 	const pinnedShellOutput = useRef(new Set<string>());
+
+	const findRoot = useRef<HTMLDivElement | null>(null);
+	const revealMatch = useCallback(
+		(range: Range) => {
+			const element = range.startContainer.parentElement;
+			const container = scroll.store.getState().containerEl;
+			if (!element || !container) return;
+			scroll.seek(Math.max(0, scroll.offsetInContent(element) - (container.clientHeight - element.getBoundingClientRect().height) / 2));
+			revealRange(range);
+		},
+		[scroll],
+	);
+	const findEngine = useCallback(() => domFindEngine(findRoot.current, TRANSCRIPT_SKIP, revealMatch), [revealMatch]);
+	const find = useFindBar({ engine: findEngine, canClaim: () => items.length > 0 });
+	const closeFind = find.close;
+
+	useEffect(() => {
+		if (props.dockOpen) closeFind();
+	}, [props.dockOpen, closeFind]);
+	useFindHandler(SURFACE.transcript, () => find.claim());
+
+	useEffect(() => {
+		const letter = findRoot.current?.closest(".chat-letter") ?? findRoot.current;
+		return letter ? registerSurfaceRoot(letter, SURFACE.transcript) : undefined;
+	}, []);
+
+	useEffect(() => {
+		if (!find.open) return;
+		const content = scroll.store.getState().contentEl;
+		if (!content) return;
+		const observer = new MutationObserver(() => find.refresh());
+		observer.observe(content, { subtree: true, childList: true, characterData: true });
+		return () => observer.disconnect();
+	}, [find.open, find.refresh, scroll]);
 
 	function toggleShellOutput(key: string) {
 		setCollapsedShells((prev) => {
@@ -380,7 +421,15 @@ export function Transcript(props: {
 
 	return (
 		<MotionConfig reducedMotion="user">
-			<ScrollRegion scroll={scroll} class="transcript flex-1 min-h-0 px-4 py-3" id="transcript" ariaLive="polite" innerClass={cn("transcript-inner", btwAnchor && "btw-open")}>
+			<ScrollRegion
+				scroll={scroll}
+				class="transcript flex-1 min-h-0 px-4 py-3"
+				id="transcript"
+				ariaLive="polite"
+				innerClass={cn("transcript-inner", btwAnchor && "btw-open")}
+				root={findRoot}
+				overlay={<AnimatePresence>{find.open ? <FloatFind {...find.props} hint={hasMore ? "only loaded letters are searched" : undefined} /> : null}</AnimatePresence>}
+			>
 				{items.length === 0 && !props.working && (
 					<div className="text-center pt-16">
 						{props.historyLoading ? (

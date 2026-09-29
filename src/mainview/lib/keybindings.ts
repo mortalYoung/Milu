@@ -6,6 +6,7 @@ export interface Keybinding {
 	ctrl?: boolean;
 	shift?: boolean;
 	alt?: boolean;
+	preventDefault?: boolean;
 	handler: (event: KeyboardEvent) => void;
 }
 
@@ -30,7 +31,7 @@ export function useKeybindings(bindings: Keybinding[]) {
 				try {
 					binding.handler(event);
 				} finally {
-					if (!event.defaultPrevented) event.preventDefault();
+					if (!event.defaultPrevented && (binding.preventDefault ?? true)) event.preventDefault();
 				}
 				return;
 			}

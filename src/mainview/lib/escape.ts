@@ -13,6 +13,7 @@ export const ESCAPE_ORDER = {
 	meter: 83,
 	trajectoryRow: 82,
 	trajectory: 80,
+	floatFind: 79,
 	readerFind: 78,
 	readerSelection: 77,
 	dockList: 76,

@@ -524,17 +524,6 @@ export type AppRPCSchema = __schema<{
 				response: { ok: boolean; error?: string };
 			};
 
-			task_search: {
-				params: { name: string; id: string; query: string; limit?: number };
-				response: {
-					ok: boolean;
-					error?: string;
-					total?: number;
-					matches?: Array<{ line: number; text: string }>;
-					truncated?: boolean;
-				};
-			};
-
 			cancel_follow_up: {
 				params: { id: string };
 				response: { ok: boolean; error?: string };

@@ -40,15 +40,6 @@ export interface TaskFailure {
 
 export type TaskReadResult = TaskRead | TaskFailure;
 
-export interface TaskSearch {
-	ok: true;
-	total: number;
-	matches: Array<{ line: number; text: string }>;
-	truncated: boolean;
-}
-
-export type TaskSearchResult = TaskSearch | TaskFailure;
-
 export interface TaskSubscribeResult {
 	ok: true;
 	exited: boolean;
@@ -76,9 +67,6 @@ export interface StartInput {
 const PUSH_MIN_MS = 120;
 const MAX_READ_BYTES = 50 * 1024;
 const DEFAULT_LINES = 200;
-const SEARCH_CHUNK = 256 * 1024;
-const SEARCH_LIMIT = 200;
-const SEARCH_CARRY_MAX = 1024 * 1024;
 export const DEFAULT_REMIND_AFTER_SEC = 180;
 
 interface TaskRecord {
@@ -436,58 +424,7 @@ export function createTaskRegistry(deps: TaskRegistryDeps) {
 		}
 	}
 
-	/** Whole file, not just the loaded window: a tail-only search would silently miss the error you are looking for. */
-	async function search(id: string, query: string, options: { partner?: string; limit?: number; caseSensitive?: boolean } = {}): Promise<TaskSearchResult> {
-		if (options.partner) await ensureHistory(options.partner);
-		const found = await target(id);
-		if (!found) return { ok: false, error: `unknown task ${id}` };
-		await found.pending;
-		const needle = options.caseSensitive ? query : query.toLowerCase();
-		if (!needle) return { ok: true, total: 0, matches: [], truncated: false };
-		const limit = options.limit && options.limit > 0 ? options.limit : SEARCH_LIMIT;
-		const matches: Array<{ line: number; text: string }> = [];
-		let total = 0;
-		let line = 0;
-		let handle: Awaited<ReturnType<typeof open>>;
-		try {
-			handle = await open(found.logPath, "r");
-		} catch {
-			return { ok: true, total: 0, matches: [], truncated: false };
-		}
-		try {
-			const size = await fileSize(found.logPath);
-			let position = 0;
-			let carry = Buffer.alloc(0);
-			const consume = (text: string) => {
-				for (const row of text.split("\n")) {
-					line += 1;
-					if (!(options.caseSensitive ? row : row.toLowerCase()).includes(needle)) continue;
-					total += 1;
-					if (matches.length < limit) matches.push({ line, text: row });
-				}
-			};
-			while (position < size) {
-				const length = Math.min(SEARCH_CHUNK, size - position);
-				const buffer = Buffer.alloc(length);
-				await handle.read(buffer, 0, length, position);
-				position += length;
-				const chunk = carry.length > 0 ? Buffer.concat([carry, buffer]) : buffer;
-				const lastNewline = chunk.lastIndexOf(0x0a);
-				if (lastNewline < 0) {
-					carry = chunk.length > SEARCH_CARRY_MAX ? Buffer.alloc(0) : chunk;
-					continue;
-				}
-				consume(chunk.subarray(0, lastNewline).toString("utf8"));
-				carry = Buffer.from(chunk.subarray(lastNewline + 1));
-			}
-			if (carry.length > 0) consume(carry.toString("utf8"));
-		} finally {
-			await handle.close();
-		}
-		return { ok: true, total, matches, truncated: total > matches.length };
-	}
-
-	return { start, get, list, read, stop, subscribe, search, reapAll };
+	return { start, get, list, read, stop, subscribe, reapAll };
 }
 
 export type TaskRegistry = ReturnType<typeof createTaskRegistry>;

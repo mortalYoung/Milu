@@ -1,15 +1,19 @@
 import { codeFolding, foldable, foldEffect, foldedRanges, unfoldEffect } from "@codemirror/language";
-import { findNext, findPrevious, getSearchQuery, SearchQuery, search, setSearchQuery } from "@codemirror/search";
+import { search } from "@codemirror/search";
 import { Compartment, EditorState, RangeSetBuilder } from "@codemirror/state";
 import { Decoration, type DecorationSet, drawSelection, EditorView, GutterMarker, gutter, keymap, ViewPlugin, type ViewUpdate } from "@codemirror/view";
-import { CaseSensitive, ChevronDown, ChevronUp, Regex, WholeWord, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { AnimatePresence } from "motion/react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { foldedSpans, searchMatchHighlighter } from "../lib/cm6-find";
 import { foldLanguage } from "../lib/code-languages";
 import type { RevealRange } from "../lib/dock";
 import { ESCAPE_ORDER, useEscapeLayer } from "../lib/escape";
+import { cm6FindEngine, useFindBar, useFindHandler } from "../lib/find";
 import { highlightCodeToLines } from "../lib/shiki-remote";
 import type { HighlightLine } from "../lib/shiki-setup";
 import { setTokens, tokenPainter } from "../lib/shiki-tokens";
+import { SURFACE } from "../lib/surfaces";
+import { FloatFind } from "./FloatFind";
 
 export function PreviewBusy(props: { when: boolean }) {
 	return (
@@ -222,20 +226,11 @@ function readerGutter() {
 	});
 }
 
-const findHistory: string[] = [];
-const MAX_FIND_HISTORY = 50;
-
-interface FindMatchRange {
-	start: number;
-	end: number;
-}
-
 export function CodeReader(props: {
 	content: string;
 	lang: string | null;
 	fold: boolean;
 	locate?: RevealRange | null;
-	metrics: string;
 	panelOpen: boolean;
 	wrap: boolean;
 	onSelection?: (range: { start: number; end: number } | null) => void;
@@ -244,24 +239,11 @@ export function CodeReader(props: {
 	const languageCompartment = useRef(new Compartment());
 	const [editor, setEditor] = useState<EditorView | null>(null);
 	const [busy, setBusy] = useState(false);
-	const [matches, setMatches] = useState(0);
-	const [activeMatch, setActiveMatch] = useState(0);
 	const [tokenData, setTokenData] = useState<{ content: string; lines: HighlightLine[] } | null>(null);
 	const hostEl = useRef<HTMLDivElement>(null);
-	const findInputEl = useRef<HTMLInputElement>(null);
 	const disposed = useRef(false);
-	const historyIndex = useRef(-1);
-	const historyDraft = useRef("");
 	const propsRef = useRef(props);
 	propsRef.current = props;
-
-	const [findOpen, setFindOpen] = useState(false);
-	const [query, setQuery] = useState("");
-	const [caseSensitive, setCaseSensitive] = useState(false);
-	const [wholeWord, setWholeWord] = useState(false);
-	const [useRegex, setUseRegex] = useState(false);
-
-	const currentQuery = new SearchQuery({ search: findOpen ? query : "", caseSensitive, wholeWord, regexp: useRegex });
 
 	useEffect(() => {
 		if (props.content === "") {
@@ -300,6 +282,7 @@ export function CodeReader(props: {
 				hoveredLine,
 				codeFolding(),
 				search(),
+				searchMatchHighlighter(foldedSpans),
 				wrapCompartment.current.of(propsRef.current.wrap ? EditorView.lineWrapping : []),
 				languageCompartment.current.of([]),
 				keymap.of([
@@ -396,116 +379,19 @@ export function CodeReader(props: {
 		return () => document.removeEventListener("selectionchange", onSelectionChange);
 	}, [editor]);
 
-	function pushQuery(view: EditorView) {
-		view.dispatch({ effects: setSearchQuery.of(currentQuery) });
-		refreshMatches(view);
-	}
-
-	function matchRanges(view: EditorView): FindMatchRange[] {
-		const cursor = getSearchQuery(view.state).getCursor(view.state);
-		if (!cursor) return [];
-		const ranges: FindMatchRange[] = [];
-		for (let next = cursor.next(); !next.done; next = cursor.next()) ranges.push({ start: next.value.from, end: next.value.to });
-		return ranges;
-	}
-
-	function refreshMatches(view: EditorView) {
-		const ranges = matchRanges(view);
-		setMatches(ranges.length);
-		const selection = view.state.selection.main;
-		const index = ranges.findIndex((range) => range.start <= selection.from && range.end >= selection.from);
-		setActiveMatch(index < 0 ? 0 : index);
-	}
+	const findEngine = useCallback(() => cm6FindEngine(editor, foldedSpans), [editor]);
+	const find = useFindBar({ engine: findEngine, canClaim: () => props.panelOpen && editor !== null });
+	useFindHandler(SURFACE.reader, () => find.claim());
 
 	useEffect(() => {
-		if (!editor) return;
-		pushQuery(editor);
-	}, [query, caseSensitive, wholeWord, useRegex, editor]);
-
-	function openFind() {
-		historyIndex.current = -1;
-		const view = editor;
-		if (view) {
-			const selection = view.state.selection.main;
-			const picked = selection.empty ? "" : view.state.sliceDoc(selection.from, selection.to).trim();
-			if (picked && !picked.includes("\n")) setQuery(picked);
-		}
-		setFindOpen(true);
-		requestAnimationFrame(() => {
-			findInputEl.current?.focus();
-			findInputEl.current?.select();
-		});
-	}
-
-	function closeFind() {
-		setFindOpen(false);
-	}
-
-	function commitHistory() {
-		const term = query.trim();
-		if (!term) return;
-		const existing = findHistory.indexOf(term);
-		if (existing >= 0) findHistory.splice(existing, 1);
-		findHistory.push(term);
-		if (findHistory.length > MAX_FIND_HISTORY) findHistory.shift();
-		historyIndex.current = -1;
-	}
-
-	function recallHistory(direction: number) {
-		if (findHistory.length === 0) return;
-		if (direction < 0) {
-			if (historyIndex.current === -1) {
-				historyDraft.current = query;
-				historyIndex.current = findHistory.length - 1;
-			} else if (historyIndex.current > 0) {
-				historyIndex.current -= 1;
-			}
-			setQuery(findHistory[historyIndex.current]!);
-		} else if (historyIndex.current !== -1) {
-			if (historyIndex.current < findHistory.length - 1) {
-				historyIndex.current += 1;
-				setQuery(findHistory[historyIndex.current]!);
-			} else {
-				historyIndex.current = -1;
-				setQuery(historyDraft.current);
-			}
-		}
-	}
-
-	function stepMatch(direction: number) {
-		const view = editor;
-		if (!view) return;
-		commitHistory();
-		if (matchRanges(view).length === 0) return;
-		if (direction > 0) findNext(view);
-		else findPrevious(view);
-		refreshMatches(view);
-	}
-
-	const findCountLabel = (() => {
-		if (!query) return "";
-		if (!currentQuery.valid || matches === 0) return "No results";
-		return `${activeMatch + 1} of ${matches}`;
-	})();
+		if (!find.open || !editor) return;
+		find.refresh();
+	}, [editor, find.open, find.refresh]);
 
 	useEffect(() => {
-		const onKeyDown = (event: KeyboardEvent) => {
-			if (!(event.metaKey || event.ctrlKey) || event.shiftKey || event.altKey || event.key.toLowerCase() !== "f") return;
-			const active = document.activeElement as HTMLElement | null;
-			if (active && active !== findInputEl.current && (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.isContentEditable)) return;
-			event.preventDefault();
-			openFind();
-		};
-		window.addEventListener("keydown", onKeyDown);
-		return () => window.removeEventListener("keydown", onKeyDown);
-	}, [editor]);
-
-	useEscapeLayer({
-		id: "explorer.readerFind",
-		order: ESCAPE_ORDER.readerFind,
-		isOpen: () => props.panelOpen && findOpen,
-		close: () => closeFind(),
-	});
+		if (find.open || !editor) return;
+		editor.dispatch({ selection: { anchor: editor.state.selection.main.head } });
+	}, [find.open, editor]);
 	useEscapeLayer({
 		id: "explorer.readerSelection",
 		order: ESCAPE_ORDER.readerSelection,
@@ -519,105 +405,8 @@ export function CodeReader(props: {
 
 	return (
 		<div className="explorer-code-pane">
-			<div className="explorer-reader-tools" role="search" aria-label="Find in file">
-				{findOpen ? (
-					<>
-						<input
-							ref={findInputEl}
-							className={"explorer-find-input" + (currentQuery.valid ? "" : " invalid")}
-							placeholder="Find"
-							aria-label="Find"
-							autoComplete="off"
-							autoCapitalize="off"
-							spellCheck={false}
-							value={query}
-							onChange={(event) => {
-								historyIndex.current = -1;
-								setQuery(event.currentTarget.value);
-							}}
-							onKeyDown={(event) => {
-								if (event.key === "Enter") {
-									event.preventDefault();
-									stepMatch(event.shiftKey ? -1 : 1);
-								} else if (event.key === "ArrowUp") {
-									event.preventDefault();
-									recallHistory(-1);
-								} else if (event.key === "ArrowDown") {
-									event.preventDefault();
-									recallHistory(1);
-								}
-							}}
-						/>
-						<button
-							type="button"
-							className={"explorer-find-toggle" + (caseSensitive ? " on" : "")}
-							title="Match Case"
-							aria-label="Match case"
-							aria-pressed={caseSensitive}
-							onMouseDown={(event) => event.preventDefault()}
-							onClick={() => setCaseSensitive((value) => !value)}
-						>
-							<CaseSensitive size={13} />
-						</button>
-						<button
-							type="button"
-							className={"explorer-find-toggle" + (wholeWord ? " on" : "")}
-							title="Match Whole Word"
-							aria-label="Match whole word"
-							aria-pressed={wholeWord}
-							onMouseDown={(event) => event.preventDefault()}
-							onClick={() => setWholeWord((value) => !value)}
-						>
-							<WholeWord size={13} />
-						</button>
-						<button
-							type="button"
-							className={"explorer-find-toggle" + (useRegex ? " on" : "") + (currentQuery.valid ? "" : " error")}
-							title="Use Regular Expression"
-							aria-label="Use regular expression"
-							aria-pressed={useRegex}
-							onMouseDown={(event) => event.preventDefault()}
-							onClick={() => setUseRegex((value) => !value)}
-						>
-							<Regex size={13} />
-						</button>
-						<span className="explorer-find-count" aria-live="polite">
-							{findCountLabel}
-						</span>
-						<button
-							type="button"
-							className="explorer-find-nav"
-							title="Previous Match (Shift+Enter)"
-							aria-label="Previous match"
-							disabled={matches === 0}
-							onMouseDown={(event) => event.preventDefault()}
-							onClick={() => stepMatch(-1)}
-						>
-							<ChevronUp size={14} />
-						</button>
-						<button
-							type="button"
-							className="explorer-find-nav"
-							title="Next Match (Enter)"
-							aria-label="Next match"
-							disabled={matches === 0}
-							onMouseDown={(event) => event.preventDefault()}
-							onClick={() => stepMatch(1)}
-						>
-							<ChevronDown size={14} />
-						</button>
-						<button type="button" className="explorer-find-close" title="Close (Esc)" aria-label="Close find" onClick={closeFind}>
-							<X size={14} />
-						</button>
-					</>
-				) : (
-					<button type="button" className="explorer-tool" title="Find in file (⌘F)" aria-label="Find in file" onClick={openFind}>
-						⌕
-					</button>
-				)}
-				<span className="explorer-metrics">{props.metrics}</span>
-			</div>
 			<div className="explorer-code-host" ref={hostEl} />
+			<AnimatePresence>{find.open ? <FloatFind {...find.props} /> : null}</AnimatePresence>
 			<PreviewBusy when={busy} />
 		</div>
 	);

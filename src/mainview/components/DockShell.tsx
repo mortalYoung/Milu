@@ -1,7 +1,9 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
+import { registerSurfaceRoot } from "../lib/active-surface";
 import { ESCAPE_ORDER, useEscapeLayer } from "../lib/escape";
 import { GRIP_WIDTH } from "../lib/grip";
 import { DOCK_EXIT_MS, DOCK_POPOVER_EXIT_MS, usePresence } from "../lib/presence";
+import type { SurfaceId } from "../lib/surfaces";
 import { DockGrip } from "./DockGrip";
 
 const LETTER_MIN = 420;
@@ -36,7 +38,7 @@ export function DockShell(props: {
 	title: ReactNode;
 	onClose: () => void;
 	children: ReactNode;
-	onRoot?: (el: HTMLDivElement) => void;
+	surface?: SurfaceId;
 }) {
 	const drawer = usePresence(props.open, DOCK_EXIT_MS);
 	const viewer = usePresence(props.open && (props.detail?.open ?? false), DOCK_POPOVER_EXIT_MS);
@@ -44,6 +46,7 @@ export function DockShell(props: {
 	const [rowWidth, setRowWidth] = useState(0);
 	const dockEl = useRef<HTMLDivElement>(null);
 	const rowObserver = useRef<ResizeObserver | null>(null);
+	const detachSurface = useRef<(() => void) | null>(null);
 
 	const detailOpen = props.open && (props.detail?.open ?? false);
 	const floating = props.pinned && listOpen && viewer.visible;
@@ -65,8 +68,9 @@ export function DockShell(props: {
 		dockEl.current = el;
 		rowObserver.current?.disconnect();
 		rowObserver.current = null;
+		detachSurface.current?.();
+		detachSurface.current = el && props.surface ? registerSurfaceRoot(el, props.surface) : null;
 		if (!el) return;
-		props.onRoot?.(el);
 		queueMicrotask(() => {
 			const row = el.parentElement;
 			if (!row || !el.isConnected) return;
@@ -116,7 +120,12 @@ export function DockShell(props: {
 	if (!drawer.visible) return null;
 
 	return (
-		<div className={`dock side-${props.side}${props.class ? ` ${props.class}` : ""}${drawer.leaving ? " leaving" : ""}`} ref={bindRoot}>
+		<div
+			className={`dock side-${props.side}${props.class ? ` ${props.class}` : ""}${drawer.leaving ? " leaving" : ""}`}
+			ref={bindRoot}
+			tabIndex={-1}
+			onClick={(event) => event.currentTarget.focus()}
+		>
 			{props.pinned && viewer.visible && (
 				<DockGrip
 					class="dock-grip-split"

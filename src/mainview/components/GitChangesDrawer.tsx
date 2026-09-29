@@ -8,6 +8,7 @@ import { DOCK_PANE_MAX, DOCK_PANE_MIN } from "../lib/dock";
 import { ESCAPE_ORDER, useEscapeLayer } from "../lib/escape";
 import { languageForPath } from "../lib/markdown";
 import { rpc } from "../lib/rpc";
+import { SURFACE } from "../lib/surfaces";
 import { CodeDiff } from "./CodeDiff";
 import { type DockListControls, DockShell } from "./DockShell";
 
@@ -243,6 +244,7 @@ export function GitChangesDrawer(props: {
 			setLetterWidth={props.setLetterWidth}
 			commitLetterWidth={props.commitLetterWidth}
 			title="Git Changes"
+			surface={SURFACE.diff}
 			onClose={props.onClose}
 			detail={{
 				open: selected != null,

@@ -1,4 +1,4 @@
-import { type ReactNode, useLayoutEffect } from "react";
+import { type ReactNode, type RefObject, useLayoutEffect } from "react";
 import { useStore } from "zustand";
 import { Show } from "../lib/jsx";
 import type { ScrollFollower } from "../lib/scroll-follower";
@@ -11,6 +11,8 @@ export function ScrollRegion(props: {
 	innerClass?: string;
 	innerClassList?: Record<string, boolean | undefined>;
 	ariaLive?: "polite";
+	root?: RefObject<HTMLDivElement | null>;
+	overlay?: ReactNode;
 	onScroll?: (el: HTMLElement) => void;
 	children: ReactNode;
 }) {
@@ -21,7 +23,7 @@ export function ScrollRegion(props: {
 	});
 
 	return (
-		<div className="relative flex-1 min-h-0 flex flex-col">
+		<div className="relative flex-1 min-h-0 flex flex-col" ref={props.root}>
 			<section
 				id={props.id}
 				aria-live={props.ariaLive}
@@ -38,6 +40,7 @@ export function ScrollRegion(props: {
 					↓ latest
 				</button>
 			</Show>
+			{props.overlay}
 		</div>
 	);
 }
