@@ -1,4 +1,4 @@
-import { Check, ChevronRight, CircleStop, Pencil } from "lucide-react";
+import { Check, ChevronRight, CircleStop, Copy, Pencil } from "lucide-react";
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "motion/react";
 import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
@@ -8,6 +8,7 @@ import { FloatFind } from "../components/FloatFind";
 import { ScrollRegion } from "../components/ScrollRegion";
 import { Dialog, DialogContent, DialogTitle } from "../components/ui/dialog";
 import { registerSurfaceRoot } from "../lib/active-surface";
+import { copyText } from "../lib/clipboard";
 import { useScroll } from "../lib/contexts/scroll-context";
 import { useSession } from "../lib/contexts/session-context";
 import { useSkills } from "../lib/contexts/skills-context";
@@ -21,26 +22,7 @@ import { SURFACE } from "../lib/surfaces";
 import { blockKey, type ChatBlock } from "../lib/transcript";
 import { cn } from "../lib/utils";
 
-const STACK_CARD_MIN_HEIGHT = 96;
-const STACK_PEEK = 10;
-const STACK_PEEK_STEP = 5;
-const STACK_MAX_ROTATION = 2.8;
-
-const TRANSCRIPT_SKIP = [".load-earlier", ".md-copy", ".btw-cell", ".msg-rail", ".msg-stack-nav"];
-
-function seededUnit(seed: number): number {
-	const x = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
-	return (x - Math.floor(x)) * 2 - 1;
-}
-
-function hashString(s: string): number {
-	let h = 0x811c9dc5;
-	for (let i = 0; i < s.length; i++) {
-		h ^= s.charCodeAt(i);
-		h = Math.imul(h, 0x01000193);
-	}
-	return h >>> 0;
-}
+const TRANSCRIPT_SKIP = [".load-earlier", ".md-copy", ".btw-cell", ".msg-rail", ".msg-fold"];
 
 function hasTextSelection(): boolean {
 	const selection = window.getSelection();
@@ -67,33 +49,49 @@ function Markdown(props: { text: string; files?: string[]; class?: string }) {
 	return <div ref={ref} className={props.class} />;
 }
 
-function letterBody(
+function CopyMessage(props: { text: string }) {
+	const [copied, setCopied] = useState(false);
+	return (
+		<button
+			type="button"
+			className={"msg-copy" + (copied ? " copied" : "")}
+			title={copied ? "Copied" : "Copy message"}
+			aria-label={copied ? "Copied" : "Copy message"}
+			onClick={() => {
+				copyText(props.text);
+				setCopied(true);
+				window.setTimeout(() => setCopied(false), 1200);
+			}}
+		>
+			{copied ? <Check size={11} /> : <Copy size={11} />}
+		</button>
+	);
+}
+
+function messageBody(
 	card: Entry,
 	worker?: string,
-	showPostmark = true,
 	rich = true,
 	onBtw?: (anchorId: string) => void,
 	btwActive = false,
 	showRail = true,
 	onBtwClose?: () => void,
 	btwLocked = false,
+	fold?: ReactNode,
 ): ReactNode {
-	const stamp = showPostmark ? parseStamp(card.time) : null;
+	const stamp = parseStamp(card.time);
 	return (
 		<>
-			{stamp && (
-				<div className="msg-postmark">
-					<span>{stamp.date}</span>
-					<span>{stamp.time}</span>
-				</div>
-			)}
-			{rich ? <Markdown text={card.text} files={card.files} class="md msg-letter-text" /> : <div className="msg-letter-text">{card.text}</div>}
-			{(worker || card.to) && (
-				<div className="msg-sign">
-					{worker && `— ${worker} · ${formatHistoryTime(card.time)}`}
-					{card.to && <span className="msg-to">To {card.to}</span>}
-				</div>
-			)}
+			<span className="sr-only">{worker ?? "agent"}</span>
+			{rich ? <Markdown text={card.text} files={card.files} class="md msg-body" /> : <div className="msg-body">{card.text}</div>}
+			<div className="msg-meta">
+				<CopyMessage text={card.text} />
+				<span className="msg-at" title={[stamp?.date, stamp?.time].filter(Boolean).join(" ")}>
+					{stamp?.time}
+				</span>
+				{card.to && <span className="msg-chip">→ {card.to}</span>}
+				{fold}
+			</div>
 			{onBtw && card.kind === "agent" && showRail && (
 				<button
 					type="button"
@@ -151,7 +149,7 @@ function escalationBody(esc: EscalationInfo, onRespond?: (id: string, approved: 
 	);
 }
 
-function MessageStack(props: {
+function StackFold(props: {
 	cards: Entry[];
 	anchorKey: string;
 	worker?: string;
@@ -161,68 +159,43 @@ function MessageStack(props: {
 	onBtwClose?: () => void;
 	activeBtwAnchor?: string | null;
 }) {
-	const [current, setCurrent] = useState(props.cards.length - 1);
-	const previousLength = useRef(props.cards.length);
-
-	if (props.cards.length !== previousLength.current) {
-		const grew = props.cards.length > previousLength.current;
-		previousLength.current = props.cards.length;
-		if (grew || current >= props.cards.length) setCurrent(props.cards.length - 1);
-	}
-
-	const previous = () => setCurrent(Math.max(0, current - 1));
-	const next = () => setCurrent(Math.min(props.cards.length - 1, current + 1));
+	const [open, setOpen] = useState(false);
+	const folded = Math.max(0, props.cards.length - 1);
+	const shown = open ? props.cards : props.cards.slice(-1);
+	const last = props.cards[props.cards.length - 1]!;
+	const canFold = last.kind !== "escalation";
+	const foldButton = (
+		<button type="button" className="msg-fold" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
+			{open ? `fold ${folded}` : `+${folded} earlier`}
+		</button>
+	);
 
 	return (
-		<div className="msg-stack" style={{ paddingTop: `${STACK_PEEK}px` }} data-chat-anchor-key={props.anchorKey}>
-			<For each={props.cards}>
-				{(card, index) => {
-					const depth = (current - index() + props.cards.length) % props.cards.length;
-					const layer = Math.min(depth, 2);
-					const peek = layer * STACK_PEEK_STEP;
-					const jitter = depth <= 2 ? seededUnit(hashString(card.text)) : 0;
-					const rotation = Math.max(-STACK_MAX_ROTATION, Math.min(STACK_MAX_ROTATION, (layer % 2 ? 1 : -1) * layer * 1.4 + jitter * 0.8));
-					return (
-						<div
-							className={"msg-letter msg-stack-card" + (depth === 0 ? " on-top" : "") + (props.locateFlashId === card.id ? " locate-flash" : "")}
-							id={"entry-" + card.id}
-							data-chat-anchor-key={card.key ?? String(card.id)}
-							style={{
-								transform: depth === 0 ? undefined : `translate(${jitter * 3}px, ${-(peek + jitter * 2)}px) rotate(${rotation}deg)`,
-								zIndex: 10 - depth,
-								...(depth === 0 ? { minHeight: `${STACK_CARD_MIN_HEIGHT}px` } : { height: `${STACK_CARD_MIN_HEIGHT}px`, overflow: "hidden" }),
-							}}
-						>
-							{card.kind === "escalation" && card.escalation
-								? escalationBody(card.escalation, props.onEscalationRespond)
-								: letterBody(
-										card,
-										props.worker,
-										depth === 0,
-										depth <= 2,
-										props.onBtw,
-										props.activeBtwAnchor === card.key,
-										depth === 0,
-										props.onBtwClose,
-										!!props.activeBtwAnchor && props.activeBtwAnchor !== card.key,
-									)}
-						</div>
-					);
-				}}
+		<div className="msg-fold-group" data-chat-anchor-key={props.anchorKey}>
+			<For each={shown}>
+				{(card) => (
+					<div
+						className={"msg-block msg-block-agent" + (props.locateFlashId === card.id ? " locate-flash" : "")}
+						id={"entry-" + card.id}
+						data-chat-anchor-key={card.key ?? String(card.id)}
+					>
+						{card.kind === "escalation" && card.escalation
+							? escalationBody(card.escalation, props.onEscalationRespond)
+							: messageBody(
+									card,
+									props.worker,
+									true,
+									props.onBtw,
+									props.activeBtwAnchor === card.key,
+									true,
+									props.onBtwClose,
+									!!props.activeBtwAnchor && props.activeBtwAnchor !== card.key,
+									folded > 0 && card.id === last.id && canFold ? foldButton : undefined,
+								)}
+					</div>
+				)}
 			</For>
-			{props.cards.length > 1 && (
-				<div className="msg-stack-nav">
-					<button type="button" className="msg-stack-switch" title="Previous reply" onClick={previous} disabled={current === 0}>
-						‹
-					</button>
-					<span className="msg-stack-count">
-						{current + 1} / {props.cards.length}
-					</span>
-					<button type="button" className="msg-stack-switch" title="Next reply" onClick={next} disabled={current === props.cards.length - 1}>
-						›
-					</button>
-				</div>
-			)}
+			{folded > 0 && !canFold && foldButton}
 		</div>
 	);
 }
@@ -281,8 +254,8 @@ export function Transcript(props: {
 	useFindHandler(SURFACE.transcript, () => find.claim());
 
 	useEffect(() => {
-		const letter = findRoot.current?.closest(".chat-letter") ?? findRoot.current;
-		return letter ? registerSurfaceRoot(letter, SURFACE.transcript) : undefined;
+		const column = findRoot.current?.closest(".chat-column") ?? findRoot.current;
+		return column ? registerSurfaceRoot(column, SURFACE.transcript) : undefined;
 	}, []);
 
 	useEffect(() => {
@@ -428,18 +401,18 @@ export function Transcript(props: {
 				ariaLive="polite"
 				innerClass={cn("transcript-inner", btwAnchor && "btw-open")}
 				root={findRoot}
-				overlay={<AnimatePresence>{find.open ? <FloatFind {...find.props} hint={hasMore ? "only loaded letters are searched" : undefined} /> : null}</AnimatePresence>}
+				overlay={<AnimatePresence>{find.open ? <FloatFind {...find.props} hint={hasMore ? "only loaded messages are searched" : undefined} /> : null}</AnimatePresence>}
 			>
 				{items.length === 0 && !props.working && (
 					<div className="text-center pt-16">
 						{props.historyLoading ? (
 							<>
-								<p className="font-serif text-[17px] text-ink-soft">— reading the archives… —</p>
+								<p className="font-serif text-[16px] text-ink-soft">— loading… —</p>
 								<p className="eyebrow mt-3">restoring the conversation from disk</p>
 							</>
 						) : (
 							<>
-								<p className="font-serif text-[17px] text-ink-soft">— waiting for your first prompt —</p>
+								<p className="font-serif text-[16px] text-ink-soft">— waiting for your first prompt —</p>
 								<p className="eyebrow mt-3">ask it to read a file, run a command, or just talk</p>
 							</>
 						)}
@@ -477,19 +450,19 @@ export function Transcript(props: {
 								}
 								return (
 									<motion.div
-										className={"msg-letter" + (locateFlashId === card.id ? " locate-flash" : "") + (btwAnchor === key ? " btw-active" : "")}
+										className={"msg-block msg-block-agent" + (locateFlashId === card.id ? " locate-flash" : "") + (btwAnchor === key ? " btw-active" : "")}
 										id={"entry-" + card.id}
 										data-chat-anchor-key={key}
-										initial={{ opacity: 0, scale: 0.96, rotate: 0.4 }}
-										animate={{ opacity: 1, scale: 1, rotate: 0 }}
-										transition={{ duration: 0.24, ease: [0.23, 1, 0.32, 1] }}
+										initial={{ opacity: 0, y: 6 }}
+										animate={{ opacity: 1, y: 0 }}
+										transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
 									>
-										{letterBody(card, worker, true, true, props.onBtw, btwAnchor === key, true, props.onBtwClose, !!btwAnchor && btwAnchor !== key)}
+										{messageBody(card, worker, true, props.onBtw, btwAnchor === key, true, props.onBtwClose, !!btwAnchor && btwAnchor !== key)}
 									</motion.div>
 								);
 							}
 							return (
-								<MessageStack
+								<StackFold
 									cards={block}
 									anchorKey={key}
 									worker={worker}
@@ -507,7 +480,7 @@ export function Transcript(props: {
 						if (entry.kind === "user") {
 							const isEditing = editingUserKey === key;
 							return (
-								<div className="msg-user-row group" data-chat-anchor-key={key}>
+								<div className="msg-block msg-block-user group" data-chat-anchor-key={key}>
 									<div
 										className={"msg-user" + (isEditing ? " msg-user-editing" : "") + (locateFlashId === entry.id ? " locate-flash" : "")}
 										id={"entry-" + entry.id}
@@ -536,21 +509,21 @@ export function Transcript(props: {
 									>
 										{entry.text}
 									</div>
-									<span className="msg-user-meta">
+									<span className="sr-only">you</span>
+									<div className="msg-meta">
+										<span className="msg-at">{formatHistoryTime(entry.time)}</span>
+										{entry.from && <span className="msg-chip">from {entry.from}</span>}
 										{isEditing ? (
 											<span className="msg-user-edit-hint">{editSaving ? "resending…" : "enter save · esc cancel"}</span>
 										) : (
-											<>
-												{entry.from && <span className="msg-user-from">From {entry.from}</span>}
-												<span className="msg-user-time">{formatHistoryTime(entry.time)}</span>
-												{key === editableUserKey && !props.working && (
-													<button type="button" className="msg-user-edit-link" title="Edit message" aria-label="Edit message" onClick={() => startEdit(key, entry.text)}>
-														<Pencil size={12} />
-													</button>
-												)}
-											</>
+											key === editableUserKey &&
+											!props.working && (
+												<button type="button" className="msg-user-edit-link" title="Edit message" aria-label="Edit message" onClick={() => startEdit(key, entry.text)}>
+													<Pencil size={12} />
+												</button>
+											)
 										)}
-									</span>
+									</div>
 									{isEditing && editError && <p className="msg-user-edit-error">{editError}</p>}
 								</div>
 							);
@@ -670,9 +643,9 @@ export function Transcript(props: {
 					{props.working && (
 						<motion.div
 							key="speaking"
-							className="msg-letter msg-speaking"
-							initial={{ opacity: 0, scale: 0.97 }}
-							animate={{ opacity: 1, scale: 1 }}
+							className="msg-block msg-speaking"
+							initial={{ opacity: 0, y: 4 }}
+							animate={{ opacity: 1, y: 0 }}
 							exit={{ opacity: 0 }}
 							transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
 						>
@@ -681,7 +654,6 @@ export function Transcript(props: {
 								<span className="work-dot" />
 								<span className="work-dot" />
 							</div>
-							{worker && <div className="msg-sign">— {worker} is writing…</div>}
 						</motion.div>
 					)}
 				</AnimatePresence>
@@ -703,10 +675,10 @@ export function Transcript(props: {
 			</ScrollRegion>
 
 			<Dialog open={skillDialog != null} onOpenChange={(open) => !open && setSkillDialog(null)}>
-				<DialogContent focusClose className="w-[560px] max-w-[560px] bg-paper p-0 gap-0">
+				<DialogContent focusClose className="w-[560px] max-w-[560px] bg-canvas p-0 gap-0">
 					<DialogTitle className="sr-only">{skillDialog?.name ?? ""}</DialogTitle>
 					<div className="flex max-h-[70vh] flex-col gap-3 p-5">
-						<div className="font-mono text-[13px] font-medium text-ink">skill · {skillDialog?.name}</div>
+						<div className="font-mono text-[13.5px] font-medium text-ink">skill · {skillDialog?.name}</div>
 						<div className="md md-wrap-pre overflow-y-auto overflow-x-hidden" dangerouslySetInnerHTML={{ __html: renderMarkdown(skillDialog?.content ?? "") }} />
 					</div>
 				</DialogContent>

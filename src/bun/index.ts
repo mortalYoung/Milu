@@ -8,6 +8,7 @@ import type { AgentMessage, Entry } from "@earendil-works/pi-agent-core";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
 import { getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
 import { ApplicationMenu, BrowserView, BrowserWindow, app as electrobunApp, Utils } from "electrobun/main";
+import { BRAND } from "../shared/brand";
 import { mcpChangedText } from "../shared/events";
 import { projectOrigin } from "../shared/origin";
 import type { AppRPCSchema, ChatPreviewKind, RailView } from "../shared/rpc";
@@ -2499,9 +2500,9 @@ type AppMenuItem = Parameters<typeof ApplicationMenu.setApplicationMenu>[0][numb
 function buildMenu(): AppMenuItem[] {
 	return [
 		{
-			label: "LETTERS",
+			label: BRAND,
 			submenu: [
-				{ role: "about", label: "About Letters" },
+				{ role: "about", label: `About ${BRAND}` },
 				{ type: "divider" },
 				{ label: "Settings…", action: "letters.settings", accelerator: "Command+," },
 				{ type: "divider" },
@@ -2509,13 +2510,13 @@ function buildMenu(): AppMenuItem[] {
 				{ role: "hideOthers", accelerator: "Command+Option+H" },
 				{ role: "showAll" },
 				{ type: "divider" },
-				{ role: "quit", label: "Quit Letters", accelerator: "Command+Q" },
+				{ role: "quit", label: `Quit ${BRAND}`, accelerator: "Command+Q" },
 			],
 		},
 		{
 			label: "Partner",
 			submenu: [
-				{ label: "New partner", action: "letters.new-partner", accelerator: "Command+N" },
+				{ label: "Create", action: "letters.new-partner", accelerator: "Command+N" },
 				{ label: "Close chat", action: "letters.close-chat", accelerator: "Command+W" },
 				{ label: "Partner details", action: "letters.details", accelerator: "Command+E", enabled: menuState.partner },
 				{ type: "divider" },
@@ -2590,7 +2591,7 @@ let lastSession: LastSession = (rememberSession ? readLastSession() : null) ?? {
 let frameTimer: ReturnType<typeof setTimeout> | undefined;
 
 const mainWindow: BrowserWindow = new BrowserWindow({
-	title: "Letters",
+	title: BRAND,
 
 	titleBarStyle: "hiddenInset",
 	trafficLightOffset: { x: 0, y: 10 },

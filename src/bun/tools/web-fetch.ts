@@ -1,3 +1,5 @@
+import { DEFAULT_WEB_FETCH_USER_AGENT } from "../../shared/brand";
+
 export interface WebFetchOptions {
 	timeoutMs?: number;
 	maxBytes?: number;
@@ -26,7 +28,7 @@ export class WebFetchError extends Error {
 	}
 }
 
-const DEFAULTS = { timeoutMs: 15000, maxBytes: 1_000_000, maxChars: 50_000, userAgent: "Letters-web-fetch/0.1" };
+const DEFAULTS = { timeoutMs: 15000, maxBytes: 1_000_000, maxChars: 50_000, userAgent: DEFAULT_WEB_FETCH_USER_AGENT };
 
 export function webFetchOptions(settings?: { timeoutMs?: number; maxBytes?: number; maxChars?: number; userAgent?: string }) {
 	return {

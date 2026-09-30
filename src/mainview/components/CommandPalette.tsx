@@ -1,3 +1,4 @@
+import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import type { PartnerAccessServer, PartnerAccessSkill } from "../../shared/rpc";
@@ -5,8 +6,9 @@ import type { RevealRange } from "../lib/dock";
 import { imeGuard } from "../lib/ime";
 import { fileRows, grantRows, type Palette, type PaletteGrant, type PaletteMode, type PaletteRow, parseFileQuery, pickableIndexes, sessionRows } from "../lib/palette";
 import { rpc } from "../lib/rpc";
-import type { PartnerItem } from "./ConversationList";
+import type { PartnerItem } from "../lib/session";
 import { PaletteList } from "./PaletteList";
+import { Kbd, KbdGroup } from "./ui/kbd";
 
 const MODES: { id: PaletteMode; label: string }[] = [
 	{ id: "sessions", label: "Sessions" },
@@ -237,71 +239,116 @@ export function CommandPalette(props: {
 	const range = mode === "files" ? parseFileQuery(query).range : null;
 	const rangeNote = range ? (range.start === range.end ? `#${range.start}` : `#${range.start}-${range.end}`) : null;
 	const statusNote = mode === "access" ? grantError : mode !== "files" || !filesAvailable || searching ? null : fileResults?.truncated ? "first 50 · keep typing to narrow" : null;
-	const keyNote = mode === "access" ? "tab switch · ↑↓ navigate · ↵ toggle · esc" : `tab switch · ↑↓ navigate · ↵ open${mode === "files" ? " · ⌘↵ editor" : ""} · esc`;
-
-	if (!open) return null;
 
 	return (
-		<div className="palette-anchor">
-			<div className="palette" ref={panelEl} role="dialog" aria-modal="false" aria-label="Command palette">
-				<div className="palette-head">
-					<div className="palette-chips" role="group" aria-label="Mode">
-						{MODES.map((candidate) => (
-							<button
-								type="button"
-								key={candidate.id}
-								className={"palette-chip" + (mode === candidate.id ? " on" : "")}
-								disabled={!modeAvailable(candidate.id)}
-								aria-pressed={mode === candidate.id}
-								onClick={() => palette.setMode(candidate.id)}
-							>
-								{candidate.label}
-							</button>
-						))}
-					</div>
-					<span className="palette-key">{mode === "access" ? "⌘⇧P" : "⌘P"}</span>
-				</div>
-				<div className="palette-input-row">
-					<span className="palette-caret" aria-hidden="true">
-						›
-					</span>
-					<input
-						id="palette-input"
-						ref={inputEl}
-						className="palette-input"
-						placeholder="search…"
-						autoComplete="off"
-						autoCapitalize="off"
-						spellCheck={false}
-						role="combobox"
-						aria-expanded="true"
-						aria-controls="palette-list"
-						aria-autocomplete="list"
-						aria-label="Search"
-						aria-activedescendant={index >= 0 ? `palette-option-${index}` : undefined}
-						onChange={(event) => palette.setQuery(event.currentTarget.value)}
-						onKeyDown={(event) => {
-							ime.onKeyDown(event.nativeEvent);
-							onKeyDown(event);
-						}}
-						onCompositionStart={ime.onStart}
-						onCompositionEnd={(event) => ime.onEnd(event.nativeEvent, event.currentTarget)}
-					/>
-				</div>
-				{rows.length > 0 ? (
-					<PaletteList rows={rows} index={index} unread={props.unread} onPick={activate} onHover={palette.setIndex} />
-				) : (
-					<div className="palette-note">{emptyNote}</div>
+		<MotionConfig reducedMotion="user">
+			<AnimatePresence>
+				{open && (
+					<motion.div
+						className="palette-anchor"
+						initial={{ opacity: 0, y: -8, scale: 0.99 }}
+						animate={{ opacity: 1, y: 0, scale: 1 }}
+						exit={{ opacity: 0, y: -6, scale: 0.995 }}
+						transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}
+					>
+						<div className="palette" ref={panelEl} role="dialog" aria-modal="false" aria-label="Command palette">
+							<div className="palette-head">
+								<div className="palette-chips" role="group" aria-label="Mode">
+									{MODES.map((candidate) => (
+										<button
+											type="button"
+											key={candidate.id}
+											className={"palette-chip" + (mode === candidate.id ? " on" : "")}
+											disabled={!modeAvailable(candidate.id)}
+											aria-pressed={mode === candidate.id}
+											onClick={() => palette.setMode(candidate.id)}
+										>
+											{candidate.label}
+										</button>
+									))}
+								</div>
+								<KbdGroup className="ml-auto">
+									{mode === "access" ? (
+										<>
+											<Kbd>⌘</Kbd>
+											<Kbd>⇧</Kbd>
+											<Kbd>P</Kbd>
+										</>
+									) : (
+										<>
+											<Kbd>⌘</Kbd>
+											<Kbd>P</Kbd>
+										</>
+									)}
+								</KbdGroup>
+							</div>
+							<div className="palette-input-row">
+								<span className="palette-caret" aria-hidden="true">
+									›
+								</span>
+								<input
+									id="palette-input"
+									ref={inputEl}
+									className="palette-input"
+									placeholder="search…"
+									autoComplete="off"
+									autoCapitalize="off"
+									spellCheck={false}
+									role="combobox"
+									aria-expanded="true"
+									aria-controls="palette-list"
+									aria-autocomplete="list"
+									aria-label="Search"
+									aria-activedescendant={index >= 0 ? `palette-option-${index}` : undefined}
+									onChange={(event) => palette.setQuery(event.currentTarget.value)}
+									onKeyDown={(event) => {
+										ime.onKeyDown(event.nativeEvent);
+										onKeyDown(event);
+									}}
+									onCompositionStart={ime.onStart}
+									onCompositionEnd={(event) => ime.onEnd(event.nativeEvent, event.currentTarget)}
+								/>
+							</div>
+							{rows.length > 0 ? (
+								<PaletteList rows={rows} index={index} unread={props.unread} onPick={activate} onHover={palette.setIndex} />
+							) : (
+								<div className="palette-note">{emptyNote}</div>
+							)}
+							<div className="palette-foot">
+								{rangeNote && <span className="palette-range">{rangeNote}</span>}
+								<span className={"palette-status" + (statusNote && mode === "access" ? " err" : "")} aria-live="polite">
+									{statusNote}
+								</span>
+								<span className="palette-keys">
+									<span className="palette-key-item">
+										<Kbd>⇥</Kbd>switch
+									</span>
+									<span className="palette-key-item">
+										<Kbd>↑↓</Kbd>navigate
+									</span>
+									<span className="palette-key-item">
+										<Kbd>↵</Kbd>
+										{mode === "access" ? "toggle" : "open"}
+									</span>
+									{mode === "files" && (
+										<span className="palette-key-item">
+											<KbdGroup>
+												<Kbd>⌘</Kbd>
+												<Kbd>↵</Kbd>
+											</KbdGroup>
+											editor
+										</span>
+									)}
+									<span className="palette-key-item">
+										<Kbd>esc</Kbd>close
+									</span>
+								</span>
+							</div>
+						</div>
+					</motion.div>
 				)}
-				<div className="palette-foot">
-					{rangeNote && <span className="palette-range">{rangeNote}</span>}
-					<span className="palette-status" aria-live="polite">
-						{statusNote}
-					</span>
-					<span className="palette-keys">{keyNote}</span>
-				</div>
-			</div>
-		</div>
+			</AnimatePresence>
+		</MotionConfig>
 	);
 }
 

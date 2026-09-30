@@ -34,7 +34,7 @@ export function DropdownMenuItem({ className, ...rest }: ComponentProps<typeof D
 	return (
 		<DropdownMenuPrimitive.Item
 			className={cn(
-				"relative flex cursor-default select-none items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none focus-visible:outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+				"relative flex cursor-default select-none items-center gap-2 rounded-md px-2 py-1.5 text-sm outline-none focus-visible:outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
 				className,
 			)}
 			{...rest}
@@ -51,14 +51,14 @@ export function DropdownMenuLabel({ className, ...rest }: ComponentProps<typeof 
 }
 
 export function DropdownMenuSeparator({ className, ...rest }: ComponentProps<typeof DropdownMenuPrimitive.Separator>) {
-	return <DropdownMenuPrimitive.Separator className={cn("-mx-1 my-1 h-px bg-hairline", className)} {...rest} />;
+	return <DropdownMenuPrimitive.Separator className={cn("-mx-1 my-1 h-px bg-line", className)} {...rest} />;
 }
 
 export function DropdownMenuSubTrigger({ className, children, ...rest }: ComponentProps<typeof DropdownMenuPrimitive.SubTrigger>) {
 	return (
 		<DropdownMenuPrimitive.SubTrigger
 			className={cn(
-				"flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none focus-visible:outline-none focus:bg-accent data-[state=open]:bg-accent",
+				"flex cursor-default select-none items-center rounded-md px-2 py-1.5 text-sm outline-none focus-visible:outline-none focus:bg-accent data-[state=open]:bg-accent",
 				className,
 			)}
 			{...rest}
@@ -98,7 +98,7 @@ export function DropdownMenuCheckboxItem({ className, children, ...rest }: Compo
 	return (
 		<DropdownMenuPrimitive.CheckboxItem
 			className={cn(
-				"relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+				"relative flex cursor-default select-none items-center rounded-md py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
 				className,
 			)}
 			{...rest}
@@ -128,7 +128,7 @@ export function DropdownMenuRadioItem({ className, children, ...rest }: Componen
 	return (
 		<DropdownMenuPrimitive.RadioItem
 			className={cn(
-				"relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+				"relative flex cursor-default select-none items-center rounded-md py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
 				className,
 			)}
 			{...rest}

@@ -2,7 +2,7 @@ import type { ElectrobunConfig } from "electrobun";
 
 export default {
 	app: {
-		name: "Letters",
+		name: "MILU",
 		identifier: "letters.local",
 		version: "0.1.0",
 	},
@@ -28,11 +28,11 @@ export default {
 		},
 		linux: {
 			bundleCEF: false,
-			icon: "assets/letters.png",
+			icon: "assets/milu.png",
 		},
 		win: {
 			bundleCEF: false,
-			icon: "assets/letters.png",
+			icon: "assets/milu.png",
 		},
 	},
 } satisfies ElectrobunConfig;

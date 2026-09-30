@@ -1,8 +1,8 @@
 <div align="center"><a name="readme-top"></a>
 
-<img height="140" src="assets/letters.png" alt="LETTERS">
+<img height="140" src="assets/milu.png" alt="Milu">
 
-<h1>LETTERS</h1>
+<h1>Milu</h1>
 
 A desktop harness for a small staff of AI correspondents: one window, several of
 them, each with its own desk, memory, and mail.
@@ -42,7 +42,7 @@ bun run dev
 | `bun run build:dev` | the same, on the dev channel |
 | `bun run start:log` | dev with the console teed into `.logs/` |
 | `bun run typecheck` / `format:check` | the gate: types, then formatting |
-| `bun run icons` | regenerate the icon set from `assets/letters.png` |
+| `bun run icons` | regenerate the icon set from `assets/milu.png` |
 
 One Bun process owns everything that matters — the agent runs, the session log, and
 the sandbox — and the window is only a view of it. `CLAUDE.md` carries the map;
@@ -59,7 +59,7 @@ One decision underneath all of it: the agent as correspondent, not chat box.
   grants; forks for keeping a variant beside the original.
 - **Folded memory** — rounds folded into `memories → scenes → persona`, an idle
   scheduler, and a self-healing cursor.
-- **Letters between letters** — `peer { op: "list" | "ask" }`, answers delivered into
+- **Partner to partner** — `peer { op: "list" | "ask" }`, answers delivered into
   the asker's own conversation, a four-hop cap on an exchange.
 - **Kernel-level confinement** — writes outside the workspace and the storage are
   denied by the kernel, a git repository's hooks stay read-only, one wider command

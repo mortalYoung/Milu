@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { mcpStateColor } from "../lib/mcp";
 import { rpc } from "../lib/rpc";
+import type { PartnerItem } from "../lib/session";
 import { Button } from "./Button";
-import type { PartnerItem } from "./ConversationList";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Select } from "./ui/select";
 import { TextField, TextFieldInput, TextFieldLabel, TextFieldTextArea } from "./ui/text-field";
@@ -179,7 +179,7 @@ export function McpServersPanel() {
 			<div className="flex items-center justify-between gap-3">
 				<div>
 					<h2 className="font-serif text-[16px] font-semibold text-ink">MCP servers</h2>
-					<p className="mt-0.5 font-sans text-[11px] text-body-muted">Configure local stdio servers and grant them to partners.</p>
+					<p className="mt-0.5 font-sans text-[11.5px] text-muted">Configure local stdio servers and grant them to partners.</p>
 				</div>
 				<Button variant="outline" size="sm" onClick={startAdd}>
 					+ Add server
@@ -195,9 +195,9 @@ export function McpServersPanel() {
 					}
 				}}
 			>
-				<DialogContent className="w-[560px] max-w-[560px] bg-letter p-0 gap-0">
-					<DialogHeader className="border-b border-hairline px-5 pb-3 pt-4">
-						<DialogTitle className="font-serif text-[15px] font-semibold text-ink">{editing ? `Edit ${editing}` : "Add MCP server"}</DialogTitle>
+				<DialogContent className="w-[560px] max-w-[560px] bg-surface p-0 gap-0">
+					<DialogHeader className="border-b border-line px-5 pb-3 pt-4">
+						<DialogTitle className="font-serif text-[16px] font-semibold text-ink">{editing ? `Edit ${editing}` : "Add MCP server"}</DialogTitle>
 					</DialogHeader>
 					<div className="grid gap-4 px-5 py-4">
 						<div className="grid grid-cols-2 gap-3">
@@ -214,7 +214,7 @@ export function McpServersPanel() {
 								/>
 							</TextField>
 							<div>
-								<span className="mb-1 block font-sans text-[11px] font-medium uppercase tracking-[0.6px] text-muted">Lifecycle</span>
+								<span className="mb-1 block font-sans text-[11.5px] font-medium uppercase tracking-[0.6px] text-muted-soft">Lifecycle</span>
 								<Select class="w-full" value={lifecycle} onChange={(value) => setLifecycle(value as Lifecycle)} options={LIFECYCLES} ariaLabel="Lifecycle" />
 							</div>
 						</div>
@@ -243,7 +243,7 @@ export function McpServersPanel() {
 						<TextField className="min-w-0">
 							<TextFieldLabel>Env</TextFieldLabel>
 							<TextFieldTextArea
-								className="min-h-[72px] font-mono text-[12px]"
+								className="min-h-[72px] font-mono text-[12.5px]"
 								value={envText}
 								onChange={(event) => setEnvText(event.currentTarget.value)}
 								placeholder={"KEY=value\nANOTHER=value"}
@@ -252,14 +252,14 @@ export function McpServersPanel() {
 							/>
 						</TextField>
 					</div>
-					<DialogFooter className="border-t border-hairline px-5 py-4">
+					<DialogFooter className="border-t border-line px-5 py-4">
 						<div className="flex w-full items-center justify-between gap-3">
-							{error && <span className="font-sans text-[11px] text-seal">{error}</span>}
+							{error && <span className="font-sans text-[11.5px] text-signal">{error}</span>}
 							<div className="ml-auto flex gap-2">
 								<Button variant="ghost" size="sm" disabled={busy} onClick={() => setFormOpen(false)}>
 									Cancel
 								</Button>
-								<Button variant="seal" size="sm" disabled={busy} onClick={() => void saveServer()}>
+								<Button variant="primary" size="sm" disabled={busy} onClick={() => void saveServer()}>
 									{editing ? "Save" : "Add"}
 								</Button>
 							</div>
@@ -270,22 +270,22 @@ export function McpServersPanel() {
 
 			<div className="space-y-2">
 				{servers.map((server) => (
-					<div className="rounded-[10px] border border-hairline bg-letter p-3" key={server.name}>
+					<div className="rounded-[6px] border border-line bg-surface p-3" key={server.name}>
 						<div className="flex items-center gap-3">
 							<span className={"size-2 shrink-0 rounded-full " + mcpStateColor(server.state)} title={server.state} />
 							<span className="min-w-0 flex-1">
-								<span className="block truncate font-serif text-[14px] font-semibold text-ink">{server.name}</span>
-								<span className="block truncate font-mono text-[10px] text-body-muted">
+								<span className="block truncate font-serif text-[13.5px] font-semibold text-ink">{server.name}</span>
+								<span className="block truncate font-mono text-[10px] text-muted">
 									{server.transport.command} {server.transport.args?.join(" ") ?? ""}
 								</span>
 							</span>
-							<span className="shrink-0 font-mono text-[10px] text-muted">{server.lifecycle ?? "lazy"}</span>
-							{server.builtin && <span className="shrink-0 rounded-[6px] bg-paper-deep px-1.5 py-0.5 font-mono text-[10px] text-muted">builtin</span>}
-							<span className="shrink-0 font-mono text-[10px] text-muted">{server.toolCount} tools</span>
-							{testResult[server.name] && <span className="shrink-0 font-mono text-[10px] text-muted">{testResult[server.name]}</span>}
+							<span className="shrink-0 font-mono text-[10px] text-muted-soft">{server.lifecycle ?? "lazy"}</span>
+							{server.builtin && <span className="shrink-0 rounded-[6px] bg-selected px-1.5 py-0.5 font-mono text-[10px] text-muted-soft">builtin</span>}
+							<span className="shrink-0 font-mono text-[10px] text-muted-soft">{server.toolCount} tools</span>
+							{testResult[server.name] && <span className="shrink-0 font-mono text-[10px] text-muted-soft">{testResult[server.name]}</span>}
 							<button
 								type="button"
-								className="h-6 rounded-[8px] px-1.5 font-mono text-[10px] text-muted transition-colors hover:bg-paper-hover hover:text-ink disabled:opacity-50"
+								className="h-6 rounded-[6px] px-1.5 font-mono text-[10px] text-muted-soft transition-colors hover:bg-hover hover:text-ink disabled:opacity-50"
 								disabled={testing[server.name]}
 								onClick={() => void testServer(server.name)}
 							>
@@ -294,7 +294,7 @@ export function McpServersPanel() {
 							{!server.builtin && (
 								<button
 									type="button"
-									className="h-6 rounded-[8px] px-1.5 font-mono text-[10px] text-muted transition-colors hover:bg-paper-hover hover:text-ink"
+									className="h-6 rounded-[6px] px-1.5 font-mono text-[10px] text-muted-soft transition-colors hover:bg-hover hover:text-ink"
 									onClick={() => startEdit(server)}
 								>
 									edit
@@ -303,31 +303,31 @@ export function McpServersPanel() {
 							{!server.builtin && (
 								<button
 									type="button"
-									className="h-6 rounded-[8px] px-1.5 font-mono text-[10px] text-muted transition-colors hover:bg-paper-hover hover:text-seal"
+									className="h-6 rounded-[6px] px-1.5 font-mono text-[10px] text-muted-soft transition-colors hover:bg-hover hover:text-signal"
 									onClick={() => void removeServer(server)}
 								>
 									delete
 								</button>
 							)}
 						</div>
-						{server.error && <div className="mt-2 rounded-[6px] bg-seal-soft px-2 py-1 font-mono text-[10px] text-seal">{server.error}</div>}
+						{server.error && <div className="mt-2 rounded-[6px] bg-signal-soft px-2 py-1 font-mono text-[10px] text-signal">{server.error}</div>}
 						<div className="mt-2 flex flex-wrap gap-1">
 							{partners.map((partner) => (
 								<label
 									key={partner.name}
-									className="flex cursor-pointer items-center gap-1.5 rounded-[6px] border border-hairline px-2 py-1 font-sans text-[11px] text-ink-soft transition-colors hover:bg-paper-hover"
+									className="flex cursor-pointer items-center gap-1.5 rounded-[6px] border border-line px-2 py-1 font-sans text-[11.5px] text-ink-soft transition-colors hover:bg-hover"
 								>
 									<input
 										type="checkbox"
-										className="accent-[var(--color-seal)]"
+										className="accent-[var(--color-signal)]"
 										checked={server.grantedPartners.includes(partner.name)}
 										onChange={(event) => void togglePartner(server.name, partner.name, event.currentTarget.checked)}
 									/>
-									<span className="size-4 rounded-full bg-paper-deep text-center font-sans text-[9px] leading-4 text-ink">{partner.name.charAt(0)}</span>
+									<span className="size-4 rounded-full bg-selected text-center font-sans text-[10px] leading-4 text-ink">{partner.name.charAt(0)}</span>
 									<span>{partner.name}</span>
 								</label>
 							))}
-							{partners.length === 0 && <span className="font-sans text-[11px] text-muted">no partners</span>}
+							{partners.length === 0 && <span className="font-sans text-[11.5px] text-muted-soft">no partners</span>}
 						</div>
 					</div>
 				))}

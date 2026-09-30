@@ -1,4 +1,5 @@
-import { ArrowUp, ChevronDown, ChevronLeft, Cpu, Square, Terminal } from "lucide-react";
+import { ArrowUp, ChevronDown, ChevronLeft, Cpu, DollarSign, Square, Terminal } from "lucide-react";
+import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { type ChangeEvent, type CompositionEvent, type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import type { CommandDescriptor } from "../../shared/rpc";
@@ -16,7 +17,6 @@ import { useToast } from "../lib/contexts/toast-context";
 import { ESCAPE_ORDER, useEscapeLayer } from "../lib/escape";
 import { filterMentions } from "../lib/mentions";
 import { detectTrigger, parseCommand } from "../lib/trigger";
-import { Button } from "./Button";
 import { CommandMenu } from "./CommandMenu";
 import { ContextMeter } from "./ContextMeter";
 import { FollowUpDock } from "./FollowUpDock";
@@ -32,6 +32,7 @@ import {
 	DropdownMenuSubTrigger,
 	DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
+import { Kbd, KbdGroup } from "./ui/kbd";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 const MAX_HEIGHT = 120;
@@ -410,6 +411,11 @@ export function Composer(props: {
 			setShellMode((v) => !v);
 			return;
 		}
+		if (event.key === "Escape" && shellMode && !menuOpen && mention == null && text.trim() === "") {
+			event.preventDefault();
+			setShellMode(false);
+			return;
+		}
 		if (event.key === " " && !event.shiftKey) {
 			const parsed = parseCommand(text);
 			if (parsed && !parsed.rawInput.trim()) {
@@ -436,6 +442,8 @@ export function Composer(props: {
 	};
 
 	const showSend = text.trim() !== "" || busy;
+	const showModel = selected != null && agentData.models.length > 0;
+	const hasActions = props.hasTasks === true || showModel || metricsData?.contextUsage != null || showSend;
 	const modelLabel = agentData.model?.modelId ?? "default model";
 
 	return (
@@ -450,146 +458,209 @@ export function Composer(props: {
 			)}
 			<FollowUpDock />
 			<div className="composer-row">
-				{props.hasTasks && (
-					<div className="composer-task-slot">
-						<Button variant="ghost" size="icon" class="composer-toggle" title="Tasks" aria-label="Tasks" icon={<Terminal size={15} />} onClick={() => props.onTasks?.()} />
-						{(props.taskRunning ?? 0) > 0 && <span className="composer-task-count">{props.taskRunning}</span>}
+				<div className={"composer-box" + (shellMode ? " shell" : "")}>
+					<div className="composer-input-layer">
+						<textarea
+							id="prompt-input"
+							ref={textareaRef}
+							value={text}
+							onChange={(event: ChangeEvent<HTMLTextAreaElement>) => {
+								const el = event.currentTarget;
+								const value = el.value;
+								setText(value);
+								composer.change(value);
+								const pos = el.selectionStart ?? value.length;
+								suppressNextSync.current = false;
+								syncCommandState(value, pos);
+								resize();
+							}}
+							onKeyDown={onKeyDown}
+							onKeyUp={(event) => {
+								if (suppressNextSync.current) return;
+								const el = event.currentTarget;
+								const pos = el.selectionStart ?? el.value.length;
+								syncCommandState(el.value, pos);
+							}}
+							onSelect={(event) => {
+								if (suppressNextSync.current) return;
+								const el = event.currentTarget;
+								const pos = el.selectionStart ?? el.value.length;
+								syncCommandState(el.value, pos);
+							}}
+							onCompositionStart={onCompositionStart}
+							onCompositionEnd={onCompositionEnd}
+							className="composer-input"
+							rows={1}
+							placeholder={shellMode ? "Run a shell command…" : "Type a message…"}
+							autoComplete="off"
+							spellCheck={false}
+							aria-label="Message"
+						/>
 					</div>
-				)}
-				<div className={"composer-field" + (shellMode ? " shell" : "")}>
-					{shellMode && (
-						<span className="composer-shell-prefix" aria-hidden="true">
-							$
-						</span>
-					)}
-					{shellMode && <span className="composer-shell-tag">shell</span>}
-					<textarea
-						id="prompt-input"
-						ref={textareaRef}
-						value={text}
-						onChange={(event: ChangeEvent<HTMLTextAreaElement>) => {
-							const el = event.currentTarget;
-							const value = el.value;
-							setText(value);
-							composer.change(value);
-							const pos = el.selectionStart ?? value.length;
-							suppressNextSync.current = false;
-							syncCommandState(value, pos);
-							resize();
-						}}
-						onKeyDown={onKeyDown}
-						onKeyUp={(event) => {
-							if (suppressNextSync.current) return;
-							const el = event.currentTarget;
-							const pos = el.selectionStart ?? el.value.length;
-							syncCommandState(el.value, pos);
-						}}
-						onSelect={(event) => {
-							if (suppressNextSync.current) return;
-							const el = event.currentTarget;
-							const pos = el.selectionStart ?? el.value.length;
-							syncCommandState(el.value, pos);
-						}}
-						onCompositionStart={onCompositionStart}
-						onCompositionEnd={onCompositionEnd}
-						className="composer-input"
-						rows={1}
-						placeholder="Type a message…"
-						autoComplete="off"
-						spellCheck={false}
-						aria-label="Message"
-					/>
-					{selected && agentData.models.length > 0 && (
-						<div className={"composer-model" + (modelExpanded ? " expanded" : "")}>
-							<Tooltip delayDuration={150} open={modelExpanded ? false : modelTipOpen} onOpenChange={setModelTipOpen}>
-								<TooltipTrigger asChild>
+					{hasActions && (
+						<div className="composer-actions">
+							<button
+								type="button"
+								className={"composer-icon-btn" + (shellMode ? " on" : "")}
+								title="Shell mode (⇥)"
+								aria-label="Shell mode"
+								aria-pressed={shellMode}
+								onClick={() => setShellMode((value) => !value)}
+							>
+								<DollarSign size={15} />
+							</button>
+							{props.hasTasks && (
+								<div className="composer-task-slot">
+									<button type="button" className="composer-icon-btn" title="Tasks" aria-label="Tasks" onClick={() => props.onTasks?.()}>
+										<Terminal size={15} />
+									</button>
+									{(props.taskRunning ?? 0) > 0 && <span className="composer-task-count">{props.taskRunning}</span>}
+								</div>
+							)}
+							<div className="composer-actions-right">
+								{selected && agentData.models.length > 0 && (
+									<div className={"composer-model" + (modelExpanded ? " expanded" : "")}>
+										<Tooltip delayDuration={150} open={modelExpanded ? false : modelTipOpen} onOpenChange={setModelTipOpen}>
+											<TooltipTrigger asChild>
+												<button
+													type="button"
+													className="composer-model-icon"
+													aria-expanded={modelExpanded}
+													aria-label={modelExpanded ? "Collapse model and effort" : `Model and effort: ${modelLabel} · ${agentData.thinking_level}`}
+													onClick={() => {
+														if (modelExpanded) {
+															setModelExpanded(false);
+															textareaRef.current?.focus();
+														} else {
+															setModelExpanded(true);
+															setModelMenuOpen(true);
+														}
+													}}
+												>
+													{modelExpanded ? <ChevronLeft size={13} /> : <Cpu size={13} />}
+												</button>
+											</TooltipTrigger>
+											<TooltipContent side="top" className="font-mono">
+												{modelExpanded ? "collapse" : `${modelLabel} · ${agentData.thinking_level}`}
+											</TooltipContent>
+										</Tooltip>
+										<DropdownMenu open={modelMenuOpen} onOpenChange={setModelMenuOpen}>
+											<span className="composer-model-slide">
+												<span className="composer-model-sep" aria-hidden="true" />
+												<DropdownMenuTrigger asChild>
+													<button type="button" className="composer-model-drop" tabIndex={modelExpanded ? 0 : -1} title="Model / Effort">
+														<span className="composer-model-label">
+															{modelLabel}·{agentData.thinking_level}
+														</span>
+														<ChevronDown size={9} className="shrink-0 text-muted-soft" />
+													</button>
+												</DropdownMenuTrigger>
+											</span>
+											<DropdownMenuContent
+												portalMount={rootRef.current}
+												align="end"
+												className="min-w-40"
+												onCloseAutoFocus={(event) => {
+													event.preventDefault();
+													textareaRef.current?.focus();
+												}}
+											>
+												<DropdownMenuSub>
+													<DropdownMenuSubTrigger className="font-mono text-[10px]">Models</DropdownMenuSubTrigger>
+													<DropdownMenuSubContent portalMount={rootRef.current}>
+														{agentData.models.map((group) => (
+															<DropdownMenuGroup key={group.provider}>
+																<DropdownMenuGroupLabel className="font-mono text-[10px]">{group.provider}</DropdownMenuGroupLabel>
+																{group.models.map((model) => (
+																	<DropdownMenuItem
+																		key={model.id}
+																		className="font-mono text-[10px] text-ink-soft"
+																		onSelect={() => void agent.setModel(selected, { provider: group.provider, modelId: model.id })}
+																	>
+																		{model.name}
+																	</DropdownMenuItem>
+																))}
+															</DropdownMenuGroup>
+														))}
+													</DropdownMenuSubContent>
+												</DropdownMenuSub>
+												<DropdownMenuSub>
+													<DropdownMenuSubTrigger className="font-mono text-[10px]">Effort</DropdownMenuSubTrigger>
+													<DropdownMenuSubContent portalMount={rootRef.current}>
+														{agentData.thinking_levels.map((level) => (
+															<DropdownMenuItem key={level} className="font-mono text-[10px] text-ink-soft" onSelect={() => void agent.setThinkingLevel(selected, level)}>
+																<span>{level}</span>
+																{level === agentData.thinking_level && <span className="ml-auto text-ink">✓</span>}
+															</DropdownMenuItem>
+														))}
+													</DropdownMenuSubContent>
+												</DropdownMenuSub>
+											</DropdownMenuContent>
+										</DropdownMenu>
+									</div>
+								)}
+								{metricsData?.contextUsage ? <ContextMeter usage={metricsData.contextUsage} /> : null}
+								{showSend && (
 									<button
 										type="button"
-										className="composer-model-icon"
-										aria-expanded={modelExpanded}
-										aria-label={modelExpanded ? "Collapse model and effort" : `Model and effort: ${modelLabel} · ${agentData.thinking_level}`}
-										onClick={() => {
-											if (modelExpanded) {
-												setModelExpanded(false);
-												textareaRef.current?.focus();
-											} else {
-												setModelExpanded(true);
-												setModelMenuOpen(true);
-											}
-										}}
+										className={"composer-send" + (busy ? " composer-stop" : "")}
+										title={busy ? "Stop" : "Send"}
+										aria-label={busy ? "Stop" : "Send"}
+										onClick={() => (busy ? props.onStop() : void submit())}
 									>
-										{modelExpanded ? <ChevronLeft size={13} /> : <Cpu size={13} />}
+										{busy ? <Square size={12} /> : <ArrowUp size={13} />}
 									</button>
-								</TooltipTrigger>
-								<TooltipContent side="top" className="font-mono">
-									{modelExpanded ? "collapse" : `${modelLabel} · ${agentData.thinking_level}`}
-								</TooltipContent>
-							</Tooltip>
-							<DropdownMenu open={modelMenuOpen} onOpenChange={setModelMenuOpen}>
-								<span className="composer-model-slide">
-									<span className="composer-model-sep" aria-hidden="true" />
-									<DropdownMenuTrigger asChild>
-										<button type="button" className="composer-model-drop" tabIndex={modelExpanded ? 0 : -1} title="Model / Effort">
-											<span className="composer-model-label">
-												{modelLabel}·{agentData.thinking_level}
-											</span>
-											<ChevronDown size={9} className="shrink-0 text-muted" />
-										</button>
-									</DropdownMenuTrigger>
-								</span>
-								<DropdownMenuContent
-									portalMount={rootRef.current}
-									align="end"
-									className="min-w-40"
-									onCloseAutoFocus={(event) => {
-										event.preventDefault();
-										textareaRef.current?.focus();
-									}}
-								>
-									<DropdownMenuSub>
-										<DropdownMenuSubTrigger className="font-mono text-[10px]">Models</DropdownMenuSubTrigger>
-										<DropdownMenuSubContent portalMount={rootRef.current}>
-											{agentData.models.map((group) => (
-												<DropdownMenuGroup key={group.provider}>
-													<DropdownMenuGroupLabel className="font-mono text-[10px]">{group.provider}</DropdownMenuGroupLabel>
-													{group.models.map((model) => (
-														<DropdownMenuItem
-															key={model.id}
-															className="font-mono text-[10px] text-ink-soft"
-															onSelect={() => void agent.setModel(selected, { provider: group.provider, modelId: model.id })}
-														>
-															{model.name}
-														</DropdownMenuItem>
-													))}
-												</DropdownMenuGroup>
-											))}
-										</DropdownMenuSubContent>
-									</DropdownMenuSub>
-									<DropdownMenuSub>
-										<DropdownMenuSubTrigger className="font-mono text-[10px]">Effort</DropdownMenuSubTrigger>
-										<DropdownMenuSubContent portalMount={rootRef.current}>
-											{agentData.thinking_levels.map((level) => (
-												<DropdownMenuItem key={level} className="font-mono text-[10px] text-ink-soft" onSelect={() => void agent.setThinkingLevel(selected, level)}>
-													<span>{level}</span>
-													{level === agentData.thinking_level && <span className="ml-auto text-seal">✓</span>}
-												</DropdownMenuItem>
-											))}
-										</DropdownMenuSubContent>
-									</DropdownMenuSub>
-								</DropdownMenuContent>
-							</DropdownMenu>
+								)}
+							</div>
 						</div>
 					)}
-					{metricsData?.contextUsage ? <ContextMeter usage={metricsData.contextUsage} /> : null}
-					{showSend && (
-						<Button
-							variant={busy ? "outline" : "seal"}
-							class={`size-[34px] p-0 rounded-full shrink-0 ${busy ? "composer-stop" : ""}`}
-							title={busy ? "Stop" : "Send"}
-							icon={busy ? <Square size={14} /> : <ArrowUp size={14} />}
-							onClick={() => (busy ? props.onStop() : void submit())}
-						/>
-					)}
+				</div>
+				<div className="composer-tip">
+					<MotionConfig reducedMotion="user">
+						<AnimatePresence mode="wait" initial={false}>
+							<motion.div
+								key={shellMode ? "shell" : "chat"}
+								className="composer-tip-row"
+								initial={{ opacity: 0, x: shellMode ? 10 : -10 }}
+								animate={{ opacity: 1, x: 0 }}
+								exit={{ opacity: 0, x: shellMode ? -10 : 10 }}
+								transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
+							>
+								{shellMode ? (
+									<>
+										<span className="composer-tip-item">
+											<Kbd>⏎</Kbd>运行
+										</span>
+										<span className="composer-tip-item">
+											<KbdGroup>
+												<Kbd>⇧</Kbd>
+												<Kbd>⏎</Kbd>
+											</KbdGroup>
+											换行
+										</span>
+										<span className="composer-tip-item">
+											<Kbd>⇥</Kbd>退出模式
+										</span>
+									</>
+								) : (
+									<>
+										<span className="composer-tip-item">
+											<Kbd>/</Kbd>命令
+										</span>
+										<span className="composer-tip-item">
+											<Kbd>@</Kbd>提及其他会话
+										</span>
+										<span className="composer-tip-item">
+											<Kbd>⇥</Kbd>切换模式
+										</span>
+										<span className="composer-tip-item">
+											<Kbd>⏎</Kbd>发送
+										</span>
+									</>
+								)}
+							</motion.div>
+						</AnimatePresence>
+					</MotionConfig>
 				</div>
 			</div>
 		</form>

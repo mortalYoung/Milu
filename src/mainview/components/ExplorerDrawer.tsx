@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Folder, FolderOpen, FolderSymlink, MessageSquareQuote, Pilcrow, Pin, WrapText } from "lucide-react";
+import { ChevronDown, ChevronRight, Folder, FolderOpen, FolderSymlink, MessageSquareQuote, Pilcrow, Pin, WrapText, X } from "lucide-react";
 import { AnimatePresence } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
@@ -9,7 +9,7 @@ import { useSession } from "../lib/contexts/session-context";
 import { useSettings } from "../lib/contexts/settings-context";
 import { useToast } from "../lib/contexts/toast-context";
 import type { RevealRange, RevealTarget } from "../lib/dock";
-import { DOCK_PANE_MAX, DOCK_PANE_MIN } from "../lib/dock";
+import { DOCK_PANE_MAX, DOCK_PANE_MIN, dockAnchorPoint } from "../lib/dock";
 import { ESCAPE_ORDER, useEscapeLayer } from "../lib/escape";
 import { fileGlyph, linkGlyph } from "../lib/file-icons";
 import { domFindEngine, useFindBar, useFindHandler } from "../lib/find";
@@ -46,46 +46,6 @@ interface FileData {
 function explorerGlyph(entry: ExplorerEntry) {
 	if (entry.kind === "link") return linkGlyph("explorer-row-icon");
 	return fileGlyph(entry.name, "explorer-row-icon");
-}
-
-const LANGUAGE_LABELS: Record<string, string> = {
-	ts: "TS",
-	tsx: "TSX",
-	js: "JS",
-	jsx: "JSX",
-	python: "PY",
-	html: "HTML",
-	css: "CSS",
-	json: "JSON",
-	jsonc: "JSONC",
-	markdown: "MD",
-	yaml: "YAML",
-	bash: "SH",
-	sql: "SQL",
-	toml: "TOML",
-	ini: "INI",
-	diff: "DIFF",
-	xml: "XML",
-};
-
-function formatBytes(bytes: number) {
-	if (bytes < 1024) return `${bytes} B`;
-	return `${(bytes / 1024).toFixed(1)} KB`;
-}
-
-function contentLines(content: string): string[] {
-	if (content === "") return [];
-	const lines = content.split("\n");
-	if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
-	return lines;
-}
-
-function fileMetrics(path: string, data: FileData | null | undefined): string {
-	if (data?.content == null) return "";
-	const lang = languageForPath(path);
-	const count = contentLines(data.content).length;
-	const label = lang ? (LANGUAGE_LABELS[lang] ?? lang.toUpperCase()) : null;
-	return [label, `${count} ${count === 1 ? "line" : "lines"}`, formatBytes(data.size ?? data.content.length)].filter(Boolean).join(" · ");
 }
 
 const FRONTMATTER_HEAD = 4;
@@ -360,7 +320,27 @@ function ExplorerNode(props: {
 	);
 }
 
-const openFilesStore = createStore<{ files: Record<string, SelectedFile> }>()(() => ({ files: {} }));
+interface OpenTabs {
+	tabs: SelectedFile[];
+	active: string | null;
+}
+
+const EMPTY_TABS: OpenTabs = { tabs: [], active: null };
+const openFilesStore = createStore<{ files: Record<string, OpenTabs> }>()(() => ({ files: {} }));
+
+function readTabs(partner: string | null | undefined): OpenTabs {
+	if (!partner) return EMPTY_TABS;
+	return openFilesStore.getState().files[partner] ?? EMPTY_TABS;
+}
+
+function writeTabs(partner: string | null | undefined, next: OpenTabs) {
+	if (!partner) return;
+	openFilesStore.setState((state) => {
+		const current = state.files[partner] ?? EMPTY_TABS;
+		if (current === next) return state;
+		return { files: { ...state.files, [partner]: next } };
+	});
+}
 
 export function ExplorerDrawer(props: {
 	open: boolean;
@@ -369,9 +349,9 @@ export function ExplorerDrawer(props: {
 	side?: "left" | "right";
 	pinned: boolean;
 	onTogglePin: () => void;
-	letterWidth: number | null;
-	setLetterWidth: (width: number | null) => void;
-	commitLetterWidth: () => void;
+	columnWidth: number | null;
+	setColumnWidth: (width: number | null) => void;
+	commitColumnWidth: () => void;
 	paneWidth: number;
 	onPaneResize: (px: number) => void;
 	onPaneCommit: () => void;
@@ -398,12 +378,14 @@ export function ExplorerDrawer(props: {
 
 	const tokens = useRef(new Map<string, number>());
 	const treeEl = useRef<HTMLDivElement>(null);
+	const tabStrip = useRef<HTMLDivElement>(null);
 	const treeScrollTop = useRef(0);
 	const scope = useRef<string | null | undefined>(undefined);
 	const lastRevealSeq = useRef(0);
 	const shownFileRef = useRef<SelectedFile | null>(null);
 
-	const selected = props.partner ? (openFiles[props.partner] ?? null) : null;
+	const openTabs = props.partner ? (openFiles[props.partner] ?? EMPTY_TABS) : EMPTY_TABS;
+	const selected = openTabs.tabs.find((tab) => tab.path === openTabs.active) ?? null;
 	if (selected) shownFileRef.current = selected;
 	const shownFile = shownFileRef.current;
 
@@ -412,16 +394,32 @@ export function ExplorerDrawer(props: {
 	const expandedRef = useRef(expanded);
 	expandedRef.current = expanded;
 
+	/* VSCode-like: every opened file is a tab; one of them is active. */
+	function openTab(next: SelectedFile) {
+		const state = readTabs(props.partner);
+		const tabs = state.tabs.some((tab) => tab.path === next.path) ? state.tabs.map((tab) => (tab.path === next.path ? next : tab)) : [...state.tabs, next];
+		writeTabs(props.partner, { tabs, active: next.path });
+	}
+
+	function activateTab(path: string) {
+		const state = readTabs(props.partner);
+		if (state.active === path) return;
+		writeTabs(props.partner, { ...state, active: path });
+	}
+
+	function closeTab(path: string) {
+		const state = readTabs(props.partner);
+		const index = state.tabs.findIndex((tab) => tab.path === path);
+		if (index < 0) return;
+		const tabs = state.tabs.filter((tab) => tab.path !== path);
+		/* the neighbour takes over, like editors do */
+		const active = state.active === path ? (tabs[index]?.path ?? tabs[index - 1]?.path ?? null) : state.active;
+		writeTabs(props.partner, { tabs, active });
+	}
+
 	function setSelected(next: SelectedFile | null) {
-		const partner = props.partner;
-		if (!partner) return;
-		openFilesStore.setState((state) => {
-			if ((state.files[partner] ?? null) === next) return state;
-			const copy = { ...state.files };
-			if (next) copy[partner] = next;
-			else delete copy[partner];
-			return { files: copy };
-		});
+		if (next) openTab(next);
+		else if (readTabs(props.partner).active) closeTab(readTabs(props.partner).active!);
 	}
 
 	async function loadDir(path: string) {
@@ -491,8 +489,8 @@ export function ExplorerDrawer(props: {
 		if (scope.current === partner) return;
 		scope.current = partner;
 		reset();
-		const remembered = partner ? openFilesStore.getState().files[partner] : undefined;
-		if (remembered) void expandTo(remembered.path);
+		const remembered = readTabs(partner).active;
+		if (remembered) void expandTo(remembered);
 	}, [props.partner]);
 
 	useEffect(() => {
@@ -548,6 +546,10 @@ export function ExplorerDrawer(props: {
 			cancelled = true;
 		};
 	}, [shownFile, props.partner, fileRev]);
+
+	useEffect(() => {
+		tabStrip.current?.querySelector<HTMLElement>(".explorer-tab.on")?.scrollIntoView({ inline: "nearest", block: "nearest" });
+	}, []);
 
 	useEscapeLayer({
 		id: "explorer.detail",
@@ -611,10 +613,9 @@ export function ExplorerDrawer(props: {
 	const selectedKey = selected?.path ?? null;
 	const rootState = dirs[""];
 	const dirSegments = (shownFile?.path || shownFile?.name || "").split("/").filter(Boolean).slice(0, -1);
-	const metrics = shownFile ? fileMetrics(shownFile.path, fileData) : "";
 	const isRaw = shownFile?.raw === true;
 	const rawToggle = !!shownFile?.path && languageForPath(shownFile.path) === "markdown";
-	const stampLabel = (() => {
+	const rangeLabel = (() => {
 		if (!liveRange) return "";
 		const start = liveRange.start + 1;
 		const end = liveRange.end + 1;
@@ -628,12 +629,12 @@ export function ExplorerDrawer(props: {
 
 	function copyLiveRange() {
 		if (!selected || !liveRange) return;
-		void navigator.clipboard?.writeText(`${selected.path}#${stampLabel}`);
+		void navigator.clipboard?.writeText(`${selected.path}#${rangeLabel}`);
 	}
 
-	function quoteInLetter() {
+	function quoteInMessage() {
 		if (!selected || !liveRange) return;
-		const ref = `${selected.path}#${stampLabel}`;
+		const ref = `${selected.path}#${rangeLabel}`;
 		const draft = composer.store.getState().drafts[session.store.getState().selected ?? ""] ?? "";
 		composer.prefill(draft ? `${draft} ${ref} ` : `${ref} `);
 	}
@@ -672,105 +673,117 @@ export function ExplorerDrawer(props: {
 			side={props.side ?? "right"}
 			pinned={props.pinned}
 			onTogglePin={props.onTogglePin}
-			letterWidth={props.letterWidth}
-			setLetterWidth={props.setLetterWidth}
-			commitLetterWidth={props.commitLetterWidth}
+			columnWidth={props.columnWidth}
+			setColumnWidth={props.setColumnWidth}
+			commitColumnWidth={props.commitColumnWidth}
 			width={props.paneWidth}
 			min={DOCK_PANE_MIN}
 			max={DOCK_PANE_MAX}
 			resizeLabel="Resize the file tree"
 			onResize={props.onPaneResize}
 			onCommit={props.onPaneCommit}
-			title="Explorer"
 			surface={SURFACE.reader}
-			onClose={props.onClose}
 			detail={{
 				open: selected != null,
 				render: (leaving: boolean, list: DockListControls) =>
 					shownFile ? (
 						<div className={"explorer-reader dock-detail" + (leaving ? " leaving" : "")}>
 							<div className="explorer-reader-head">
-								<button
-									type="button"
-									className={"dock-btn" + (list.pinned ? " on" : "")}
-									aria-pressed={list.pinned}
-									disabled={!list.canPin && !list.pinned}
-									title={list.pinned ? "Let the file cover the letter again" : "Pin the letter beside the file"}
-									onClick={() => list.togglePin()}
-								>
-									<Pin size={11} />
-								</button>
-								{list.pinned && (
+								<div className="explorer-tabs" ref={tabStrip}>
+									{openTabs.tabs.map((tab) => (
+										<div className={"explorer-tab" + (tab.path === openTabs.active ? " on" : "")} key={tab.path}>
+											<button type="button" className="explorer-tab-main" title={tab.path} onClick={() => activateTab(tab.path)}>
+												{fileGlyph(tab.name, "explorer-tab-icon")}
+												<span className="explorer-tab-name">{tab.name}</span>
+											</button>
+											<button type="button" className="explorer-tab-close" title={`Close ${tab.name}`} aria-label={`Close ${tab.name}`} onClick={() => closeTab(tab.path)}>
+												<X size={11} />
+											</button>
+										</div>
+									))}
+								</div>
+
+								<div className="explorer-reader-actions">
 									<button
 										type="button"
-										className={"dock-btn" + (list.listOpen ? " on" : "")}
-										aria-pressed={list.listOpen}
-										title={list.listOpen ? "Hide the file tree" : "Show the file tree"}
-										onClick={() => list.openList()}
+										className={"dock-btn" + (list.pinned ? " on" : "")}
+										aria-pressed={list.pinned}
+										disabled={!list.canPin && !list.pinned}
+										title={list.pinned ? "Let the file cover the chat again" : "Pin the chat beside the file"}
+										onClick={() => list.togglePin()}
 									>
-										☰
+										<Pin size={11} />
 									</button>
-								)}
-								{!list.pinned && (
-									<button type="button" className="explorer-back" title="Close this file" onClick={() => setSelected(null)}>
-										← {props.partner}
+									{list.pinned && (
+										<button
+											type="button"
+											className={"dock-btn" + (list.listOpen ? " on" : "")}
+											aria-pressed={list.listOpen}
+											title={list.listOpen ? "Hide the file tree" : "Show the file tree"}
+											onClick={(event) => list.openList(dockAnchorPoint(event.currentTarget))}
+										>
+											☰
+										</button>
+									)}
+									{liveRange && (
+										<>
+											<button type="button" className="explorer-tag" title={`Copy ${shownFile.path}#${rangeLabel}`} onClick={copyLiveRange}>
+												⧉ {rangeLabel}
+											</button>
+											<button
+												type="button"
+												className="dock-btn"
+												title={`Quote ${shownFile.path}#${rangeLabel} in the composer`}
+												aria-label="Quote in the composer"
+												onClick={quoteInMessage}
+											>
+												<MessageSquareQuote size={11} />
+											</button>
+										</>
+									)}
+									{rawToggle && (
+										<button
+											type="button"
+											className={"dock-btn" + (isRaw ? " on" : "")}
+											aria-pressed={isRaw}
+											aria-label={isRaw ? "Show rendered markdown" : "Show raw markdown"}
+											title={isRaw ? "Show rendered markdown" : "Show raw markdown"}
+											onClick={toggleRaw}
+										>
+											<Pilcrow size={11} />
+										</button>
+									)}
+									<button
+										type="button"
+										className={"dock-btn" + (props.wrap ? " on" : "")}
+										aria-pressed={props.wrap}
+										aria-label="Wrap long lines"
+										title={props.wrap ? "Stop wrapping long lines" : "Wrap long lines"}
+										onClick={props.onToggleWrap}
+									>
+										<WrapText size={11} />
 									</button>
-								)}
-								<span className="explorer-file-name">{shownFile.name}</span>
+								</div>
+							</div>
+
+							{/* breadcrumbs：head 下面独立一行，中间没有分隔线 */}
+							<div className="explorer-dir-row">
 								<nav className="explorer-dir" aria-label="File path" title={shownFile.path}>
 									{dirSegments.map((segment, index) => (
 										<button
 											type="button"
 											className="explorer-dir-seg"
 											key={dirSegments.slice(0, index + 1).join("/")}
-											onClick={() => {
-												if (list.pinned) list.openList();
+											onClick={(event) => {
 												void focusDir(dirSegments.slice(0, index + 1).join("/"));
+												if (list.pinned) list.openList(dockAnchorPoint(event.currentTarget));
 											}}
 										>
 											{segment}/
 										</button>
 									))}
+									<span className="explorer-dir-file">{shownFile.name}</span>
 								</nav>
-								{liveRange && (
-									<>
-										<button type="button" className="explorer-stamp" title={`Copy ${shownFile.path}#${stampLabel}`} onClick={copyLiveRange}>
-											⧉ {stampLabel}
-										</button>
-										<button
-											type="button"
-											className="dock-btn"
-											title={`Quote ${shownFile.path}#${stampLabel} in the letter`}
-											aria-label="Quote in the letter"
-											onClick={quoteInLetter}
-										>
-											<MessageSquareQuote size={11} />
-										</button>
-									</>
-								)}
-								<span className="explorer-metrics">{metrics}</span>
-								{rawToggle && (
-									<button
-										type="button"
-										className={"dock-btn" + (isRaw ? " on" : "")}
-										aria-pressed={isRaw}
-										aria-label={isRaw ? "Show rendered markdown" : "Show raw markdown"}
-										title={isRaw ? "Show rendered markdown" : "Show raw markdown"}
-										onClick={toggleRaw}
-									>
-										<Pilcrow size={11} />
-									</button>
-								)}
-								<button
-									type="button"
-									className={"dock-btn" + (props.wrap ? " on" : "")}
-									aria-pressed={props.wrap}
-									aria-label="Wrap long lines"
-									title={props.wrap ? "Stop wrapping long lines" : "Wrap long lines"}
-									onClick={props.onToggleWrap}
-								>
-									<WrapText size={11} />
-								</button>
 							</div>
 							{fileLoading ? (
 								<div className="explorer-reader-note">

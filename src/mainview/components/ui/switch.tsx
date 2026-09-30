@@ -10,14 +10,14 @@ export function Switch({
 	return (
 		<SwitchPrimitive.Root
 			className={cn(
-				"peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-paper disabled:cursor-not-allowed disabled:opacity-50",
-				"border-hairline bg-ink/25 data-[state=checked]:border-seal data-[state=checked]:bg-seal",
+				"peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas disabled:cursor-not-allowed disabled:opacity-50",
+				"border-line bg-ink/25 data-[state=checked]:border-ink data-[state=checked]:bg-ink",
 				className,
 			)}
 			onCheckedChange={onChange}
 			{...rest}
 		>
-			<SwitchPrimitive.Thumb className="pointer-events-none block size-4 rounded-full bg-paper shadow-sm transition-transform data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0.5" />
+			<SwitchPrimitive.Thumb className="pointer-events-none block size-4 rounded-full bg-canvas shadow-sm transition-transform data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0.5" />
 		</SwitchPrimitive.Root>
 	);
 }

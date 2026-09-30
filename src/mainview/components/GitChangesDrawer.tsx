@@ -4,7 +4,7 @@ import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
 import type { GitChangeItem } from "../../shared/rpc";
 import { useSettings } from "../lib/contexts/settings-context";
-import { DOCK_PANE_MAX, DOCK_PANE_MIN } from "../lib/dock";
+import { DOCK_PANE_MAX, DOCK_PANE_MIN, dockAnchorPoint } from "../lib/dock";
 import { ESCAPE_ORDER, useEscapeLayer } from "../lib/escape";
 import { languageForPath } from "../lib/markdown";
 import { rpc } from "../lib/rpc";
@@ -67,9 +67,9 @@ export function GitChangesDrawer(props: {
 	onPaneCommit: () => void;
 	pinned: boolean;
 	onTogglePin: () => void;
-	letterWidth: number | null;
-	setLetterWidth: (width: number | null) => void;
-	commitLetterWidth: () => void;
+	columnWidth: number | null;
+	setColumnWidth: (width: number | null) => void;
+	commitColumnWidth: () => void;
 	sideBySide: boolean;
 	onToggleSideBySide: () => void;
 	wrap: boolean;
@@ -240,12 +240,10 @@ export function GitChangesDrawer(props: {
 			onCommit={props.onPaneCommit}
 			pinned={props.pinned}
 			onTogglePin={props.onTogglePin}
-			letterWidth={props.letterWidth}
-			setLetterWidth={props.setLetterWidth}
-			commitLetterWidth={props.commitLetterWidth}
-			title="Git Changes"
+			columnWidth={props.columnWidth}
+			setColumnWidth={props.setColumnWidth}
+			commitColumnWidth={props.commitColumnWidth}
 			surface={SURFACE.diff}
-			onClose={props.onClose}
 			detail={{
 				open: selected != null,
 				render: (leaving: boolean, list: DockListControls) =>
@@ -255,82 +253,86 @@ export function GitChangesDrawer(props: {
 							style={{ "--explorer-line-height": lineHeight, "--explorer-line-height-em": `${lineHeight}em` } as React.CSSProperties}
 						>
 							<div className="git-diff-head">
-								<button
-									type="button"
-									className={"dock-btn" + (list.pinned ? " on" : "")}
-									aria-pressed={list.pinned}
-									disabled={!list.canPin && !list.pinned}
-									title={list.pinned ? "Let the diff cover the letter again" : "Pin the letter beside the diff"}
-									onClick={() => list.togglePin()}
-								>
-									<Pin size={11} />
-								</button>
-								{list.pinned && (
+								<div className="git-diff-title">
+									<span className="git-file-name">{basename(shownChange.path)}</span>
+									{(stats.add > 0 || stats.del > 0) && (
+										<span className="git-diff-stats">
+											{stats.add > 0 && <span className="add">+{stats.add}</span>}
+											{stats.del > 0 && <span className="del">−{stats.del}</span>}
+										</span>
+									)}
+									{sidesError && <span className="git-diff-error">{sidesError}</span>}
+								</div>
+								<div className="git-diff-actions">
 									<button
 										type="button"
-										className={"dock-btn" + (list.listOpen ? " on" : "")}
-										aria-pressed={list.listOpen}
-										title={list.listOpen ? "Hide the change list" : "Show the change list"}
-										onClick={() => list.openList()}
+										className={"dock-btn" + (list.pinned ? " on" : "")}
+										aria-pressed={list.pinned}
+										disabled={!list.canPin && !list.pinned}
+										title={list.pinned ? "Let the diff cover the chat again" : "Pin the chat beside the diff"}
+										onClick={() => list.togglePin()}
 									>
-										☰
+										<Pin size={11} />
 									</button>
-								)}
-								<button type="button" className="git-back" title="Close this diff" onClick={() => setSelected(null)}>
-									← Changes
-								</button>
-								<span className="git-file-name">{basename(shownChange.path)}</span>
+									{list.pinned && (
+										<button
+											type="button"
+											className={"dock-btn" + (list.listOpen ? " on" : "")}
+											aria-pressed={list.listOpen}
+											title={list.listOpen ? "Hide the change list" : "Show the change list"}
+											onClick={(event) => list.openList(dockAnchorPoint(event.currentTarget))}
+										>
+											☰
+										</button>
+									)}
+									<button
+										type="button"
+										className="dock-btn"
+										aria-label="Reveal this file in the explorer"
+										title="Reveal this file in the explorer"
+										onClick={() => props.onRevealInExplorer(shownChange.path)}
+									>
+										<LocateFixed size={11} />
+									</button>
+									{comparable && (
+										<button
+											type="button"
+											className={"dock-btn" + (props.sideBySide ? " on" : "")}
+											aria-pressed={props.sideBySide}
+											aria-label={props.sideBySide ? "Show one column" : "Show both sides"}
+											title={props.sideBySide ? "Show one column" : "Show both sides"}
+											onClick={props.onToggleSideBySide}
+										>
+											<Columns2 size={11} />
+										</button>
+									)}
+									<button
+										type="button"
+										className={"dock-btn" + (props.wrap ? " on" : "")}
+										aria-pressed={props.wrap}
+										aria-label="Wrap long lines"
+										title={props.wrap ? "Stop wrapping long lines" : "Wrap long lines"}
+										onClick={props.onToggleWrap}
+									>
+										<WrapText size={11} />
+									</button>
+									<button
+										type="button"
+										className={"dock-btn" + (props.ignoreWhitespace ? " on" : "")}
+										aria-pressed={props.ignoreWhitespace}
+										aria-label="Ignore leading and trailing whitespace"
+										title={props.ignoreWhitespace ? "Show whitespace changes" : "Ignore leading and trailing whitespace"}
+										onClick={props.onToggleIgnoreWhitespace}
+									>
+										<Space size={11} />
+									</button>
+								</div>
+							</div>
+							{/* breadcrumbs：head 下面单独一行，与 head 之间不画线 */}
+							<div className="git-dir-row">
 								<span className="git-dir" title={shownChange.path}>
 									{dirname(shownChange.path)}
 								</span>
-								{(stats.add > 0 || stats.del > 0) && (
-									<span className="git-diff-stats">
-										{stats.add > 0 && <span className="add">+{stats.add}</span>}
-										{stats.del > 0 && <span className="del">−{stats.del}</span>}
-									</span>
-								)}
-								<button
-									type="button"
-									className="dock-btn"
-									aria-label="Reveal this file in the explorer"
-									title="Reveal this file in the explorer"
-									onClick={() => props.onRevealInExplorer(shownChange.path)}
-								>
-									<LocateFixed size={11} />
-								</button>
-								{comparable && (
-									<button
-										type="button"
-										className={"dock-btn" + (props.sideBySide ? " on" : "")}
-										aria-pressed={props.sideBySide}
-										aria-label={props.sideBySide ? "Show one column" : "Show both sides"}
-										title={props.sideBySide ? "Show one column" : "Show both sides"}
-										onClick={props.onToggleSideBySide}
-									>
-										<Columns2 size={11} />
-									</button>
-								)}
-								<button
-									type="button"
-									className={"dock-btn" + (props.wrap ? " on" : "")}
-									aria-pressed={props.wrap}
-									aria-label="Wrap long lines"
-									title={props.wrap ? "Stop wrapping long lines" : "Wrap long lines"}
-									onClick={props.onToggleWrap}
-								>
-									<WrapText size={11} />
-								</button>
-								<button
-									type="button"
-									className={"dock-btn" + (props.ignoreWhitespace ? " on" : "")}
-									aria-pressed={props.ignoreWhitespace}
-									aria-label="Ignore leading and trailing whitespace"
-									title={props.ignoreWhitespace ? "Show whitespace changes" : "Ignore leading and trailing whitespace"}
-									onClick={props.onToggleIgnoreWhitespace}
-								>
-									<Space size={11} />
-								</button>
-								{sidesError && <span className="git-diff-error">{sidesError}</span>}
 							</div>
 							{comparable && both ? (
 								<CodeDiff

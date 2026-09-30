@@ -33,7 +33,7 @@ export function ContextMenuItem({ className, size = "md", ...rest }: ComponentPr
 	return (
 		<ContextMenuPrimitive.Item
 			className={cn(
-				"relative flex cursor-default select-none items-center rounded-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+				"relative flex cursor-default select-none items-center rounded-md outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
 				size === "sm" ? "gap-1.5 px-1.5 py-1 text-[10px]" : "gap-2 px-2 py-1.5 text-sm",
 				className,
 			)}
@@ -51,13 +51,13 @@ export function ContextMenuLabel({ className, ...rest }: ComponentProps<typeof C
 }
 
 export function ContextMenuSeparator({ className, ...rest }: ComponentProps<typeof ContextMenuPrimitive.Separator>) {
-	return <ContextMenuPrimitive.Separator className={cn("-mx-1 my-1 h-px bg-hairline", className)} {...rest} />;
+	return <ContextMenuPrimitive.Separator className={cn("-mx-1 my-1 h-px bg-line", className)} {...rest} />;
 }
 
 export function ContextMenuSubTrigger({ className, children, ...rest }: ComponentProps<typeof ContextMenuPrimitive.SubTrigger>) {
 	return (
 		<ContextMenuPrimitive.SubTrigger
-			className={cn("flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none focus:bg-accent data-[state=open]:bg-accent", className)}
+			className={cn("flex cursor-default select-none items-center rounded-md px-2 py-1.5 text-sm outline-none focus:bg-accent data-[state=open]:bg-accent", className)}
 			{...rest}
 		>
 			{children}
@@ -93,7 +93,7 @@ export function ContextMenuCheckboxItem({ className, children, ...rest }: Compon
 	return (
 		<ContextMenuPrimitive.CheckboxItem
 			className={cn(
-				"relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+				"relative flex cursor-default select-none items-center rounded-md py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
 				className,
 			)}
 			{...rest}
@@ -123,7 +123,7 @@ export function ContextMenuRadioItem({ className, children, ...rest }: Component
 	return (
 		<ContextMenuPrimitive.RadioItem
 			className={cn(
-				"relative flex cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+				"relative flex cursor-default select-none items-center rounded-md py-1.5 pl-8 pr-2 text-sm outline-none transition-colors focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
 				className,
 			)}
 			{...rest}

@@ -4,18 +4,19 @@ import { ESCAPE_ORDER, useEscapeLayer } from "../lib/escape";
 import { GRIP_WIDTH } from "../lib/grip";
 import { DOCK_EXIT_MS, DOCK_POPOVER_EXIT_MS, usePresence } from "../lib/presence";
 import type { SurfaceId } from "../lib/surfaces";
+import { isInteractive } from "../lib/utils";
 import { DockGrip } from "./DockGrip";
 
-const LETTER_MIN = 420;
+const COLUMN_MIN = 420;
 const CODE_MIN = 460;
-const PIN_MIN = LETTER_MIN + CODE_MIN + GRIP_WIDTH;
+const PIN_MIN = COLUMN_MIN + CODE_MIN + GRIP_WIDTH;
 
 export interface DockListControls {
 	pinned: boolean;
 	canPin: boolean;
 	togglePin: () => void;
 	listOpen: boolean;
-	openList: () => void;
+	openList: (anchor?: { x: number; y: number }) => void;
 }
 
 export function DockShell(props: {
@@ -31,18 +32,17 @@ export function DockShell(props: {
 	onCommit: () => void;
 	pinned: boolean;
 	onTogglePin: () => void;
-	letterWidth: number | null;
-	setLetterWidth: (width: number | null) => void;
-	commitLetterWidth: () => void;
+	columnWidth: number | null;
+	setColumnWidth: (width: number | null) => void;
+	commitColumnWidth: () => void;
 	detail?: { open: boolean; render: (leaving: boolean, list: DockListControls) => ReactNode };
-	title: ReactNode;
-	onClose: () => void;
 	children: ReactNode;
 	surface?: SurfaceId;
 }) {
 	const drawer = usePresence(props.open, DOCK_EXIT_MS);
 	const viewer = usePresence(props.open && (props.detail?.open ?? false), DOCK_POPOVER_EXIT_MS);
 	const [listOpen, setListOpen] = useState(false);
+	const [listAnchor, setListAnchor] = useState<{ x: number; y: number } | null>(null);
 	const [rowWidth, setRowWidth] = useState(0);
 	const dockEl = useRef<HTMLDivElement>(null);
 	const rowObserver = useRef<ResizeObserver | null>(null);
@@ -51,24 +51,32 @@ export function DockShell(props: {
 	const detailOpen = props.open && (props.detail?.open ?? false);
 	const floating = props.pinned && listOpen && viewer.visible;
 	const canPin = rowWidth >= PIN_MIN;
-	const letterHost = () => dockEl.current?.parentElement ?? null;
+	const columnHost = () => dockEl.current?.parentElement ?? null;
+
+	/* the floating list lands where it was clicked, clamped inside the dock */
+	function anchorStyle(): React.CSSProperties {
+		const dock = dockEl.current;
+		if (!floating || !listAnchor || !dock) return {};
+		const maxLeft = Math.max(8, dock.clientWidth - props.width - 8);
+		return { left: Math.min(Math.max(8, listAnchor.x), maxLeft), top: Math.max(8, listAnchor.y), right: "auto" };
+	}
 
 	function halfWidth() {
-		const row = letterHost();
+		const row = columnHost();
 		if (!row) return 0;
 		return Math.round((row.clientWidth - GRIP_WIDTH) / 2);
 	}
 
-	function letterWidthNow() {
-		const row = letterHost();
+	function columnWidthNow() {
+		const row = columnHost();
 		const dock = dockEl.current;
-		if (!row || !dock) return props.letterWidth ?? 0;
+		if (!row || !dock) return props.columnWidth ?? 0;
 		const rowBox = row.getBoundingClientRect();
 		const dockBox = dock.getBoundingClientRect();
 		return props.side === "right" ? dockBox.left - rowBox.left : rowBox.right - dockBox.right;
 	}
 
-	const letterMax = Math.max(LETTER_MIN, rowWidth - CODE_MIN - GRIP_WIDTH);
+	const columnMax = Math.max(COLUMN_MIN, rowWidth - CODE_MIN - GRIP_WIDTH);
 
 	function bindRoot(el: HTMLDivElement | null) {
 		dockEl.current = el;
@@ -120,7 +128,10 @@ export function DockShell(props: {
 		canPin,
 		togglePin: () => props.onTogglePin(),
 		listOpen: floating,
-		openList: () => setListOpen(true),
+		openList: (anchor) => {
+			setListAnchor(anchor ?? null);
+			setListOpen(true);
+		},
 	};
 
 	if (!drawer.visible) return null;
@@ -130,20 +141,23 @@ export function DockShell(props: {
 			className={`dock side-${props.side}${props.class ? ` ${props.class}` : ""}${drawer.leaving ? " leaving" : ""}`}
 			ref={bindRoot}
 			tabIndex={-1}
-			onClick={(event) => event.currentTarget.focus()}
+			onClick={(event) => {
+				if (isInteractive(event.target)) return;
+				event.currentTarget.focus();
+			}}
 		>
 			{props.pinned && viewer.visible && (
 				<DockGrip
 					class="dock-grip-split"
-					host={letterHost}
-					width={letterWidthNow}
-					min={LETTER_MIN}
-					max={letterMax}
+					host={columnHost}
+					width={columnWidthNow}
+					min={COLUMN_MIN}
+					max={columnMax}
 					side={props.side === "right" ? "left" : "right"}
-					label="Resize the letter column"
+					label="Resize the chat column"
 					half={halfWidth}
-					onResize={props.setLetterWidth}
-					onCommit={props.commitLetterWidth}
+					onResize={props.setColumnWidth}
+					onCommit={props.commitColumnWidth}
 				/>
 			)}
 			{viewer.visible && props.detail?.render(viewer.leaving, list)}
@@ -161,17 +175,7 @@ export function DockShell(props: {
 					onCommit={props.onCommit}
 				/>
 			)}
-			<div className={"dock-pane" + (floating ? " floating" : "")} style={{ width: `${props.width}px` }}>
-				{!floating && (
-					<div className="dock-head">
-						<span className="dock-title">{props.title}</span>
-						{!props.pinned && (
-							<button type="button" className="dock-close" title="Close" onClick={props.onClose}>
-								×
-							</button>
-						)}
-					</div>
-				)}
+			<div className={"dock-pane" + (floating ? " floating" : "")} style={{ width: `${props.width}px`, ...anchorStyle() }}>
 				{props.children}
 			</div>
 		</div>

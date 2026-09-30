@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
+import { DEFAULT_WEB_FETCH_USER_AGENT } from "../../shared/brand";
 import type { CustomModel, CustomProvider, SandboxMode, ThemeMode, ToastPlacement } from "../../shared/rpc";
 import { Button } from "../components/Button";
 import { McpSettingsPanel } from "../components/McpSettingsPanel";
+import { MiluWordmark } from "../components/MiluWordmark";
 import { PickFile } from "../components/PickFile";
 import { Select } from "../components/ui/select";
 import { Switch as SwitchToggle } from "../components/ui/switch";
@@ -69,16 +71,16 @@ function parsePositiveInt(value: string, fallback: number) {
 function SettingRow(props: { title: string; desc: string; modified?: boolean; q?: string; stacked?: boolean; children: React.ReactNode }) {
 	const head = (
 		<div className="flex items-center gap-2">
-			<span className="font-serif text-[13px] leading-tight text-ink">{props.q ? highlight(props.title, props.q) : props.title}</span>
+			<span className="font-serif text-[13.5px] leading-tight text-ink">{props.q ? highlight(props.title, props.q) : props.title}</span>
 			{props.modified && (
 				<span className="flex items-center gap-1.5">
-					<span className="size-[5px] shrink-0 rounded-full bg-seal" />
-					<span className="font-sans text-[10px] font-medium text-seal">modified</span>
+					<span className="size-[5px] shrink-0 rounded-full bg-signal" />
+					<span className="font-sans text-[10px] font-medium text-signal">modified</span>
 				</span>
 			)}
 		</div>
 	);
-	const body = <div className="mt-1 font-sans text-[11px] leading-snug text-body-muted">{props.q ? highlight(props.desc, props.q) : props.desc}</div>;
+	const body = <div className="mt-1 font-sans text-[11.5px] leading-snug text-muted">{props.q ? highlight(props.desc, props.q) : props.desc}</div>;
 	if (props.stacked) {
 		return (
 			<div className="py-3.5">
@@ -105,7 +107,7 @@ function highlight(text: string, q: string): React.ReactNode {
 	return (
 		<>
 			{text.slice(0, idx)}
-			<span className="text-seal">{text.slice(idx, idx + q.length)}</span>
+			<span className="rounded-[3px] bg-selected text-ink">{text.slice(idx, idx + q.length)}</span>
 			{text.slice(idx + q.length)}
 		</>
 	);
@@ -123,13 +125,13 @@ function buildModels(rows: CpModelRow[]): CustomModel[] {
 function ModelRows(props: { rows: CpModelRow[]; onChange: (rows: CpModelRow[]) => void }) {
 	return (
 		<div className="grid gap-1">
-			<span className="font-sans text-[10px] font-medium uppercase tracking-[0.6px] text-muted">Models</span>
-			<div className="grid grid-cols-[minmax(0,1fr)_120px_28px] items-center gap-2 px-1 font-sans text-[10px] text-muted">
+			<span className="font-sans text-[10px] font-medium uppercase tracking-[0.6px] text-muted-soft">Models</span>
+			<div className="grid grid-cols-[minmax(0,1fr)_120px_28px] items-center gap-2 px-1 font-sans text-[10px] text-muted-soft">
 				<span>Model</span>
 				<span>Context window</span>
 				<span />
 			</div>
-			<div className="divide-y divide-hairline rounded-[10px] border border-hairline px-3">
+			<div className="divide-y divide-line rounded-[6px] border border-line px-3">
 				{props.rows.map((row, i) => (
 					<div className="grid grid-cols-[minmax(0,1fr)_120px_28px] items-center gap-2 py-2" key={i}>
 						<TextField className="min-w-0">
@@ -156,7 +158,7 @@ function ModelRows(props: { rows: CpModelRow[]; onChange: (rows: CpModelRow[]) =
 						</TextField>
 						<button
 							type="button"
-							className="flex h-6 w-6 items-center justify-center rounded-[8px] font-sans text-[14px] leading-none text-muted transition-colors hover:bg-paper-hover hover:text-ink"
+							className="flex h-6 w-6 items-center justify-center rounded-[6px] font-sans text-[13.5px] leading-none text-muted-soft transition-colors hover:bg-hover hover:text-ink"
 							aria-label={`remove model ${row.id || i + 1}`}
 							onClick={() => props.onChange(props.rows.filter((_, j) => j !== i))}
 						>
@@ -167,7 +169,7 @@ function ModelRows(props: { rows: CpModelRow[]; onChange: (rows: CpModelRow[]) =
 			</div>
 			<button
 				type="button"
-				className="-mx-2 justify-self-start rounded-[8px] px-2 py-1 font-mono text-[10px] text-muted transition-colors hover:bg-paper-hover hover:text-ink"
+				className="-mx-2 justify-self-start rounded-[6px] px-2 py-1 font-mono text-[10px] text-muted-soft transition-colors hover:bg-hover hover:text-ink"
 				onClick={() => props.onChange([...props.rows, { id: "", window: "" }])}
 			>
 				+ add model
@@ -179,7 +181,7 @@ function ModelRows(props: { rows: CpModelRow[]; onChange: (rows: CpModelRow[]) =
 function Field(props: { label: string; children: React.ReactNode }) {
 	return (
 		<div className="grid gap-1">
-			<span className="font-sans text-[10px] font-medium uppercase tracking-[0.6px] text-muted">{props.label}</span>
+			<span className="font-sans text-[10px] font-medium uppercase tracking-[0.6px] text-muted-soft">{props.label}</span>
 			{props.children}
 		</div>
 	);
@@ -203,7 +205,7 @@ export function SettingsView() {
 	const [webFetchTimeout, setWebFetchTimeout] = useState(() => String(initial?.webFetch?.timeoutMs ?? 15000));
 	const [webFetchMaxBytes, setWebFetchMaxBytes] = useState(() => String(initial?.webFetch?.maxBytes ?? 1_000_000));
 	const [webFetchMaxChars, setWebFetchMaxChars] = useState(() => String(initial?.webFetch?.maxChars ?? 50_000));
-	const [webFetchUserAgent, setWebFetchUserAgent] = useState(() => initial?.webFetch?.userAgent ?? "Letters-web-fetch/0.1");
+	const [webFetchUserAgent, setWebFetchUserAgent] = useState(() => initial?.webFetch?.userAgent ?? DEFAULT_WEB_FETCH_USER_AGENT);
 	const [compactionThreshold, setCompactionThreshold] = useState(() => String(initial?.compaction?.thresholdRatio ?? 0.8));
 	const [compactionDigestMaxItems, setCompactionDigestMaxItems] = useState(() => String(initial?.compaction?.digestMaxItems ?? 10));
 	const [compactionOverflowRetries, setCompactionOverflowRetries] = useState(() => String(initial?.compaction?.maxOverflowRetries ?? 1));
@@ -601,16 +603,16 @@ export function SettingsView() {
 							type="button"
 							key={option.value}
 							className={cn(
-								"group flex flex-col items-start gap-0.5 rounded-[10px] border px-3 py-2 text-left transition-colors",
-								theme === option.value ? "border-seal/60 bg-seal/10" : "border-hairline bg-paper hover:border-ink-soft hover:bg-paper-hover",
+								"group flex flex-col items-start gap-0.5 rounded-[6px] border px-3 py-2 text-left transition-colors",
+								theme === option.value ? "border-line-strong bg-selected" : "border-line bg-canvas hover:border-ink-soft hover:bg-hover",
 							)}
 							onClick={() => {
 								setTheme(option.value);
 								void persist({ ...currentSettings(), theme: option.value });
 							}}
 						>
-							<span className={cn("font-sans text-[12px] leading-tight", theme === option.value ? "text-seal" : "text-ink")}>{option.label}</span>
-							<span className="font-sans text-[10px] leading-tight text-body-muted">{option.hint}</span>
+							<span className={cn("font-sans text-[12.5px] leading-tight", theme === option.value ? "text-ink font-medium" : "text-ink")}>{option.label}</span>
+							<span className="font-sans text-[10px] leading-tight text-muted">{option.hint}</span>
 						</button>
 					))}
 				</div>
@@ -624,9 +626,9 @@ export function SettingsView() {
 			modified: dockSide !== DEFAULTS.dockSide,
 			control: (
 				<Select
-					class="h-[32px] w-[150px] shrink-0 rounded-[10px] font-sans text-[12px]"
-					itemClass="font-sans text-[12px]"
-					contentClass="w-[150px] rounded-[10px]"
+					class="h-[32px] w-[150px] shrink-0 rounded-[6px] font-sans text-[12.5px]"
+					itemClass="font-sans text-[12.5px]"
+					contentClass="w-[150px] rounded-[6px]"
 					title="Dock side"
 					ariaLabel="Dock side"
 					portalMount={rootRef.current}
@@ -651,9 +653,9 @@ export function SettingsView() {
 			modified: defaultSandboxMode !== DEFAULTS.sandbox,
 			control: (
 				<Select
-					class="h-[32px] w-[200px] shrink-0 rounded-[10px] font-sans text-[12px]"
-					itemClass="font-sans text-[12px]"
-					contentClass="w-[200px] rounded-[10px]"
+					class="h-[32px] w-[200px] shrink-0 rounded-[6px] font-sans text-[12.5px]"
+					itemClass="font-sans text-[12.5px]"
+					contentClass="w-[200px] rounded-[6px]"
 					title="Default sandbox mode"
 					ariaLabel="Default sandbox mode"
 					portalMount={rootRef.current}
@@ -858,7 +860,7 @@ export function SettingsView() {
 			title: "Web fetch user agent",
 			desc: "User-Agent header sent with web_fetch requests.",
 			cats: ["tools"],
-			modified: webFetchUserAgent.trim() !== "Letters-web-fetch/0.1",
+			modified: webFetchUserAgent.trim() !== DEFAULT_WEB_FETCH_USER_AGENT,
 			control: (
 				<TextField className="w-[200px] shrink-0">
 					<TextFieldInput
@@ -869,7 +871,7 @@ export function SettingsView() {
 						onChange={(event) => setWebFetchUserAgent(event.currentTarget.value)}
 						onBlur={() => {
 							const next = webFetchUserAgent.trim();
-							const saved = settingsData?.webFetch?.userAgent?.trim() ?? "Letters-web-fetch/0.1";
+							const saved = settingsData?.webFetch?.userAgent?.trim() ?? DEFAULT_WEB_FETCH_USER_AGENT;
 							if (next === saved) return;
 							void persist({
 								...currentSettings(),
@@ -1085,9 +1087,9 @@ export function SettingsView() {
 			control: (
 				<div className="flex h-[32px] items-center gap-2">
 					<Select
-						class="h-[32px] w-[150px] shrink-0 rounded-[10px] font-sans text-[12px]"
-						itemClass="font-sans text-[12px]"
-						contentClass="w-[150px] rounded-[10px]"
+						class="h-[32px] w-[150px] shrink-0 rounded-[6px] font-sans text-[12.5px]"
+						itemClass="font-sans text-[12.5px]"
+						contentClass="w-[150px] rounded-[6px]"
 						title="Send message interval"
 						ariaLabel="Send message interval"
 						portalMount={rootRef.current}
@@ -1266,9 +1268,9 @@ export function SettingsView() {
 			modified: toastPlacement !== DEFAULTS.toastPlacement,
 			control: (
 				<Select
-					class="h-[32px] w-[150px] shrink-0 rounded-[10px] font-sans text-[12px]"
-					itemClass="font-sans text-[12px]"
-					contentClass="w-[150px] rounded-[10px]"
+					class="h-[32px] w-[150px] shrink-0 rounded-[6px] font-sans text-[12.5px]"
+					itemClass="font-sans text-[12.5px]"
+					contentClass="w-[150px] rounded-[6px]"
 					title="Toast placement"
 					ariaLabel="Toast placement"
 					portalMount={rootRef.current}
@@ -1328,7 +1330,7 @@ export function SettingsView() {
 					<table className="w-full text-left">
 						<thead>
 							<tr>
-								<th className="pb-1 font-sans text-[10px] uppercase tracking-[0.14em] text-muted">Directory</th>
+								<th className="pb-1 font-sans text-[10px] uppercase tracking-[0.14em] text-muted-soft">Directory</th>
 								<th className="w-10 pb-1" />
 							</tr>
 						</thead>
@@ -1632,7 +1634,7 @@ export function SettingsView() {
 
 	const providerAdvanced = (value: CpForm, set: (next: CpForm) => void, open: boolean, toggle: () => void) => (
 		<>
-			<button type="button" className="justify-self-start font-mono text-[10px] text-muted transition-colors hover:text-ink" onClick={toggle}>
+			<button type="button" className="justify-self-start font-mono text-[10px] text-muted-soft transition-colors hover:text-ink" onClick={toggle}>
 				{open ? "− Advanced" : "+ Advanced"}
 			</button>
 			{open && (
@@ -1698,7 +1700,7 @@ export function SettingsView() {
 				if (hadEdit) event.preventDefault();
 			}}
 		>
-			<nav className="flex w-[184px] shrink-0 flex-col border-r border-hairline py-5">
+			<nav className="flex w-[184px] shrink-0 flex-col bg-surface py-5">
 				<div className="space-y-1.5 px-5">
 					{CATS.map((cat) => (
 						<button
@@ -1706,30 +1708,30 @@ export function SettingsView() {
 							key={cat.id}
 							onClick={() => selectCat(cat.id)}
 							className={cn(
-								"flex h-[36px] w-full items-center rounded-[8px] px-3 text-left font-serif text-[13px] transition-colors",
-								tab === cat.id ? "bg-paper-hover text-ink" : "text-ink-soft hover:bg-paper-hover",
+								"flex h-[36px] w-full items-center rounded-[6px] px-3 text-left font-serif text-[13.5px] transition-colors",
+								tab === cat.id ? "bg-hover text-ink" : "text-ink-soft hover:bg-hover",
 							)}
 						>
 							{cat.label}
 							{(searching ? catHasMatches(cat.id) : cat.id === "providers" && providersConfigured > 0) && (
-								<span className={cn("ml-auto size-[5px] shrink-0 rounded-full", searching ? "bg-seal" : "bg-[#7FB069]")} />
+								<span className={cn("ml-auto size-[5px] shrink-0 rounded-full", searching ? "bg-signal" : "bg-ink-soft")} />
 							)}
 						</button>
 					))}
 				</div>
-				<span className="mt-auto px-6 pb-2 font-serif text-[11px] text-muted">letters</span>
+				<MiluWordmark class="mt-auto mb-2 ml-6 h-4 w-auto text-muted" />
 			</nav>
 
 			<div className="flex min-h-0 flex-1 flex-col">
 				<div className="px-6 pb-4 pt-3">
 					<div className="relative">
-						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" className="absolute left-3 top-1/2 size-[14px] -translate-y-1/2 text-muted">
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" className="absolute left-3 top-1/2 size-[14px] -translate-y-1/2 text-muted-soft">
 							<circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" strokeWidth="1.6" />
 							<path d="M10.2 10.2 14 14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
 						</svg>
 						<TextField className="w-full">
 							<TextFieldInput
-								variant="compact"
+								variant="quiet"
 								className="pl-9 pr-14 font-sans"
 								placeholder="Search settings"
 								aria-label="Search settings"
@@ -1745,7 +1747,7 @@ export function SettingsView() {
 							/>
 						</TextField>
 						{searching && (
-							<span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono text-[10px] text-muted">
+							<span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono text-[10px] text-muted-soft">
 								{totalMatches} {totalMatches === 1 ? "match" : "matches"}
 							</span>
 						)}
@@ -1760,7 +1762,7 @@ export function SettingsView() {
 									{catHasMatches(cat.id) && (
 										<div>
 											<div className="mb-3 font-serif text-[16px] font-medium text-ink">{cat.label}</div>
-											<div className="divide-y divide-hairline">
+											<div className="divide-y divide-line">
 												{matchedRows
 													.filter((row) => row.cats.includes(cat.id))
 													.map((row) => (
@@ -1771,8 +1773,8 @@ export function SettingsView() {
 												{cat.id === "providers" &&
 													providerMatches.map((id) => (
 														<div className="flex items-center gap-2 py-3.5" key={id}>
-															<span className="font-serif text-[13px] text-ink">{highlight(id, q)}</span>
-															{configured(id) && <span className="size-[5px] shrink-0 rounded-full bg-[#7FB069]" title="configured" />}
+															<span className="font-serif text-[13.5px] text-ink">{highlight(id, q)}</span>
+															{configured(id) && <span className="size-[5px] shrink-0 rounded-full bg-ink-soft" title="configured" />}
 														</div>
 													))}
 											</div>
@@ -1782,8 +1784,8 @@ export function SettingsView() {
 							))}
 							{totalMatches === 0 && (
 								<div className="pt-8 text-center">
-									<div className="font-serif text-[14px] text-ink-soft">No matching settings</div>
-									<div className="mt-1 font-sans text-[11px] text-body-muted">Try a different search.</div>
+									<div className="font-serif text-[13.5px] text-ink-soft">No matching settings</div>
+									<div className="mt-1 font-sans text-[11.5px] text-muted">Try a different search.</div>
 								</div>
 							)}
 						</div>
@@ -1795,7 +1797,7 @@ export function SettingsView() {
 										<div>
 											<div className="mb-3 font-serif text-[16px] font-medium text-ink">{cat.label}</div>
 											{cat.id === "tools" && <McpSettingsPanel />}
-											<div className="divide-y divide-hairline">
+											<div className="divide-y divide-line">
 												{rows
 													.filter((row) => row.cats.includes(cat.id))
 													.map((row) => (
@@ -1812,8 +1814,8 @@ export function SettingsView() {
 								<div>
 									<div className="mb-3 font-serif text-[16px] font-medium text-ink">Providers</div>
 									{tableRows.length > 0 ? (
-										<div className="divide-y divide-hairline">
-											<div className={cn(COLS, "pb-1 font-sans text-[10px] text-muted")}>
+										<div className="divide-y divide-line">
+											<div className={cn(COLS, "pb-1 font-sans text-[10px] text-muted-soft")}>
 												<span>Provider</span>
 												<span>Base URL</span>
 												<span>Models</span>
@@ -1825,17 +1827,17 @@ export function SettingsView() {
 													<div key={id}>
 														<div className={cn(COLS, "py-2")}>
 															<span className="flex min-w-0 items-center gap-2">
-																<span className="truncate font-serif text-[12px] text-ink">{id}</span>
-																{configured(id) && <span className="size-[5px] shrink-0 rounded-full bg-[#7FB069]" title="configured" />}
+																<span className="truncate font-serif text-[12.5px] text-ink">{id}</span>
+																{configured(id) && <span className="size-[5px] shrink-0 rounded-full bg-ink-soft" title="configured" />}
 															</span>
-															<span className="truncate font-mono text-[10px] text-body-muted" title={rowBaseUrl(id) ?? ""}>
+															<span className="truncate font-mono text-[10px] text-muted" title={rowBaseUrl(id) ?? ""}>
 																{rowBaseUrl(id)}
 															</span>
-															<span className="font-mono text-[10px] text-muted">{rowModelCount(id)}</span>
+															<span className="font-mono text-[10px] text-muted-soft">{rowModelCount(id)}</span>
 															<span className="flex items-center justify-end gap-1">
 																<button
 																	type="button"
-																	className="h-6 rounded-[8px] px-1.5 font-mono text-[10px] text-muted transition-colors hover:bg-paper-hover hover:text-ink"
+																	className="h-6 rounded-[6px] px-1.5 font-mono text-[10px] text-muted-soft transition-colors hover:bg-hover hover:text-ink"
 																	onClick={() => toggleKey(id)}
 																>
 																	key
@@ -1843,7 +1845,7 @@ export function SettingsView() {
 																{def && (
 																	<button
 																		type="button"
-																		className="h-6 rounded-[8px] px-1.5 font-mono text-[10px] text-muted transition-colors hover:bg-paper-hover hover:text-ink"
+																		className="h-6 rounded-[6px] px-1.5 font-mono text-[10px] text-muted-soft transition-colors hover:bg-hover hover:text-ink"
 																		onClick={() => {
 																			const target = customDef(id);
 																			if (target) startEdit(target);
@@ -1854,7 +1856,7 @@ export function SettingsView() {
 																)}
 																<button
 																	type="button"
-																	className="flex h-6 w-6 items-center justify-center rounded-[8px] font-sans text-[14px] leading-none text-muted transition-colors hover:bg-paper-hover hover:text-ink"
+																	className="flex h-6 w-6 items-center justify-center rounded-[6px] font-sans text-[13.5px] leading-none text-muted-soft transition-colors hover:bg-hover hover:text-ink"
 																	aria-label={`remove ${id}`}
 																	onClick={() => void remove(id)}
 																>
@@ -1868,7 +1870,7 @@ export function SettingsView() {
 																	<TextField className="min-w-0 flex-1">
 																		<TextFieldInput
 																			variant="compact"
-																			className="h-[30px] text-[11px]"
+																			className="h-[30px] text-[11.5px]"
 																			type="password"
 																			placeholder={configured(id) ? "new key" : "sk-…"}
 																			aria-label="API key"
@@ -1884,7 +1886,7 @@ export function SettingsView() {
 																	</TextField>
 																	<button
 																		type="button"
-																		className="h-[30px] shrink-0 rounded-[10px] bg-ink px-3 font-sans text-[11px] font-semibold text-paper disabled:opacity-35"
+																		className="h-[30px] shrink-0 rounded-[6px] bg-ink px-3 font-sans text-[11.5px] font-semibold text-canvas disabled:opacity-35"
 																		disabled={!keyDraft.trim()}
 																		onClick={() => void saveKey()}
 																	>
@@ -1893,7 +1895,7 @@ export function SettingsView() {
 																	{configured(id) && (
 																		<button
 																			type="button"
-																			className="h-[30px] shrink-0 rounded-[10px] border border-hairline px-3 font-sans text-[11px] text-ink-soft transition-colors hover:text-ink"
+																			className="h-[30px] shrink-0 rounded-[6px] border border-line px-3 font-sans text-[11.5px] text-ink-soft transition-colors hover:text-ink"
 																			onClick={() => void clearKey()}
 																		>
 																			Clear
@@ -1911,14 +1913,14 @@ export function SettingsView() {
 																<div className="mt-3 flex justify-end gap-2">
 																	<button
 																		type="button"
-																		className="h-[28px] rounded-[10px] border border-hairline px-3 font-sans text-[11px] text-ink-soft transition-colors hover:text-ink"
+																		className="h-[28px] rounded-[6px] border border-line px-3 font-sans text-[11.5px] text-ink-soft transition-colors hover:text-ink"
 																		onClick={() => setEditingId(null)}
 																	>
 																		Cancel
 																	</button>
 																	<button
 																		type="button"
-																		className="h-[28px] rounded-[10px] bg-ink px-3 font-sans text-[11px] font-semibold text-paper disabled:opacity-35"
+																		className="h-[28px] rounded-[6px] bg-ink px-3 font-sans text-[11.5px] font-semibold text-canvas disabled:opacity-35"
 																		disabled={!cp.baseUrl.trim() || !cp.models.some((model) => model.id.trim())}
 																		onClick={() => void saveCustomEdit()}
 																	>
@@ -1932,12 +1934,12 @@ export function SettingsView() {
 											})}
 										</div>
 									) : (
-										<div className="mb-3 font-mono text-[11px] text-muted">no providers added — add one below</div>
+										<div className="mb-3 font-mono text-[11.5px] text-muted-soft">no providers added — add one below</div>
 									)}
-									<div className="mt-2 border-t border-hairline pt-2">
+									<div className="mt-2 border-t border-line pt-2">
 										<button
 											type="button"
-											className="-mx-2 rounded-[8px] px-2 py-1 font-sans text-[11px] text-ink-soft transition-colors hover:bg-paper-hover hover:text-ink"
+											className="-mx-2 rounded-[6px] px-2 py-1 font-sans text-[11.5px] text-ink-soft transition-colors hover:bg-hover hover:text-ink"
 											onClick={() => {
 												if (adding) {
 													setAdding(false);
@@ -1959,9 +1961,9 @@ export function SettingsView() {
 													<>
 														<div className="grid gap-2">
 															<Select
-																class="h-[30px] w-40 rounded-[10px] font-sans text-[11px]"
-																itemClass="font-sans text-[11px]"
-																contentClass="w-40 rounded-[10px]"
+																class="h-[30px] w-40 rounded-[6px] font-sans text-[11.5px]"
+																itemClass="font-sans text-[11.5px]"
+																contentClass="w-40 rounded-[6px]"
 																title="Add provider"
 																ariaLabel="Add provider"
 																placeholder="provider"
@@ -1974,7 +1976,7 @@ export function SettingsView() {
 																<TextField className="min-w-0 flex-1">
 																	<TextFieldInput
 																		variant="compact"
-																		className="h-[30px] text-[11px]"
+																		className="h-[30px] text-[11.5px]"
 																		type="password"
 																		placeholder="api key（添加必填）"
 																		aria-label="New provider api key"
@@ -1989,7 +1991,7 @@ export function SettingsView() {
 																</TextField>
 																<button
 																	type="button"
-																	className="h-[30px] shrink-0 rounded-[10px] bg-ink px-3 font-sans text-[11px] font-semibold text-paper disabled:cursor-default disabled:opacity-35"
+																	className="h-[30px] shrink-0 rounded-[6px] bg-ink px-3 font-sans text-[11.5px] font-semibold text-canvas disabled:cursor-default disabled:opacity-35"
 																	disabled={!(toAdd || addable()[0]) || !keys[toAdd || addable()[0] || ""]}
 																	onClick={() => void add()}
 																>
@@ -1999,7 +2001,7 @@ export function SettingsView() {
 														</div>
 														<button
 															type="button"
-															className="-mx-2 mt-2 rounded-[8px] px-2 py-1 font-mono text-[10px] text-muted transition-colors hover:bg-paper-hover hover:text-ink"
+															className="-mx-2 mt-2 rounded-[6px] px-2 py-1 font-mono text-[10px] text-muted-soft transition-colors hover:bg-hover hover:text-ink"
 															onClick={() => setAddKind("custom")}
 														>
 															+ custom provider
@@ -2014,14 +2016,14 @@ export function SettingsView() {
 														<div className="mt-3 flex justify-end gap-2">
 															<button
 																type="button"
-																className="h-[28px] rounded-[10px] border border-hairline px-3 font-sans text-[11px] text-ink-soft transition-colors hover:text-ink"
+																className="h-[28px] rounded-[6px] border border-line px-3 font-sans text-[11.5px] text-ink-soft transition-colors hover:text-ink"
 																onClick={() => setAddKind("builtin")}
 															>
 																Back
 															</button>
 															<button
 																type="button"
-																className="h-[28px] rounded-[10px] bg-ink px-3 font-sans text-[11px] font-semibold text-paper disabled:opacity-35"
+																className="h-[28px] rounded-[6px] bg-ink px-3 font-sans text-[11.5px] font-semibold text-canvas disabled:opacity-35"
 																disabled={!cp.id.trim() || !cp.baseUrl.trim() || !cp.models.some((model) => model.id.trim())}
 																onClick={() => void applyCustom()}
 															>
@@ -2040,7 +2042,7 @@ export function SettingsView() {
 				</div>
 			</div>
 
-			{error && <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full bg-ink px-4 py-2 text-[12px] text-letter">{error}</div>}
+			{error && <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full bg-ink px-4 py-2 text-[12.5px] text-surface">{error}</div>}
 		</div>
 	);
 }

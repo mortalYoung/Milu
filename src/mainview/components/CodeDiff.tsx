@@ -11,7 +11,7 @@ import { setTokens, tokenPainter } from "../lib/shiki-tokens";
 import { SURFACE } from "../lib/surfaces";
 import { FloatFind } from "./FloatFind";
 
-const SELECTION = "light-dark(#f2ded8, #3d2a23)";
+const SELECTION = "color-mix(in srgb, var(--color-ink) 14%, transparent)";
 const ADD_LINE = "color-mix(in srgb, var(--git-add) 10%, transparent)";
 const DEL_LINE = "color-mix(in srgb, var(--git-del) 10%, transparent)";
 const ADD_TEXT = "color-mix(in srgb, var(--git-add) 24%, transparent)";
@@ -31,20 +31,20 @@ const diffHidden: HiddenSpans = hiddenGaps;
 
 const diffTheme = EditorView.theme({
 	"&": { height: "100%" },
-	".cm-searchMatch": { background: "color-mix(in srgb, var(--color-seal) 26%, transparent)", borderRadius: "2px" },
-	".cm-searchMatch-selected": { background: "color-mix(in srgb, var(--color-seal) 60%, transparent)" },
+	".cm-searchMatch": { background: "var(--color-find-soft)", borderRadius: "2px" },
+	".cm-searchMatch-selected": { background: "var(--color-find)" },
 	"&.cm-focused": { outline: "none" },
 	".cm-scroller": { fontFamily: "var(--font-mono)", fontSize: "12px", lineHeight: "var(--explorer-line-height, 1.2)" },
 	".cm-content": { padding: "0" },
 	".cm-line": { padding: "0", minHeight: "var(--explorer-line-height-em, 1.2em)" },
-	"&.cm-merge-a": { borderRight: "1px solid var(--color-hairline)" },
+	"&.cm-merge-a": { borderRight: "1px solid var(--color-line)" },
 	"&.cm-focused .cm-selectionBackground, & .cm-selectionBackground": { backgroundColor: SELECTION },
 	"&.cm-editor .cm-scroller .cm-content::selection, &.cm-editor .cm-scroller .cm-content ::selection, &.cm-editor.cm-focused .cm-scroller .cm-content ::selection": {
 		background: "transparent !important",
 		color: "inherit !important",
 	},
 	".cm-cursor, .cm-dropCursor": { display: "none" },
-	".cm-gutters": { background: "var(--color-letter)", border: "none", color: "var(--color-muted)" },
+	".cm-gutters": { background: "var(--color-surface)", border: "none", color: "var(--color-muted-soft)" },
 	".cm-gutters.cm-gutters-before": { borderRightWidth: "0" },
 	".cm-lineNumbers .cm-gutterElement": {
 		display: "flex",
@@ -71,21 +71,21 @@ const diffTheme = EditorView.theme({
 		border: "0",
 		borderRadius: "3px",
 		background: "transparent",
-		color: "var(--color-muted)",
+		color: "var(--color-muted-soft)",
 		cursor: "pointer",
 	},
 	".cm-foldToggle svg": { width: "12px", height: "12px" },
-	".cm-foldToggle:hover": { color: "var(--color-ink)", background: "var(--color-paper-hover)" },
-	".cm-foldToggle:focus-visible": { outline: "1px solid var(--color-seal)", outlineOffset: "-1px" },
+	".cm-foldToggle:hover": { color: "var(--color-ink)", background: "var(--color-hover)" },
+	".cm-foldToggle:focus-visible": { outline: "1px solid var(--color-ink)", outlineOffset: "-1px" },
 	"&.cm-merge-a .cm-changedLine": { backgroundColor: DEL_LINE },
 	"&.cm-merge-b .cm-changedLine, & .cm-inlineChangedLine": { backgroundColor: ADD_LINE },
 	"& .cm-deletedChunk": { backgroundColor: DEL_LINE, paddingLeft: "0" },
 	"&.cm-merge-a .cm-deletedLine, &.cm-merge-b .cm-insertedLine, & .cm-deletedChunk .cm-deletedLine": { backgroundColor: "transparent" },
 	"&.cm-editor.cm-merge-a .cm-changedText": { background: DEL_TEXT, paddingBlock: TEXT_PAD },
 	"&.cm-editor.cm-merge-b .cm-changedText": { background: ADD_TEXT, paddingBlock: TEXT_PAD },
-	".cm-unfoldedLine": { backgroundColor: "var(--color-paper-hover)" },
+	".cm-unfoldedLine": { backgroundColor: "var(--color-hover)" },
 	".cm-mergeSpacer": {
-		background: "repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in srgb, var(--color-muted) 22%, transparent) 5px 6px)",
+		background: "repeating-linear-gradient(135deg, transparent 0 5px, color-mix(in srgb, var(--color-muted-soft) 22%, transparent) 5px 6px)",
 	},
 	".cm-collapsedLines": {
 		display: "flex",
@@ -93,13 +93,13 @@ const diffTheme = EditorView.theme({
 		padding: "1px 8px",
 		fontFamily: "var(--font-mono)",
 		fontSize: "10px",
-		color: "var(--color-muted)",
-		background: "var(--color-paper-hover)",
-		borderTop: "1px solid var(--color-hairline-soft)",
-		borderBottom: "1px solid var(--color-hairline-soft)",
+		color: "var(--color-muted-soft)",
+		background: "var(--color-hover)",
+		borderTop: "1px solid var(--color-line-soft)",
+		borderBottom: "1px solid var(--color-line-soft)",
 		cursor: "pointer",
 	},
-	".cm-collapsedLines:hover": { color: "var(--color-ink)", background: "var(--color-paper-deep)" },
+	".cm-collapsedLines:hover": { color: "var(--color-ink)", background: "var(--color-selected)" },
 });
 
 // ——— unchanged runs: folded into a band, or spread out and lit ———

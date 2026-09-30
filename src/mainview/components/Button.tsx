@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Button as UIButton } from "./ui/button";
 
-export type ButtonVariant = "default" | "seal" | "destructive" | "outline" | "secondary" | "ghost" | "link";
+export type ButtonVariant = "default" | "primary" | "destructive" | "outline" | "secondary" | "ghost";
 
 export function Button(props: {
 	variant?: ButtonVariant;

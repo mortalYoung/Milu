@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { GlobalSkillDescriptor } from "../../shared/rpc";
 import { Button } from "../components/Button";
-import type { PartnerItem } from "../components/ConversationList";
 import { McpServersPanel } from "../components/McpServersPanel";
 import { Dialog, DialogContent, DialogTitle } from "../components/ui/dialog";
 import { TextField, TextFieldInput } from "../components/ui/text-field";
 import { rpc } from "../lib/rpc";
+import type { PartnerItem } from "../lib/session";
 
 const skillsListener = { installed: false, reload: () => {} };
 
@@ -93,16 +93,16 @@ export function SkillsView() {
 		<div className="flex-1 min-h-0 overflow-y-auto">
 			<div className="flex flex-col gap-5 px-6 py-6">
 				<div>
-					<h1 className="font-serif text-[20px] font-semibold text-ink">Skills</h1>
-					<p className="mt-1 font-sans text-[12px] text-body-muted">Global skills live in your home skills directory; grant each skill to the partners that may use it.</p>
+					<h1 className="font-serif text-[19px] font-semibold text-ink">Skills</h1>
+					<p className="mt-1 font-sans text-[12.5px] text-muted">Global skills live in your home skills directory; grant each skill to the partners that may use it.</p>
 				</div>
 
-				<div className="flex items-center gap-1 border-b border-hairline">
+				<div className="flex items-center gap-1 border-b border-line">
 					<button
 						type="button"
 						className={
-							"rounded-t-[8px] border-b-2 px-3 py-1.5 font-serif text-[13px] transition-colors " +
-							(view === "skills" ? "border-seal text-ink" : "border-transparent text-muted hover:text-ink")
+							"rounded-t-[8px] border-b-2 px-3 py-1.5 font-serif text-[13.5px] transition-colors " +
+							(view === "skills" ? "border-signal text-ink" : "border-transparent text-muted-soft hover:text-ink")
 						}
 						onClick={() => setView("skills")}
 					>
@@ -111,8 +111,8 @@ export function SkillsView() {
 					<button
 						type="button"
 						className={
-							"rounded-t-[8px] border-b-2 px-3 py-1.5 font-serif text-[13px] transition-colors " +
-							(view === "mcp" ? "border-seal text-ink" : "border-transparent text-muted hover:text-ink")
+							"rounded-t-[8px] border-b-2 px-3 py-1.5 font-serif text-[13.5px] transition-colors " +
+							(view === "mcp" ? "border-signal text-ink" : "border-transparent text-muted-soft hover:text-ink")
 						}
 						onClick={() => setView("mcp")}
 					>
@@ -135,8 +135,8 @@ export function SkillsView() {
 								}
 							}}
 						>
-							<DialogContent className="w-[480px] max-w-[480px] bg-paper p-5">
-								<DialogTitle className="font-serif text-[15px] font-semibold text-ink">New global skill</DialogTitle>
+							<DialogContent className="w-[480px] max-w-[480px] bg-canvas p-5">
+								<DialogTitle className="font-serif text-[16px] font-semibold text-ink">New global skill</DialogTitle>
 								<div className="mt-4 flex flex-col gap-3">
 									<TextField className="w-full">
 										<TextFieldInput
@@ -170,7 +170,7 @@ export function SkillsView() {
 										>
 											Cancel
 										</Button>
-										<Button variant="seal" size="sm" disabled={busy} onClick={() => void createSkill()}>
+										<Button variant="primary" size="sm" disabled={busy} onClick={() => void createSkill()}>
 											Create
 										</Button>
 									</div>
@@ -178,11 +178,11 @@ export function SkillsView() {
 							</DialogContent>
 						</Dialog>
 
-						<div className="skills-letters">
+						<div className="skills-cards">
 							{skills.map((skill) => (
 								<article
 									key={skill.name}
-									className={"skill-letter" + (openSkill === skill.name ? " open" : "")}
+									className={"skill-card" + (openSkill === skill.name ? " open" : "")}
 									role="button"
 									tabIndex={0}
 									aria-expanded={openSkill === skill.name}
@@ -195,12 +195,12 @@ export function SkillsView() {
 										}
 									}}
 								>
-									<div className="skill-letter-top">
-										<span className="skill-stamp">SKILL</span>
-										<span className="skill-letter-name">{skill.name}</span>
+									<div className="skill-card-top">
+										<span className="skill-tag">SKILL</span>
+										<span className="skill-card-name">{skill.name}</span>
 									</div>
-									<p className="skill-letter-desc">{skill.description}</p>
-									<div className="skill-letter-foot">
+									<p className="skill-card-desc">{skill.description}</p>
+									<div className="skill-card-foot">
 										<div className="skill-avatars" title={skill.grantedPartners.length > 0 ? skill.grantedPartners.join(" · ") : "no grants"}>
 											{skill.grantedPartners.length > 0 ? (
 												skill.grantedPartners.map((partner) => (
@@ -225,9 +225,9 @@ export function SkillsView() {
 										</button>
 									</div>
 									{openSkill === skill.name && (
-										<div className="skill-letter-more" onClick={(event) => event.stopPropagation()}>
+										<div className="skill-card-more" onClick={(event) => event.stopPropagation()}>
 											{skill.path && (
-												<div className="skill-letter-path" title={skill.path}>
+												<div className="skill-card-path" title={skill.path}>
 													{skill.path}
 												</div>
 											)}
@@ -236,7 +236,7 @@ export function SkillsView() {
 													<label className="skill-grant" key={partner.name}>
 														<input
 															type="checkbox"
-															className="accent-[var(--color-seal)]"
+															className="accent-[var(--color-signal)]"
 															checked={skill.grantedPartners.includes(partner.name)}
 															onChange={(event) => void togglePartner(skill.name, partner.name, event.currentTarget.checked)}
 														/>

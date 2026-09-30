@@ -1,18 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import type { RailView } from "../shared/rpc";
-import { AppHeader } from "./components/AppHeader";
-import { AppRail } from "./components/AppRail";
+import { AppSidebar } from "./components/AppSidebar";
+import { ChatPaneBar } from "./components/ChatPaneBar";
 import { CommandPalette } from "./components/CommandPalette";
 import { Composer } from "./components/Composer";
-import { ConversationList } from "./components/ConversationList";
 import { DockGrip } from "./components/DockGrip";
 import { ExplorerDrawer } from "./components/ExplorerDrawer";
 import { GitChangesDrawer } from "./components/GitChangesDrawer";
 import { PartnerDetailsDialog } from "./components/PartnerDetailsDialog";
 import { PartnerModal } from "./components/PartnerModal";
 import { RepliesPane } from "./components/RepliesPane";
-import { SessionBar } from "./components/SessionBar";
 import { TaskLogDialog } from "./components/TaskLogDialog";
 import { ToastHost } from "./components/ToastHost";
 import { TrajectoryDrawer } from "./components/TrajectoryDrawer";
@@ -64,6 +62,7 @@ import type { PartnerFormData } from "./lib/partner-form";
 import { rpc } from "./lib/rpc";
 import type { PartnerItem } from "./lib/session";
 import { SURFACE } from "./lib/surfaces";
+import { zoomOnDoubleClick } from "./lib/zoom";
 import { DashboardView } from "./pages/DashboardView";
 import { SettingsView } from "./pages/SettingsView";
 import { SkillsView } from "./pages/SkillsView";
@@ -126,6 +125,8 @@ function ChatView(props: {
 	onViewDetails: (name: string) => void;
 	onAddPartner: () => void;
 	listCollapsed: boolean;
+	onToggleList: () => void;
+	onOpenSettings: () => void;
 }) {
 	const settingsCtl = useSettings();
 	const settingsSnapshot = useStore(settingsCtl.store, (state) => state.snapshot);
@@ -138,7 +139,7 @@ function ChatView(props: {
 	const pins = useStore(dock.store, (state) => state.pins);
 	const reveal = useStore(dock.store, (state) => state.reveal);
 	const paneWidth = useStore(dock.store, (state) => state.paneWidth);
-	const letterWidth = useStore(dock.store, (state) => state.letterWidth);
+	const columnWidth = useStore(dock.store, (state) => state.columnWidth);
 	const wrap = useStore(dock.store, (state) => state.wrap);
 	const sideBySide = useStore(dock.store, (state) => state.sideBySide);
 	const ignoreWhitespace = useStore(dock.store, (state) => state.ignoreWhitespace);
@@ -232,7 +233,7 @@ function ChatView(props: {
 	return (
 		<div className="chat-page" ref={bindRow}>
 			<div className={"conv-pane" + (props.listCollapsed ? " collapsed" : "")} style={{ width: props.listCollapsed ? undefined : listWidthNow }} inert={props.listCollapsed}>
-				<ConversationList
+				<AppSidebar
 					partners={partners}
 					loading={partnersLoading}
 					selected={selected}
@@ -244,6 +245,8 @@ function ChatView(props: {
 					onDuplicate={(name) => void runCopy("duplicate", name)}
 					onFork={(name) => void runCopy("fork", name)}
 					onPromote={(name) => void onPromotePartner(name)}
+					onToggleList={props.onToggleList}
+					onOpenSettings={props.onOpenSettings}
 				/>
 			</div>
 			{!props.listCollapsed && (
@@ -265,9 +268,10 @@ function ChatView(props: {
 					<div className={"chat-body" + (btwAnchor ? " btw-open" : "")}>
 						<div
 							className={"chat-main" + (pinnedAt("explorer") || pinnedAt("git") ? " pinned" : "") + (dockSide === "left" ? " side-left" : "")}
-							style={{ "--dock-bottom": `${composerHeight}px`, ...(letterWidth != null ? { "--letter-width": `${letterWidth}px` } : {}) } as React.CSSProperties}
+							style={{ "--dock-bottom": `${composerHeight}px`, ...(columnWidth != null ? { "--column-width": `${columnWidth}px` } : {}) } as React.CSSProperties}
 						>
-							<div className="chat-letter">
+							<ChatPaneBar dock={dock} selected={selected} onViewDetails={props.onViewDetails} listCollapsed={props.listCollapsed} onToggleList={props.onToggleList} />
+							<div className="chat-column">
 								<div className="chat-transcript-region">
 									<Transcript
 										working={busy}
@@ -302,9 +306,9 @@ function ChatView(props: {
 								side={dockSide}
 								pinned={pinnedAt("explorer")}
 								onTogglePin={() => dock.togglePinned(selected, "explorer")}
-								letterWidth={letterWidth}
-								setLetterWidth={dock.setLetterWidth}
-								commitLetterWidth={dock.commitLetterWidth}
+								columnWidth={columnWidth}
+								setColumnWidth={dock.setColumnWidth}
+								commitColumnWidth={dock.commitColumnWidth}
 								paneWidth={paneWidth}
 								onPaneResize={dock.setPaneWidth}
 								onPaneCommit={dock.commitPaneWidth}
@@ -322,9 +326,9 @@ function ChatView(props: {
 								onPaneCommit={dock.commitPaneWidth}
 								pinned={pinnedAt("git")}
 								onTogglePin={() => dock.togglePinned(selected, "git")}
-								letterWidth={letterWidth}
-								setLetterWidth={dock.setLetterWidth}
-								commitLetterWidth={dock.commitLetterWidth}
+								columnWidth={columnWidth}
+								setColumnWidth={dock.setColumnWidth}
+								commitColumnWidth={dock.commitColumnWidth}
 								sideBySide={sideBySide}
 								onToggleSideBySide={dock.toggleSideBySide}
 								wrap={wrap}
@@ -336,9 +340,12 @@ function ChatView(props: {
 						</div>
 					</div>
 				) : (
-					<div className="flex flex-1 flex-col items-center justify-center gap-3 text-center" ref={emptyWindow}>
-						<p className="font-serif text-[17px] text-ink-soft">— select a partner to begin —</p>
-						<p className="eyebrow">the directory is on the left</p>
+					<div className="chat-main">
+						<ChatPaneBar dock={dock} selected={null} onViewDetails={props.onViewDetails} listCollapsed={props.listCollapsed} onToggleList={props.onToggleList} />
+						<div className="flex flex-1 flex-col items-center justify-center gap-3 text-center" ref={emptyWindow}>
+							<p className="font-serif text-[16px] text-ink-soft">— select a partner to begin —</p>
+							<p className="eyebrow">the chat list is on the left</p>
+						</div>
 					</div>
 				)}
 			</div>
@@ -505,26 +512,24 @@ export function App() {
 														<ScrollProvider value={scroll}>
 															<TooltipProvider>
 																<div className="flex min-h-0 flex-1 flex-col">
-																	{view === "chat" ? (
-																		<AppHeader dock={dock} selected={selected} onViewDetails={openDetails} listCollapsed={listCollapsed} onToggleList={toggleList} />
-																	) : (
-																		<SessionBar view={view} />
-																	)}
 																	<div className="relative flex min-h-0 flex-1">
-																		<AppRail
-																			active={view}
-																			onSelect={(tab) => {
-																				if (tab === "settings") settings.mutate.setOpen(true);
-																				else setView(tab);
-																			}}
-																		/>
+																		<div className={"mac-plate" + (listCollapsed || view !== "chat" ? " tinted" : "")} />
 																		<main className="flex min-w-0 flex-1 flex-col bg-qw-bg">
+																			{view !== "chat" && <div className="view-strip electrobun-webkit-app-region-drag" onDoubleClick={zoomOnDoubleClick} />}
 																			{view === "dashboard" ? (
 																				<DashboardView unread={isUnread} onSelect={(name) => selectPartner(partners.find((p) => p.name === name) ?? null)} />
 																			) : view === "skills" ? (
 																				<SkillsView />
 																			) : (
-																				<ChatView selected={selected} editors={editors} onViewDetails={openDetails} onAddPartner={openAddPartner} listCollapsed={listCollapsed} />
+																				<ChatView
+																					selected={selected}
+																					editors={editors}
+																					onViewDetails={openDetails}
+																					onAddPartner={openAddPartner}
+																					listCollapsed={listCollapsed}
+																					onToggleList={toggleList}
+																					onOpenSettings={() => settings.mutate.setOpen(true)}
+																				/>
 																			)}
 																			<ToastHost toasts={toasts} placement={settingsSnapshot.settings?.toastPlacement ?? "bottomcenter"} onDismiss={toast.dismiss} />
 																		</main>
@@ -532,11 +537,11 @@ export function App() {
 																</div>
 																<Dialog open={settingsOpen} onOpenChange={settings.mutate.setOpen}>
 																	<DialogContent
-																		className="w-[820px] max-w-none h-[640px] grid-rows-[auto_1fr] overflow-hidden bg-letter border-print-line p-0"
+																		className="w-[820px] max-w-none h-[640px] grid-rows-[auto_1fr] overflow-hidden bg-surface border-print-line p-0"
 																		onOpenAutoFocus={(event) => event.preventDefault()}
 																	>
 																		<DialogHeader className="px-4 pt-4">
-																			<DialogTitle className="font-serif text-[15px]">Settings</DialogTitle>
+																			<DialogTitle className="font-serif text-[16px]">Settings</DialogTitle>
 																		</DialogHeader>
 																		<SettingsView />
 																	</DialogContent>

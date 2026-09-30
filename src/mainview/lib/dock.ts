@@ -3,6 +3,15 @@ import { clampPaneWidth } from "./grip";
 
 export type DockPanel = "explorer" | "git" | "replies";
 
+/** Where a floating dock card should land: the clicked element's bottom-left, in the dock's coordinates. */
+export function dockAnchorPoint(el: HTMLElement): { x: number; y: number } {
+	const dock = el.closest(".dock");
+	if (!dock) return { x: 0, y: 0 };
+	const box = dock.getBoundingClientRect();
+	const rect = el.getBoundingClientRect();
+	return { x: Math.round(rect.left - box.left), y: Math.round(rect.bottom - box.top + 6) };
+}
+
 export interface RevealRange {
 	start: number;
 	end: number;
@@ -14,7 +23,7 @@ export interface RevealTarget {
 	range?: RevealRange;
 }
 
-const LETTER_WIDTH_KEY = "explorer.letterWidth";
+const LETTER_WIDTH_KEY = "explorer.columnWidth";
 const PANE_WIDTH_KEY = "dock.paneWidth";
 const LIST_WIDTH_KEY = "chatlist.width";
 const WRAP_KEY = "reader.wrap";
@@ -33,14 +42,14 @@ export interface DockState {
 	reveal: RevealTarget | null;
 	pins: Record<string, Partial<Record<DockPanel, boolean>>>;
 	paneWidth: number;
-	letterWidth: number | null;
+	columnWidth: number | null;
 	listWidth: number;
 	wrap: boolean;
 	sideBySide: boolean;
 	ignoreWhitespace: boolean;
 }
 
-function storedLetterWidth(): number | null {
+function storedColumnWidth(): number | null {
 	const stored = Number(localStorage.getItem(LETTER_WIDTH_KEY));
 	return Number.isFinite(stored) && stored > 0 ? stored : null;
 }
@@ -61,7 +70,7 @@ export function createDock(options: { onOpen?: () => void; partner?: () => strin
 		reveal: null,
 		pins: {},
 		paneWidth: storedPaneWidth(),
-		letterWidth: storedLetterWidth(),
+		columnWidth: storedColumnWidth(),
 		listWidth: storedListWidth(),
 		wrap: localStorage.getItem(WRAP_KEY) !== "0",
 		sideBySide: localStorage.getItem(SIDE_BY_SIDE_KEY) !== "0",
@@ -104,12 +113,12 @@ export function createDock(options: { onOpen?: () => void; partner?: () => strin
 		store.setState((state) => ({ pins: { ...state.pins, [partner]: { ...state.pins[partner], [panel]: !state.pins[partner]?.[panel] } } }));
 	}
 
-	function setLetterWidth(width: number | null) {
-		store.setState({ letterWidth: width });
+	function setColumnWidth(width: number | null) {
+		store.setState({ columnWidth: width });
 	}
 
-	function commitLetterWidth() {
-		const width = store.getState().letterWidth;
+	function commitColumnWidth() {
+		const width = store.getState().columnWidth;
 		if (width != null) localStorage.setItem(LETTER_WIDTH_KEY, String(Math.round(width)));
 	}
 
@@ -167,8 +176,8 @@ export function createDock(options: { onOpen?: () => void; partner?: () => strin
 		close,
 		pinned,
 		togglePinned,
-		setLetterWidth,
-		commitLetterWidth,
+		setColumnWidth,
+		commitColumnWidth,
 		setPaneWidth,
 		commitPaneWidth,
 		setListWidth,

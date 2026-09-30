@@ -29,7 +29,7 @@ export function PaletteList(props: { rows: PaletteRow[]; index: number; unread: 
 							onMouseEnter={() => props.onHover(index)}
 							onClick={() => props.onPick(row)}
 						>
-							<Avatar name={row.partner.name} size="sm" variant="paper" />
+							<Avatar name={row.partner.name} size="sm" variant="surface" />
 							<span className="palette-row-main">
 								<span className="palette-row-title">{row.partner.name}</span>
 								<span className="palette-row-sub">{previewFor(row.partner) || "—"}</span>

@@ -62,12 +62,12 @@ export function McpSettingsPanel() {
 
 	return (
 		<div>
-			<div className="mb-1 font-sans text-[10px] font-medium uppercase tracking-[0.6px] text-muted">MCP</div>
-			<div className="divide-y divide-hairline">
+			<div className="mb-1 font-sans text-[10px] font-medium uppercase tracking-[0.6px] text-muted-soft">MCP</div>
+			<div className="divide-y divide-line">
 				<div className="grid grid-cols-[minmax(0,1fr)_240px] items-center gap-6 py-3.5">
 					<div>
-						<div className="font-serif text-[13px] text-ink">Config file</div>
-						<div className="mt-1 font-sans text-[11px] text-body-muted">Where MCP servers and options are stored.</div>
+						<div className="font-serif text-[13.5px] text-ink">Config file</div>
+						<div className="mt-1 font-sans text-[11.5px] text-muted">Where MCP servers and options are stored.</div>
 					</div>
 					<TextField className="w-full">
 						<TextFieldInput
@@ -86,8 +86,8 @@ export function McpSettingsPanel() {
 				</div>
 				<div className="grid grid-cols-[minmax(0,1fr)_240px] items-center gap-6 py-3.5">
 					<div>
-						<div className="font-serif text-[13px] text-ink">Idle timeout</div>
-						<div className="mt-1 font-sans text-[11px] text-body-muted">Seconds before a lazy/eager server is disconnected after last use.</div>
+						<div className="font-serif text-[13.5px] text-ink">Idle timeout</div>
+						<div className="mt-1 font-sans text-[11.5px] text-muted">Seconds before a lazy/eager server is disconnected after last use.</div>
 					</div>
 					<TextField className="w-full">
 						<TextFieldInput
@@ -106,8 +106,8 @@ export function McpSettingsPanel() {
 				</div>
 				<div className="grid grid-cols-[minmax(0,1fr)_240px] items-center gap-6 py-3.5">
 					<div>
-						<div className="font-serif text-[13px] text-ink">Default lifecycle</div>
-						<div className="mt-1 font-sans text-[11px] text-body-muted">Lifecycle used for newly added MCP servers.</div>
+						<div className="font-serif text-[13.5px] text-ink">Default lifecycle</div>
+						<div className="mt-1 font-sans text-[11.5px] text-muted">Lifecycle used for newly added MCP servers.</div>
 					</div>
 					<Select
 						class="w-full"
@@ -122,8 +122,8 @@ export function McpSettingsPanel() {
 				</div>
 				<div className="grid grid-cols-[minmax(0,1fr)_240px] items-center gap-6 py-3.5">
 					<div>
-						<div className="font-serif text-[13px] text-ink">Max buffer size</div>
-						<div className="mt-1 font-sans text-[11px] text-body-muted">Maximum stdio message buffer size in bytes.</div>
+						<div className="font-serif text-[13.5px] text-ink">Max buffer size</div>
+						<div className="mt-1 font-sans text-[11.5px] text-muted">Maximum stdio message buffer size in bytes.</div>
 					</div>
 					<TextField className="w-full">
 						<TextFieldInput
@@ -142,11 +142,7 @@ export function McpSettingsPanel() {
 				</div>
 			</div>
 			<div className="mt-3 flex h-[28px] items-center justify-end gap-3">
-				{saving ? (
-					<span className="font-sans text-[11px] text-body-muted">saving…</span>
-				) : message ? (
-					<span className="font-sans text-[11px] text-body-muted">{message}</span>
-				) : null}
+				{saving ? <span className="font-sans text-[11.5px] text-muted">saving…</span> : message ? <span className="font-sans text-[11.5px] text-muted">{message}</span> : null}
 			</div>
 		</div>
 	);

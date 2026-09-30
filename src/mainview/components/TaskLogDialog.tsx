@@ -30,8 +30,8 @@ function glyphOf(status: TaskStatus, exitCode: number | undefined): string {
 
 function glyphClass(status: TaskStatus, exitCode: number | undefined): string {
 	if (status === "running") return "task-live";
-	if (status === "exited" && exitCode) return "text-seal";
-	return "text-muted";
+	if (status === "exited" && exitCode) return "text-signal";
+	return "text-muted-soft";
 }
 
 function detailOf(task: TaskSummary, now: number): string {
@@ -197,63 +197,63 @@ export function TaskLogDialog(props: { open: boolean; onOpenChange: (open: boole
 
 	return (
 		<Dialog open={props.open} onOpenChange={props.onOpenChange}>
-			<DialogContent focusClose className="w-[880px] max-w-[880px] bg-paper text-ink p-0 gap-0 overflow-hidden">
+			<DialogContent focusClose className="w-[880px] max-w-[880px] bg-surface text-ink p-0 gap-0 overflow-hidden">
 				<DialogTitle className="sr-only">Tasks</DialogTitle>
 				<div className="flex w-full max-h-[min(80vh,720px)] flex-col overflow-hidden" ref={attachRoot}>
-					<div className="flex shrink-0 items-baseline gap-3 border-b border-hairline px-5 pt-4 pb-3 pr-12">
-						<h2 className="font-sans text-[15px] font-semibold leading-tight text-ink">Tasks</h2>
-						<span className="font-mono text-[10px] text-body-muted">
+					<div className="flex shrink-0 items-baseline gap-3 border-b border-line px-5 pt-4 pb-3 pr-12">
+						<h2 className="font-sans text-[16px] font-semibold leading-tight text-ink">Tasks</h2>
+						<span className="font-mono text-[10px] text-muted">
 							{running} running
 							{failed > 0 && (
 								<>
 									{" "}
-									· <span className="text-seal">{failed} failed</span>
+									· <span className="text-signal">{failed} failed</span>
 								</>
 							)}
 						</span>
 					</div>
 
 					{props.tasks.length === 0 ? (
-						<p className="px-5 py-8 font-sans text-[12.5px] text-body-muted">No background tasks yet.</p>
+						<p className="px-5 py-8 font-sans text-[12.5px] text-muted">No background tasks yet.</p>
 					) : (
 						<div className="grid h-[min(56vh,440px)] grid-cols-[186px_minmax(0,1fr)] max-[720px]:h-[min(64vh,520px)] max-[720px]:grid-cols-1">
-							<div className="min-h-0 overflow-y-auto border-r border-hairline p-1.5 max-[720px]:max-h-[132px] max-[720px]:border-r-0 max-[720px]:border-b">
+							<div className="min-h-0 overflow-y-auto border-r border-line p-1.5 max-[720px]:max-h-[132px] max-[720px]:border-r-0 max-[720px]:border-b">
 								{props.tasks.map((task) => (
 									<button type="button" key={task.id} className={`${ROW} ${task.id === selected ? ROW_ON : ""}`} onClick={() => setSelected(task.id)}>
 										<span className="flex items-center gap-1.5">
 											<span className={`shrink-0 font-mono text-[10px] ${glyphClass(task.status, task.exitCode)}`}>{glyphOf(task.status, task.exitCode)}</span>
-											<span className={`min-w-0 truncate font-mono text-[10.5px] ${task.id === selected ? "font-semibold text-ink" : "text-ink-soft"}`}>{task.command}</span>
+											<span className={`min-w-0 truncate font-mono text-[11.5px] ${task.id === selected ? "font-semibold text-ink" : "text-ink-soft"}`}>{task.command}</span>
 										</span>
-										<span className={`mt-0.5 block pl-[18px] font-mono text-[9px] ${task.status === "exited" && task.exitCode ? "text-seal" : "text-body-muted"}`}>
+										<span className={`mt-0.5 block pl-[18px] font-mono text-[10px] ${task.status === "exited" && task.exitCode ? "text-signal" : "text-muted"}`}>
 											{detailOf(task, now)}
 										</span>
 									</button>
 								))}
 							</div>
 
-							<div className="relative flex min-h-0 flex-col bg-letter">
+							<div className="relative flex min-h-0 flex-col bg-surface">
 								<div ref={logRef} onScroll={onLogScroll} className="min-h-0 flex-1 overflow-auto">
 									{hasMore && (
 										<button
 											type="button"
 											disabled={paging}
 											onClick={() => void loadEarlier()}
-											className="sticky top-0 z-10 w-full border-b border-hairline-soft bg-letter px-3 py-1 text-left font-mono text-[9.5px] text-body-muted hover:text-ink disabled:opacity-60"
+											className="sticky top-0 z-10 w-full border-b border-line-soft bg-surface px-3 py-1 text-left font-mono text-[10px] text-muted hover:text-ink disabled:opacity-60"
 										>
 											{paging ? "loading…" : "Load earlier"}
 										</button>
 									)}
-									<pre ref={codeRef} className="whitespace-pre px-3 py-2 font-mono text-[11px] leading-[1.7] text-ink-soft">
+									<pre ref={codeRef} className="whitespace-pre px-3 py-2 font-mono text-[11.5px] leading-[1.7] text-ink-soft">
 										{text || (loading ? "loading…" : "(no output yet)")}
 									</pre>
 								</div>
 								<AnimatePresence>{find.open ? <FloatFind {...find.props} /> : null}</AnimatePresence>
-								<div className="flex shrink-0 items-baseline justify-between gap-3 border-t border-hairline px-3 py-1.5">
-									<span className="font-mono text-[9.5px] text-body-muted">{current ? `${detailOf(current, now)} · ${formatBytes(bytes)}` : "—"}</span>
+								<div className="flex shrink-0 items-baseline justify-between gap-3 border-t border-line px-3 py-1.5">
+									<span className="font-mono text-[10px] text-muted">{current ? `${detailOf(current, now)} · ${formatBytes(bytes)}` : "—"}</span>
 									{current?.status === "running" && (
 										<button
 											type="button"
-											className="font-mono text-[9.5px] text-body-muted hover:text-ink"
+											className="font-mono text-[10px] text-muted hover:text-ink"
 											onClick={() => void rpc.request.task_stop({ name: props.partner ?? "", id: selected ?? "" })}
 										>
 											stop

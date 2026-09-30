@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#f7f3ea" media="(prefers-color-scheme: light)">
     <meta name="theme-color" content="#141210" media="(prefers-color-scheme: dark)">
-    <title>LETTERS</title>
+    <title>Milu</title>
     <style>
         @layer boot {
             html,
@@ -34,12 +34,19 @@
             justify-content: center;
             gap: 12px;
         }
+        @font-face {
+            font-family: "JetBrains Mono";
+            src: url("assets/fonts/jetbrains-mono.woff2") format("woff2-variations");
+            font-weight: 100 800;
+            font-display: swap;
+        }
         .boot-mark {
-            font-family: "Newsreader", Georgia, serif;
+            font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
             font-size: 15px;
-            letter-spacing: 0.42em;
-            text-indent: 0.42em;
-            color: #8d8474;
+            font-weight: 600;
+            letter-spacing: 0.14em;
+            text-indent: 0.14em;
+            color: #6b7280;
         }
         .boot-dots {
             display: flex;
@@ -87,7 +94,7 @@
 <body class="h-full">
     <main class="h-full flex flex-col" id="app">
         <div class="boot" role="status" aria-label="Starting">
-            <span class="boot-mark">LETTERS</span>
+            <span class="boot-mark">Milu</span>
             <span class="boot-dots" aria-hidden="true"><i></i><i></i><i></i></span>
         </div>
     </main>

@@ -1,6 +1,6 @@
 export interface AvatarProps {
 	name: string;
-	variant?: "ink" | "paper";
+	variant?: "ink" | "surface";
 	size?: "md" | "sm";
 	class?: string;
 }
@@ -10,7 +10,7 @@ export function Avatar(props: AvatarProps) {
 		<span
 			className={
 				"conv-avatar select-none " +
-				(props.variant === "paper" ? "avatar-paper" : "avatar-ink") +
+				(props.variant === "surface" ? "avatar-surface" : "avatar-ink") +
 				(props.size === "sm" ? " avatar-sm" : "") +
 				(props.class ? ` ${props.class}` : "")
 			}

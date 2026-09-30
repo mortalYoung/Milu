@@ -6,14 +6,16 @@ export function TextField({ className, ...rest }: ComponentProps<"div">) {
 	return <div className={cn("flex flex-col gap-1", className)} {...rest} />;
 }
 
-export function TextFieldInput({ className, type = "text", variant = "default", ...rest }: ComponentProps<"input"> & { variant?: "default" | "compact" }) {
+export function TextFieldInput({ className, type = "text", variant = "default", ...rest }: ComponentProps<"input"> & { variant?: "default" | "compact" | "quiet" }) {
 	return (
 		<input
 			type={type}
 			className={cn(
 				variant === "compact"
-					? "flex h-[32px] w-full rounded-[10px] border border-hairline bg-paper px-3 font-mono text-[12px] text-ink placeholder:text-muted focus-visible:outline-none focus-visible:border-seal focus-visible:ring-2 focus-visible:ring-seal/40"
-					: "flex h-10 w-full rounded-[10px] border border-input bg-letter px-3 py-2 font-sans text-sm text-ink placeholder:text-muted focus-visible:outline-none focus-visible:border-seal focus-visible:ring-2 focus-visible:ring-seal/20 disabled:cursor-not-allowed disabled:opacity-50 data-[invalid]:border-seal",
+					? "flex h-[32px] w-full rounded-[6px] border border-line bg-canvas px-3 font-mono text-[12.5px] text-ink placeholder:text-muted-soft focus-visible:outline-none focus-visible:border-ink focus-visible:ring-2 focus-visible:ring-ink/30"
+					: variant === "quiet"
+						? "flex h-[32px] w-full rounded-[6px] border border-line bg-canvas px-3 font-sans text-[13.5px] text-ink placeholder:text-muted-soft focus:outline-none"
+						: "flex h-10 w-full rounded-[6px] border border-input bg-surface px-3 py-2 font-sans text-sm text-ink placeholder:text-muted-soft focus-visible:outline-none focus-visible:border-ink focus-visible:ring-2 focus-visible:ring-ink/20 disabled:cursor-not-allowed disabled:opacity-50 data-[invalid]:border-signal",
 				className,
 			)}
 			{...rest}
@@ -25,7 +27,7 @@ export function TextFieldTextArea({ className, ...rest }: ComponentProps<"textar
 	return (
 		<textarea
 			className={cn(
-				"flex min-h-[80px] w-full rounded-[10px] border border-input bg-letter px-3 py-2 font-sans text-sm text-ink placeholder:text-muted focus-visible:outline-none focus-visible:border-seal focus-visible:ring-2 focus-visible:ring-seal/20 disabled:cursor-not-allowed disabled:opacity-50",
+				"flex min-h-[80px] w-full rounded-[6px] border border-input bg-surface px-3 py-2 font-sans text-sm text-ink placeholder:text-muted-soft focus-visible:outline-none focus-visible:border-ink focus-visible:ring-2 focus-visible:ring-ink/20 disabled:cursor-not-allowed disabled:opacity-50",
 				className,
 			)}
 			{...rest}
@@ -33,7 +35,7 @@ export function TextFieldTextArea({ className, ...rest }: ComponentProps<"textar
 	);
 }
 
-const labelVariants = cva("font-sans text-[11px] font-medium uppercase tracking-[0.6px] text-muted leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70", {
+const labelVariants = cva("font-sans text-[11.5px] font-medium uppercase tracking-[0.6px] text-muted-soft leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70", {
 	variants: {
 		variant: {
 			label: "data-[invalid]:text-destructive",

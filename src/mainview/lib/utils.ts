@@ -5,6 +5,13 @@ export function cn(...inputs: ClassValue[]) {
 	return twMerge(clsx(inputs));
 }
 
+const INTERACTIVE = "button, a, input, textarea, select, [contenteditable='true']";
+
+/** True when a click landed on a real control: the pane around it must not steal focus or start a drag. */
+export function isInteractive(target: EventTarget | null): boolean {
+	return target instanceof HTMLElement && target.closest(INTERACTIVE) != null;
+}
+
 export function formatTokens(n: number): string {
 	if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
 	if (n >= 1_000) return `${Math.round(n / 1_000)}k`;

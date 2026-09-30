@@ -28,10 +28,15 @@ export interface HighlightLimits {
 export const DEFAULT_HIGHLIGHT_LIMITS: HighlightLimits = { tokenizeMaxLineLength: 3000, tokenizeTimeLimit: 500 };
 
 /** Dual themes: `defaultColor: "light-dark()"` emits every token colour as an inline light/dark pair,
- *  resolved by the app's `color-scheme` — code follows the theme with no re-render. */
+ *  resolved by the app's `color-scheme` — code follows the theme with no re-render.
+ *  Stock github-light/github-dark, 原样使用：代码的配色不参与「一个红只做信号」那条规则
+ *  （2026-09-29 用户决定）。代码面板里唯一属于我们的颜色是选中行/选区（见 CodeReader 的 SELECTION）。 */
 export const SHIKI_OPTIONS = {
 	themes: { light: "github-light", dark: "github-dark" },
 	defaultColor: "light-dark()",
+	/* github-light/dark 自带六种色相（红 keyword、紫 entity、蓝 constant、绿 tag、橙 variable），
+	   keyword 还是红的 —— 与 Milu「一个红只做信号」直接冲突。这里按角色重映到中性灰阶 + 两个低饱和
+	   辅色（keyword 石板蓝、string 苔绿），只有 invalid 保留红。见 DESIGN.md §2/§4。 */
 } as const;
 
 let limits: HighlightLimits = { ...DEFAULT_HIGHLIGHT_LIMITS };

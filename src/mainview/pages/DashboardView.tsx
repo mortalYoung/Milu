@@ -10,7 +10,7 @@ import { useInbox } from "../lib/contexts/inbox-context";
 import { useSession } from "../lib/contexts/session-context";
 import { digits, formatBytes, formatTokens, percent } from "../lib/utils";
 
-const CAP = "font-mono text-[9px] font-medium uppercase tracking-[0.16em] text-body-muted";
+const CAP = "font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-muted";
 const NUM = "font-mono tabular-nums";
 const WINDOWS = [7, 30, 90] as const;
 const SORTS = [
@@ -111,7 +111,7 @@ const StatusSection = memo(function StatusSection(props: { todayTurns: number; t
 		<section className="dashboard-status" aria-label="Letter status">
 			<div className="dashboard-status-head">
 				<span className={CAP}>status · {activeCount > 0 ? "live" : "idle"}</span>
-				<span className={`text-[9px] text-body-muted ${NUM}`}>
+				<span className={`text-[10px] text-muted ${NUM}`}>
 					{rows.length < partners.length ? `latest ${rows.length} of ${partners.length} · ` : ""}
 					checked {props.checked}
 				</span>
@@ -195,7 +195,7 @@ function DashboardSkeleton() {
 			</section>
 
 			<div className="dashboard-split">
-				<section className="dashboard-card dashboard-letters">
+				<section className="dashboard-card dashboard-partners">
 					<figcaption>
 						<Sk className="h-[8px] w-[148px]" />
 						<Sk className="h-[8px] w-[118px]" />
@@ -219,7 +219,7 @@ const CalendarCard = memo(function CalendarCard(props: { days: PartnerActivityDa
 		<section className="dashboard-card dashboard-calendar" aria-label="Load per day, one year">
 			<figcaption>
 				<span className={CAP}>Load per day · last {Math.round(HEATMAP_WEEKS / 4.345)} months</span>
-				<span className={`text-[9px] text-body-muted ${NUM}`}>Monday-aligned through today</span>
+				<span className={`text-[10px] text-muted ${NUM}`}>Monday-aligned through today</span>
 			</figcaption>
 			<div className="overflow-x-auto">
 				<div className="mx-auto w-max">
@@ -293,9 +293,9 @@ export function DashboardView(props: { unread: (name: string) => boolean; onSele
 			<div className="dashboard-scroll">
 				<div className="dashboard-head">
 					<div className="dashboard-title">
-						<h1 className="font-serif text-[20px] font-semibold text-ink">Dashboard</h1>
+						<h1 className="font-serif text-[19px] font-semibold text-ink">Dashboard</h1>
 						<span className={CAP}>
-							{partners.length} letters · since {totals?.since ? dayLabel(totals.since) : "—"}
+							{partners.length} partners · since {totals?.since ? dayLabel(totals.since) : "—"}
 						</span>
 					</div>
 					<div className="dashboard-head-right">
@@ -306,12 +306,12 @@ export function DashboardView(props: { unread: (name: string) => boolean; onSele
 								</button>
 							))}
 						</div>
-						<span className={`text-[9px] text-body-muted ${NUM}`}>{overview && asOf ? `data as of ${clock(asOf)}` : "loading…"}</span>
+						<span className={`text-[10px] text-muted ${NUM}`}>{overview && asOf ? `data as of ${clock(asOf)}` : "loading…"}</span>
 					</div>
 				</div>
 
 				{partners.length === 0 ? (
-					<p className="mt-8 font-mono text-[11px] text-body-muted">—</p>
+					<p className="mt-8 font-mono text-[11.5px] text-muted">—</p>
 				) : !overview ? (
 					<DashboardSkeleton />
 				) : (
@@ -376,21 +376,21 @@ export function DashboardView(props: { unread: (name: string) => boolean; onSele
 							<figure className="dashboard-card">
 								<figcaption>
 									<span className={CAP}>Turns per day</span>
-									<span className={`text-[9px] text-body-muted ${NUM}`}>{loading ? "loading…" : windowLabel}</span>
+									<span className={`text-[10px] text-muted ${NUM}`}>{loading ? "loading…" : windowLabel}</span>
 								</figcaption>
 								<DashboardChart labels={labels} series={[{ label: "turns", values: days.map((day) => day.turns) }]} />
 							</figure>
 							<figure className="dashboard-card">
 								<figcaption>
 									<span className={CAP}>Fresh tokens per day</span>
-									<span className={`text-[9px] text-body-muted ${NUM}`}>{loading ? "loading…" : `${formatTokens(moves.fresh.now)} in window`}</span>
+									<span className={`text-[10px] text-muted ${NUM}`}>{loading ? "loading…" : `${formatTokens(moves.fresh.now)} in window`}</span>
 								</figcaption>
 								<DashboardChart labels={labels} series={[{ label: "fresh", values: days.map((day) => day.freshTokens), unit: " tok" }]} format={formatTokens} />
 							</figure>
 							<figure className="dashboard-card">
 								<figcaption>
 									<span className={CAP}>Tool calls per day</span>
-									<span className={`text-[9px] text-body-muted ${NUM}`}>{loading ? "loading…" : `${totals?.tools ?? 0} lifetime`}</span>
+									<span className={`text-[10px] text-muted ${NUM}`}>{loading ? "loading…" : `${totals?.tools ?? 0} lifetime`}</span>
 								</figcaption>
 								<DashboardChart labels={labels} series={[{ label: "tools", values: days.map((day) => day.tools) }]} />
 							</figure>
@@ -399,19 +399,19 @@ export function DashboardView(props: { unread: (name: string) => boolean; onSele
 						<CalendarCard days={heatmap} />
 
 						<div className="dashboard-split">
-							<section className="dashboard-card dashboard-letters" aria-label="Letters">
+							<section className="dashboard-card dashboard-partners" aria-label="Partners">
 								<figcaption>
-									<span className={CAP}>Letters · counts over {scanLabel}</span>
+									<span className={CAP}>Partners · counts over {scanLabel}</span>
 									<span className="dashboard-controls">
 										<input
 											className="dashboard-search"
 											type="search"
 											placeholder="filter"
-											aria-label="Filter letters"
+											aria-label="Filter partners"
 											value={query}
 											onChange={(event) => setQuery(event.currentTarget.value)}
 										/>
-										<span className="dashboard-seg small" role="group" aria-label="Sort letters">
+										<span className="dashboard-seg small" role="group" aria-label="Sort partners">
 											{SORTS.map((option) => (
 												<button
 													key={option.value}
@@ -430,7 +430,7 @@ export function DashboardView(props: { unread: (name: string) => boolean; onSele
 									<table className="dashboard-table">
 										<thead>
 											<tr>
-												<th scope="col">Letter</th>
+												<th scope="col">Partner</th>
 												<th scope="col">Fresh</th>
 												<th scope="col" className="r">
 													Turns
@@ -480,7 +480,7 @@ export function DashboardView(props: { unread: (name: string) => boolean; onSele
 							<section className="dashboard-card dashboard-runs" aria-label="Recent runs">
 								<figcaption>
 									<span className={CAP}>recent runs</span>
-									<span className={`text-[9px] text-body-muted ${NUM}`}>{runs.length} today</span>
+									<span className={`text-[10px] text-muted ${NUM}`}>{runs.length} today</span>
 								</figcaption>
 								<ul>
 									{runs.length === 0 ? (
@@ -505,9 +505,9 @@ export function DashboardView(props: { unread: (name: string) => boolean; onSele
 						</div>
 
 						<section className="dashboard-foot">
-							<span className={`text-[9px] text-body-muted ${NUM}`}>read from each letter's own files · {formatTokens(totals?.freshTokens ?? 0)} fresh lifetime</span>
-							<span className={`text-[9px] text-body-muted ${NUM}`}>{totals?.tps ? `${totals.tps.toFixed(1)} tok/s generation` : "no generation yet"}</span>
-							<span className={`text-[9px] text-body-muted ${NUM}`}>
+							<span className={`text-[10px] text-muted ${NUM}`}>read from each partner's own files · {formatTokens(totals?.freshTokens ?? 0)} fresh lifetime</span>
+							<span className={`text-[10px] text-muted ${NUM}`}>{totals?.tps ? `${totals.tps.toFixed(1)} tok/s generation` : "no generation yet"}</span>
+							<span className={`text-[10px] text-muted ${NUM}`}>
 								{memoryFiles.map((file) => (
 									<span className="dashboard-foot-file" key={file.label}>
 										{file.label} {formatBytes(file.bytes)}

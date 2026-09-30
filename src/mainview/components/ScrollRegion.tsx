@@ -1,3 +1,4 @@
+import { ArrowDown } from "lucide-react";
 import { type ReactNode, type RefObject, useLayoutEffect } from "react";
 import { useStore } from "zustand";
 import { Show } from "../lib/jsx";
@@ -36,8 +37,8 @@ export function ScrollRegion(props: {
 				</div>
 			</section>
 			<Show when={!following}>
-				<button type="button" className="back-to-bottom" title="Back to latest" onClick={() => props.scroll.pin(true)}>
-					↓ latest
+				<button type="button" className="back-to-bottom" title="Back to latest" aria-label="Back to latest" onClick={() => props.scroll.pin(true)}>
+					<ArrowDown size={13} />
 				</button>
 			</Show>
 			{props.overlay}

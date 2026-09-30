@@ -23,7 +23,7 @@ export function FollowUpDock() {
 	return (
 		<div className="followup-dock" role="list" aria-label="Queued messages">
 			<div className="followup-dock-head">
-				<span className="followup-dock-stamp">PENDING · {queued.length}</span>
+				<span className="followup-dock-tag">PENDING · {queued.length}</span>
 			</div>
 			{queued.map((item) => (
 				<div className="followup-dock-row" role="listitem" key={item.id}>

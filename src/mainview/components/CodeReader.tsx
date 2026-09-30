@@ -62,7 +62,7 @@ const selectionLineBands = ViewPlugin.fromClass(
 const CHEVRON_RIGHT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>';
 const CHEVRON_DOWN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
 
-const SELECTION = "light-dark(#f2ded8, #3d2a23)";
+const SELECTION = "color-mix(in srgb, var(--color-ink) 14%, transparent)";
 
 const readerTheme = EditorView.theme({
 	"&": { height: "100%" },
@@ -77,7 +77,7 @@ const readerTheme = EditorView.theme({
 	},
 	".cm-cursor, .cm-dropCursor": { display: "none" },
 	".cm-foldPlaceholder": { display: "none" },
-	".cm-gutters": { background: "var(--color-letter)", border: "none", color: "var(--color-muted)" },
+	".cm-gutters": { background: "var(--color-surface)", border: "none", color: "var(--color-muted-soft)" },
 	".cm-gutters.cm-gutters-before": { borderRightWidth: "0" },
 	".cm-line-gutter .cm-gutterElement": { padding: "0" },
 	".cm-gutter-cell": { display: "flex", alignItems: "flex-start", height: "100%" },
@@ -92,14 +92,14 @@ const readerTheme = EditorView.theme({
 		border: "0",
 		borderRadius: "3px",
 		background: "transparent",
-		color: "var(--color-muted)",
+		color: "var(--color-muted-soft)",
 		opacity: "0",
 		transition: "background-color 120ms, color 120ms",
 	},
 	".cm-gutters:hover .cm-fold-btn:not(.empty)": { opacity: "1" },
 	".cm-gutter-cell[data-hot] .cm-fold-btn:not(.empty)": { opacity: "1" },
 	".cm-gutter-cell[data-selected]": { background: SELECTION },
-	".cm-fold-btn:not(.empty):hover": { background: "var(--color-paper-hover)", color: "var(--color-ink)" },
+	".cm-fold-btn:not(.empty):hover": { background: "var(--color-hover)", color: "var(--color-ink)" },
 	".cm-fold-btn:focus-visible": { opacity: "1", outline: "2px solid var(--color-ring)", outlineOffset: "-2px" },
 	".cm-fold-btn svg": { width: "12px", height: "12px" },
 	".cm-line-no": {
@@ -112,15 +112,15 @@ const readerTheme = EditorView.theme({
 		fontFamily: "var(--font-mono)",
 		fontSize: "12px",
 		lineHeight: "var(--explorer-line-height, 1.2)",
-		color: "var(--color-muted)",
+		color: "var(--color-muted-soft)",
 		userSelect: "none",
 		cursor: "pointer",
 		transition: "color 120ms",
 	},
 	".cm-line-no:hover": { color: "var(--color-ink)" },
 	".cm-line-selected": { background: SELECTION },
-	".cm-searchMatch": { background: "color-mix(in srgb, var(--color-seal) 26%, transparent)", borderRadius: "2px" },
-	".cm-searchMatch-selected": { background: "color-mix(in srgb, var(--color-seal) 60%, transparent)" },
+	".cm-searchMatch": { background: "var(--color-find-soft)", borderRadius: "2px" },
+	".cm-searchMatch-selected": { background: "var(--color-find)" },
 });
 
 function foldedAt(view: EditorView, line: { from: number; to: number }): { from: number; to: number } | null {

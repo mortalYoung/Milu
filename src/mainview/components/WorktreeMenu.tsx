@@ -67,7 +67,7 @@ export function WorktreeMenu(props: { partner: string | null; buttonClass: strin
 			<DropdownMenuTrigger type="button" className={props.buttonClass} title={title} aria-label="Worktrees">
 				<FolderTree size={16} />
 			</DropdownMenuTrigger>
-			<DropdownMenuContent className="min-w-[320px] max-w-[380px] rounded-[8px] p-0">
+			<DropdownMenuContent className="min-w-[320px] max-w-[380px] rounded-[6px] p-0">
 				<div className="wt-head">
 					<span className="eyebrow">Worktrees</span>
 					{data && <span className="wt-count">{data.worktrees.length}</span>}

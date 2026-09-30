@@ -96,10 +96,10 @@ export function ActivityHeatmap(props: { days: PartnerActivityDay[]; weeks?: num
 						gap: `${GAP}px`,
 					}}
 				>
-					{shown.map((day, i) => (
+					{shown.map((day) => (
 						<Tooltip key={day.ts} delayDuration={120}>
 							<TooltipTrigger asChild>
-								<div tabIndex={-1} className={`activity-cell hlv-${levelOf(loadOf(day))}`} style={{ transitionDelay: `${Math.floor(i / 7) * 6}ms` }} />
+								<div tabIndex={-1} className={`activity-cell hlv-${levelOf(loadOf(day))}`} />
 							</TooltipTrigger>
 							<TooltipContent side="top">{tipFor(day)}</TooltipContent>
 						</Tooltip>
