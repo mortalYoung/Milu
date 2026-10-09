@@ -188,14 +188,17 @@
 		padding: 0 12px;
 	}
 	.sidebar-windowbar {
-		@apply flex h-[52px] flex-none items-center justify-end;
+		@apply flex h-[52px] flex-none items-center justify-end gap-2;
+		/* 红绿灯压着左上 76px（`.mac-plate`）：本行内容从 88px 起，和 `.chat-bar.at-edge` 同一条 */
+		padding-left: 76px;
 	}
 	.sidebar-toggle {
 		@apply flex size-8 items-center justify-center rounded-full border-0 text-ink-soft transition-colors hover:bg-hover hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-chrome;
 		background: transparent;
 	}
 	.sidebar-brand {
-		@apply mb-2 flex h-[44px] flex-none items-center gap-3 text-ink;
+		@apply flex h-[44px] flex-none items-center gap-3 text-ink;
+		border-bottom: 0.5px solid var(--color-line);
 	}
 	.brand-mark {
 		@apply size-[26px] flex-none rounded-[6px];
@@ -240,12 +243,8 @@
 			animation: none;
 		}
 	}
-	.sidebar-toolbar {
-		@apply flex flex-none items-center gap-2 pb-2;
-		border-bottom: 0.5px solid var(--color-line);
-	}
 	.conv-search {
-		@apply flex h-10 min-w-0 flex-1 items-center rounded-[6px] border border-transparent;
+		@apply flex h-8 min-w-0 flex-1 items-center rounded-[6px] border border-transparent;
 		transition:
 			border-color 160ms var(--ease-out),
 			background-color 160ms var(--ease-out);
@@ -253,8 +252,8 @@
 	.conv-search.open {
 		@apply border-line bg-surface;
 	}
-	.conv-search-toggle {
-		@apply grid size-[26px] shrink-0 place-items-center rounded-full text-muted-soft transition-colors hover:bg-hover hover:text-ink;
+	.conv-icon-btn {
+		@apply grid size-[26px] shrink-0 place-items-center rounded-full text-muted-soft transition-colors hover:bg-hover hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-chrome;
 	}
 	.conv-search-slide {
 		@apply flex min-w-0 flex-1 items-center overflow-hidden pr-2;
@@ -899,6 +898,17 @@
 	/* no sidebar: the pane's bar starts at the window edge, so it lets the lights keep the corner */
 	.chat-bar.at-edge {
 		padding-left: 88px;
+	}
+	/* 展开按钮等侧栏合上（120ms）再淡入：收起的过程中它不跟侧栏抢同一处 */
+	@media (prefers-reduced-motion: no-preference) {
+		.chat-bar.at-edge .list-expand {
+			animation: list-expand-in 140ms var(--ease-out) 120ms both;
+		}
+	}
+	@keyframes list-expand-in {
+		from {
+			opacity: 0;
+		}
 	}
 	.chat-bar-lead {
 		@apply flex min-w-0 items-center gap-2;

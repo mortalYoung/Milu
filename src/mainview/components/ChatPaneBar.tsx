@@ -88,7 +88,7 @@ export function ChatPaneBar(props: { dock: Dock; selected: string | null; onView
 		<div className={"chat-bar electrobun-webkit-app-region-drag" + (props.listCollapsed ? " at-edge" : "")} onDoubleClick={zoomOnDoubleClick}>
 			<div className="chat-bar-lead">
 				{props.listCollapsed && (
-					<button type="button" className={barIconClass} title="Show chat list (⌘B)" aria-label="Show chat list" onClick={props.onToggleList}>
+					<button type="button" className={barIconClass + " list-expand"} title="Show chat list (⌘B)" aria-label="Show chat list" onClick={props.onToggleList}>
 						<PanelLeftOpen size={16} />
 					</button>
 				)}

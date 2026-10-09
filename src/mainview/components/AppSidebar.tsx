@@ -1,4 +1,4 @@
-import { ArrowUpFromLine, ChevronDown, ChevronRight, Copy, CopyPlus, Files, GitFork, Info, MoreVertical, PanelLeftClose, Plus, Search, Settings, Trash2 } from "lucide-react";
+import { ArrowUpFromLine, ChevronDown, ChevronRight, Copy, CopyPlus, Files, GitFork, Info, MoreVertical, PanelLeftClose, Search, Settings, SquarePen, Trash2 } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import miluMark from "../../../assets/milu.png";
@@ -290,23 +290,12 @@ export function AppSidebar(props: {
 			}}
 		>
 			<div className="sidebar-windowbar electrobun-webkit-app-region-drag" onDoubleClick={zoomOnDoubleClick}>
-				<button type="button" className="sidebar-toggle electrobun-webkit-app-region-no-drag" title="Hide chat list (⌘B)" aria-label="Hide chat list" onClick={props.onToggleList}>
-					<PanelLeftClose size={16} />
-				</button>
-			</div>
-
-			<div className="sidebar-brand">
-				<img className="brand-mark" src={miluMark} alt="" />
-				<MiluWordmark class="sidebar-wordmark" />
-			</div>
-
-			<div className="sidebar-toolbar">
 				<div className={"conv-search" + (searchOpen ? " open" : "")}>
 					<Tooltip delayDuration={150} open={searchOpen ? false : searchTip} onOpenChange={setSearchTip}>
 						<TooltipTrigger asChild>
 							<button
 								type="button"
-								className="conv-search-toggle electrobun-webkit-app-region-no-drag"
+								className="conv-icon-btn electrobun-webkit-app-region-no-drag"
 								aria-expanded={searchOpen}
 								aria-label={searchOpen ? "Close search" : "Search chats"}
 								onClick={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
@@ -319,7 +308,7 @@ export function AppSidebar(props: {
 					<span className="conv-search-slide">
 						<input
 							ref={searchRef}
-							className="conv-list-input"
+							className="conv-list-input electrobun-webkit-app-region-no-drag"
 							type="text"
 							placeholder="Search chats"
 							aria-label="Search chats"
@@ -341,14 +330,22 @@ export function AppSidebar(props: {
 						/>
 					</span>
 				</div>
-				<Tooltip>
+				<Tooltip delayDuration={150}>
 					<TooltipTrigger asChild>
-						<Button variant="default" size="icon" class="size-[26px] shrink-0 rounded-full electrobun-webkit-app-region-no-drag" title="Create (⌘N)" onClick={props.onAddPartner}>
-							<Plus size={13} />
-						</Button>
+						<button type="button" className="conv-icon-btn electrobun-webkit-app-region-no-drag" aria-label="Create a partner" onClick={props.onAddPartner}>
+							<SquarePen size={14} />
+						</button>
 					</TooltipTrigger>
 					<TooltipContent>Create (⌘N)</TooltipContent>
 				</Tooltip>
+				<button type="button" className="sidebar-toggle electrobun-webkit-app-region-no-drag" title="Hide chat list (⌘B)" aria-label="Hide chat list" onClick={props.onToggleList}>
+					<PanelLeftClose size={16} />
+				</button>
+			</div>
+
+			<div className="sidebar-brand">
+				<img className="brand-mark" src={miluMark} alt="" />
+				<MiluWordmark class="sidebar-wordmark" />
 			</div>
 
 			<div className="sidebar-body">
