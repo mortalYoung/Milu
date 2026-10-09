@@ -4,7 +4,6 @@ import { DEFAULT_WEB_FETCH_USER_AGENT } from "../../shared/brand";
 import type { CustomModel, CustomProvider, SandboxMode, ThemeMode, ToastPlacement } from "../../shared/rpc";
 import { Button } from "../components/Button";
 import { McpSettingsPanel } from "../components/McpSettingsPanel";
-import { MiluWordmark } from "../components/MiluWordmark";
 import { PickFile } from "../components/PickFile";
 import { Select } from "../components/ui/select";
 import { Switch as SwitchToggle } from "../components/ui/switch";
@@ -71,7 +70,7 @@ function parsePositiveInt(value: string, fallback: number) {
 function SettingRow(props: { title: string; desc: string; modified?: boolean; q?: string; stacked?: boolean; children: React.ReactNode }) {
 	const head = (
 		<div className="flex items-center gap-2">
-			<span className="font-serif text-[13.5px] leading-tight text-ink">{props.q ? highlight(props.title, props.q) : props.title}</span>
+			<span className="font-serif text-[14px] leading-tight text-ink">{props.q ? highlight(props.title, props.q) : props.title}</span>
 			{props.modified && (
 				<span className="flex items-center gap-1.5">
 					<span className="size-[5px] shrink-0 rounded-full bg-signal" />
@@ -80,7 +79,7 @@ function SettingRow(props: { title: string; desc: string; modified?: boolean; q?
 			)}
 		</div>
 	);
-	const body = <div className="mt-1 font-sans text-[11.5px] leading-snug text-muted">{props.q ? highlight(props.desc, props.q) : props.desc}</div>;
+	const body = <div className="mt-1 font-sans text-[12px] leading-snug text-muted">{props.q ? highlight(props.desc, props.q) : props.desc}</div>;
 	if (props.stacked) {
 		return (
 			<div className="py-3.5">
@@ -107,7 +106,7 @@ function highlight(text: string, q: string): React.ReactNode {
 	return (
 		<>
 			{text.slice(0, idx)}
-			<span className="rounded-[3px] bg-selected text-ink">{text.slice(idx, idx + q.length)}</span>
+			<span className="rounded-[4px] bg-selected text-ink">{text.slice(idx, idx + q.length)}</span>
 			{text.slice(idx + q.length)}
 		</>
 	);
@@ -125,8 +124,8 @@ function buildModels(rows: CpModelRow[]): CustomModel[] {
 function ModelRows(props: { rows: CpModelRow[]; onChange: (rows: CpModelRow[]) => void }) {
 	return (
 		<div className="grid gap-1">
-			<span className="font-sans text-[10px] font-medium uppercase tracking-[0.6px] text-muted-soft">Models</span>
-			<div className="grid grid-cols-[minmax(0,1fr)_120px_28px] items-center gap-2 px-1 font-sans text-[10px] text-muted-soft">
+			<span className="font-sans text-[10px] font-medium uppercase tracking-[0.6px] text-muted">Models</span>
+			<div className="grid grid-cols-[minmax(0,1fr)_120px_28px] items-center gap-2 px-1 font-sans text-[10px] text-muted">
 				<span>Model</span>
 				<span>Context window</span>
 				<span />
@@ -158,7 +157,7 @@ function ModelRows(props: { rows: CpModelRow[]; onChange: (rows: CpModelRow[]) =
 						</TextField>
 						<button
 							type="button"
-							className="flex h-6 w-6 items-center justify-center rounded-[6px] font-sans text-[13.5px] leading-none text-muted-soft transition-colors hover:bg-hover hover:text-ink"
+							className="flex h-6 w-6 items-center justify-center rounded-[6px] font-sans text-[14px] leading-none text-muted transition-colors hover:bg-hover hover:text-ink"
 							aria-label={`remove model ${row.id || i + 1}`}
 							onClick={() => props.onChange(props.rows.filter((_, j) => j !== i))}
 						>
@@ -169,7 +168,7 @@ function ModelRows(props: { rows: CpModelRow[]; onChange: (rows: CpModelRow[]) =
 			</div>
 			<button
 				type="button"
-				className="-mx-2 justify-self-start rounded-[6px] px-2 py-1 font-mono text-[10px] text-muted-soft transition-colors hover:bg-hover hover:text-ink"
+				className="-mx-2 justify-self-start rounded-[6px] px-2 py-1 font-mono text-[10px] text-muted transition-colors hover:bg-hover hover:text-ink"
 				onClick={() => props.onChange([...props.rows, { id: "", window: "" }])}
 			>
 				+ add model
@@ -181,7 +180,7 @@ function ModelRows(props: { rows: CpModelRow[]; onChange: (rows: CpModelRow[]) =
 function Field(props: { label: string; children: React.ReactNode }) {
 	return (
 		<div className="grid gap-1">
-			<span className="font-sans text-[10px] font-medium uppercase tracking-[0.6px] text-muted-soft">{props.label}</span>
+			<span className="font-sans text-[10px] font-medium uppercase tracking-[0.6px] text-muted">{props.label}</span>
 			{props.children}
 		</div>
 	);
@@ -611,7 +610,7 @@ export function SettingsView() {
 								void persist({ ...currentSettings(), theme: option.value });
 							}}
 						>
-							<span className={cn("font-sans text-[12.5px] leading-tight", theme === option.value ? "text-ink font-medium" : "text-ink")}>{option.label}</span>
+							<span className={cn("font-sans text-[13px] leading-tight", theme === option.value ? "text-ink font-medium" : "text-ink")}>{option.label}</span>
 							<span className="font-sans text-[10px] leading-tight text-muted">{option.hint}</span>
 						</button>
 					))}
@@ -626,8 +625,8 @@ export function SettingsView() {
 			modified: dockSide !== DEFAULTS.dockSide,
 			control: (
 				<Select
-					class="h-[32px] w-[150px] shrink-0 rounded-[6px] font-sans text-[12.5px]"
-					itemClass="font-sans text-[12.5px]"
+					class="h-[32px] w-[150px] shrink-0 rounded-[6px] font-sans text-[13px]"
+					itemClass="font-sans text-[13px]"
 					contentClass="w-[150px] rounded-[6px]"
 					title="Dock side"
 					ariaLabel="Dock side"
@@ -653,8 +652,8 @@ export function SettingsView() {
 			modified: defaultSandboxMode !== DEFAULTS.sandbox,
 			control: (
 				<Select
-					class="h-[32px] w-[200px] shrink-0 rounded-[6px] font-sans text-[12.5px]"
-					itemClass="font-sans text-[12.5px]"
+					class="h-[32px] w-[200px] shrink-0 rounded-[6px] font-sans text-[13px]"
+					itemClass="font-sans text-[13px]"
 					contentClass="w-[200px] rounded-[6px]"
 					title="Default sandbox mode"
 					ariaLabel="Default sandbox mode"
@@ -1087,8 +1086,8 @@ export function SettingsView() {
 			control: (
 				<div className="flex h-[32px] items-center gap-2">
 					<Select
-						class="h-[32px] w-[150px] shrink-0 rounded-[6px] font-sans text-[12.5px]"
-						itemClass="font-sans text-[12.5px]"
+						class="h-[32px] w-[150px] shrink-0 rounded-[6px] font-sans text-[13px]"
+						itemClass="font-sans text-[13px]"
 						contentClass="w-[150px] rounded-[6px]"
 						title="Send message interval"
 						ariaLabel="Send message interval"
@@ -1268,8 +1267,8 @@ export function SettingsView() {
 			modified: toastPlacement !== DEFAULTS.toastPlacement,
 			control: (
 				<Select
-					class="h-[32px] w-[150px] shrink-0 rounded-[6px] font-sans text-[12.5px]"
-					itemClass="font-sans text-[12.5px]"
+					class="h-[32px] w-[150px] shrink-0 rounded-[6px] font-sans text-[13px]"
+					itemClass="font-sans text-[13px]"
 					contentClass="w-[150px] rounded-[6px]"
 					title="Toast placement"
 					ariaLabel="Toast placement"
@@ -1330,7 +1329,7 @@ export function SettingsView() {
 					<table className="w-full text-left">
 						<thead>
 							<tr>
-								<th className="pb-1 font-sans text-[10px] uppercase tracking-[0.14em] text-muted-soft">Directory</th>
+								<th className="pb-1 font-sans text-[10px] uppercase tracking-[0.14em] text-muted">Directory</th>
 								<th className="w-10 pb-1" />
 							</tr>
 						</thead>
@@ -1634,7 +1633,7 @@ export function SettingsView() {
 
 	const providerAdvanced = (value: CpForm, set: (next: CpForm) => void, open: boolean, toggle: () => void) => (
 		<>
-			<button type="button" className="justify-self-start font-mono text-[10px] text-muted-soft transition-colors hover:text-ink" onClick={toggle}>
+			<button type="button" className="justify-self-start font-mono text-[10px] text-muted transition-colors hover:text-ink" onClick={toggle}>
 				{open ? "− Advanced" : "+ Advanced"}
 			</button>
 			{open && (
@@ -1708,7 +1707,7 @@ export function SettingsView() {
 							key={cat.id}
 							onClick={() => selectCat(cat.id)}
 							className={cn(
-								"flex h-[36px] w-full items-center rounded-[6px] px-3 text-left font-serif text-[13.5px] transition-colors",
+								"flex h-[36px] w-full items-center rounded-[6px] px-3 text-left font-serif text-[14px] transition-colors",
 								tab === cat.id ? "bg-hover text-ink" : "text-ink-soft hover:bg-hover",
 							)}
 						>
@@ -1719,13 +1718,12 @@ export function SettingsView() {
 						</button>
 					))}
 				</div>
-				<MiluWordmark class="mt-auto mb-2 ml-6 h-4 w-auto text-muted" />
 			</nav>
 
 			<div className="flex min-h-0 flex-1 flex-col">
 				<div className="px-6 pb-4 pt-3">
 					<div className="relative">
-						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" className="absolute left-3 top-1/2 size-[14px] -translate-y-1/2 text-muted-soft">
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" className="absolute left-3 top-1/2 size-[14px] -translate-y-1/2 text-muted">
 							<circle cx="6.5" cy="6.5" r="4.5" stroke="currentColor" strokeWidth="1.6" />
 							<path d="M10.2 10.2 14 14" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
 						</svg>
@@ -1747,7 +1745,7 @@ export function SettingsView() {
 							/>
 						</TextField>
 						{searching && (
-							<span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono text-[10px] text-muted-soft">
+							<span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono text-[10px] text-muted">
 								{totalMatches} {totalMatches === 1 ? "match" : "matches"}
 							</span>
 						)}
@@ -1773,7 +1771,7 @@ export function SettingsView() {
 												{cat.id === "providers" &&
 													providerMatches.map((id) => (
 														<div className="flex items-center gap-2 py-3.5" key={id}>
-															<span className="font-serif text-[13.5px] text-ink">{highlight(id, q)}</span>
+															<span className="font-serif text-[14px] text-ink">{highlight(id, q)}</span>
 															{configured(id) && <span className="size-[5px] shrink-0 rounded-full bg-ink-soft" title="configured" />}
 														</div>
 													))}
@@ -1784,8 +1782,8 @@ export function SettingsView() {
 							))}
 							{totalMatches === 0 && (
 								<div className="pt-8 text-center">
-									<div className="font-serif text-[13.5px] text-ink-soft">No matching settings</div>
-									<div className="mt-1 font-sans text-[11.5px] text-muted">Try a different search.</div>
+									<div className="font-serif text-[14px] text-ink-soft">No matching settings</div>
+									<div className="mt-1 font-sans text-[12px] text-muted">Try a different search.</div>
 								</div>
 							)}
 						</div>
@@ -1815,7 +1813,7 @@ export function SettingsView() {
 									<div className="mb-3 font-serif text-[16px] font-medium text-ink">Providers</div>
 									{tableRows.length > 0 ? (
 										<div className="divide-y divide-line">
-											<div className={cn(COLS, "pb-1 font-sans text-[10px] text-muted-soft")}>
+											<div className={cn(COLS, "pb-1 font-sans text-[10px] text-muted")}>
 												<span>Provider</span>
 												<span>Base URL</span>
 												<span>Models</span>
@@ -1827,17 +1825,17 @@ export function SettingsView() {
 													<div key={id}>
 														<div className={cn(COLS, "py-2")}>
 															<span className="flex min-w-0 items-center gap-2">
-																<span className="truncate font-serif text-[12.5px] text-ink">{id}</span>
+																<span className="truncate font-serif text-[13px] text-ink">{id}</span>
 																{configured(id) && <span className="size-[5px] shrink-0 rounded-full bg-ink-soft" title="configured" />}
 															</span>
 															<span className="truncate font-mono text-[10px] text-muted" title={rowBaseUrl(id) ?? ""}>
 																{rowBaseUrl(id)}
 															</span>
-															<span className="font-mono text-[10px] text-muted-soft">{rowModelCount(id)}</span>
+															<span className="font-mono text-[10px] text-muted">{rowModelCount(id)}</span>
 															<span className="flex items-center justify-end gap-1">
 																<button
 																	type="button"
-																	className="h-6 rounded-[6px] px-1.5 font-mono text-[10px] text-muted-soft transition-colors hover:bg-hover hover:text-ink"
+																	className="h-6 rounded-[6px] px-1.5 font-mono text-[10px] text-muted transition-colors hover:bg-hover hover:text-ink"
 																	onClick={() => toggleKey(id)}
 																>
 																	key
@@ -1845,7 +1843,7 @@ export function SettingsView() {
 																{def && (
 																	<button
 																		type="button"
-																		className="h-6 rounded-[6px] px-1.5 font-mono text-[10px] text-muted-soft transition-colors hover:bg-hover hover:text-ink"
+																		className="h-6 rounded-[6px] px-1.5 font-mono text-[10px] text-muted transition-colors hover:bg-hover hover:text-ink"
 																		onClick={() => {
 																			const target = customDef(id);
 																			if (target) startEdit(target);
@@ -1856,7 +1854,7 @@ export function SettingsView() {
 																)}
 																<button
 																	type="button"
-																	className="flex h-6 w-6 items-center justify-center rounded-[6px] font-sans text-[13.5px] leading-none text-muted-soft transition-colors hover:bg-hover hover:text-ink"
+																	className="flex h-6 w-6 items-center justify-center rounded-[6px] font-sans text-[14px] leading-none text-muted transition-colors hover:bg-hover hover:text-ink"
 																	aria-label={`remove ${id}`}
 																	onClick={() => void remove(id)}
 																>
@@ -1870,7 +1868,7 @@ export function SettingsView() {
 																	<TextField className="min-w-0 flex-1">
 																		<TextFieldInput
 																			variant="compact"
-																			className="h-[30px] text-[11.5px]"
+																			className="h-[30px] text-[12px]"
 																			type="password"
 																			placeholder={configured(id) ? "new key" : "sk-…"}
 																			aria-label="API key"
@@ -1886,7 +1884,7 @@ export function SettingsView() {
 																	</TextField>
 																	<button
 																		type="button"
-																		className="h-[30px] shrink-0 rounded-[6px] bg-ink px-3 font-sans text-[11.5px] font-semibold text-canvas disabled:opacity-35"
+																		className="h-[30px] shrink-0 rounded-[6px] bg-ink px-3 font-sans text-[12px] font-semibold text-canvas disabled:opacity-35"
 																		disabled={!keyDraft.trim()}
 																		onClick={() => void saveKey()}
 																	>
@@ -1895,7 +1893,7 @@ export function SettingsView() {
 																	{configured(id) && (
 																		<button
 																			type="button"
-																			className="h-[30px] shrink-0 rounded-[6px] border border-line px-3 font-sans text-[11.5px] text-ink-soft transition-colors hover:text-ink"
+																			className="h-[30px] shrink-0 rounded-[6px] border border-line px-3 font-sans text-[12px] text-ink-soft transition-colors hover:text-ink"
 																			onClick={() => void clearKey()}
 																		>
 																			Clear
@@ -1913,14 +1911,14 @@ export function SettingsView() {
 																<div className="mt-3 flex justify-end gap-2">
 																	<button
 																		type="button"
-																		className="h-[28px] rounded-[6px] border border-line px-3 font-sans text-[11.5px] text-ink-soft transition-colors hover:text-ink"
+																		className="h-[28px] rounded-[6px] border border-line px-3 font-sans text-[12px] text-ink-soft transition-colors hover:text-ink"
 																		onClick={() => setEditingId(null)}
 																	>
 																		Cancel
 																	</button>
 																	<button
 																		type="button"
-																		className="h-[28px] rounded-[6px] bg-ink px-3 font-sans text-[11.5px] font-semibold text-canvas disabled:opacity-35"
+																		className="h-[28px] rounded-[6px] bg-ink px-3 font-sans text-[12px] font-semibold text-canvas disabled:opacity-35"
 																		disabled={!cp.baseUrl.trim() || !cp.models.some((model) => model.id.trim())}
 																		onClick={() => void saveCustomEdit()}
 																	>
@@ -1934,12 +1932,12 @@ export function SettingsView() {
 											})}
 										</div>
 									) : (
-										<div className="mb-3 font-mono text-[11.5px] text-muted-soft">no providers added — add one below</div>
+										<div className="mb-3 font-mono text-[12px] text-muted">no providers added — add one below</div>
 									)}
 									<div className="mt-2 border-t border-line pt-2">
 										<button
 											type="button"
-											className="-mx-2 rounded-[6px] px-2 py-1 font-sans text-[11.5px] text-ink-soft transition-colors hover:bg-hover hover:text-ink"
+											className="-mx-2 rounded-[6px] px-2 py-1 font-sans text-[12px] text-ink-soft transition-colors hover:bg-hover hover:text-ink"
 											onClick={() => {
 												if (adding) {
 													setAdding(false);
@@ -1961,8 +1959,8 @@ export function SettingsView() {
 													<>
 														<div className="grid gap-2">
 															<Select
-																class="h-[30px] w-40 rounded-[6px] font-sans text-[11.5px]"
-																itemClass="font-sans text-[11.5px]"
+																class="h-[30px] w-40 rounded-[6px] font-sans text-[12px]"
+																itemClass="font-sans text-[12px]"
 																contentClass="w-40 rounded-[6px]"
 																title="Add provider"
 																ariaLabel="Add provider"
@@ -1976,7 +1974,7 @@ export function SettingsView() {
 																<TextField className="min-w-0 flex-1">
 																	<TextFieldInput
 																		variant="compact"
-																		className="h-[30px] text-[11.5px]"
+																		className="h-[30px] text-[12px]"
 																		type="password"
 																		placeholder="api key（添加必填）"
 																		aria-label="New provider api key"
@@ -1991,7 +1989,7 @@ export function SettingsView() {
 																</TextField>
 																<button
 																	type="button"
-																	className="h-[30px] shrink-0 rounded-[6px] bg-ink px-3 font-sans text-[11.5px] font-semibold text-canvas disabled:cursor-default disabled:opacity-35"
+																	className="h-[30px] shrink-0 rounded-[6px] bg-ink px-3 font-sans text-[12px] font-semibold text-canvas disabled:cursor-default disabled:opacity-35"
 																	disabled={!(toAdd || addable()[0]) || !keys[toAdd || addable()[0] || ""]}
 																	onClick={() => void add()}
 																>
@@ -2001,7 +1999,7 @@ export function SettingsView() {
 														</div>
 														<button
 															type="button"
-															className="-mx-2 mt-2 rounded-[6px] px-2 py-1 font-mono text-[10px] text-muted-soft transition-colors hover:bg-hover hover:text-ink"
+															className="-mx-2 mt-2 rounded-[6px] px-2 py-1 font-mono text-[10px] text-muted transition-colors hover:bg-hover hover:text-ink"
 															onClick={() => setAddKind("custom")}
 														>
 															+ custom provider
@@ -2016,14 +2014,14 @@ export function SettingsView() {
 														<div className="mt-3 flex justify-end gap-2">
 															<button
 																type="button"
-																className="h-[28px] rounded-[6px] border border-line px-3 font-sans text-[11.5px] text-ink-soft transition-colors hover:text-ink"
+																className="h-[28px] rounded-[6px] border border-line px-3 font-sans text-[12px] text-ink-soft transition-colors hover:text-ink"
 																onClick={() => setAddKind("builtin")}
 															>
 																Back
 															</button>
 															<button
 																type="button"
-																className="h-[28px] rounded-[6px] bg-ink px-3 font-sans text-[11.5px] font-semibold text-canvas disabled:opacity-35"
+																className="h-[28px] rounded-[6px] bg-ink px-3 font-sans text-[12px] font-semibold text-canvas disabled:opacity-35"
 																disabled={!cp.id.trim() || !cp.baseUrl.trim() || !cp.models.some((model) => model.id.trim())}
 																onClick={() => void applyCustom()}
 															>
@@ -2042,7 +2040,7 @@ export function SettingsView() {
 				</div>
 			</div>
 
-			{error && <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full bg-ink px-4 py-2 text-[12.5px] text-surface">{error}</div>}
+			{error && <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full bg-ink px-4 py-2 text-[13px] text-surface">{error}</div>}
 		</div>
 	);
 }

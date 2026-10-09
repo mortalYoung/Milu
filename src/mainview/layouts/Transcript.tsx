@@ -85,12 +85,12 @@ function messageBody(
 			<span className="sr-only">{worker ?? "agent"}</span>
 			{rich ? <Markdown text={card.text} files={card.files} class="md msg-body" /> : <div className="msg-body">{card.text}</div>}
 			<div className="msg-meta">
+				{fold}
 				<CopyMessage text={card.text} />
 				<span className="msg-at" title={[stamp?.date, stamp?.time].filter(Boolean).join(" ")}>
 					{stamp?.time}
 				</span>
 				{card.to && <span className="msg-chip">→ {card.to}</span>}
-				{fold}
 			</div>
 			{onBtw && card.kind === "agent" && showRail && (
 				<button
@@ -159,43 +159,63 @@ function StackFold(props: {
 	onBtwClose?: () => void;
 	activeBtwAnchor?: string | null;
 }) {
-	const [open, setOpen] = useState(false);
+	const [earlierOpen, setEarlierOpen] = useState(false);
 	const folded = Math.max(0, props.cards.length - 1);
-	const shown = open ? props.cards : props.cards.slice(-1);
+	const earlier = props.cards.slice(0, -1);
 	const last = props.cards[props.cards.length - 1]!;
 	const canFold = last.kind !== "escalation";
-	const foldButton = (
-		<button type="button" className="msg-fold" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
-			{open ? `fold ${folded}` : `+${folded} earlier`}
-		</button>
-	);
+	const fold =
+		folded > 0 ? (
+			<button
+				type="button"
+				className="msg-fold"
+				aria-haspopup="dialog"
+				title={`Show the ${folded} earlier ${folded === 1 ? "message" : "messages"}`}
+				onClick={() => setEarlierOpen(true)}
+			>
+				+{folded} earlier
+			</button>
+		) : undefined;
 
 	return (
 		<div className="msg-fold-group" data-chat-anchor-key={props.anchorKey}>
-			<For each={shown}>
-				{(card) => (
-					<div
-						className={"msg-block msg-block-agent" + (props.locateFlashId === card.id ? " locate-flash" : "")}
-						id={"entry-" + card.id}
-						data-chat-anchor-key={card.key ?? String(card.id)}
-					>
-						{card.kind === "escalation" && card.escalation
-							? escalationBody(card.escalation, props.onEscalationRespond)
-							: messageBody(
-									card,
-									props.worker,
-									true,
-									props.onBtw,
-									props.activeBtwAnchor === card.key,
-									true,
-									props.onBtwClose,
-									!!props.activeBtwAnchor && props.activeBtwAnchor !== card.key,
-									folded > 0 && card.id === last.id && canFold ? foldButton : undefined,
-								)}
+			<div
+				className={"msg-block msg-block-agent" + (props.locateFlashId === last.id ? " locate-flash" : "")}
+				id={"entry-" + last.id}
+				data-chat-anchor-key={last.key ?? String(last.id)}
+			>
+				{last.kind === "escalation" && last.escalation
+					? escalationBody(last.escalation, props.onEscalationRespond)
+					: messageBody(
+							last,
+							props.worker,
+							true,
+							props.onBtw,
+							props.activeBtwAnchor === last.key,
+							true,
+							props.onBtwClose,
+							!!props.activeBtwAnchor && props.activeBtwAnchor !== last.key,
+							canFold ? fold : undefined,
+						)}
+			</div>
+			{!canFold && fold}
+			<Dialog open={earlierOpen} onOpenChange={setEarlierOpen}>
+				<DialogContent focusClose className="w-[560px] max-w-[560px] gap-0 bg-surface p-0">
+					<div className="flex max-h-[70vh] flex-col gap-3 p-5">
+						<DialogTitle className="font-serif text-[16px] font-medium tracking-normal text-ink">
+							{folded} earlier {folded === 1 ? "message" : "messages"}
+						</DialogTitle>
+						<div className="msg-earlier-body">
+							{earlier.map((card) => (
+								<div key={card.id} className="msg-earlier-item">
+									<span className="msg-earlier-at">{parseStamp(card.time)?.time ?? ""}</span>
+									<Markdown text={card.text} files={card.files} class="md msg-body" />
+								</div>
+							))}
+						</div>
 					</div>
-				)}
-			</For>
-			{folded > 0 && !canFold && foldButton}
+				</DialogContent>
+			</Dialog>
 		</div>
 	);
 }
@@ -675,10 +695,10 @@ export function Transcript(props: {
 			</ScrollRegion>
 
 			<Dialog open={skillDialog != null} onOpenChange={(open) => !open && setSkillDialog(null)}>
-				<DialogContent focusClose className="w-[560px] max-w-[560px] bg-canvas p-0 gap-0">
+				<DialogContent focusClose className="w-[560px] max-w-[560px] bg-surface p-0 gap-0">
 					<DialogTitle className="sr-only">{skillDialog?.name ?? ""}</DialogTitle>
 					<div className="flex max-h-[70vh] flex-col gap-3 p-5">
-						<div className="font-mono text-[13.5px] font-medium text-ink">skill · {skillDialog?.name}</div>
+						<div className="font-mono text-[14px] font-medium text-ink">skill · {skillDialog?.name}</div>
 						<div className="md md-wrap-pre overflow-y-auto overflow-x-hidden" dangerouslySetInnerHTML={{ __html: renderMarkdown(skillDialog?.content ?? "") }} />
 					</div>
 				</DialogContent>

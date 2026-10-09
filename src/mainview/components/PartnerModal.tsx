@@ -53,7 +53,7 @@ export function PartnerModal(props: PartnerModalProps) {
 					}}
 				>
 					<header className="border-b border-line px-5 py-4">
-						<h2 className="font-sans text-[17px] font-semibold tracking-tight text-ink">Create</h2>
+						<h2 className="font-serif text-[18px] font-semibold tracking-tight text-ink">Create</h2>
 						<p className="mt-1 font-sans text-[12px] text-muted">Only the name is required.</p>
 					</header>
 
@@ -62,14 +62,14 @@ export function PartnerModal(props: PartnerModalProps) {
 							<span className="grid size-[44px] place-items-center rounded-full bg-hover font-serif text-[18px] font-semibold leading-none text-ink">
 								{typedName ? typedName[0]!.toUpperCase() : "?"}
 							</span>
-							<p className={cn("mt-2 truncate font-sans text-[14px] font-medium", typedName ? "text-ink" : "text-muted-soft")}>{typedName || "Untitled"}</p>
+							<p className={cn("mt-2 truncate font-sans text-[14px] font-medium", typedName ? "text-ink" : "text-muted")}>{typedName || "Untitled"}</p>
 						</aside>
 
 						<div className="grid min-w-0 content-start gap-3">
 							<TextField>
 								<TextFieldLabel htmlFor="partner-name">
 									Name
-									<span className="ml-1.5 font-mono text-[10px] font-normal tracking-normal normal-case text-muted-soft">required</span>
+									<span className="ml-1.5 font-mono text-[10px] font-normal tracking-normal normal-case text-muted">required</span>
 								</TextFieldLabel>
 								<TextFieldInput
 									id="partner-name"

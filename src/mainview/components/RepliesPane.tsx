@@ -71,7 +71,7 @@ export function RepliesPane(props: { open: boolean }) {
 			</div>
 			<div className="outline-list" ref={listEl}>
 				{rows.length === 0 ? (
-					<span className="px-3 py-3 font-sans text-[11.5px] text-muted">no replies yet</span>
+					<span className="px-3 py-3 font-sans text-[12px] text-muted">no replies yet</span>
 				) : (
 					rows.map((row) => (
 						<button type="button" key={row.entry.id} className={"outline-item" + (activeReply === row.entry.id ? " active" : "")} onClick={() => locate(row)}>

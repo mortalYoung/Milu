@@ -21,7 +21,7 @@ export function DropdownMenuContent({
 			<DropdownMenuPrimitive.Content
 				sideOffset={sideOffset}
 				className={cn(
-					"z-50 min-w-32 origin-[var(--radix-dropdown-menu-content-transform-origin)] animate-content-hide rounded-md border bg-popover p-1 text-popover-foreground shadow-none outline-none focus:outline-none focus-visible:outline-none data-[state=open]:animate-content-show",
+					"z-50 min-w-32 origin-[var(--radix-dropdown-menu-content-transform-origin)] animate-content-hide rounded-[8px] border bg-popover p-1 text-popover-foreground shadow-none outline-none focus:outline-none focus-visible:outline-none data-[state=open]:animate-content-show",
 					className,
 				)}
 				{...rest}
@@ -85,7 +85,7 @@ export function DropdownMenuSubContent({ className, portalMount, ...rest }: Comp
 		<DropdownMenuPrimitive.Portal container={portalMount}>
 			<DropdownMenuPrimitive.SubContent
 				className={cn(
-					"z-50 min-w-32 origin-[var(--radix-dropdown-menu-content-transform-origin)] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-none outline-none focus:outline-none focus-visible:outline-none animate-in",
+					"z-50 min-w-32 origin-[var(--radix-dropdown-menu-content-transform-origin)] overflow-hidden rounded-[8px] border bg-popover p-1 text-popover-foreground shadow-none outline-none focus:outline-none focus-visible:outline-none animate-in",
 					className,
 				)}
 				{...rest}

@@ -24,7 +24,7 @@ const seconds = (value: number) => `${(value / 1000).toFixed(1)}s`;
 const tokensPerSecond = (value: number) => `${Math.round(value)} tok/s`;
 
 const FACT_LINE = "flex items-baseline justify-between gap-3";
-const FACT_VALUE = "text-ink font-mono text-[11.5px] min-w-0 truncate";
+const FACT_VALUE = "text-ink font-mono text-[12px] min-w-0 truncate";
 const CARD = "border border-line bg-surface rounded-md";
 
 function formatDate(ts: number): string {
@@ -51,7 +51,7 @@ function sandboxLabel(mode: SandboxMode): string {
 function ValueMenu(props: { label: string; value: string; title: string; children: ReactNode }) {
 	return (
 		<div className={FACT_LINE}>
-			<span className="text-[11.5px] text-muted">{props.label}</span>
+			<span className="text-[12px] text-muted">{props.label}</span>
 			<DropdownMenu>
 				<DropdownMenuTrigger asChild>
 					<button type="button" className="runtime-value" title={props.title}>
@@ -172,7 +172,7 @@ export function PartnerDetailsDialog(props: {
 							<div className="size-10 rounded-md bg-ink text-canvas flex items-center justify-center font-sans text-[18px] font-bold">{avatarInitial(partner.name)}</div>
 							<div className="min-w-0">
 								<h2 className="font-sans text-[16px] font-semibold text-ink leading-tight">{partner.name}</h2>
-								<p className="font-sans text-[11.5px] text-muted truncate" title={partner.path}>
+								<p className="font-sans text-[12px] text-muted truncate" title={partner.path}>
 									{partner.path} · created {formatDate(partner.createdAt)}
 								</p>
 							</div>
@@ -183,20 +183,20 @@ export function PartnerDetailsDialog(props: {
 							<div className="grid grid-cols-3 gap-2.5 px-5 pt-2.5">
 								{metricCards.map((card) => (
 									<div className="border border-line bg-surface rounded-md px-3 py-2.5" key={card.label}>
-										<div className="font-sans text-[11.5px] uppercase tracking-[0.1em] text-muted-soft">{card.label}</div>
-										<div className="font-mono text-[19px] text-ink leading-tight mt-1">
+										<div className="font-sans text-[12px] uppercase tracking-[0.1em] text-muted">{card.label}</div>
+										<div className="font-mono text-[18px] text-ink leading-tight mt-1">
 											<AnimatedNumber value={card.value} format={card.format} />
 										</div>
-										<div className="font-mono text-[10px] text-muted-soft mt-0.5">{card.delta}</div>
+										<div className="font-mono text-[10px] text-muted mt-0.5">{card.delta}</div>
 									</div>
 								))}
 							</div>
 
 							<div className="px-5 pt-2.5">
 								<div className={CARD + " p-3"}>
-									<p className="font-sans text-[11.5px] font-semibold uppercase tracking-[0.12em] text-muted-soft mb-2">Activity · last {ACTIVITY_WINDOW}</p>
+									<p className="font-sans text-[12px] font-semibold uppercase tracking-[0.12em] text-muted mb-2">Activity · last {ACTIVITY_WINDOW}</p>
 									<div className="activity-slot">
-										<ActivityHeatmap days={heatmapDays} />
+										<ActivityHeatmap days={heatmapDays} fill />
 									</div>
 								</div>
 							</div>
@@ -210,19 +210,19 @@ export function PartnerDetailsDialog(props: {
 											aria-expanded={personaOpen}
 											onClick={() => setPersonaOpen(!personaOpen)}
 										>
-											<span className="font-sans text-[11.5px] font-semibold uppercase tracking-[0.12em] text-muted-soft">Persona</span>
-											<span className="min-w-0 flex-1 truncate font-sans text-[11.5px] text-muted">{personaLine}</span>
-											{personaOpen ? <ChevronDown size={14} className="shrink-0 text-muted-soft" /> : <ChevronRight size={14} className="shrink-0 text-muted-soft" />}
+											<span className="font-sans text-[12px] font-semibold uppercase tracking-[0.12em] text-muted">Persona</span>
+											<span className="min-w-0 flex-1 truncate font-sans text-[12px] text-muted">{personaLine}</span>
+											{personaOpen ? <ChevronDown size={14} className="shrink-0 text-muted-soft" /> : <ChevronRight size={14} className="shrink-0 text-muted" />}
 										</button>
 										{personaOpen && (
 											<div className="px-3 pb-3">
 												{partner.persona?.trim() ? (
-													<div className="md font-sans text-[12.5px] leading-[1.65] text-ink" dangerouslySetInnerHTML={{ __html: renderMarkdown(partner.persona) }} />
+													<div className="md font-sans text-[13px] leading-[1.65] text-ink" dangerouslySetInnerHTML={{ __html: renderMarkdown(partner.persona) }} />
 												) : (
 													<div className="min-w-0">
-														<p className="font-sans text-[12.5px] text-ink">No persona on file</p>
-														<p className="mt-1 font-sans text-[12.5px] leading-[1.6] text-muted-soft">
-															A hand-written paragraph in <span className="font-mono text-[11.5px]">profile.json</span>, read as the partner's standing instructions.
+														<p className="font-sans text-[13px] text-ink">No persona on file</p>
+														<p className="mt-1 font-sans text-[13px] leading-[1.6] text-muted">
+															A hand-written paragraph in <span className="font-mono text-[12px]">profile.json</span>, read as the partner's standing instructions.
 														</p>
 													</div>
 												)}
@@ -235,10 +235,10 @@ export function PartnerDetailsDialog(props: {
 
 								<div className="flex min-w-0 flex-col gap-3">
 									<div className={CARD + " p-3 min-w-0"}>
-										<p className="font-sans text-[11.5px] font-semibold uppercase tracking-[0.12em] text-muted-soft mb-2">This session</p>
-										<div className="grid gap-2 font-sans text-[11.5px]">
+										<p className="font-sans text-[12px] font-semibold uppercase tracking-[0.12em] text-muted mb-2">This session</p>
+										<div className="grid gap-2 font-sans text-[12px]">
 											<div className={FACT_LINE}>
-												<span className="text-[11.5px] text-muted">Tokens</span>
+												<span className="text-[12px] text-muted">Tokens</span>
 												<span
 													className={FACT_VALUE}
 													title={
@@ -257,7 +257,7 @@ export function PartnerDetailsDialog(props: {
 												</span>
 											</div>
 											<div className={FACT_LINE}>
-												<span className="text-[11.5px] text-muted">Cache share</span>
+												<span className="text-[12px] text-muted">Cache share</span>
 												<span
 													className={FACT_VALUE}
 													title={cacheShare != null ? `cache read of billed tokens · ${formatTokens(sessionUsage?.cacheRead ?? 0)} of ${formatTokens(billed)}` : undefined}
@@ -266,13 +266,13 @@ export function PartnerDetailsDialog(props: {
 												</span>
 											</div>
 											<div className={FACT_LINE}>
-												<span className="text-[11.5px] text-muted">TTFT</span>
+												<span className="text-[12px] text-muted">TTFT</span>
 												<span className={FACT_VALUE} title={ttftTitle}>
 													{stats?.runtime.lastTtftMs != null ? <AnimatedNumber value={stats.runtime.lastTtftMs} format={seconds} /> : "—"}
 												</span>
 											</div>
 											<div className={FACT_LINE}>
-												<span className="text-[11.5px] text-muted">Throughput</span>
+												<span className="text-[12px] text-muted">Throughput</span>
 												<span className={FACT_VALUE} title="output ÷ generation time · session mean">
 													{stats?.runtime.avgTps != null ? <AnimatedNumber value={stats.runtime.avgTps} format={tokensPerSecond} /> : "—"}
 												</span>
@@ -280,26 +280,26 @@ export function PartnerDetailsDialog(props: {
 										</div>
 									</div>
 									<div className={CARD + " p-3 min-w-0"}>
-										<p className="font-sans text-[11.5px] font-semibold uppercase tracking-[0.12em] text-muted-soft mb-3">Status</p>
-										<div className="grid gap-2 font-sans text-[11.5px]">
+										<p className="font-sans text-[12px] font-semibold uppercase tracking-[0.12em] text-muted mb-3">Status</p>
+										<div className="grid gap-2 font-sans text-[12px]">
 											<div>
-												<div className="text-[11.5px] text-muted">Workspace</div>
+												<div className="text-[12px] text-muted">Workspace</div>
 												{runtime?.workspace_path ? (
-													<EditorPathButton path={runtime.workspace_path} max={30} class="mt-1 font-mono text-[11.5px]" editors={props.editors} onOpenPath={props.onOpenPath} />
+													<EditorPathButton path={runtime.workspace_path} max={30} class="mt-1 font-mono text-[12px]" editors={props.editors} onOpenPath={props.onOpenPath} />
 												) : (
-													<div className="text-muted-soft">-</div>
+													<div className="text-muted">-</div>
 												)}
 											</div>
 											<div>
-												<div className="text-[11.5px] text-muted">Storage</div>
+												<div className="text-[12px] text-muted">Storage</div>
 												{runtime?.storage_path ? (
-													<EditorPathButton path={runtime.storage_path} max={30} class="mt-1 font-mono text-[11.5px]" editors={props.editors} onOpenPath={props.onOpenPath} />
+													<EditorPathButton path={runtime.storage_path} max={30} class="mt-1 font-mono text-[12px]" editors={props.editors} onOpenPath={props.onOpenPath} />
 												) : (
-													<div className="text-muted-soft">-</div>
+													<div className="text-muted">-</div>
 												)}
 											</div>
 											<div className={FACT_LINE}>
-												<span className="text-[11.5px] text-muted">Size</span>
+												<span className="text-[12px] text-muted">Size</span>
 												<Tooltip delayDuration={120}>
 													<TooltipTrigger asChild>
 														<span tabIndex={-1} className={FACT_VALUE}>
@@ -333,11 +333,11 @@ export function PartnerDetailsDialog(props: {
 													>
 														{runtime.models.map((group) => (
 															<DropdownMenuGroup key={group.provider}>
-																<DropdownMenuGroupLabel className="font-mono text-[11.5px]">{group.provider}</DropdownMenuGroupLabel>
+																<DropdownMenuGroupLabel className="font-mono text-[12px]">{group.provider}</DropdownMenuGroupLabel>
 																{group.models.map((model) => (
 																	<DropdownMenuItem
 																		key={model.id}
-																		className="font-mono text-[11.5px] text-ink-soft"
+																		className="font-mono text-[12px] text-ink-soft"
 																		onSelect={() => void mutateModel({ provider: group.provider, modelId: model.id })}
 																	>
 																		{model.name}
@@ -349,7 +349,7 @@ export function PartnerDetailsDialog(props: {
 													</ValueMenu>
 													<ValueMenu label="Effort" value={runtime.thinking_level} title="Effort (thinking level)">
 														{runtime.thinking_levels.map((level) => (
-															<DropdownMenuItem key={level} className="font-mono text-[11.5px] text-ink-soft" onSelect={() => void mutateThinkingLevel(level)}>
+															<DropdownMenuItem key={level} className="font-mono text-[12px] text-ink-soft" onSelect={() => void mutateThinkingLevel(level)}>
 																<span>{level}</span>
 																{level === runtime.thinking_level && <span className="ml-auto text-ink">✓</span>}
 															</DropdownMenuItem>
@@ -357,7 +357,7 @@ export function PartnerDetailsDialog(props: {
 													</ValueMenu>
 													<ValueMenu label="Sandbox" value={sandboxLabel(runtime.sandbox_mode)} title="Sandbox mode (file writes)">
 														{SANDBOX_OPTIONS.map((option) => (
-															<DropdownMenuItem key={option.mode} className="font-mono text-[11.5px] text-ink-soft" onSelect={() => void mutateSandboxMode(option.mode)}>
+															<DropdownMenuItem key={option.mode} className="font-mono text-[12px] text-ink-soft" onSelect={() => void mutateSandboxMode(option.mode)}>
 																<span>{option.label}</span>
 																{option.mode === runtime.sandbox_mode && <span className="ml-auto text-ink">✓</span>}
 															</DropdownMenuItem>
@@ -366,32 +366,32 @@ export function PartnerDetailsDialog(props: {
 												</>
 											)}
 											<div>
-												<div className="text-[11.5px] text-muted">Skills</div>
+												<div className="text-[12px] text-muted">Skills</div>
 												{skills && skills.length > 0 ? (
 													<ul className="mt-1 flex flex-col gap-1">
 														{skills.map((skill) => (
-															<li className="w-fit rounded-md border border-line px-1.5 py-0.5 font-mono text-[11.5px] text-muted" key={skill.name}>
-																{skill.name} <span className="text-muted-soft">· {skill.scope}</span>
+															<li className="w-fit rounded-md border border-line px-1.5 py-0.5 font-mono text-[12px] text-muted" key={skill.name}>
+																{skill.name} <span className="text-muted">· {skill.scope}</span>
 															</li>
 														))}
 													</ul>
 												) : (
-													<div className="text-muted-soft">none granted</div>
+													<div className="text-muted">none granted</div>
 												)}
 											</div>
 											<div>
-												<div className="text-[11.5px] text-muted">MCP servers</div>
+												<div className="text-[12px] text-muted">MCP servers</div>
 												{mcpGrants && mcpGrants.length > 0 ? (
 													<ul className="mt-1 flex flex-col gap-1">
 														{mcpGrants.map((server) => (
-															<li className="flex w-fit items-center gap-1.5 rounded-md border border-line px-1.5 py-0.5 font-mono text-[11.5px] text-muted" key={server.name}>
+															<li className="flex w-fit items-center gap-1.5 rounded-md border border-line px-1.5 py-0.5 font-mono text-[12px] text-muted" key={server.name}>
 																<span className={"size-1.5 shrink-0 rounded-full " + mcpStateColor(server.state)} title={server.state} />
-																{server.name} <span className="text-muted-soft">· {server.toolCount} tools</span>
+																{server.name} <span className="text-muted">· {server.toolCount} tools</span>
 															</li>
 														))}
 													</ul>
 												) : (
-													<div className="text-muted-soft">none granted</div>
+													<div className="text-muted">none granted</div>
 												)}
 											</div>
 										</div>

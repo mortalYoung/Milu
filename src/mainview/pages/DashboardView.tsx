@@ -293,7 +293,7 @@ export function DashboardView(props: { unread: (name: string) => boolean; onSele
 			<div className="dashboard-scroll">
 				<div className="dashboard-head">
 					<div className="dashboard-title">
-						<h1 className="font-serif text-[19px] font-semibold text-ink">Dashboard</h1>
+						<h1 className="font-serif text-[18px] font-semibold text-ink">Dashboard</h1>
 						<span className={CAP}>
 							{partners.length} partners · since {totals?.since ? dayLabel(totals.since) : "—"}
 						</span>
@@ -311,7 +311,7 @@ export function DashboardView(props: { unread: (name: string) => boolean; onSele
 				</div>
 
 				{partners.length === 0 ? (
-					<p className="mt-8 font-mono text-[11.5px] text-muted">—</p>
+					<p className="mt-8 font-mono text-[12px] text-muted">—</p>
 				) : !overview ? (
 					<DashboardSkeleton />
 				) : (

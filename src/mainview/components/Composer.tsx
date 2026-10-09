@@ -1,4 +1,4 @@
-import { ArrowUp, ChevronDown, ChevronLeft, Cpu, DollarSign, Square, Terminal } from "lucide-react";
+import { ArrowUp, ChevronLeft, ChevronRight, DollarSign, Square, Terminal } from "lucide-react";
 import { AnimatePresence, MotionConfig, motion } from "motion/react";
 import { type ChangeEvent, type CompositionEvent, type FormEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
@@ -524,20 +524,20 @@ export function Composer(props: {
 											<TooltipTrigger asChild>
 												<button
 													type="button"
-													className="composer-model-icon"
+													className="composer-model-toggle"
 													aria-expanded={modelExpanded}
 													aria-label={modelExpanded ? "Collapse model and effort" : `Model and effort: ${modelLabel} · ${agentData.thinking_level}`}
 													onClick={() => {
 														if (modelExpanded) {
+															setModelMenuOpen(false);
 															setModelExpanded(false);
 															textareaRef.current?.focus();
 														} else {
 															setModelExpanded(true);
-															setModelMenuOpen(true);
 														}
 													}}
 												>
-													{modelExpanded ? <ChevronLeft size={13} /> : <Cpu size={13} />}
+													{modelExpanded ? <ChevronRight size={13} /> : <ChevronLeft size={13} />}
 												</button>
 											</TooltipTrigger>
 											<TooltipContent side="top" className="font-mono">
@@ -548,11 +548,16 @@ export function Composer(props: {
 											<span className="composer-model-slide">
 												<span className="composer-model-sep" aria-hidden="true" />
 												<DropdownMenuTrigger asChild>
-													<button type="button" className="composer-model-drop" tabIndex={modelExpanded ? 0 : -1} title="Model / Effort">
-														<span className="composer-model-label">
-															{modelLabel}·{agentData.thinking_level}
-														</span>
-														<ChevronDown size={9} className="shrink-0 text-muted-soft" />
+													<button
+														type="button"
+														className="composer-model-label"
+														tabIndex={modelExpanded ? 0 : -1}
+														aria-hidden={modelExpanded ? undefined : true}
+														title="Model / Effort"
+													>
+														{modelLabel}
+
+														<span>· {agentData.thinking_level}</span>
 													</button>
 												</DropdownMenuTrigger>
 											</span>
@@ -567,14 +572,14 @@ export function Composer(props: {
 											>
 												<DropdownMenuSub>
 													<DropdownMenuSubTrigger className="font-mono text-[10px]">Models</DropdownMenuSubTrigger>
-													<DropdownMenuSubContent portalMount={rootRef.current}>
+													<DropdownMenuSubContent portalMount={rootRef.current} className="min-w-[200px]">
 														{agentData.models.map((group) => (
 															<DropdownMenuGroup key={group.provider}>
 																<DropdownMenuGroupLabel className="font-mono text-[10px]">{group.provider}</DropdownMenuGroupLabel>
 																{group.models.map((model) => (
 																	<DropdownMenuItem
 																		key={model.id}
-																		className="font-mono text-[10px] text-ink-soft"
+																		className="whitespace-nowrap font-mono text-[10px] text-ink-soft"
 																		onSelect={() => void agent.setModel(selected, { provider: group.provider, modelId: model.id })}
 																	>
 																		{model.name}
@@ -586,10 +591,14 @@ export function Composer(props: {
 												</DropdownMenuSub>
 												<DropdownMenuSub>
 													<DropdownMenuSubTrigger className="font-mono text-[10px]">Effort</DropdownMenuSubTrigger>
-													<DropdownMenuSubContent portalMount={rootRef.current}>
+													<DropdownMenuSubContent portalMount={rootRef.current} className="min-w-[200px]">
 														{agentData.thinking_levels.map((level) => (
-															<DropdownMenuItem key={level} className="font-mono text-[10px] text-ink-soft" onSelect={() => void agent.setThinkingLevel(selected, level)}>
-																<span>{level}</span>
+															<DropdownMenuItem
+																key={level}
+																className="whitespace-nowrap font-mono text-[10px] text-ink-soft"
+																onSelect={() => void agent.setThinkingLevel(selected, level)}
+															>
+																<span className="whitespace-nowrap">{level}</span>
 																{level === agentData.thinking_level && <span className="ml-auto text-ink">✓</span>}
 															</DropdownMenuItem>
 														))}

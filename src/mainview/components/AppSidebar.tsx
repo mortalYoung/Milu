@@ -1,4 +1,4 @@
-import { ArrowUpFromLine, ChevronDown, ChevronRight, Copy, CopyPlus, Files, GitFork, Info, MoreVertical, PanelLeftClose, Plus, Settings, Trash2 } from "lucide-react";
+import { ArrowUpFromLine, ChevronDown, ChevronRight, Copy, CopyPlus, Files, GitFork, Info, MoreVertical, PanelLeftClose, Plus, Search, Settings, Trash2 } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import miluMark from "../../../assets/milu.png";
@@ -6,6 +6,7 @@ import { registerSurfaceRoot } from "../lib/active-surface";
 import { activityAt, convTime, filterPartners, previewFor } from "../lib/chat-preview";
 import { copyText } from "../lib/clipboard";
 import { useAgentStatus } from "../lib/contexts/agent-status-context";
+import { ESCAPE_ORDER, useEscapeLayer } from "../lib/escape";
 import { useFindHandler } from "../lib/find";
 import { imeGuard } from "../lib/ime";
 import { Show } from "../lib/jsx";
@@ -36,7 +37,7 @@ const byRecency = (a: PartnerItem, b: PartnerItem) => activityAt(b) - activityAt
 
 const SKELETON_ROWS = 5;
 
-const MENU_ITEM_CLASS = "px-2 py-1 text-[13.5px] gap-1.5 text-ink focus:text-ink hover:bg-ink/10 focus:bg-ink/10 data-[highlighted]:bg-ink/10";
+const MENU_ITEM_CLASS = "px-2 py-1 text-[14px] gap-1.5 text-ink focus:text-ink hover:bg-ink/10 focus:bg-ink/10 data-[highlighted]:bg-ink/10";
 
 function DeleteMenuItem(props: { onSelect: () => void }) {
 	return (
@@ -148,7 +149,7 @@ function ChatRow(props: {
 					)}
 					<DropdownMenuSeparator className="my-0.5" />
 					<DropdownMenuSub>
-						<DropdownMenuSubTrigger className="px-2 py-1 text-[13.5px] gap-1.5 text-ink hover:bg-ink/10 focus:bg-ink/10 data-[highlighted]:bg-ink/10">
+						<DropdownMenuSubTrigger className="px-2 py-1 text-[14px] gap-1.5 text-ink hover:bg-ink/10 focus:bg-ink/10 data-[highlighted]:bg-ink/10">
 							<CopyPlus size={13} className="text-muted" />
 							<span>Duplicate</span>
 						</DropdownMenuSubTrigger>
@@ -196,6 +197,8 @@ export function AppSidebar(props: {
 	const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 	const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
 	const [query, setQuery] = useState("");
+	const [searchOpen, setSearchOpen] = useState(false);
+	const [searchTip, setSearchTip] = useState(false);
 	const searchRef = useRef<HTMLInputElement>(null);
 	const attachRoot = useCallback((element: HTMLElement | null) => {
 		if (!element) return;
@@ -207,11 +210,33 @@ export function AppSidebar(props: {
 
 	const workingFor = (name: string) => writing[name] ?? props.partners.find((p) => p.name === name)?.writing ?? false;
 
+	const closeSearch = () => {
+		setSearchOpen(false);
+		setQuery("");
+	};
+
+	useEffect(() => {
+		if (!searchOpen) return;
+		searchRef.current?.focus();
+		searchRef.current?.select();
+	}, [searchOpen]);
+
+	useEscapeLayer({
+		id: `${SURFACE.chatList}.search`,
+		order: ESCAPE_ORDER.chatListSearch,
+		isOpen: () => searchOpen,
+		close: closeSearch,
+	});
+
 	useFindHandler(SURFACE.chatList, () => {
 		const input = searchRef.current;
 		if (!input || input.closest("[inert]")) return false;
-		input.focus();
-		input.select();
+		if (searchOpen) {
+			input.focus();
+			input.select();
+			return true;
+		}
+		setSearchOpen(true);
 		return true;
 	});
 
@@ -276,42 +301,63 @@ export function AppSidebar(props: {
 			</div>
 
 			<div className="sidebar-toolbar">
-				<div className="conv-list-search">
-					<input
-						ref={searchRef}
-						className="conv-list-input"
-						type="text"
-						placeholder="Search chats"
-						spellCheck={false}
-						value={query}
-						onChange={(event) => setQuery(event.currentTarget.value)}
-						onKeyDown={(event) => {
-							if (event.nativeEvent.isComposing || ime.composing) return;
-							if (event.key !== "Escape" || query === "") return;
-							event.preventDefault();
-							setQuery("");
-						}}
-						onCompositionStart={ime.onStart}
-						onCompositionEnd={(event) => ime.onEnd(event.nativeEvent, event.currentTarget)}
-					/>
-					<Tooltip>
+				<div className={"conv-search" + (searchOpen ? " open" : "")}>
+					<Tooltip delayDuration={150} open={searchOpen ? false : searchTip} onOpenChange={setSearchTip}>
 						<TooltipTrigger asChild>
-							<Button variant="default" size="icon" class="size-[26px] rounded-full electrobun-webkit-app-region-no-drag" title="Create (⌘N)" onClick={props.onAddPartner}>
-								<Plus size={13} />
-							</Button>
+							<button
+								type="button"
+								className="conv-search-toggle electrobun-webkit-app-region-no-drag"
+								aria-expanded={searchOpen}
+								aria-label={searchOpen ? "Close search" : "Search chats"}
+								onClick={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
+							>
+								<Search size={14} />
+							</button>
 						</TooltipTrigger>
-						<TooltipContent>Create (⌘N)</TooltipContent>
+						<TooltipContent>Search chats (⌘F)</TooltipContent>
 					</Tooltip>
+					<span className="conv-search-slide">
+						<input
+							ref={searchRef}
+							className="conv-list-input"
+							type="text"
+							placeholder="Search chats"
+							aria-label="Search chats"
+							spellCheck={false}
+							tabIndex={searchOpen ? 0 : -1}
+							aria-hidden={searchOpen ? undefined : true}
+							value={query}
+							onChange={(event) => setQuery(event.currentTarget.value)}
+							onBlur={() => query === "" && setSearchOpen(false)}
+							onKeyDown={(event) => {
+								if (event.nativeEvent.isComposing || ime.composing) return;
+								if (event.key !== "Escape") return;
+								event.preventDefault();
+								if (query === "") closeSearch();
+								else setQuery("");
+							}}
+							onCompositionStart={ime.onStart}
+							onCompositionEnd={(event) => ime.onEnd(event.nativeEvent, event.currentTarget)}
+						/>
+					</span>
 				</div>
+				<Tooltip>
+					<TooltipTrigger asChild>
+						<Button variant="default" size="icon" class="size-[26px] shrink-0 rounded-full electrobun-webkit-app-region-no-drag" title="Create (⌘N)" onClick={props.onAddPartner}>
+							<Plus size={13} />
+						</Button>
+					</TooltipTrigger>
+					<TooltipContent>Create (⌘N)</TooltipContent>
+				</Tooltip>
 			</div>
 
 			<div className="sidebar-body">
-				{props.partners.length === 0 && !props.loading && <div className="px-1 py-3 text-[12.5px] text-muted-soft">No partners yet</div>}
+				{props.partners.length === 0 && !props.loading && <div className="px-1 py-3 text-[13px] text-muted">No partners yet</div>}
 
 				{searching && props.partners.length > 0 && visibleRoots.length === 0 && (
 					<div className="px-1 py-3">
-						<p className="font-sans text-[12.5px] text-ink-soft">No chats match</p>
-						<p className="mt-1 font-mono text-[10px] text-muted-soft">
+						<p className="font-sans text-[13px] text-ink-soft">No chats match</p>
+						<p className="mt-1 font-mono text-[10px] text-muted">
 							<button type="button" className="cursor-pointer hover:text-ink" onClick={() => setQuery("")}>
 								clear the filter
 							</button>

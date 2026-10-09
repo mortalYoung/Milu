@@ -31,7 +31,7 @@ function glyphOf(status: TaskStatus, exitCode: number | undefined): string {
 function glyphClass(status: TaskStatus, exitCode: number | undefined): string {
 	if (status === "running") return "task-live";
 	if (status === "exited" && exitCode) return "text-signal";
-	return "text-muted-soft";
+	return "text-muted";
 }
 
 function detailOf(task: TaskSummary, now: number): string {
@@ -214,7 +214,7 @@ export function TaskLogDialog(props: { open: boolean; onOpenChange: (open: boole
 					</div>
 
 					{props.tasks.length === 0 ? (
-						<p className="px-5 py-8 font-sans text-[12.5px] text-muted">No background tasks yet.</p>
+						<p className="px-5 py-8 font-sans text-[13px] text-muted">No background tasks yet.</p>
 					) : (
 						<div className="grid h-[min(56vh,440px)] grid-cols-[186px_minmax(0,1fr)] max-[720px]:h-[min(64vh,520px)] max-[720px]:grid-cols-1">
 							<div className="min-h-0 overflow-y-auto border-r border-line p-1.5 max-[720px]:max-h-[132px] max-[720px]:border-r-0 max-[720px]:border-b">
@@ -222,7 +222,7 @@ export function TaskLogDialog(props: { open: boolean; onOpenChange: (open: boole
 									<button type="button" key={task.id} className={`${ROW} ${task.id === selected ? ROW_ON : ""}`} onClick={() => setSelected(task.id)}>
 										<span className="flex items-center gap-1.5">
 											<span className={`shrink-0 font-mono text-[10px] ${glyphClass(task.status, task.exitCode)}`}>{glyphOf(task.status, task.exitCode)}</span>
-											<span className={`min-w-0 truncate font-mono text-[11.5px] ${task.id === selected ? "font-semibold text-ink" : "text-ink-soft"}`}>{task.command}</span>
+											<span className={`min-w-0 truncate font-mono text-[12px] ${task.id === selected ? "font-semibold text-ink" : "text-ink-soft"}`}>{task.command}</span>
 										</span>
 										<span className={`mt-0.5 block pl-[18px] font-mono text-[10px] ${task.status === "exited" && task.exitCode ? "text-signal" : "text-muted"}`}>
 											{detailOf(task, now)}
@@ -243,7 +243,7 @@ export function TaskLogDialog(props: { open: boolean; onOpenChange: (open: boole
 											{paging ? "loading…" : "Load earlier"}
 										</button>
 									)}
-									<pre ref={codeRef} className="whitespace-pre px-3 py-2 font-mono text-[11.5px] leading-[1.7] text-ink-soft">
+									<pre ref={codeRef} className="whitespace-pre px-3 py-2 font-mono text-[12px] leading-[1.7] text-ink-soft">
 										{text || (loading ? "loading…" : "(no output yet)")}
 									</pre>
 								</div>

@@ -36,7 +36,7 @@ typography:
 
 # Milu — Design System
 
-> 唯一事实源。改风格 = 先改这里。四个值域记死：**一个红**、**一根 0.5px 线**、**三个字号族**、**三个圆角**。
+> 唯一事实源。改风格 = 先改这里。四个值域记死：**一个红**、**一根 0.5px 线**、**三个字号族**、**四档圆角（4 / 6 / 8 / 12）**。
 
 ## 1. 视觉主题与氛围
 
@@ -57,29 +57,44 @@ Milu 是一个 Agent Harness：你选中一位 partner（atlas、bramble、cinde
 ## 2. 色板与角色
 
 所有颜色都是 `@theme` 里的 `light-dark()` 双值，靠 `color-scheme` 解析；组件只读语义 token，不写死 hex。
+**2026-10-09 起，色板照单全收 Claude 的设计系统**（线上 `design-md/claude/DESIGN.md`，sha256 `3d972f34…`）：
+中性层与语义层用它给的值，**主色家族是我们自己的**（`#897B67`）。括号里是实测对比度（WCAG，亮色对 canvas `#faf9f5`）。
 
-| token | 亮 / 暗 | 角色 |
+| token | 亮 / 暗 | 角色与用法契约 |
 |---|---|---|
-| `canvas` | `#ffffff` / `#0d0f12` | 内容面：正文、对话、代码、diff |
-| `chrome` | `#80808014` / `#131619` | 框架面：侧栏（含 windowbar）、对话列表、设置左栏。**亮色是 8% 透明灰**，只能叠在别的底上 |
-| `surface` | `#ffffff` / `#14171b` | 抬升面：composer、弹窗、菜单、输入框、代码块外框 |
-| `hover` / `selected` | `#80808029` / `#1a1e23`；`#80808038` / `#20252b` | 状态层：hover / 选中整块 |
-| `ink` | `#0f1115` / `#e8eaed` | 主体文字（不是纯黑） |
-| `ink-soft` / `muted` | `#6b7280` / `#99a0a8`；`#6b7280` / `#a3aab3` | 次级文字 / 机器事实小字 |
-| `muted-soft` | `#aab1bd` / `#7d848d` | 三级：时间、占位符、tip |
-| `line` / `line-soft` / `line-strong` | `#e5e7eb` · `#eceef1` · `#c1c4c8` / `#23272d` · `#1b1f24` · `#33373d` | 0.5px 发丝线三档 |
-| `signal` | `#d1242f` / `#e5484d` | **唯一彩色**：危险、未读、正在写、需要注意 |
-| `signal-soft` | `#e5484d14` / `#2a1618` | 红的底（错误块） |
-| `link` | `#4176e6` / `#6ea8ff` | 链接（唯一的蓝） |
-| `caption` | `#adb2b8` / `#4a4f57` | 引用条 |
-| `code-bg` + `code-hairline` | `#fafafa` / `#16191d`；黑白 4~6% | inline code |
-| `code-block-bg` | `#f9fafb` / `#14171a` | 围栏代码块底 |
-| `find` / `find-soft` | `#ffdf5d` / `#ffd33d44` | 查找命中（github 的琥珀，不是红） |
-| 选区 | `ink 14%` 墨洗 | 原生 selection，文字保持本色 |
-| `scrim` | `ink 22%` / `canvas 78%` | 弹窗遮罩：亮色是中性灰洗，不是「白纱」 |
-| `hlv-0..4` | `line 60%` → `ink 68%` | 活跃度热力阶梯（灰阶，不是红色阶） |
+| `canvas` | `#faf9f5` / `#181715` | 内容面：正文、对话、代码、diff。**亮色是奶油底，不是纯白** |
+| `chrome` | `#f5f0e8` / `#1f1e1b` | 框架面：侧栏（含 windowbar）、对话列表、设置左栏（= Claude `surface-soft`） |
+| `surface` | `#faf9f5` / `#252320` | 抬升面：composer、弹窗、菜单、输入框。**亮色与 canvas 同值** —— 参考自己的 `text-input` 就写「Background `{colors.canvas}` + 1px `hairline`」；抬升感由 0.5px 发丝线 + 7% 浅影给，不是靠压暗 |
+| `surface-card` | `#efe9de` / `#2a2823` | 真·卡片面（看板/feature 那种）：**只给成块的卡用，不冒充抬升面** |
+| `surface-soft` / `surface-cream-strong` | `#f5f0e8` · `#e8e0d2` / `#1f1e1b` · `#2a2823` | 带子与强调带（备用层） |
+| `ink` | `#141413` / `#faf9f5` | 标题、主体文字（17.5:1 ✓） |
+| `body` / `body-strong` | `#3d3d3a` · `#252523` / `#c9c5bd` · `#e6e2d9` | **阅读正文**（10.3:1 ✓）/ 加重的段落。正文用 `body`，不要用 `ink` |
+| `ink-soft` · `muted` | `#6c6a64` / `#a09d96` · `#8b8880` | 次级文字 / 机器事实小字（5.13:1 ✓；**在卡片底上只有 4.48 ✗，卡片里的小字用 `body`**） |
+| `muted-soft` | `#8e8b82` / `#6e6b64` | 三级：时间、占位符、tip（3.23:1 ✗ → **只做装饰**；"要读的小字"一律换 `muted`/`body`） |
+| `line` / `line-soft` / `line-strong` | `#e6dfd8` · `#ebe6df` · `#c4beb3` / 12%·8% 白 · `#4a4640` | 0.5px 发丝线三档（= `hairline` / `hairline-soft`） |
+| `hover` / `selected` | `ink 7%` / `ink 12%` 墨洗 | 状态层。**跟着 `ink` 走**，所以暗色自动变成白洗 |
+| `primary` | `#897b67` / 同 | **主色**：描边、选中、图标、强调（3.91:1 ✓ 图形线；当底色放字只有 4.12 ✗） |
+| `primary-fill` | `#7a6d5b` / 同 | **CTA 底色**：比主色深 2.5%（肉眼不可辨），白字 **5.04:1** ✓ |
+| `primary-active` | `#605546` / `#b09f87` | hover / press（暗色变亮不变量） |
+| `primary-disabled` / `primary-soft` | `primary` 16% 进 canvas / `primary` 12% 透明 | 禁用态 / 选中底 |
+| `on-primary` | `#ffffff` / `#181715` | 主色上的字 |
+| `signal` | `#c64545` / `#d96868` | **唯一彩色信号**：危险、未读、正在写、需要注意（4.59:1 ✓ 可当字） |
+| `signal-soft` | `signal` 10% 透明 | 红的底（错误块） |
+| `success` / `warning` | `#5db872` · `#d4a017` / `#6fc884` · `#e0b24a` | 成功 / 警告：**只能当圆点或填充**（2.33 / 2.25 ✗ 当字不够） |
+| `accent-teal` | `#2f7a6b` / `#5db8a6` | **「活着」专用**：writing / 运行中 / 已连接 / busy 的呼吸点（4.84:1 ✓ 可当字）。参考给的是 `#5db8a6`，在 canvas 上只有 2.25:1 ✗，取了它深一档 |
+| `find` / `find-soft` | `#e8a55a` / `#e8a55a66`（暗 33%/18%） | 查找命中：**改用它的 `accent-amber`**（原来是柠檬黄 `#ffdf5d`，在奶油底上偏冷）；命中当底色，字仍是 ink |
+| `link` | `#716553` / `#b09f87` | 链接：**主色系、不再用蓝**（参考的 `text-link` 就是主色，Do's 明禁冷蓝）；但取主色**深一档**——参考那条只有 3.28:1、主色本身 3.91:1 都不够字面 AA，这一档 5.40:1 ✓ |
+| `hlv-0..4` | `heat`（深赭 `#97652f`）12 / 32 / 52 / 71 / 90% 兑 canvas | 活跃度热力：**暖米→赭**，等 L\* 步 92/82/72/62/52（C 0.015→0.055）。源另立 `--color-heat`（由参考的 `accent-amber` 压暗保住彩度）：**不能拿 primary 当源**，它 chroma 仅 0.022，兑出来还是灰阶 |
+| `caption` / `code-bg` / `code-block-bg` / 选区 / `scrim` | 见 style.css | 引用条、内联码（`#efe9de` 暖底）、代码块（`#f5f0e8`）、活跃度灰阶、`selection` 墨洗、遮罩（`ink 22%` / `canvas 78%`）。**代码面保持「随主题」，不改成常暗** —— 参考的深色只是营销页展示产品 chrome 的卡，不是产品自身的代码面规则 |
 
-还有一层 shadcn/radix 的别名（`--color-primary`→ink、`--color-secondary`→hover、`--color-destructive`→signal、`--color-muted-foreground`→muted…），只是组件契约名，值都指向上表。
+**三条从参考里带来的硬规则**（都是量出来的，不是抄的）：
+1. **CTA 底色比主色深一档** —— 参考自己的珊瑚 CTA（`#cc785c` + 白字 = **3.28:1**）低于 AA 4.5；照单全收时**这一条不抄**，我们取 `primary-fill`（5.04:1）。
+2. **语义色的字面用法分开**：`success`/`warning` 只做点与填充；要写成字必须换深一档（我们的状态点已如此）。
+3. **`muted-soft` 只做装饰**：它在 canvas 上 3.23、在卡片上 2.82，都不够；凡"用户需要读它来判断状态"的小字，一律 `muted`（canvas 上）或 `body`（卡片上）—— 这是账本 P-83 的落地口径。
+
+**已办（2026-10-09 第二阶段）**：`link` 改主色；代码面暖色化（冷白 `#fafafa`/`#f9fafb` → `#efe9de`/`#f5f0e8`），**明确不改成常暗**；P-83 落地：带字号的 `muted-soft` 文字全部升到 `muted`（CSS 56 个类 + tsx 52 处，只留 3 个纯装饰字形类）。**热力阶梯**：从 ink 墨洗（中性灰）改成**暖米色** —— 以 `primary` 为源兑 canvas，等 L\* 步 92/82/72/62/52，顶档即品牌主色；旧的 ink 版在奶油底上不同族。
+
+**红与青的分工（2026-10-09 定）**：`signal` 只留「需要注意」（未读、失败、超限、错误）；**「活着」——writing、运行中、已连接、busy —— 一律 `accent-teal`**。旧实现里 `.btw-flow-loading` 与 `.explorer-busy` 两个「忙」的点是红的，MCP `connected` 是中立的 `bg-ink`，现在都归到青。
 
 ## 3. 排版规则
 
@@ -87,12 +102,24 @@ Milu 是一个 Agent Harness：你选中一位 partner（atlas、bramble、cinde
 |---|---|---|---|
 | 阅读 | **Public Sans**（`--font-reading` → sans token） | 对话正文、markdown 正文、空态说明 | **15px / 25.7px**（`--text-reading` × `--leading-reading`） |
 | 机器 | JetBrains Mono 400-600 | 路径、命令、计数、时间戳、模型名、代码 | 10-13.5px |
-| 题字 | Newsreader 400-600 | 视图标题、partner 名、设置索引（**不再用于正文**） | 16-19px |
+| 题字 | Newsreader 400-600 | 视图标题、partner 名、设置索引（**不再用于正文**） | 16-18px |
+
+**字阶（2026-10-09 收敛：11 档裸值 → 6 档角色）**。角色名沿用 Claude 的 `typography`，缺的一格是我们补的：
+
+| 档 | 对应它的角色 | 用在哪 | 现状 |
+|---|---|---|---|
+| **10** | （我们补的 `micro`） | 机器事实：路径、计数、时间戳、键帽、状态 | 179 处，是全 app 的脊柱，**它那份最低只到 12px，此处刻意不跟** |
+| **12** | `caption-uppercase`（12/500/1.5 字距） | 全大写小标签：表单 label、分组眉批 | 129 处 |
+| **13** | `caption`（13/500/1.4） | 元信息：说明行、次级计数 | 43 处 |
+| **14** | `body-sm`（14/400/1.55） | UI 正文：设置行、输入框、菜单条目 | 34 处 |
+| **15** | （我们的阅读档，它没有） | 对话与 markdown 正文（`--text-reading`） | 单一来源，改字号只动这一个 token |
+| **16** | `title-sm` / `body-md` | 小标题、面板标题、消息里的强调行 | 20 处 |
+| **18** | `title-md`（18/500/1.4） | 弹窗标题、视图标题 | 9 处 |
 
 - 阅读层四个 token 只在 `@theme` 定义一次：`--text-reading: 15px` / `--leading-reading: 1.714` / `--gap-reading: 16px` / `--font-reading`。改字号只动 `--text-reading`。
 - > 2026-09-30：阅读层照 `127.0.0.1:3080`（dsh）实测值抄 —— 它的正文就是**系统无衬线 14px/24px、列宽 640px**（我们取 15px）。这覆盖了 9/29 锁定的「正文保留衬线」；衬线退到「题字」角色（视图标题/人名）。字号/行高/段距/字体四个 token 都在 `@theme` 里，改字号只动 `--text-reading`。
 - 禁斜体（强调用字重/颜色/字号）；禁纯黑；数据不用衬线（唯一的例外见 §10 的接线声明与设置页分类索引）。
-- 圆角三档：3px（chip/工具块）、6px（卡片/列表行/弹窗）、12px（围栏代码块）；composer 药丸固定 22px 是历史值（2026-09-30 已改为两层盒子的 14px）。
+- 圆角四档：**4px**（chip / 键帽 / 工具块）、**6px**（菜单条目 / 列表行）、**8px**（按钮 / 输入框 / 浮层容器）、**12px**（面板 / 弹窗 / 卡片 / composer 盒）。（2026-10-09 照 Claude 的 `{rounded.xs…xl}` = 4/6/8/12/16 重排；旧的 1.5 / 3 / 22 三个历史值已消失，`22` 是当年的 composer 药丸，早被两层盒子取代。）
 
 ## 4. 组件样式
 
@@ -104,24 +131,25 @@ Milu 是一个 Agent Harness：你选中一位 partner（atlas、bramble、cinde
   - 正在写的块：三个 `work-dot`（1s 错峰），无文案、无装饰。
 - **markdown 正文层（2026-09-30 照 dsh 实测抄）**：段落间距 **16px**（`--gap-reading`）· 首末子元素外边距 0 · `h2` **19px/700/28 + 上 32 下 16**、`h3` 16px/600/24 + 24/8 · 列表项间 **6px**、嵌套 4px、marker 用 `ink-soft` · 加粗 **600**（不是浏览器的 bolder/700：字重掉一档，黑才不压纸）· 链接 **`#4176e6`、weight 500、无下划线**，hover/聚焦出 `underline dotted` offset 3px · 引用 **2px `caption` 灰条 + 14px 缩进**、文字不缩号不换色 · inline code **11.375px/19px、底 `#fafafa`、0.5px 极淡描边、圆角 6、`padding: 0 5px`** · 代码块 **底 `#f9fafb`、圆角 12、`padding: 13px 22px`**（2026-09-30 修：原来照抄 dsh 的 `6px 22px 20px`，但 dsh 首行自带额外 leading，我们 19px 行盒 / 11.4px 字上下各 3.8px 已对称，6/20 会直接显成「上 13 / 下 27」；改成等分、总量不变、块高不动）、11px/19px、`margin: 16px 0 11px`** · 表格单元 13px/22px、`padding: 10px 16px 10px 0`、表头 weight 500。
 - **BTW 旁批（保留的交互，全项目签名交互）**：agent 块右侧常驻一条 30px 热区，hover/聚焦出 16px 指示器（默认竖直、窄屏改 24px 角落按钮）；点击在块右侧展开 `--btw-note`（240px）宽的旁批栏，栏与正文之间 42px gap + 0.5px `line`。旁批内的消息同样是 meta 行 + 正文，但正文缩到 13px。
-- **composer**：**一个盒子、两层**（2026-09-30 定，照 dsh 的 composer 结构）。**上层**只放输入（textarea）；**下层**是动作行：**开关 `$`（shell 模式）与 tasks 靠左**，右侧一组 = model·effort chip + context meter + submit（忙时变**描边停止圆**：`ink/40` 描边 + `ink` 图标，**不写红** —— 停止是动作，不是「需要注意」）。盒子**自己不带 padding**（拆到两层里：`px-3 pt-2` / `px-1.5 pb-2 pt-0.5`；盒子离窗口底的 16px 由 `.composer-slot` 给）、`surface` 底、**0.5px 发丝描边**、圆角 14、**一层浅影**（§6 的浮层例外）；**聚焦不改描边**（`form#composer` 也不带 padding，留白给 `.composer-slot`，这样 `--dock-bottom` 仍能量到）。下层每个控件的**外框 = 26px**（= context meter 的 `p-1.5` + 14px svg；图标大小各自不变：tasks 15、submit 13）—— 注意别用共享 `Button`：它的 `size="icon"` 会把框锁成 40px，这一行用裸 `<button>` + `composer-icon-btn` / `composer-send`。宽度与 transcript 同列（共用 `--transcript-measure`，见 §5）。**输入卡比消息列每侧宽 16px**（`max-width: calc(var(--transcript-measure) + 32px)`；dsh：654 → 686 实测 +32），所以卡内文字回到列的同一条轴（input 层 `px-4`，残差 0.5px = 描边）。盒子高度与列宽成比例（700 宽 → **89 高**，照 dsh 的 686×89），所以 input 的上下留白是 `py-12px` 而不是贴着字。**卡下面另起一行 tip**（`.composer-tip`，与卡隔 8px、**不连在一起**，**居中**；sans 10px `muted-soft`，无分隔线）：`/` 命令 · `@` 提及其他会话 · `⇥` 切换模式（空输入时切 shell）· `⏎` 发送 —— 键帽统一用 **`ui/kbd.tsx`**（shadcn 的 `Kbd`，`h-5 / min-w-5 / px-1 / text-xs / 500 / 无描边`，底 = 我们的 `hover` tint、字 = `muted`、圆角 3）。**一个键一颗键帽**：修饰键各自成颗、组合用 `KbdGroup`（gap 4px）—— 侧栏 Settings 是 `⌘` + `,`，palette 是 `⌘` `⇧` `P` / `⌘` `↵`，composer tip 是 `⇧` `⏎`；`↑↓` 这种「一个手势」的合键仍算一颗。小号的 inline 输入框仍用 `.composer-field`（ChatInput 的 sm/annotation 变体），不吃这套两层结构。
+- **composer**：**一个盒子、两层**（2026-09-30 定，照 dsh 的 composer 结构）。**上层**只放输入（textarea）；**下层**是动作行：**开关 `$`（shell 模式）与 tasks 靠左**，右侧一组 = model·effort chip + context meter + submit（忙时变**描边停止圆**：`ink/40` 描边 + `ink` 图标，**不写红** —— 停止是动作，不是「需要注意」）。盒子**自己不带 padding**（拆到两层里：`px-4` / `px-1.5 pb-2 pt-0.5`；盒子离窗口底的 12px 由 `.composer-slot` 给）、`surface` 底、**0.5px 发丝描边**、圆角 12、**一层浅影**（§6 的浮层例外）；**聚焦不改描边**（`form#composer` 也不带 padding，留白给 `.composer-slot`，这样 `--dock-bottom` 仍能量到）。下层每个控件的**外框 = 26px**（= context meter 的 `p-1.5` + 14px svg；图标大小各自不变：tasks 15、submit 13）—— 注意别用共享 `Button`：它的 `size="icon"` 会把框锁成 40px，这一行用裸 `<button>` + `composer-icon-btn` / `composer-send`。宽度与 transcript 同列（共用 `--transcript-measure`，见 §5）。**输入卡比消息列每侧宽 16px**（`max-width: calc(var(--transcript-measure) + 32px)`；dsh：654 → 686 实测 +32），所以卡内文字回到列的同一条轴（input 层 `px-4`，残差 0.5px = 描边）。盒子高度与列宽成比例（700 宽 → **81 高**；比 dsh 的 686×89 矮 8 —— 输入层顶部那 8px 去掉了，文字在自己的带里 12/12 对称），所以 input 的上下留白是 `py-12px` 而不是贴着字。**卡下面另起一行 tip**（`.composer-tip`，与卡隔 **4px**、**不连在一起**，**居中**；sans 10px `muted-soft`，无分隔线）：`/` 命令 · `@` 提及其他会话 · `⇥` 切换模式（空输入时切 shell）· `⏎` 发送 —— 键帽统一用 **`ui/kbd.tsx`**（shadcn 的 `Kbd`，`h-5 / min-w-5 / px-1 / text-xs / 500 / 无描边`，底 = 我们的 `hover` tint、字 = `muted`、圆角 4）。**一个键一颗键帽**：修饰键各自成颗、组合用 `KbdGroup`（gap 4px）—— 侧栏 Settings 是 `⌘` + `,`，palette 是 `⌘` `⇧` `P` / `⌘` `↵`，composer tip 是 `⇧` `⏎`；`↑↓` 这种「一个手势」的合键仍算一颗。小号的 inline 输入框仍用 `.composer-field`（ChatInput 的 sm/annotation 变体），不吃这套两层结构。
 - **shell 模式**：开关是下层动作行**最左边那枚 `$`**（`composer-icon-btn.on`，位于 tasks 左侧），**点击与空输入 `⇥` 是同一个 toggle**，`Esc` 也能退出；激活时 **卡的描边转 `ink`**（0.5px，仍在「线」的语言里，**不用红**——模式不是信号）。input 转等宽、placeholder 变 `Run a shell command…`、tip 行整行换成 `⏎ 运行 · ⇧⏎ 换行 · ⇥ 退出模式`。行首的 `$` 前缀与 `shell` 小签已删（开关自己的状态就是说明）。
-- **partner 列表行**：3px 圆角、行距 2px、hover `hover`、**选中 = `selected` 整块底色**（禁止左侧竖线，账本 P-38）；行 = 名称（首字母头像 28px）+ 预览（截断）+ 时间（mono 10px tabular）；未读 = signal 4px 点。
+- **partner 列表行**：4px 圆角、行距 2px、hover `hover`、**选中 = `selected` 整块底色**（禁止左侧竖线，账本 P-38）；行 = 名称（首字母头像 28px）+ 预览（截断）+ 时间（mono 10px tabular）；未读 = signal 4px 点。
 - **brand 行**（sidebar 顶部）：**`assets/milu.png` 那张唯一的图**（26px，圆角 6）+ 手写体字标 `Milu`（`MiluWordmark`，20px 高 / ≈86px 宽，见 §11）。线上不再画 inline SVG 版狗头（同一只狗两种画法 = 两套视觉，§11 早就禁了；`design-previews/2026-09-29-milu-skin/` 里那个 `#dogline` 的 `viewBox` 还会切掉右耳与下巴）。
-- **dialog / menu**：`surface` + `line` 描边 + 6px 圆角、**无阴影**；focus-visible 用 `ink` ring + 2px offset（禁浏览器默认蓝）。
+- **dialog / panel**：`surface` + `line` 描边 + **12px** 圆角、**无阴影**；**menu / tooltip / select 浮层容器 8px**，条目仍 6px；focus-visible 用 `ink` ring + 2px offset（禁浏览器默认蓝）。
 - **遮罩（scrim）**：`--color-scrim` —— 亮色是 **`ink` 22% 的中性灰洗**（不是拿 `canvas` 当 80% 的白纱，那样只是把画面洗白），暗色是 `canvas` 78% 的熄灯。所有 `DialogOverlay` 共用它。
 - **详情弹窗里的红**（2026-09-30 清）：`● writing` 徽章、指标卡下面那行 delta、memory 存储条、run 行的 `Trajectory` 按钮 —— 全部改成 ink/muted 语言（前三个本来就不是「需要注意」，最后一个只是入口）。**留下的是真信号**：memory 详情超限的警告、非 `completed` 的 run reason、错误文案。
-- **工具/状态块**：命令、diff、日志、escalation、任务日志一律 mono、`surface` 底、3px 圆角；错误用 `signal-soft` 底 + `signal` 字。
+- **按钮**：文字按钮一律 **8px**（`ui/button.tsx` 的 `default/sm/lg` 都带 `rounded-[8px]`，base 里的 `rounded-full` 已删）；**图标按钮 / 头像保持全圆**（它的 `{rounded.full}` = icon buttons）。
+- **工具/状态块**：命令、diff、日志、escalation、任务日志一律 mono、`surface` 底、4px 圆角；错误用 `signal-soft` 底 + `signal` 字。
 - **代码（markdown 围栏）**：shiki 的 github-light/dark 自带六种色相（keyword 是红的），按角色重映到我们的 grays + 两个低饱和辅色（keyword `#3f4d63`/`#9fb0c9`、string/tag `#45624f`/`#9dbba8`），只有 invalid 保留 `signal`。映射挂在**主题对象**的 `colorReplacements` 上，键必须小写（见 `lib/shiki-setup.ts`）。
 - **markdown**：引用条 2px `line-strong`；内联码 `hover` 底 + `line` 描边；表格/正文用 ink/ink-soft；链接见 §2。
-- **设置页**：660×540；左侧 168px 分类栏（分类名 12.5px，选中 = `selected` 整块，底部 `Milu` 字标 mono 11px）（2026-09-30 调：**分类栏与内容同底、无中间竖线** —— 分类栏从 `chrome` 换成 `surface`，`border-r` 删掉，整块面板就一张白；**Switch 的选中态用 `ink` 不用红**（红只留给「需要注意」）；搜索框用 `TextFieldInput variant="quiet"`，**聚焦不描边不 ring**；Theme 三个卡片的选中态描边 `ink → line-strong`，选中感交给 `selected` 底色。）；右侧 = 搜索（`surface` + `line` + 3px，mono 计数）+ 行列表（`divide-y`，不套卡片）行 = 标题 13px + 描述 11.5px `ink-soft` + 右缘控件；**修改标记 = signal 圆点 + "modified" mono 10px**（点，非竖条）。
+- **设置页**：660×540；左侧 168px 分类栏（分类名 12.5px，选中 = `selected` 整块，底部**不放字标**（P-91：品牌只在 sidebar brand 出现一次）（2026-09-30 调：**分类栏与内容同底、无中间竖线** —— 分类栏从 `chrome` 换成 `surface`，`border-r` 删掉，整块面板就一张白；**Switch 的选中态用 `ink` 不用红**（红只留给「需要注意」）；搜索框用 `TextFieldInput variant="quiet"`，**聚焦不描边不 ring**；Theme 三个卡片的选中态描边 `ink → line-strong`，选中感交给 `selected` 底色。）；右侧 = 搜索（`surface` + `line` + 3px，mono 计数）+ 行列表（`divide-y`，不套卡片）行 = 标题 13px + 描述 11.5px `ink-soft` + 右缘控件；**修改标记 = signal 圆点 + "modified" mono 10px**（点，非竖条）。
 - **自定义滚动条**：6px，`line` thumb。
 - **命令菜单（⌘P）**：快捷键一律是 **`Kbd` 键帽**（头部那颗 `⌘P`/`⌘⇧P`、底部 `⇥ switch · ↑↓ navigate · ↵ open/editor · esc close`），不是一段等宽字符串。**选中行不再把标题变红**（选中靠 `hover` 整块底），时间/光标/`#range` 小签/状态行都走 `muted`（`#range` 是 0.5px 描边的安静 chip），**只有 `grantError` 那条状态才是 `signal`**（`.palette-status.err`）。
 
 ## 5. 布局原则
 
 - **两栏：sidebar + main**（2026-09-30 定，参照 dsh desktop：`https://www.deepseek.com/harness/` hero 的 `HarnessDesktopPreview`）。原左侧 64px 图标栏（rail）已删除；skills / dashboard 的入口暂时隐藏（视图代码保留，走应用菜单仍可进）。
-- **sidebar**（chrome，可拖拽：200–480，默认 240，给 main 留 592px）自上而下五段：**windowbar 52px**（红绿灯在左，收起按钮在它右端 —— `justify-end`，离侧栏右缘 12px）/ **brand 44px**（`assets/milu.png` 26px + 手写体 `Milu` 20px 高）/ **toolbar**（搜索框 40px + 新建按钮，下沿一条 0.5px 线，头部因此读成一条带）/ **body**（chat list，`flex-1`；行 `py-6` + 头像 28px = 行高 49）/ **foot**（34px 行，贴底：左边齿轮，右边 `⌘` `,` 键帽 —— **不写 “Settings” 文案**，位置 + 图标已经说明了，快捷键才是这条行要告诉你的信息）。头 : 脚 = 44 : 34（原来是 33 : 38 的「头轻脚重」）。
+- **sidebar**（chrome，可拖拽：200–480，默认 240，给 main 留 592px）自上而下五段：**windowbar 52px**（红绿灯在左，收起按钮在它右端 —— `justify-end`，离侧栏右缘 12px）/ **brand 44px**（`assets/milu.png` 26px + 手写体 `Milu` 20px 高 —— 实测放不进 windowbar：侧栏默认 240 时内容宽只有 216，字标只剩 72px 可渲染 = 12.5px 高，不成立）/ **toolbar**（40px：左侧**收起式搜索** = 一颗 26px 图标 + 点击/⌘F 才滑出字段，右侧新建按钮；下沿一条 0.5px 线，头部因此读成一条带）/ **body**（chat list，`flex-1`；行 `py-6` + 头像 28px = 行高 49）/ **foot**（34px 行，贴底：左边齿轮，右边 `⌘` `,` 键帽 —— **不写 “Settings” 文案**，位置 + 图标已经说明了，快捷键才是这条行要告诉你的信息）。头 : 脚 = 44 : 34（原来是 33 : 38 的「头轻脚重」）。
 - **顶栏是「一窗两条」**：sidebar 的 windowbar（红绿灯 + 收起开关）；**main 自己的条**（`.chat-bar`，52px，画布同色 + 一条发丝线）整行左边是 **explorer / git / worktrees（有才出现）跟着 `dockSide` 走**：`right` 时在右侧、排在 replies/trajectory 之前，`left` 时在左侧、跟在收起开关之后（分隔线永远夹在它们与窗格自己的工具之间）；**replies + trajectory 恒在右**，**partner 名（mono 12.5 `ink-soft`，点击开详情）+ Writing status 绝对居中**（`left: 50%` + translate，`max-w-[46%]` 截断——两侧工具再多也不会把名字挤走）。replies 面板挂在条**下面**（`top: 60px` = 52 + 8），不再盖住这两个按钮。侧栏收起时，信条左端出现「展开侧栏」按钮，并整条把左内边距让到 88px（`at-edge`，避开红绿灯区）。
 - **DOM：`.chat-main = [chat-bar][chat-column][dock]`**（2026-09-30 定；条是**窗格**的，不是列的）。未 pin 时 `.chat-main` 是 flex 列（条 + 列，dock 绝对定位盖在 body 上）；**pin 时换成 2×2 网格**：`grid-template-rows: auto minmax(0,1fr)`，条 `grid-column: 1 / -1` 横跨第一行，第二行才是 `[列 | dock]`（`side-left` 镜像）。这样 pin **不会碰 windowbar**，只切分 composer 与 body；列宽用 `minmax(0,1fr)` / `var(--column-width, 42%)`（有 detail 时）表达，不再靠 flex 的 `flex: 0 0 42%`。
 - **dock 只占 body 那一段**（2026-09-30 定）：未 pin 时 `inset: var(--bar-h) 0 var(--dock-bottom) 0`（绝对），pin 之后换成同一个区间 —— `inset: auto` + `margin-block: var(--bar-h) var(--dock-bottom)`（relative 下 `top/bottom` 是偏移，会和 margin 叠两次）。**pin 时 dock 撑满第二行到底**（不写 `margin-bottom`）。

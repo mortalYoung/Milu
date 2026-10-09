@@ -93,16 +93,16 @@ export function SkillsView() {
 		<div className="flex-1 min-h-0 overflow-y-auto">
 			<div className="flex flex-col gap-5 px-6 py-6">
 				<div>
-					<h1 className="font-serif text-[19px] font-semibold text-ink">Skills</h1>
-					<p className="mt-1 font-sans text-[12.5px] text-muted">Global skills live in your home skills directory; grant each skill to the partners that may use it.</p>
+					<h1 className="font-serif text-[18px] font-semibold text-ink">Skills</h1>
+					<p className="mt-1 font-sans text-[13px] text-muted">Global skills live in your home skills directory; grant each skill to the partners that may use it.</p>
 				</div>
 
 				<div className="flex items-center gap-1 border-b border-line">
 					<button
 						type="button"
 						className={
-							"rounded-t-[8px] border-b-2 px-3 py-1.5 font-serif text-[13.5px] transition-colors " +
-							(view === "skills" ? "border-signal text-ink" : "border-transparent text-muted-soft hover:text-ink")
+							"rounded-t-[8px] border-b-2 px-3 py-1.5 font-serif text-[14px] transition-colors " +
+							(view === "skills" ? "border-signal text-ink" : "border-transparent text-muted hover:text-ink")
 						}
 						onClick={() => setView("skills")}
 					>
@@ -111,8 +111,8 @@ export function SkillsView() {
 					<button
 						type="button"
 						className={
-							"rounded-t-[8px] border-b-2 px-3 py-1.5 font-serif text-[13.5px] transition-colors " +
-							(view === "mcp" ? "border-signal text-ink" : "border-transparent text-muted-soft hover:text-ink")
+							"rounded-t-[8px] border-b-2 px-3 py-1.5 font-serif text-[14px] transition-colors " +
+							(view === "mcp" ? "border-signal text-ink" : "border-transparent text-muted hover:text-ink")
 						}
 						onClick={() => setView("mcp")}
 					>

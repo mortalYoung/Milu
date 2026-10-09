@@ -41,9 +41,11 @@ interface MonthMark {
 	span: number;
 }
 
-export function ActivityHeatmap(props: { days: PartnerActivityDay[]; weeks?: number; legend?: boolean }) {
+export function ActivityHeatmap(props: { days: PartnerActivityDay[]; weeks?: number; legend?: boolean; fill?: boolean }) {
 	const weeks = props.weeks ?? 53;
 	const shown = props.days.slice(-weeks * 7);
+	const track = props.fill ? "minmax(0, 1fr)" : `minmax(0, ${CELL}px)`;
+	const monthInset = props.fill ? WEEKDAY_W + GAP : WEEKDAY_W;
 
 	const columns = (() => {
 		const out: PartnerActivityDay[][] = [];
@@ -64,13 +66,13 @@ export function ActivityHeatmap(props: { days: PartnerActivityDay[]; weeks?: num
 	})();
 
 	return (
-		<div className="activity-heatmap" style={{ "--activity-cell": `${CELL}px` } as React.CSSProperties}>
+		<div className={`activity-heatmap${props.fill ? " activity-heatmap-fill" : ""}`} style={{ "--activity-cell": `${CELL}px` } as React.CSSProperties}>
 			<div
 				className="activity-months"
 				style={{
-					marginLeft: `${WEEKDAY_W}px`,
+					marginLeft: `${monthInset}px`,
 					display: "grid",
-					gridTemplateColumns: `repeat(${columns.length}, minmax(0, ${CELL}px))`,
+					gridTemplateColumns: `repeat(${columns.length}, ${track})`,
 					gap: `${GAP}px`,
 				}}
 			>
@@ -92,7 +94,7 @@ export function ActivityHeatmap(props: { days: PartnerActivityDay[]; weeks?: num
 						display: "grid",
 						gridAutoFlow: "column",
 						gridTemplateRows: "repeat(7, auto)",
-						gridAutoColumns: `minmax(0, ${CELL}px)`,
+						gridAutoColumns: track,
 						gap: `${GAP}px`,
 					}}
 				>

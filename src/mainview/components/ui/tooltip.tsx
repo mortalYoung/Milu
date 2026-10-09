@@ -16,7 +16,7 @@ export function TooltipContent({ className, sideOffset = 4, ...rest }: Component
 			<TooltipPrimitive.Content
 				sideOffset={sideOffset}
 				className={cn(
-					"z-[60] w-max rounded-[3px] bg-ink px-2 py-1 font-sans text-[10px] leading-none text-canvas select-none",
+					"z-[60] w-max rounded-[4px] bg-ink px-2 py-1 font-sans text-[10px] leading-none text-canvas select-none",
 					"data-[state=delayed-open]:animate-in data-[state=instant-open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=delayed-open]:fade-in-0 data-[state=instant-open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=delayed-open]:zoom-in-95 data-[state=instant-open]:zoom-in-95",
 					className,
 				)}

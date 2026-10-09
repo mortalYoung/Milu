@@ -29,7 +29,7 @@ export function Select(props: {
 				)}
 			>
 				<SelectPrimitive.Value placeholder={props.placeholder ?? "Select…"} />
-				<SelectPrimitive.Icon className="shrink-0 text-muted-soft transition-transform group-data-[state=open]:rotate-180">
+				<SelectPrimitive.Icon className="shrink-0 text-muted transition-transform group-data-[state=open]:rotate-180">
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
 						viewBox="0 0 8 8"

@@ -19,6 +19,7 @@ export const ESCAPE_ORDER = {
 	dockList: 76,
 	dockDetail: 75,
 	dock: 70,
+	chatListSearch: 65,
 } as const;
 
 const published = new Map<string, EscapeLayer>();

@@ -19,7 +19,7 @@ export function ContextMenuContent({
 	const content = (
 		<ContextMenuPrimitive.Content
 			className={cn(
-				"z-50 origin-[var(--radix-context-menu-content-transform-origin)] overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-none animate-in",
+				"z-50 origin-[var(--radix-context-menu-content-transform-origin)] overflow-hidden rounded-[8px] border bg-popover text-popover-foreground shadow-none animate-in",
 				size === "sm" ? "min-w-28 p-0.5" : "min-w-32 p-1",
 				className,
 			)}
@@ -81,7 +81,7 @@ export function ContextMenuSubContent({ className, ...rest }: ComponentProps<typ
 	return (
 		<ContextMenuPrimitive.SubContent
 			className={cn(
-				"z-50 min-w-32 origin-[var(--radix-context-menu-content-transform-origin)] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-none outline-none animate-in",
+				"z-50 min-w-32 origin-[var(--radix-context-menu-content-transform-origin)] overflow-hidden rounded-[8px] border bg-popover p-1 text-popover-foreground shadow-none outline-none animate-in",
 				className,
 			)}
 			{...rest}

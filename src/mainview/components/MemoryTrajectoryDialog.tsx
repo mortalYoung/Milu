@@ -34,13 +34,13 @@ function hasBody(message: MemoryTrajectoryMessageView): boolean {
 function MessageLabel({ message }: { message: MemoryTrajectoryMessageView }) {
 	return (
 		<>
-			<span className="shrink-0 rounded-[3px] border border-line px-1 py-[1px] font-mono text-[10px] uppercase tracking-[0.06em] text-muted">
+			<span className="shrink-0 rounded-[4px] border border-line px-1 py-[1px] font-mono text-[10px] uppercase tracking-[0.06em] text-muted">
 				{message.toolName ? `${message.role} · ${message.toolName}` : message.role}
 				{message.isError ? " · error" : ""}
 				{message.errorMessage ? ` · ${message.stopReason ?? "error"}` : ""}
 			</span>
-			<span className="min-w-0 flex-1 truncate font-mono text-[11.5px] text-ink">{preview(message)}</span>
-			<span className={`shrink-0 text-[10px] ${MONO} text-muted-soft`}>{chars(message)}</span>
+			<span className="min-w-0 flex-1 truncate font-mono text-[12px] text-ink">{preview(message)}</span>
+			<span className={`shrink-0 text-[10px] ${MONO} text-muted`}>{chars(message)}</span>
 		</>
 	);
 }
@@ -48,8 +48,8 @@ function MessageLabel({ message }: { message: MemoryTrajectoryMessageView }) {
 function Block({ label, text }: { label: string; text: string }) {
 	return (
 		<div className="flex flex-col gap-1">
-			<p className="font-sans text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-soft">{label}</p>
-			<pre className="max-h-[320px] overflow-auto whitespace-pre-wrap break-words rounded-md border border-line bg-canvas px-2 py-1.5 font-mono text-[11.5px] leading-[1.55] text-muted">
+			<p className="font-sans text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">{label}</p>
+			<pre className="max-h-[320px] overflow-auto whitespace-pre-wrap break-words rounded-md border border-line bg-canvas px-2 py-1.5 font-mono text-[12px] leading-[1.55] text-muted">
 				{text}
 			</pre>
 		</div>
@@ -101,11 +101,11 @@ export function MemoryTrajectoryDialog(props: { partner: string; run: MemoryRunV
 					<>
 						<header className="flex flex-col gap-1.5 border-b border-line px-5 pb-3 pt-4 pr-12">
 							<div className="flex items-baseline gap-2">
-								<span className="font-sans text-[13.5px] font-semibold text-ink">{run.stage} run</span>
-								<span className={"font-mono text-[11.5px] " + (run.reason === "completed" ? "text-muted" : "text-signal")}>{run.reason}</span>
-								<span className="ml-auto font-mono text-[11.5px] text-muted-soft">{convTime(run.startedAt)}</span>
+								<span className="font-sans text-[14px] font-semibold text-ink">{run.stage} run</span>
+								<span className={"font-mono text-[12px] " + (run.reason === "completed" ? "text-muted" : "text-signal")}>{run.reason}</span>
+								<span className="ml-auto font-mono text-[12px] text-muted">{convTime(run.startedAt)}</span>
 							</div>
-							<div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[11.5px] text-muted-soft">
+							<div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[12px] text-muted">
 								<span>{(run.durationMs / 1000).toFixed(1)}s</span>
 								<span>+{run.added} added</span>
 								{run.usage && <span title={usageTitle(run.usage)}>{formatTokens(totalTokens(run.usage))} tok</span>}
@@ -114,11 +114,11 @@ export function MemoryTrajectoryDialog(props: { partner: string; run: MemoryRunV
 								{trace?.attempts != null && <span>{trace.attempts} attempt(s)</span>}
 								{trace?.targetRawId && <span>covered {trace.targetRawId.slice(0, 8)}…</span>}
 							</div>
-							{run.error && <p className="font-mono text-[11.5px] text-signal">{run.error}</p>}
+							{run.error && <p className="font-mono text-[12px] text-signal">{run.error}</p>}
 							{counts.length > 0 && (
 								<div className="mt-0.5 flex flex-wrap gap-1.5">
 									{counts.map(([type, count]) => (
-										<span className="rounded-[3px] border border-line px-1.5 py-[1px] font-mono text-[10px] text-muted" key={type}>
+										<span className="rounded-[4px] border border-line px-1.5 py-[1px] font-mono text-[10px] text-muted" key={type}>
 											{type} × {count}
 										</span>
 									))}
@@ -129,7 +129,7 @@ export function MemoryTrajectoryDialog(props: { partner: string; run: MemoryRunV
 						<div className="min-h-0 overflow-y-auto px-5 py-3">
 							{(trace?.attemptsView ?? []).map((attempt) => (
 								<section className="mb-3" key={attempt.attempt}>
-									<p className="mb-1 font-sans text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-soft">attempt {attempt.attempt}</p>
+									<p className="mb-1 font-sans text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">attempt {attempt.attempt}</p>
 									{attempt.messages.map((message, index) => {
 										const key = `${attempt.attempt}-${index}`;
 										const body = hasBody(message);
