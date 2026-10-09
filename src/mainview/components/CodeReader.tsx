@@ -3,7 +3,7 @@ import { search } from "@codemirror/search";
 import { Compartment, EditorState, RangeSetBuilder } from "@codemirror/state";
 import { Decoration, type DecorationSet, drawSelection, EditorView, GutterMarker, gutter, keymap, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import { AnimatePresence } from "motion/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { foldedSpans, searchMatchHighlighter } from "../lib/cm6-find";
 import { foldLanguage } from "../lib/code-languages";
 import type { RevealRange } from "../lib/dock";
@@ -13,6 +13,7 @@ import { highlightCodeToLines } from "../lib/shiki-remote";
 import type { HighlightLine } from "../lib/shiki-setup";
 import { setTokens, tokenPainter } from "../lib/shiki-tokens";
 import { SURFACE } from "../lib/surfaces";
+import { readViewState, writeViewState } from "../lib/viewstate";
 import { FloatFind } from "./FloatFind";
 
 export function PreviewBusy(props: { when: boolean }) {
@@ -233,6 +234,8 @@ export function CodeReader(props: {
 	locate?: RevealRange | null;
 	panelOpen: boolean;
 	wrap: boolean;
+	/** 这个文件在 viewstate 缓存里的键；换 tab 时靠它把现场存下来再铺回去 */
+	viewKey?: string | null;
 	onSelection?: (range: { start: number; end: number } | null) => void;
 }) {
 	const wrapCompartment = useRef(new Compartment());
@@ -244,6 +247,10 @@ export function CodeReader(props: {
 	const disposed = useRef(false);
 	const propsRef = useRef(props);
 	propsRef.current = props;
+	const viewKeyRef = useRef(props.viewKey);
+	viewKeyRef.current = props.viewKey;
+	/* 还原现场那一帧里的 scroll 事件是"我们自己滚的"，别当成用户行为记回缓存 */
+	const restoring = useRef(false);
 
 	useEffect(() => {
 		if (props.content === "") {
@@ -299,14 +306,68 @@ export function CodeReader(props: {
 	}
 
 	function reportSelection(update: ViewUpdate) {
-		if (!update.selectionSet && !update.docChanged) return;
-		propsRef.current.onSelection?.(lineRange(update.state));
+		if (update.selectionSet || update.docChanged) {
+			propsRef.current.onSelection?.(lineRange(update.state));
+			save(update.view);
+			return;
+		}
+		/* 折叠/展开既不是选区也不是 doc 变更，但它同样是"要记住的现场" */
+		if (update.transactions.some((tr) => tr.effects.some((effect) => effect.is(foldEffect) || effect.is(unfoldEffect)))) save(update.view);
 	}
 
 	function lineRange(state: EditorState): { start: number; end: number } | null {
 		const selection = state.selection.main;
 		if (selection.empty) return null;
 		return { start: state.doc.lineAt(selection.from).number - 1, end: state.doc.lineAt(selection.to).number - 1 };
+	}
+
+	function capture(view: EditorView) {
+		const folds: { from: number; to: number }[] = [];
+		foldedRanges(view.state).between(0, view.state.doc.length, (from, to) => {
+			folds.push({ from, to });
+		});
+		const block = view.lineBlockAtHeight(view.scrollDOM.scrollTop);
+		return {
+			scrollTop: view.scrollDOM.scrollTop,
+			lines: view.state.doc.lines,
+			topLine: view.state.doc.lineAt(block.from).number,
+			/* 首行顶端离视口顶还有几像素：只记行号会丢掉这半行，读起来像被吸了一下 */
+			topOffset: Math.max(0, Math.round(view.scrollDOM.scrollTop - block.top)),
+			select: lineRange(view.state),
+			folds,
+		};
+	}
+
+	function save(view: EditorView) {
+		const key = viewKeyRef.current;
+		/* 三条不记：空文档（换 tab 的中转帧）、正在还原的那一帧（是我们自己滚的）、
+		   以及编辑器已经脱离文档时 —— 那一刻 .cm-scroller 被浏览器夹到 scrollTop 0，
+		   读到的 0 不是用户的位置（P-95）。 */
+		if (!key || restoring.current || view.state.doc.length === 0 || !view.dom.isConnected) return;
+		writeViewState(key, capture(view));
+	}
+
+	function restore(view: EditorView, state: ReturnType<typeof capture>) {
+		const lines = view.state.doc.lines;
+		if (state.lines === lines) {
+			// 文件没变（行数对得上）：连选中的行和折叠的块一起还
+			if (state.select) {
+				const from = view.state.doc.line(Math.min(state.select.start + 1, lines)).from;
+				const head = view.state.doc.line(Math.min(state.select.end + 1, lines)).to;
+				view.dispatch({ selection: { anchor: from, head } });
+			}
+			if (state.folds.length > 0) view.dispatch({ effects: state.folds.map((fold) => foldEffect.of(fold)) });
+		}
+		/* 滚动必须走事务（scrollIntoView），不能直接写 scrollDOM.scrollTop：
+		   CM6 是虚拟视口，刚 mount / setState 时文档还没量过高度，直接写会被浏览器夹到 0
+		   —— 换 tab 时 reader 是重新挂载的，这一夹就是"完全没有还原"。 */
+		if (state.topLine > 0) {
+			const line = view.state.doc.line(Math.min(state.topLine, lines));
+			view.dispatch({ effects: EditorView.scrollIntoView(line.from, { y: "start", yMargin: state.topOffset }) });
+		} else if (state.scrollTop > 0) {
+			// 上一份现场是 markdown 正文写的（没有行号）：退到像素
+			view.scrollDOM.scrollTop = state.scrollTop;
+		}
 	}
 
 	function applyLocate(view: EditorView) {
@@ -323,19 +384,30 @@ export function CodeReader(props: {
 		const el = hostEl.current;
 		if (!el) return;
 		const view = new EditorView({ state: makeState(propsRef.current.content), parent: el });
+		const scroller = view.scrollDOM;
+		const onScroll = () => save(view);
+		scroller.addEventListener("scroll", onScroll, { passive: true });
 		setEditor(view);
 		return () => {
+			scroller.removeEventListener("scroll", onScroll);
 			disposed.current = true;
 			view.destroy();
 		};
 	}, []);
 
-	useEffect(() => {
+	useLayoutEffect(() => {
 		const view = editor;
 		if (!view) return;
 		view.setState(makeState(props.content));
+		const saved = props.viewKey ? readViewState(props.viewKey) : null;
+		restoring.current = true;
+		if (saved) restore(view, saved);
 		applyLocate(view);
-	}, [props.content, editor]);
+		const frame = requestAnimationFrame(() => {
+			restoring.current = false;
+		});
+		return () => cancelAnimationFrame(frame);
+	}, [props.content, editor, props.viewKey]);
 
 	useEffect(() => {
 		if (!editor) return;
@@ -388,8 +460,16 @@ export function CodeReader(props: {
 		find.refresh();
 	}, [editor, find.open, find.refresh]);
 
+	/* 收掉 ⌘F 留下的选区 —— 只在"浮条关掉的那一刻"做。
+	   editor 在依赖里会让它在每次重新挂载时也跑一遍，把刚还原回来的选区一起收掉（P-96）。 */
+	const findWasOpen = useRef(false);
 	useEffect(() => {
-		if (find.open || !editor) return;
+		if (find.open) {
+			findWasOpen.current = true;
+			return;
+		}
+		if (!findWasOpen.current || !editor) return;
+		findWasOpen.current = false;
 		editor.dispatch({ selection: { anchor: editor.state.selection.main.head } });
 	}, [find.open, editor]);
 	useEscapeLayer({

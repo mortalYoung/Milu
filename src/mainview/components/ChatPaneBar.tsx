@@ -1,7 +1,6 @@
 import { Activity, Folder, GitBranch, ListTree, PanelLeftOpen } from "lucide-react";
 import { useStore } from "zustand";
 import { useAgentStatus } from "../lib/contexts/agent-status-context";
-import { useSettings } from "../lib/contexts/settings-context";
 import { useTrajectory } from "../lib/contexts/trajectory-context";
 import { useTranscript } from "../lib/contexts/transcript-context";
 import type { Dock } from "../lib/dock";
@@ -11,15 +10,20 @@ import { WorktreeMenu } from "./WorktreeMenu";
 const barIconClass =
 	"size-8 rounded-full border-0 electrobun-webkit-app-region-no-drag flex items-center justify-center text-ink hover:bg-hover disabled:opacity-40 disabled:cursor-default disabled:hover:bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-canvas";
 
-export function ChatPaneBar(props: { dock: Dock; selected: string | null; onViewDetails: (name: string) => void; listCollapsed: boolean; onToggleList: () => void }) {
+export function ChatPaneBar(props: {
+	dock: Dock;
+	selected: string | null;
+	onViewDetails: (name: string) => void;
+	listCollapsed: boolean;
+	listHidden: boolean;
+	onToggleList: () => void;
+}) {
 	const status = useAgentStatus();
-	const settings = useSettings();
 	const trajectory = useTrajectory();
 	const transcript = useTranscript();
 
 	const snapshot = useStore(status.store, (state) => state.snapshot);
 	const dockPanels = useStore(props.dock.store, (state) => state.panels);
-	const settingsSnapshot = useStore(settings.store, (state) => state.snapshot);
 	const trajectoryOpen = useStore(trajectory.store, (state) => state.open);
 	const itemCount = useStore(transcript.store, (state) => state.items.length);
 
@@ -34,7 +38,6 @@ export function ChatPaneBar(props: { dock: Dock; selected: string | null; onView
 	const changeBadge = changeCount > 99 ? "99+" : String(changeCount);
 	const hasDockTools = hasWorkspace || gitAvailable;
 	const isOpen = (which: "explorer" | "git" | "replies") => panel === which;
-	const dockSide = settingsSnapshot.settings?.dockSide ?? "right";
 
 	const explorerButton = hasWorkspace ? (
 		<button
@@ -76,23 +79,21 @@ export function ChatPaneBar(props: { dock: Dock; selected: string | null; onView
 
 	const dockTools = (
 		<>
-			{dockSide === "left" && hasDockTools && <span className="chat-tools-sep" />}
 			{explorerButton}
 			{gitButton}
 			{worktreesButton}
-			{dockSide === "right" && hasDockTools && <span className="chat-tools-sep" />}
+			{hasDockTools && <span className="chat-tools-sep" />}
 		</>
 	);
 
 	return (
-		<div className={"chat-bar electrobun-webkit-app-region-drag" + (props.listCollapsed ? " at-edge" : "")} onDoubleClick={zoomOnDoubleClick}>
+		<div className={"chat-bar electrobun-webkit-app-region-drag" + (props.listHidden ? " at-edge" : "")} onDoubleClick={zoomOnDoubleClick}>
 			<div className="chat-bar-lead">
 				{props.listCollapsed && (
 					<button type="button" className={barIconClass + " list-expand"} title="Show chat list (⌘B)" aria-label="Show chat list" onClick={props.onToggleList}>
 						<PanelLeftOpen size={16} />
 					</button>
 				)}
-				{dockSide === "left" && dockTools}
 			</div>
 
 			<div className="chat-bar-name" title="View details" onClick={() => props.selected && props.onViewDetails(props.selected)}>
@@ -108,7 +109,7 @@ export function ChatPaneBar(props: { dock: Dock; selected: string | null; onView
 			</div>
 
 			<div className="chat-bar-tools">
-				{dockSide === "right" && dockTools}
+				{dockTools}
 				<button
 					type="button"
 					className={barIconClass + (isOpen("replies") ? " on" : "")}

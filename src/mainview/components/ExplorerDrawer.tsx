@@ -1,6 +1,6 @@
-import { ChevronDown, ChevronRight, Folder, FolderOpen, FolderSymlink, MessageSquareQuote, Pilcrow, Pin, WrapText, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Folder, FolderOpen, FolderSymlink, MessageSquareQuote, Pilcrow, WrapText, X } from "lucide-react";
 import { AnimatePresence } from "motion/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
 import type { ExplorerEntry } from "../../shared/rpc";
@@ -9,15 +9,15 @@ import { useSession } from "../lib/contexts/session-context";
 import { useSettings } from "../lib/contexts/settings-context";
 import { useToast } from "../lib/contexts/toast-context";
 import type { RevealRange, RevealTarget } from "../lib/dock";
-import { DOCK_PANE_MAX, DOCK_PANE_MIN, dockAnchorPoint } from "../lib/dock";
 import { ESCAPE_ORDER, useEscapeLayer } from "../lib/escape";
 import { fileGlyph, linkGlyph } from "../lib/file-icons";
 import { domFindEngine, useFindBar, useFindHandler } from "../lib/find";
 import { languageForPath, paintMarkdown, renderMarkdown, renderMarkdownReady } from "../lib/markdown";
 import { rpc } from "../lib/rpc";
 import { SURFACE } from "../lib/surfaces";
+import { readViewState, viewStateKey, writeViewState } from "../lib/viewstate";
 import { CodeReader, PreviewBusy } from "./CodeReader";
-import { type DockListControls, DockShell } from "./DockShell";
+import { type DockListControls, DockListToggle, DockShell } from "./DockShell";
 import { FloatFind } from "./FloatFind";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "./ui/context-menu";
 
@@ -134,7 +134,7 @@ function FrontmatterHeader(props: { frontmatter: Frontmatter }) {
 	);
 }
 
-function MarkdownFile(props: { content: string; frontmatter?: Frontmatter; partner?: string | null; path?: string }) {
+function MarkdownFile(props: { content: string; frontmatter?: Frontmatter; partner?: string | null; path?: string; viewKey?: string | null }) {
 	const [busy, setBusy] = useState(false);
 	const images = useRef(new Map<string, string>());
 	const failures = useRef(new Map<string, string>());
@@ -144,6 +144,21 @@ function MarkdownFile(props: { content: string; frontmatter?: Frontmatter; partn
 
 	const findEngine = useCallback(() => domFindEngine(scrollRef.current), []);
 	const find = useFindBar({ engine: findEngine, canClaim: () => body.trim() !== "" });
+	const viewKeyRef = useRef(props.viewKey);
+	viewKeyRef.current = props.viewKey;
+
+	/* 正文的现场只有滚动位置：切 tab 时按 px 铺回去（图片还没加载完就再补一帧） */
+	useLayoutEffect(() => {
+		const el = scrollRef.current;
+		if (!el) return;
+		const saved = props.viewKey ? readViewState(props.viewKey) : null;
+		const apply = () => {
+			if (scrollRef.current === el) el.scrollTop = saved?.scrollTop ?? 0;
+		};
+		apply();
+		const frame = requestAnimationFrame(apply);
+		return () => cancelAnimationFrame(frame);
+	}, [props.viewKey, props.content]);
 	useFindHandler(SURFACE.reader, () => find.claim());
 
 	useEffect(() => {
@@ -203,7 +218,14 @@ function MarkdownFile(props: { content: string; frontmatter?: Frontmatter; partn
 
 	return (
 		<>
-			<div className="explorer-md-scroll" ref={scrollRef}>
+			<div
+				className="explorer-md-scroll"
+				ref={scrollRef}
+				onScroll={(event) => {
+					const key = viewKeyRef.current;
+					if (key) writeViewState(key, { scrollTop: event.currentTarget.scrollTop, lines: 0, topLine: 0, topOffset: 0, select: null, folds: [] });
+				}}
+			>
 				{props.frontmatter && <FrontmatterHeader frontmatter={props.frontmatter} />}
 				<div ref={ref} className="md explorer-md" />
 			</div>
@@ -346,18 +368,12 @@ export function ExplorerDrawer(props: {
 	open: boolean;
 	partner: string | null;
 	reveal?: RevealTarget | null;
-	side?: "left" | "right";
-	pinned: boolean;
-	onTogglePin: () => void;
-	columnWidth: number | null;
-	setColumnWidth: (width: number | null) => void;
-	commitColumnWidth: () => void;
+	width: number;
 	paneWidth: number;
-	onPaneResize: (px: number) => void;
-	onPaneCommit: () => void;
+	listOpen: boolean;
+	onToggleList: () => void;
 	wrap: boolean;
 	onToggleWrap: () => void;
-	onClose: () => void;
 }) {
 	const settingsView = useSettings();
 	const toast = useToast();
@@ -372,9 +388,8 @@ export function ExplorerDrawer(props: {
 	const [dirs, setDirs] = useState<Record<string, DirState>>({});
 	const [dirReal, setDirReal] = useState<Record<string, string>>({});
 	const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
-	const [fileData, setFileData] = useState<FileData | null>(null);
-	const [fileLoading, setFileLoading] = useState(false);
-	const readKey = useRef<string | null>(null);
+	/* 读到的内容必须和自己的路径绑在一起：换 tab 时"新 key + 旧内容"那一帧会把旧文件的现场写进新文件的缓存 */
+	const [fileData, setFileData] = useState<(FileData & { path: string }) | null>(null);
 
 	const tokens = useRef(new Map<string, number>());
 	const treeEl = useRef<HTMLDivElement>(null);
@@ -388,6 +403,15 @@ export function ExplorerDrawer(props: {
 	const selected = openTabs.tabs.find((tab) => tab.path === openTabs.active) ?? null;
 	if (selected) shownFileRef.current = selected;
 	const shownFile = shownFileRef.current;
+	/* 内容属于哪个文件是一眼能算出来的事实，不用另一个 loading 状态去猜 */
+	const shownData = fileData && shownFile && fileData.path === shownFile.path ? fileData : null;
+	const fileLoading = shownFile != null && shownData == null;
+
+	/* 选中的行按文件记：切 tab 时先把这个文件自己的高亮铺回来（reader 还原现场后还会再报一次） */
+	const liveKey = shownFile ? viewStateKey(props.partner, shownFile.path) : null;
+	useEffect(() => {
+		setLiveRange(liveKey ? (readViewState(liveKey)?.select ?? null) : null);
+	}, [liveKey]);
 
 	const dirsRef = useRef(dirs);
 	dirsRef.current = dirs;
@@ -530,17 +554,13 @@ export function ExplorerDrawer(props: {
 	useEffect(() => {
 		if (!shownFile || !props.partner) {
 			setFileData(null);
-			readKey.current = null;
 			return;
 		}
 		let cancelled = false;
-		const key = `${props.partner}|${shownFile.path}`;
-		if (readKey.current !== key) setFileLoading(true);
-		readKey.current = key;
-		void rpc.request.explorer_read_file({ name: props.partner, root: "workspace", path: shownFile.path }).then((res) => {
+		const path = shownFile.path;
+		void rpc.request.explorer_read_file({ name: props.partner, root: "workspace", path }).then((res) => {
 			if (cancelled) return;
-			setFileData(res.ok ? res : { error: res.error ?? "failed to read file" });
-			setFileLoading(false);
+			setFileData(res.ok ? { ...res, path } : { error: res.error ?? "failed to read file", path });
 		});
 		return () => {
 			cancelled = true;
@@ -666,22 +686,18 @@ export function ExplorerDrawer(props: {
 	})();
 	const rendered = !!shownFile && shownFile.raw !== true && languageForPath(shownFile.path) === "markdown";
 
+	const workspace = dirReal[""] ?? "";
+	const rootName = workspace.split("/").filter(Boolean).pop() ?? "workspace";
+
 	return (
 		<DockShell
 			open={props.open}
 			panelId="explorer"
-			side={props.side ?? "right"}
-			pinned={props.pinned}
-			onTogglePin={props.onTogglePin}
-			columnWidth={props.columnWidth}
-			setColumnWidth={props.setColumnWidth}
-			commitColumnWidth={props.commitColumnWidth}
-			width={props.paneWidth}
-			min={DOCK_PANE_MIN}
-			max={DOCK_PANE_MAX}
-			resizeLabel="Resize the file tree"
-			onResize={props.onPaneResize}
-			onCommit={props.onPaneCommit}
+			width={props.width}
+			paneWidth={props.paneWidth}
+			listTitle={`${rootName} · ${rootState?.entries?.length ?? 0}`}
+			listOpen={props.listOpen}
+			onToggleList={props.onToggleList}
 			surface={SURFACE.reader}
 			detail={{
 				open: selected != null,
@@ -689,6 +705,7 @@ export function ExplorerDrawer(props: {
 					shownFile ? (
 						<div className={"explorer-reader dock-detail" + (leaving ? " leaving" : "")}>
 							<div className="explorer-reader-head">
+								{!list.open && <DockListToggle open={false} onToggle={list.toggle} />}
 								<div className="explorer-tabs" ref={tabStrip}>
 									{openTabs.tabs.map((tab) => (
 										<div className={"explorer-tab" + (tab.path === openTabs.active ? " on" : "")} key={tab.path}>
@@ -704,27 +721,6 @@ export function ExplorerDrawer(props: {
 								</div>
 
 								<div className="explorer-reader-actions">
-									<button
-										type="button"
-										className={"dock-btn" + (list.pinned ? " on" : "")}
-										aria-pressed={list.pinned}
-										disabled={!list.canPin && !list.pinned}
-										title={list.pinned ? "Let the file cover the chat again" : "Pin the chat beside the file"}
-										onClick={() => list.togglePin()}
-									>
-										<Pin size={11} />
-									</button>
-									{list.pinned && (
-										<button
-											type="button"
-											className={"dock-btn" + (list.listOpen ? " on" : "")}
-											aria-pressed={list.listOpen}
-											title={list.listOpen ? "Hide the file tree" : "Show the file tree"}
-											onClick={(event) => list.openList(dockAnchorPoint(event.currentTarget))}
-										>
-											☰
-										</button>
-									)}
 									{liveRange && (
 										<>
 											<button type="button" className="explorer-tag" title={`Copy ${shownFile.path}#${rangeLabel}`} onClick={copyLiveRange}>
@@ -774,10 +770,7 @@ export function ExplorerDrawer(props: {
 											type="button"
 											className="explorer-dir-seg"
 											key={dirSegments.slice(0, index + 1).join("/")}
-											onClick={(event) => {
-												void focusDir(dirSegments.slice(0, index + 1).join("/"));
-												if (list.pinned) list.openList(dockAnchorPoint(event.currentTarget));
-											}}
+											onClick={() => void focusDir(dirSegments.slice(0, index + 1).join("/"))}
 										>
 											{segment}/
 										</button>
@@ -791,15 +784,21 @@ export function ExplorerDrawer(props: {
 									<span className="work-dot" />
 									<span className="work-dot" />
 								</div>
-							) : fileData?.binary ? (
+							) : shownData?.binary ? (
 								<div className="explorer-reader-note">binary file · preview unavailable</div>
-							) : fileData?.error ? (
-								<div className="explorer-reader-note">{fileData.error}</div>
+							) : shownData?.error ? (
+								<div className="explorer-reader-note">{shownData.error}</div>
 							) : (
 								<>
 									{rendered ? (
 										<div className="explorer-file-body">
-											<MarkdownFile content={fileData?.content ?? ""} frontmatter={fileData?.frontmatter} partner={props.partner} path={shownFile.path} />
+											<MarkdownFile
+												content={shownData?.content ?? ""}
+												frontmatter={shownData?.frontmatter}
+												partner={props.partner}
+												path={shownFile.path}
+												viewKey={viewStateKey(props.partner, shownFile.path)}
+											/>
 										</div>
 									) : (
 										<div
@@ -813,17 +812,18 @@ export function ExplorerDrawer(props: {
 											}
 										>
 											<CodeReader
-												content={fileData?.content ?? ""}
+												content={shownData?.content ?? ""}
 												lang={languageForPath(shownFile.path) ?? null}
 												fold={foldable}
 												locate={shownFile.range ?? null}
 												panelOpen={props.open}
 												wrap={props.wrap}
+												viewKey={viewStateKey(props.partner, shownFile.path)}
 												onSelection={(range) => setLiveRange(range)}
 											/>
 										</div>
 									)}
-									{fileData?.truncated && <div className="explorer-reader-foot">truncated · file larger than preview limit</div>}
+									{shownData?.truncated && <div className="explorer-reader-foot">truncated · file larger than preview limit</div>}
 								</>
 							)}
 						</div>

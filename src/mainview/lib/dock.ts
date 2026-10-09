@@ -3,15 +3,6 @@ import { clampPaneWidth } from "./grip";
 
 export type DockPanel = "explorer" | "git" | "replies";
 
-/** Where a floating dock card should land: the clicked element's bottom-left, in the dock's coordinates. */
-export function dockAnchorPoint(el: HTMLElement): { x: number; y: number } {
-	const dock = el.closest(".dock");
-	if (!dock) return { x: 0, y: 0 };
-	const box = dock.getBoundingClientRect();
-	const rect = el.getBoundingClientRect();
-	return { x: Math.round(rect.left - box.left), y: Math.round(rect.bottom - box.top + 6) };
-}
-
 export interface RevealRange {
 	start: number;
 	end: number;
@@ -23,40 +14,50 @@ export interface RevealTarget {
 	range?: RevealRange;
 }
 
-const LETTER_WIDTH_KEY = "explorer.columnWidth";
+const DOCK_WIDTH_KEY = "dock.width";
+const LIST_OPEN_KEY = "dock.listOpen";
 const PANE_WIDTH_KEY = "dock.paneWidth";
 const LIST_WIDTH_KEY = "chatlist.width";
 const WRAP_KEY = "reader.wrap";
 const SIDE_BY_SIDE_KEY = "reader.sideBySide";
 const IGNORE_WS_KEY = "reader.ignoreWhitespace";
 
-export const DOCK_PANE_MIN = 200;
-export const DOCK_PANE_MAX = 420;
-export const DOCK_PANE_DEFAULT = 280;
+/** The dock column: its own width, unaffected by the sidebar opening or closing. */
+export const DOCK_MIN = 360;
+export const DOCK_DEFAULT = 560;
+/** The dock's inner split: the panel's own list beside its detail. */
+export const PANE_MIN = 200;
+export const PANE_MAX = 420;
+export const PANE_DEFAULT = 280;
 export const LIST_MIN = 200;
 export const LIST_MAX = 480;
 export const LIST_DEFAULT = 240;
 
+/** The workbench is the remainder; both drags must leave it this much. */
+export const WORKBENCH_MIN = 420;
+/** With the dock closed the sidebar keeps its old floor: the letter's own measure. */
+export const WORKBENCH_TARGET = 592;
+
 export interface DockState {
 	panels: Record<string, DockPanel | null>;
 	reveal: RevealTarget | null;
-	pins: Record<string, Partial<Record<DockPanel, boolean>>>;
+	dockWidth: number;
 	paneWidth: number;
-	columnWidth: number | null;
+	listOpen: boolean;
 	listWidth: number;
 	wrap: boolean;
 	sideBySide: boolean;
 	ignoreWhitespace: boolean;
 }
 
-function storedColumnWidth(): number | null {
-	const stored = Number(localStorage.getItem(LETTER_WIDTH_KEY));
-	return Number.isFinite(stored) && stored > 0 ? stored : null;
+function storedDockWidth(): number {
+	const stored = Number(localStorage.getItem(DOCK_WIDTH_KEY));
+	return Number.isFinite(stored) && stored > 0 ? Math.max(DOCK_MIN, stored) : DOCK_DEFAULT;
 }
 
 function storedPaneWidth(): number {
 	const stored = Number(localStorage.getItem(PANE_WIDTH_KEY));
-	return Number.isFinite(stored) && stored > 0 ? clampPaneWidth(stored, DOCK_PANE_MIN, DOCK_PANE_MAX) : DOCK_PANE_DEFAULT;
+	return Number.isFinite(stored) && stored > 0 ? clampPaneWidth(stored, PANE_MIN, PANE_MAX) : PANE_DEFAULT;
 }
 
 function storedListWidth(): number {
@@ -68,9 +69,9 @@ export function createDock(options: { onOpen?: () => void; partner?: () => strin
 	const store = createStore<DockState>()(() => ({
 		panels: {},
 		reveal: null,
-		pins: {},
+		dockWidth: storedDockWidth(),
 		paneWidth: storedPaneWidth(),
-		columnWidth: storedColumnWidth(),
+		listOpen: localStorage.getItem(LIST_OPEN_KEY) !== "0",
 		listWidth: storedListWidth(),
 		wrap: localStorage.getItem(WRAP_KEY) !== "0",
 		sideBySide: localStorage.getItem(SIDE_BY_SIDE_KEY) !== "0",
@@ -104,30 +105,19 @@ export function createDock(options: { onOpen?: () => void; partner?: () => strin
 		setPanel(null);
 	}
 
-	function pinned(partner: string | null, panel: DockPanel | null) {
-		return partner != null && panel != null && store.getState().pins[partner]?.[panel] === true;
+	function setDockWidth(width: number) {
+		store.setState({ dockWidth: width });
 	}
 
-	function togglePinned(partner: string | null, panel: DockPanel | null) {
-		if (partner == null || panel == null) return;
-		store.setState((state) => ({ pins: { ...state.pins, [partner]: { ...state.pins[partner], [panel]: !state.pins[partner]?.[panel] } } }));
+	function commitDockWidth() {
+		localStorage.setItem(DOCK_WIDTH_KEY, String(Math.round(store.getState().dockWidth)));
 	}
 
-	function setColumnWidth(width: number | null) {
-		store.setState({ columnWidth: width });
-	}
-
-	function commitColumnWidth() {
-		const width = store.getState().columnWidth;
-		if (width != null) localStorage.setItem(LETTER_WIDTH_KEY, String(Math.round(width)));
-	}
-
-	function setPaneWidth(width: number) {
-		store.setState({ paneWidth: width });
-	}
-
-	function commitPaneWidth() {
-		localStorage.setItem(PANE_WIDTH_KEY, String(Math.round(store.getState().paneWidth)));
+	function toggleListOpen() {
+		store.setState((state) => {
+			localStorage.setItem(LIST_OPEN_KEY, state.listOpen ? "0" : "1");
+			return { listOpen: !state.listOpen };
+		});
 	}
 
 	function setListWidth(width: number) {
@@ -174,12 +164,9 @@ export function createDock(options: { onOpen?: () => void; partner?: () => strin
 		toggle,
 		open,
 		close,
-		pinned,
-		togglePinned,
-		setColumnWidth,
-		commitColumnWidth,
-		setPaneWidth,
-		commitPaneWidth,
+		setDockWidth,
+		commitDockWidth,
+		toggleListOpen,
 		setListWidth,
 		commitListWidth,
 		toggleWrap,

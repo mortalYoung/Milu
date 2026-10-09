@@ -834,7 +834,6 @@ export type AppRPCSchema = __schema<{
 						explorer?: { lineGap?: number; fold?: { braces?: boolean; markdown?: boolean } };
 						highlight?: { tokenizeMaxLineLength?: number; tokenizeTimeLimit?: number };
 						palette?: { searchIgnoreDirs?: string[] };
-						dockSide?: "left" | "right";
 					};
 					runtime: {
 						providers: { id: string; configured: boolean; baseUrl?: string; modelCount: number }[];
@@ -880,7 +879,6 @@ export type AppRPCSchema = __schema<{
 						explorer?: { lineGap?: number; fold?: { braces?: boolean; markdown?: boolean } };
 						highlight?: { tokenizeMaxLineLength?: number; tokenizeTimeLimit?: number };
 						palette?: { searchIgnoreDirs?: string[] };
-						dockSide?: "left" | "right";
 					};
 
 					credentials?: Record<string, string>;

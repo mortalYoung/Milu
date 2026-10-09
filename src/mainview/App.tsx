@@ -26,7 +26,7 @@ import { InboxProvider } from "./lib/contexts/inbox-context";
 import { MetricsProvider } from "./lib/contexts/metrics-context";
 import { ScrollProvider } from "./lib/contexts/scroll-context";
 import { SessionProvider } from "./lib/contexts/session-context";
-import { SettingsProvider, useSettings } from "./lib/contexts/settings-context";
+import { SettingsProvider } from "./lib/contexts/settings-context";
 import { SkillsProvider } from "./lib/contexts/skills-context";
 import { ToastProvider } from "./lib/contexts/toast-context";
 import { TrajectoryProvider } from "./lib/contexts/trajectory-context";
@@ -52,7 +52,7 @@ import {
 	transcript,
 	unread,
 } from "./lib/controllers";
-import { LIST_DEFAULT, LIST_MAX, LIST_MIN } from "./lib/dock";
+import { DOCK_MIN, LIST_DEFAULT, LIST_MAX, LIST_MIN, WORKBENCH_MIN, WORKBENCH_TARGET } from "./lib/dock";
 import { ESCAPE_ORDER, type EscapeLayer, escapeTop } from "./lib/escape";
 import { useFindRouter } from "./lib/find";
 import { GRIP_WIDTH } from "./lib/grip";
@@ -117,8 +117,6 @@ function onOpenPath(path: string, editorId?: string) {
 	});
 }
 
-const CHAT_MIN_WIDTH = 592;
-
 function ChatView(props: {
 	selected: string | null;
 	editors: { id: string; name: string }[];
@@ -128,18 +126,15 @@ function ChatView(props: {
 	onToggleList: () => void;
 	onOpenSettings: () => void;
 }) {
-	const settingsCtl = useSettings();
-	const settingsSnapshot = useStore(settingsCtl.store, (state) => state.snapshot);
 	const partners = useStore(session.store, (state) => state.partners);
 	const partnersLoading = useStore(session.partnersLoading.store, (state) => state.loading);
 	const writing = useStore(status.store, (state) => state.writing);
 	const loading = useStore(session.historyLoading.store, (state) => state.loading);
 	const readAt = useStore(unread.store, (state) => state.readAt);
 	const panels = useStore(dock.store, (state) => state.panels);
-	const pins = useStore(dock.store, (state) => state.pins);
 	const reveal = useStore(dock.store, (state) => state.reveal);
+	const dockWidth = useStore(dock.store, (state) => state.dockWidth);
 	const paneWidth = useStore(dock.store, (state) => state.paneWidth);
-	const columnWidth = useStore(dock.store, (state) => state.columnWidth);
 	const wrap = useStore(dock.store, (state) => state.wrap);
 	const sideBySide = useStore(dock.store, (state) => state.sideBySide);
 	const ignoreWhitespace = useStore(dock.store, (state) => state.ignoreWhitespace);
@@ -152,32 +147,20 @@ function ChatView(props: {
 	}, []);
 
 	const [btwAnchor, setBtwAnchor] = useState<string | null>(null);
-	const [composerHeight, setComposerHeight] = useState(0);
 	const [taskOpen, setTaskOpen] = useState(false);
 	const taskVersion = useStore(tasksCtl.store, (state) => state.version);
 	const taskOutput = useStore(tasksCtl.store, (state) => state.output);
 	const taskList = useStore(tasksCtl.store, (state) => state.tasks);
 	const listWidth = useStore(dock.store, (state) => state.listWidth);
-	const composerObserver = useRef<ResizeObserver | null>(null);
+	const listOpen = useStore(dock.store, (state) => state.listOpen);
 	const rowObserver = useRef<ResizeObserver | null>(null);
 	const rowEl = useRef<HTMLDivElement>(null);
 	const [rowWidth, setRowWidth] = useState(0);
 
 	const selected = props.selected;
 	const panel = selected ? (panels[selected] ?? null) : null;
-	const pinnedAt = (which: "explorer" | "git" | "replies") => selected != null && pins[selected]?.[which] === true;
-	const dockSide = settingsSnapshot.settings?.dockSide ?? "right";
+	const docked = panel === "explorer" || panel === "git";
 	const busy = selected ? (writing[selected] ?? partners.find((p) => p.name === selected)?.writing ?? false) : false;
-
-	function bindComposerSlot(el: HTMLDivElement | null) {
-		composerObserver.current?.disconnect();
-		composerObserver.current = null;
-		if (!el) return;
-		const observer = new ResizeObserver(() => setComposerHeight(el.clientHeight));
-		observer.observe(el);
-		composerObserver.current = observer;
-		setComposerHeight(el.clientHeight);
-	}
 
 	function bindRow(el: HTMLDivElement | null) {
 		rowEl.current = el;
@@ -192,7 +175,6 @@ function ChatView(props: {
 
 	useEffect(
 		() => () => {
-			composerObserver.current?.disconnect();
 			rowObserver.current?.disconnect();
 		},
 		[],
@@ -227,12 +209,43 @@ function ChatView(props: {
 		return partner?.lastMessageAt != null && partner.lastMessageAt > (readAt[name] ?? 0);
 	};
 
-	const listMax = rowWidth === 0 ? LIST_MAX : Math.max(LIST_MIN, Math.min(LIST_MAX, rowWidth - CHAT_MIN_WIDTH - GRIP_WIDTH));
-	const listWidthNow = Math.min(listWidth, listMax);
+	/* 三个区各守自己的宽：sidebar 与 dock 各自是存好的定值，workbench 是唯一的余量。
+	   渲染路径上谁都不夹邻居 —— 所以拖着 sidebar 不会让 dock 变，拖着 dock 也不会让 sidebar 变。 */
+	const workbenchFloor = docked ? WORKBENCH_MIN : WORKBENCH_TARGET;
+	const listWidthNow = Math.max(LIST_MIN, Math.min(listWidth, LIST_MAX));
+	const dockWidthNow = docked ? (rowWidth === 0 ? dockWidth : Math.max(DOCK_MIN, Math.min(dockWidth, rowWidth - 2 * GRIP_WIDTH))) : 0;
+
+	/* 让位（把 chatlist 藏起来）只由"这一行装不下三家的地板"触发，和当前拖到哪儿无关 ——
+	   否则拖 dock 就能把 sidebar 拖消失，而反向不会，两个方向就不对称了。 */
+	const listHidden = props.listCollapsed || (rowWidth > 0 && docked && rowWidth - 2 * GRIP_WIDTH < LIST_MIN + DOCK_MIN + workbenchFloor);
+
+	const workbenchSpace = Math.max(0, rowWidth - GRIP_WIDTH - (listHidden ? 0 : listWidthNow + GRIP_WIDTH) - (docked ? dockWidthNow + GRIP_WIDTH : 0));
+
+	/* 只有拖动才用"给 workbench 留地板"兜住荒诞值：两个方向同一个公式，只是角色互换。
+	   上限不低于当前值 —— 否则在窄窗口里一按下鼠标就会"啪"地缩一下。 */
+	const listMax = Math.max(
+		LIST_MIN,
+		listWidthNow,
+		rowWidth === 0 ? LIST_MAX : Math.min(LIST_MAX, rowWidth - GRIP_WIDTH - (docked ? dockWidthNow + GRIP_WIDTH : 0) - workbenchFloor),
+	);
+	const dockMax = Math.max(DOCK_MIN, dockWidthNow, rowWidth === 0 ? dockWidthNow : rowWidth - GRIP_WIDTH - (listHidden ? 0 : listWidthNow + GRIP_WIDTH) - workbenchFloor);
+
+	/* 拖动时上方那串数字：按左→右列出现在真的在屏上的区（被拖的那个用拖动中的值），
+	   所以三栏全开是 `sidebar / workbench / dock`，两栏就是两个数。 */
+	function splitReadout(dragged: "list" | "dock", width: number): string {
+		const list = listHidden ? 0 : dragged === "list" ? width : listWidthNow;
+		const dockNow = docked ? (dragged === "dock" ? width : dockWidthNow) : 0;
+		const grips = (list > 0 ? 1 : 0) + (dockNow > 0 ? 1 : 0);
+		const workbench = Math.max(0, rowWidth - grips * GRIP_WIDTH - list - dockNow);
+		const parts = list > 0 ? [list] : [];
+		parts.push(workbench);
+		if (dockNow > 0) parts.push(dockNow);
+		return parts.map((value) => Math.round(value)).join(" / ");
+	}
 
 	return (
 		<div className="chat-page" ref={bindRow}>
-			<div className={"conv-pane" + (props.listCollapsed ? " collapsed" : "")} style={{ width: props.listCollapsed ? undefined : listWidthNow }} inert={props.listCollapsed}>
+			<div className={"conv-pane" + (listHidden ? " collapsed" : "")} style={{ width: listHidden ? undefined : listWidthNow }} inert={listHidden}>
 				<AppSidebar
 					partners={partners}
 					loading={partnersLoading}
@@ -249,86 +262,104 @@ function ChatView(props: {
 					onOpenSettings={props.onOpenSettings}
 				/>
 			</div>
-			{!props.listCollapsed && (
+			{!listHidden && (
 				<DockGrip
 					class="conv-grip"
-					host={() => rowEl.current}
 					width={() => listWidthNow}
 					min={LIST_MIN}
 					max={listMax}
 					side="left"
 					label="Resize the chat list"
 					half={() => LIST_DEFAULT}
+					readout={(width) => splitReadout("list", width)}
 					onResize={dock.setListWidth}
 					onCommit={dock.commitListWidth}
 				/>
 			)}
-			<div className="chat-window">
-				{selected ? (
-					<div className={"chat-body" + (btwAnchor ? " btw-open" : "")}>
-						<div
-							className={"chat-main" + (pinnedAt("explorer") || pinnedAt("git") ? " pinned" : "") + (dockSide === "left" ? " side-left" : "")}
-							style={{ "--dock-bottom": `${composerHeight}px`, ...(columnWidth != null ? { "--column-width": `${columnWidth}px` } : {}) } as React.CSSProperties}
-						>
-							<ChatPaneBar dock={dock} selected={selected} onViewDetails={props.onViewDetails} listCollapsed={props.listCollapsed} onToggleList={props.onToggleList} />
-							<div className="chat-column">
-								<div className="chat-transcript-region">
-									<Transcript
-										working={busy}
-										historyLoading={loading}
-										dockOpen={panel != null}
-										worker={selected}
-										onEscalationRespond={(id, approved) => void rpc.request.sandbox_respond({ id, approved })}
-										onBtw={setBtwAnchor}
-										onBtwClose={() => setBtwAnchor(null)}
-										activeBtwAnchor={btwAnchor}
-									/>
-								</div>
-								<div className="composer-slot" ref={bindComposerSlot}>
-									<Composer
-										onSend={onSend}
-										onStop={() => void rpc.request.stop({})}
-										onShell={(command) => {
-											scroll.pin(true);
-											return rpc.request.shell_execute({ command });
-										}}
-										onTasks={() => setTaskOpen(true)}
-										hasTasks={taskList.length > 0}
-										taskRunning={taskList.filter((task) => task.status === "running").length}
-									/>
-									<TaskLogDialog open={taskOpen} onOpenChange={setTaskOpen} tasks={taskList} partner={selected} version={taskVersion} output={taskOutput} />
+			<div className="chat-area">
+				<ChatPaneBar
+					dock={dock}
+					selected={selected}
+					onViewDetails={props.onViewDetails}
+					listCollapsed={props.listCollapsed}
+					listHidden={listHidden}
+					onToggleList={props.onToggleList}
+				/>
+				<div className="chat-row">
+					{selected ? (
+						<div className={"chat-body" + (btwAnchor ? " btw-open" : "")}>
+							<div className="chat-main">
+								<div className="chat-column">
+									<div className="chat-transcript-region">
+										<Transcript
+											working={busy}
+											historyLoading={loading}
+											worker={selected}
+											onEscalationRespond={(id, approved) => void rpc.request.sandbox_respond({ id, approved })}
+											onBtw={setBtwAnchor}
+											onBtwClose={() => setBtwAnchor(null)}
+											activeBtwAnchor={btwAnchor}
+										/>
+									</div>
+									<div className="composer-slot">
+										<Composer
+											onSend={onSend}
+											onStop={() => void rpc.request.stop({})}
+											onShell={(command) => {
+												scroll.pin(true);
+												return rpc.request.shell_execute({ command });
+											}}
+											onTasks={() => setTaskOpen(true)}
+											hasTasks={taskList.length > 0}
+											taskRunning={taskList.filter((task) => task.status === "running").length}
+										/>
+										<TaskLogDialog open={taskOpen} onOpenChange={setTaskOpen} tasks={taskList} partner={selected} version={taskVersion} output={taskOutput} />
+									</div>
 								</div>
 							</div>
+						</div>
+					) : (
+						<div className="chat-main">
+							<div className="flex flex-1 flex-col items-center justify-center gap-3 text-center" ref={emptyWindow}>
+								<p className="font-serif text-[16px] text-ink-soft">— select a partner to begin —</p>
+								<p className="eyebrow">the chat list is on the left</p>
+							</div>
+						</div>
+					)}
+					{docked && (
+						<DockGrip
+							class="dock-grip-edge"
+							width={() => dockWidthNow}
+							min={DOCK_MIN}
+							max={dockMax}
+							side="right"
+							label="Resize the dock"
+							half={() => Math.round((workbenchSpace + dockWidthNow) / 2)}
+							readout={(width) => splitReadout("dock", width)}
+							onResize={dock.setDockWidth}
+							onCommit={dock.commitDockWidth}
+						/>
+					)}
+					{selected && (
+						<>
 							<ExplorerDrawer
 								open={panel === "explorer"}
 								partner={selected}
 								reveal={reveal}
-								side={dockSide}
-								pinned={pinnedAt("explorer")}
-								onTogglePin={() => dock.togglePinned(selected, "explorer")}
-								columnWidth={columnWidth}
-								setColumnWidth={dock.setColumnWidth}
-								commitColumnWidth={dock.commitColumnWidth}
+								width={docked ? dockWidthNow : 0}
 								paneWidth={paneWidth}
-								onPaneResize={dock.setPaneWidth}
-								onPaneCommit={dock.commitPaneWidth}
+								listOpen={listOpen}
+								onToggleList={dock.toggleListOpen}
 								wrap={wrap}
 								onToggleWrap={dock.toggleWrap}
-								onClose={() => dock.close()}
 							/>
 							<GitChangesDrawer
 								open={panel === "git"}
 								partner={selected}
-								side={dockSide}
-								onClose={() => dock.close()}
+								width={docked ? dockWidthNow : 0}
 								paneWidth={paneWidth}
-								onPaneResize={dock.setPaneWidth}
-								onPaneCommit={dock.commitPaneWidth}
-								pinned={pinnedAt("git")}
-								onTogglePin={() => dock.togglePinned(selected, "git")}
-								columnWidth={columnWidth}
-								setColumnWidth={dock.setColumnWidth}
-								commitColumnWidth={dock.commitColumnWidth}
+								listOpen={listOpen}
+								onToggleList={dock.toggleListOpen}
 								sideBySide={sideBySide}
 								onToggleSideBySide={dock.toggleSideBySide}
 								wrap={wrap}
@@ -337,17 +368,9 @@ function ChatView(props: {
 								onToggleIgnoreWhitespace={dock.toggleIgnoreWhitespace}
 								onRevealInExplorer={(path) => dock.revealInExplorer(path)}
 							/>
-						</div>
-					</div>
-				) : (
-					<div className="chat-main">
-						<ChatPaneBar dock={dock} selected={null} onViewDetails={props.onViewDetails} listCollapsed={props.listCollapsed} onToggleList={props.onToggleList} />
-						<div className="flex flex-1 flex-col items-center justify-center gap-3 text-center" ref={emptyWindow}>
-							<p className="font-serif text-[16px] text-ink-soft">— select a partner to begin —</p>
-							<p className="eyebrow">the chat list is on the left</p>
-						</div>
-					</div>
-				)}
+						</>
+					)}
+				</div>
 			</div>
 			<RepliesPane open={panel === "replies"} />
 			<TrajectoryDrawer />

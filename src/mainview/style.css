@@ -847,11 +847,18 @@
 
 	.chat-page {
 		@apply relative flex-1 flex min-h-0;
-	}
-	.chat-window {
-		@apply relative flex-1 flex flex-col min-w-0;
-		/* 信的条有多高：条自己、dock 的上沿、replies 面板的上沿都读这一个值 */
+		/* 条有多高：条自己与 replies 面板的上沿共读这一个值（改条高只改一处） */
 		--bar-h: 52px;
+	}
+	/* 条横跨 workbench + dock（和 pin 模式一样），所以它在「区」这一层，不属于 workbench */
+	.chat-area {
+		@apply relative flex-1 flex flex-col min-w-0 min-h-0;
+	}
+	.chat-row {
+		@apply relative flex-1 flex min-w-0 min-h-0;
+	}
+	.workbench {
+		@apply relative flex-1 flex flex-col min-w-0 min-h-0;
 	}
 
 	.chat-body {
@@ -932,50 +939,6 @@
 		@apply relative flex-1 min-h-0 flex flex-col;
 	}
 
-	/* ——— pinned: the letter keeps a column and the dock takes the rest ——— */
-	/* DOM: chat-main = [chat-bar][chat-column][dock]。pin 之后换成网格：
-	   条横跨两列占第一行，第二行才是 [列 | dock]（side-left 时镜像）。 */
-	.chat-main.pinned {
-		display: grid;
-		grid-template-columns: minmax(0, 1fr) auto;
-		grid-template-rows: auto minmax(0, 1fr);
-	}
-	.chat-main.pinned:has(.dock-detail) {
-		grid-template-columns: var(--column-width, 42%) minmax(0, 1fr);
-	}
-	.chat-main.pinned .chat-bar {
-		grid-column: 1 / -1;
-		grid-row: 1;
-	}
-	.chat-main.pinned .chat-column {
-		grid-column: 1;
-		grid-row: 2;
-	}
-	.chat-main.pinned.side-left {
-		grid-template-columns: auto minmax(0, 1fr);
-	}
-	.chat-main.pinned.side-left:has(.dock-detail) {
-		grid-template-columns: minmax(0, 1fr) var(--column-width, 42%);
-	}
-	.chat-main.pinned.side-left .chat-column {
-		grid-column: 2;
-	}
-	.chat-main.pinned .dock {
-		position: relative;
-		/* 第二行 + 底部让出 composer：同样不碰 windowbar 和输入卡。
-		   绝对的 inset 必须清掉（relative 下 top/bottom 会变成偏移） */
-		grid-column: 2;
-		grid-row: 2;
-		inset: auto;
-	}
-	.chat-main.pinned.side-left .dock {
-		grid-column: 1;
-	}
-
-	/* Pinned, the list takes no row width: it is hidden, and floats over the detail when asked for. */
-	.chat-main.pinned .dock:has(.dock-detail) .dock-pane:not(.floating) {
-		display: none;
-	}
 	.msg-rail {
 		position: absolute;
 		top: 0;
@@ -1939,6 +1902,9 @@
 	/* ——— the divider both docks share ——— */
 	.dock-grip {
 		position: relative;
+		/* 读数芯片以 grip 为中心，右半边会压在右侧的列上 —— dock 自己是 z-20，
+		   不抬起来靠右那条读数就会被盖掉一半（只看得到前两个数） */
+		z-index: 30;
 		flex: none;
 		width: 7px;
 		cursor: col-resize;
@@ -1954,20 +1920,28 @@
 		transform: translateX(-0.5px);
 		background: var(--color-line);
 	}
-	/* 分隔线由 pane 自己的 border 画（跟着 dock side 走），所以 pane 的 grip 平时只留 7px 热区、不画线 ——
-	   悬停/聚焦/拖动时才显形。两边对称，不再只处理 side-left。 */
-	.dock-grip-pane:not(:hover):not(:focus-visible):not(.dragging) i {
-		background: transparent;
-	}
-	.dock-grip:hover i,
-	.dock-grip.dragging i {
+	/* 高亮与读数同一拍：都由 JS 那 350ms 的悬停延迟触发（`.revealed`），进场淡入、移出即灭。
+	   位移/宽度用入场 animation，不用 transition —— 否则退场也会被动画拖住。 */
+	.dock-grip.revealed i {
 		width: 2px;
 		background: var(--color-ink-soft);
+		animation: grip-line-in 180ms var(--ease-out) both;
 	}
 	/* 焦点比悬停更明确：键盘用户看到的是实墨，鼠标只是「能拖」的提示 */
 	.dock-grip:focus-visible i {
 		width: 2px;
 		background: var(--color-ink);
+	}
+	@keyframes grip-line-in {
+		from {
+			width: 1px;
+			background: var(--color-line);
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.dock-grip.revealed i {
+			animation: none;
+		}
 	}
 	/* The chat list sits on paper, and its grip is the divider the pane's own border used to draw. */
 	.conv-grip {
@@ -1976,12 +1950,28 @@
 	.dock-grip:focus-visible {
 		outline: none;
 	}
+	/* 读数芯片：延迟由 JS 负责（悬停 350ms），进场用入场 animation（和 command menu 的
+	   `pop-in`、图表的 tip 同一个手法）—— 这里用 @starting-style + transition 看不到淡入。
+	   位移走 `translate` 而不是 `transform`，否则会顶掉居中用的 translateX(-50%)（P-79）。
+	   退场是卸载，所以"移出即消失"没有动画。 */
 	.dock-grip-read {
 		@apply absolute rounded-[6px] border border-line bg-surface px-1.5 py-0.5 font-mono text-[10px] font-semibold text-ink-soft whitespace-nowrap;
 		top: 8px;
 		left: 50%;
 		transform: translateX(-50%);
 		box-shadow: 0 4px 12px color-mix(in srgb, var(--color-ink) 12%, transparent);
+		animation: grip-read-in 180ms var(--ease-out) both;
+	}
+	@keyframes grip-read-in {
+		from {
+			opacity: 0;
+			translate: 0 3px;
+		}
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.dock-grip-read {
+			animation: none;
+		}
 	}
 	/* ——— explorer dock: the tree and the reader are two panes of one surface ——— */
 	/* ——— dock panels: one shell for every docked surface ———
@@ -1989,99 +1979,98 @@
 	   family, and a panel keeps only its own content classes. Values are unchanged from the copies. */
 	.dock {
 		--ease-dock: cubic-bezier(0.32, 0.72, 0, 1);
-		position: absolute;
-		/* dock 只占 body 那一段：上沿贴条的下沿，下沿停在自己的 composer 上沿 */
-		inset: var(--bar-h, 52px) 0 var(--dock-bottom, 0px) 0;
+		position: relative;
 		z-index: 20;
+		flex: none;
 		display: flex;
 		justify-content: flex-end;
-		pointer-events: none;
-		transition: opacity 220ms var(--ease-dock);
+		overflow: hidden;
+		/* 与侧栏同拍（侧栏 width 120 / opacity 100）：dock 位移更大，取 140 —— 宽度动画每慢 16ms 就多一帧文本重排 */
+		transition:
+			width 140ms var(--ease-dock),
+			opacity 100ms var(--ease-out);
+	}
+	/* 打开：这一列从右侧长出来（0 宽起），workbench 跟着让位；内容再往左挪 24px 补一点方向感 */
+	.dock.arriving {
+		@starting-style {
+			width: 0;
+			opacity: 0;
+		}
+	}
+	/* 只在首帧的起始样式里给位移 —— 千万别在这里写 transition 简写：
+	   那会把 pane 自己的 width/opacity 过渡顶掉，列表收起就变成硬切（2026-10-09 的 bug）。 */
+	.dock.arriving .dock-pane {
+		@starting-style {
+			transform: translateX(24px);
+		}
+	}
+	.dock.arriving .dock-detail {
+		@starting-style {
+			opacity: 0;
+			transform: translateX(24px);
+		}
+	}
+	/* 换面板时新列不占额外宽度，只淡入 */
+	.dock:not(.arriving) {
 		@starting-style {
 			opacity: 0;
 		}
 	}
-	.dock.side-left {
-		flex-direction: row-reverse;
-		justify-content: flex-end;
-	}
+	/* 关闭：宽度收回去（workbench 跟着长回来），退场比进场快 */
 	.dock.leaving {
 		opacity: 0;
-		transition-duration: 150ms;
+		transition-duration: 110ms;
+	}
+	/* 换面板：旧列脱流，只交叉淡出，不再占宽度 */
+	.dock.leaving.out {
+		position: absolute;
+		top: 0;
+		right: 0;
+		bottom: 0;
 	}
 	.dock-detail,
-	.dock-pane,
-	.dock .dock-grip {
+	.dock-pane {
 		pointer-events: auto;
 	}
 	.dock.leaving .dock-detail,
-	.dock.leaving .dock-pane,
-	.dock.leaving .dock-grip {
+	.dock.leaving .dock-pane {
 		pointer-events: none;
 	}
 	.dock-pane {
 		flex: none;
 		display: flex;
 		flex-direction: column;
-		padding: 16px 0;
 		background: var(--color-surface);
-		transition: transform 220ms var(--ease-dock);
-	}
-	/* 未 pin 时面板浮在正文上（下沿正好压在 composer 上沿），整条底边要收口 ——
-	   pane / detail / 中间那 7px 的 grip 各自画一段，接成一条连续的线。pin 之后撑满，不再需要。 */
-	.chat-main:not(.pinned) .dock > *:not(.floating) {
-		border-bottom: 1px solid var(--color-line);
-	}
-	/* 朝向正文的那一侧才是分隔线：dock 靠右 → 左边一条；靠左 → 右边一条 */
-	.dock.side-right .dock-pane:not(.floating) {
-		border-left: 1px solid var(--color-line);
-	}
-	.dock.side-left .dock-pane:not(.floating) {
-		border-right: 1px solid var(--color-line);
-	}
-	/* The list while pinned: a card over the detail, so the reader keeps its width. It keeps 8px of air
-	   where it meets chrome — the reader head above, the window frame on its side — and none where it
-	   covers the reader, which is content, not frame. */
-	.dock-pane.floating {
-		position: absolute;
-		top: 38px;
-		z-index: 2;
-		max-height: 62%;
+		/* 与详情之间那条线：没有详情时它撑满整列，线也跟着收掉（见 .collapsed） */
+		border-right: 0.5px solid var(--color-line);
 		overflow: hidden;
-		padding: 0;
-		background: var(--color-canvas);
-		border: 1px solid var(--color-line);
-		border-radius: 6px;
-		box-shadow: 0 4px 12px color-mix(in srgb, var(--color-ink) 12%, transparent);
+		/* 收起与侧栏同一个写法：宽度稍慢、淡出更快，且不卸载（P-71） */
 		transition:
-			opacity 160ms var(--ease-dock),
-			transform 160ms var(--ease-dock);
-		@starting-style {
-			opacity: 0;
-			transform: translateY(-4px);
-		}
+			width 120ms var(--ease-out),
+			opacity 100ms var(--ease-out),
+			transform 140ms var(--ease-dock);
 	}
-	.dock.side-right .dock-pane.floating {
-		right: 8px;
+	.dock-pane.collapsed {
+		@apply opacity-0;
+		border-right-color: transparent;
 	}
-	.dock.side-left .dock-pane.floating {
-		left: 8px;
+	/* 列表自己的 head：身份 + 计数在左，收起开关在右；恒 34px，与内容 head 等高 */
+	.dock-list-head {
+		@apply flex h-[34px] flex-none items-center gap-2 px-2;
+		border-bottom: 0.5px solid var(--color-line);
 	}
-	.dock.side-right .dock-pane {
-		@starting-style {
-			transform: translateX(18px);
-		}
+	.dock-list-title {
+		@apply min-w-0 flex-1 truncate font-mono text-[10px] uppercase tracking-[0.12em] text-muted;
 	}
-	.dock.side-left .dock-pane {
-		@starting-style {
-			transform: translateX(-18px);
-		}
-	}
-	.dock.leaving.side-right .dock-pane {
+	.dock.leaving .dock-pane {
 		transform: translateX(12px);
 	}
-	.dock.leaving.side-left .dock-pane {
-		transform: translateX(-12px);
+	.dock-detail {
+		flex: 1 1 auto;
+		min-width: 0;
+		transition:
+			transform 140ms var(--ease-dock),
+			opacity 110ms var(--ease-out);
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.dock,
@@ -2193,10 +2182,6 @@
 	}
 	.explorer-reader-actions {
 		@apply flex shrink-0 items-center gap-1;
-	}
-	/* dock 靠左 → 动作区换到左边（永远挨着文件树那一侧） */
-	.dock.side-left .explorer-reader-head {
-		flex-direction: row-reverse;
 	}
 	/* breadcrumbs：head 下面单独一行，与 head 之间不画线，线放在它下面 */
 	.explorer-dir-row {
@@ -2468,9 +2453,6 @@
 	}
 	.git-diff-actions {
 		@apply flex shrink-0 items-center gap-1;
-	}
-	.dock.side-left .git-diff-head {
-		flex-direction: row-reverse;
 	}
 	/* breadcrumbs：head 下面单独一行，与 head 之间不画线，线放在 crumbs 下面 */
 	.git-dir-row {
@@ -2895,7 +2877,7 @@
 		background: var(--color-line);
 	}
 
-	/* 外层不留 padding：盒子的留白由 .composer-slot 给（它能被 composerHeight 量到） */
+	/* 外层不留 padding：盒子的留白由 .composer-slot 给 */
 	.composer {
 		@apply relative shrink-0 min-h-[60px] flex items-center justify-center;
 	}

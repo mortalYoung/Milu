@@ -223,7 +223,6 @@ function StackFold(props: {
 export function Transcript(props: {
 	working: boolean;
 	historyLoading: boolean;
-	dockOpen?: boolean;
 	worker?: string;
 	onEscalationRespond?: (id: string, approved: boolean) => void;
 	onBtw?: (anchorId: string) => void;
@@ -266,11 +265,6 @@ export function Transcript(props: {
 	);
 	const findEngine = useCallback(() => domFindEngine(findRoot.current, TRANSCRIPT_SKIP, revealMatch), [revealMatch]);
 	const find = useFindBar({ engine: findEngine, canClaim: () => items.length > 0 });
-	const closeFind = find.close;
-
-	useEffect(() => {
-		if (props.dockOpen) closeFind();
-	}, [props.dockOpen, closeFind]);
 	useFindHandler(SURFACE.transcript, () => find.claim());
 
 	useEffect(() => {

@@ -11,7 +11,6 @@ export interface SettingsData {
 	customProviders?: CustomProvider[];
 	theme?: ThemeMode;
 	toastPlacement?: ToastPlacement;
-	dockSide?: "left" | "right";
 	toastDurationMs?: number;
 	skills_dirs?: string[];
 	skills_watch?: boolean;

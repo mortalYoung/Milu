@@ -32,5 +32,4 @@ export function usePresence(open: boolean, exitMs: number) {
 	return { visible, leaving };
 }
 
-export const DOCK_EXIT_MS = 150;
-export const DOCK_POPOVER_EXIT_MS = 120;
+export const DOCK_EXIT_MS = 140;

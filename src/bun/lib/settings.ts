@@ -10,8 +10,6 @@ export type ToastPlacement = "topcenter" | "topright" | "bottomcenter" | "bottom
 export const DEFAULT_MEMORY_MAX_SCENES = 15;
 export const DEFAULT_MEMORY_PENDING_ROUNDS = 10;
 
-export type DockSide = "left" | "right";
-
 export interface CustomModel {
 	id: string;
 	contextWindow?: number;
@@ -35,7 +33,6 @@ export interface Settings {
 	customProviders?: CustomProvider[];
 	theme?: ThemeMode;
 	toastPlacement?: ToastPlacement;
-	dockSide?: DockSide;
 	toastDurationMs?: number;
 	skills_dirs?: string[];
 	skills_watch?: boolean;
@@ -74,7 +71,6 @@ const DEFAULT_SETTINGS: Settings = {
 	mcp_config_path: "~/.config/letters/mcp.json",
 	theme: "system",
 	toastPlacement: "bottomcenter",
-	dockSide: "right",
 	toastDurationMs: 4000,
 	skills_dirs: [".agents/skills"],
 	skills_watch: true,

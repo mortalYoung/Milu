@@ -1,16 +1,15 @@
-import { Columns2, LocateFixed, Pin, Space, WrapText } from "lucide-react";
+import { Columns2, LocateFixed, Space, WrapText } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
 import type { GitChangeItem } from "../../shared/rpc";
 import { useSettings } from "../lib/contexts/settings-context";
-import { DOCK_PANE_MAX, DOCK_PANE_MIN, dockAnchorPoint } from "../lib/dock";
 import { ESCAPE_ORDER, useEscapeLayer } from "../lib/escape";
 import { languageForPath } from "../lib/markdown";
 import { rpc } from "../lib/rpc";
 import { SURFACE } from "../lib/surfaces";
 import { CodeDiff } from "./CodeDiff";
-import { type DockListControls, DockShell } from "./DockShell";
+import { type DockListControls, DockListToggle, DockShell } from "./DockShell";
 
 interface GitData {
 	repoRoot: string;
@@ -60,16 +59,10 @@ const openDiffsStore = createStore<{ files: Record<string, GitChangeItem> }>()((
 export function GitChangesDrawer(props: {
 	open: boolean;
 	partner: string | null;
-	side?: "left" | "right";
-	onClose: () => void;
+	width: number;
 	paneWidth: number;
-	onPaneResize: (px: number) => void;
-	onPaneCommit: () => void;
-	pinned: boolean;
-	onTogglePin: () => void;
-	columnWidth: number | null;
-	setColumnWidth: (width: number | null) => void;
-	commitColumnWidth: () => void;
+	listOpen: boolean;
+	onToggleList: () => void;
 	sideBySide: boolean;
 	onToggleSideBySide: () => void;
 	wrap: boolean;
@@ -231,18 +224,11 @@ export function GitChangesDrawer(props: {
 		<DockShell
 			open={props.open}
 			panelId="git"
-			side={props.side ?? "right"}
-			width={props.paneWidth}
-			min={DOCK_PANE_MIN}
-			max={DOCK_PANE_MAX}
-			resizeLabel="Resize the change list"
-			onResize={props.onPaneResize}
-			onCommit={props.onPaneCommit}
-			pinned={props.pinned}
-			onTogglePin={props.onTogglePin}
-			columnWidth={props.columnWidth}
-			setColumnWidth={props.setColumnWidth}
-			commitColumnWidth={props.commitColumnWidth}
+			width={props.width}
+			paneWidth={props.paneWidth}
+			listTitle={`changes · ${staged.length + unstaged.length}`}
+			listOpen={props.listOpen}
+			onToggleList={props.onToggleList}
 			surface={SURFACE.diff}
 			detail={{
 				open: selected != null,
@@ -253,6 +239,7 @@ export function GitChangesDrawer(props: {
 							style={{ "--explorer-line-height": lineHeight, "--explorer-line-height-em": `${lineHeight}em` } as React.CSSProperties}
 						>
 							<div className="git-diff-head">
+								{!list.open && <DockListToggle open={false} onToggle={list.toggle} />}
 								<div className="git-diff-title">
 									<span className="git-file-name">{basename(shownChange.path)}</span>
 									{(stats.add > 0 || stats.del > 0) && (
@@ -264,27 +251,6 @@ export function GitChangesDrawer(props: {
 									{sidesError && <span className="git-diff-error">{sidesError}</span>}
 								</div>
 								<div className="git-diff-actions">
-									<button
-										type="button"
-										className={"dock-btn" + (list.pinned ? " on" : "")}
-										aria-pressed={list.pinned}
-										disabled={!list.canPin && !list.pinned}
-										title={list.pinned ? "Let the diff cover the chat again" : "Pin the chat beside the diff"}
-										onClick={() => list.togglePin()}
-									>
-										<Pin size={11} />
-									</button>
-									{list.pinned && (
-										<button
-											type="button"
-											className={"dock-btn" + (list.listOpen ? " on" : "")}
-											aria-pressed={list.listOpen}
-											title={list.listOpen ? "Hide the change list" : "Show the change list"}
-											onClick={(event) => list.openList(dockAnchorPoint(event.currentTarget))}
-										>
-											☰
-										</button>
-									)}
 									<button
 										type="button"
 										className="dock-btn"

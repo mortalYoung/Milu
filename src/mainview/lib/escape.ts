@@ -16,7 +16,6 @@ export const ESCAPE_ORDER = {
 	floatFind: 79,
 	readerFind: 78,
 	readerSelection: 77,
-	dockList: 76,
 	dockDetail: 75,
 	dock: 70,
 	chatListSearch: 65,
