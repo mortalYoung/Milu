@@ -2,8 +2,8 @@ import type { ElectrobunConfig } from "electrobun";
 
 export default {
 	app: {
-		name: "MILU",
-		identifier: "letters.local",
+		name: "Milu",
+		identifier: "milu.local",
 		version: "0.1.0",
 	},
 	build: {
