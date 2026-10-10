@@ -764,7 +764,7 @@ export function ExplorerDrawer(props: {
 
 							{/* breadcrumbs：head 下面独立一行，中间没有分隔线 */}
 							<div className="explorer-dir-row">
-								<nav className="explorer-dir" aria-label="File path" title={shownFile.path}>
+								<nav className="explorer-dir" aria-label="File Path" title={shownFile.path}>
 									{dirSegments.map((segment, index) => (
 										<button
 											type="button"

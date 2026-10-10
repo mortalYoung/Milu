@@ -112,8 +112,8 @@ export function PartnerModal(props: PartnerModalProps) {
 									value={form.workspace}
 									variant="default"
 									placeholder="Choose a directory…"
-									title="Workspace directory"
-									ariaLabel="Workspace directory"
+									title="Workspace Directory"
+									ariaLabel="Workspace Directory"
 									onPick={form.setWorkspace}
 								/>
 							</TextField>

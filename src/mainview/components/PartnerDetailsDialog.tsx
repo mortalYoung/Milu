@@ -235,7 +235,7 @@ export function PartnerDetailsDialog(props: {
 
 								<div className="flex min-w-0 flex-col gap-3">
 									<div className={CARD + " p-3 min-w-0"}>
-										<p className="font-sans text-[12px] font-semibold uppercase tracking-[0.12em] text-muted mb-2">This session</p>
+										<p className="font-sans text-[12px] font-semibold uppercase tracking-[0.12em] text-muted mb-2">This Session</p>
 										<div className="grid gap-2 font-sans text-[12px]">
 											<div className={FACT_LINE}>
 												<span className="text-[12px] text-muted">Tokens</span>
@@ -257,7 +257,7 @@ export function PartnerDetailsDialog(props: {
 												</span>
 											</div>
 											<div className={FACT_LINE}>
-												<span className="text-[12px] text-muted">Cache share</span>
+												<span className="text-[12px] text-muted">Cache Share</span>
 												<span
 													className={FACT_VALUE}
 													title={cacheShare != null ? `cache read of billed tokens · ${formatTokens(sessionUsage?.cacheRead ?? 0)} of ${formatTokens(billed)}` : undefined}
@@ -347,7 +347,7 @@ export function PartnerDetailsDialog(props: {
 															</DropdownMenuGroup>
 														))}
 													</ValueMenu>
-													<ValueMenu label="Effort" value={runtime.thinking_level} title="Effort (thinking level)">
+													<ValueMenu label="Effort" value={runtime.thinking_level} title="Effort (Thinking Level)">
 														{runtime.thinking_levels.map((level) => (
 															<DropdownMenuItem key={level} className="font-mono text-[12px] text-ink-soft" onSelect={() => void mutateThinkingLevel(level)}>
 																<span>{level}</span>
@@ -355,7 +355,7 @@ export function PartnerDetailsDialog(props: {
 															</DropdownMenuItem>
 														))}
 													</ValueMenu>
-													<ValueMenu label="Sandbox" value={sandboxLabel(runtime.sandbox_mode)} title="Sandbox mode (file writes)">
+													<ValueMenu label="Sandbox" value={sandboxLabel(runtime.sandbox_mode)} title="Sandbox Mode (File Writes)">
 														{SANDBOX_OPTIONS.map((option) => (
 															<DropdownMenuItem key={option.mode} className="font-mono text-[12px] text-ink-soft" onSelect={() => void mutateSandboxMode(option.mode)}>
 																<span>{option.label}</span>
@@ -380,7 +380,7 @@ export function PartnerDetailsDialog(props: {
 												)}
 											</div>
 											<div>
-												<div className="text-[12px] text-muted">MCP servers</div>
+												<div className="text-[12px] text-muted">MCP Servers</div>
 												{mcpGrants && mcpGrants.length > 0 ? (
 													<ul className="mt-1 flex flex-col gap-1">
 														{mcpGrants.map((server) => (

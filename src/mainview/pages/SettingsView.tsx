@@ -139,7 +139,7 @@ function ModelRows(props: { rows: CpModelRow[]; onChange: (rows: CpModelRow[]) =
 								value={row.id}
 								onChange={(event) => props.onChange(props.rows.map((r, j) => (j === i ? { ...r, id: event.currentTarget.value } : r)))}
 								placeholder="model id"
-								aria-label="Model id"
+								aria-label="Model ID"
 								spellCheck={false}
 							/>
 						</TextField>
@@ -150,7 +150,7 @@ function ModelRows(props: { rows: CpModelRow[]; onChange: (rows: CpModelRow[]) =
 								value={row.window}
 								onChange={(event) => props.onChange(props.rows.map((r, j) => (j === i ? { ...r, window: event.currentTarget.value } : r)))}
 								placeholder="optional"
-								aria-label="Context window"
+								aria-label="Context Window"
 								spellCheck={false}
 							/>
 						</TextField>
@@ -615,7 +615,7 @@ export function SettingsView() {
 		},
 		{
 			id: "sandbox",
-			title: "Default sandbox mode",
+			title: "Default Sandbox Mode",
 			desc: "Sandbox mode for newly created partners.",
 			cats: ["permission"],
 			modified: defaultSandboxMode !== DEFAULTS.sandbox,
@@ -624,8 +624,8 @@ export function SettingsView() {
 					class="h-[32px] w-[200px] shrink-0 rounded-[6px] font-sans text-[13px]"
 					itemClass="font-sans text-[13px]"
 					contentClass="w-[200px] rounded-[6px]"
-					title="Default sandbox mode"
-					ariaLabel="Default sandbox mode"
+					title="Default Sandbox Mode"
+					ariaLabel="Default Sandbox Mode"
 					portalMount={rootRef.current}
 					value={defaultSandboxMode}
 					onChange={(value) => {
@@ -643,7 +643,7 @@ export function SettingsView() {
 		},
 		{
 			id: "path",
-			title: "Partner profile path",
+			title: "Partner Profile Path",
 			desc: "Directory where partner profiles are stored.",
 			cats: ["general"],
 			modified: path.trim() !== "" && path.trim() !== DEFAULTS.path,
@@ -651,8 +651,8 @@ export function SettingsView() {
 				<PickFile
 					class="w-[200px] shrink-0"
 					value={path}
-					title="Partner profile path"
-					ariaLabel="Partner profile path"
+					title="Partner Profile Path"
+					ariaLabel="Partner Profile Path"
 					onPick={(next) => {
 						setPath(next);
 						const saved = settingsData?.partner_profile_path ?? DEFAULTS.path;
@@ -664,7 +664,7 @@ export function SettingsView() {
 		},
 		{
 			id: "commandsPath",
-			title: "Commands directory",
+			title: "Commands Directory",
 			desc: "Folder containing user-defined TS command modules (trusted plugin).",
 			cats: ["general"],
 			modified: commandsPath.trim() !== "" && commandsPath.trim() !== DEFAULTS.commandsPath,
@@ -672,8 +672,8 @@ export function SettingsView() {
 				<PickFile
 					class="w-[200px] shrink-0"
 					value={commandsPath}
-					title="Commands directory"
-					ariaLabel="Commands directory"
+					title="Commands Directory"
+					ariaLabel="Commands Directory"
 					onPick={(next) => {
 						setCommandsPath(next);
 						const saved = settingsData?.commands_path?.trim() || DEFAULTS.commandsPath;
@@ -685,7 +685,7 @@ export function SettingsView() {
 		},
 		{
 			id: "bashTimeout",
-			title: "Bash timeout (s)",
+			title: "Bash Timeout (s)",
 			desc: "Max time a bash command may run before its process group is killed.",
 			cats: ["tools"],
 			modified: parsePositiveInt(bashTimeoutSec, DEFAULTS.bashTimeoutSec) !== DEFAULTS.bashTimeoutSec,
@@ -695,8 +695,8 @@ export function SettingsView() {
 						type="number"
 						min={1}
 						variant="compact"
-						title="Bash timeout (s)"
-						aria-label="Bash timeout (s)"
+						title="Bash Timeout (s)"
+						aria-label="Bash Timeout (s)"
 						value={bashTimeoutSec}
 						onChange={(event) => setBashTimeoutSec(event.currentTarget.value)}
 						onBlur={() => {
@@ -714,7 +714,7 @@ export function SettingsView() {
 		},
 		{
 			id: "webFetchTimeout",
-			title: "Web fetch timeout (ms)",
+			title: "Web Fetch Timeout (ms)",
 			desc: "Max time a fetch may take before aborting.",
 			cats: ["tools"],
 			modified: parsePositiveInt(webFetchTimeout, 15000) !== 15000,
@@ -724,8 +724,8 @@ export function SettingsView() {
 						type="number"
 						min={0}
 						variant="compact"
-						title="Web fetch timeout (ms)"
-						aria-label="Web fetch timeout (ms)"
+						title="Web Fetch Timeout (ms)"
+						aria-label="Web Fetch Timeout (ms)"
 						value={webFetchTimeout}
 						onChange={(event) => setWebFetchTimeout(event.currentTarget.value)}
 						onBlur={() => {
@@ -751,7 +751,7 @@ export function SettingsView() {
 		},
 		{
 			id: "webFetchMaxBytes",
-			title: "Web fetch max bytes",
+			title: "Web Fetch Max Bytes",
 			desc: "Response body size cap in bytes; larger responses are rejected.",
 			cats: ["tools"],
 			modified: parsePositiveInt(webFetchMaxBytes, 1_000_000) !== 1_000_000,
@@ -761,8 +761,8 @@ export function SettingsView() {
 						type="number"
 						min={0}
 						variant="compact"
-						title="Web fetch max bytes"
-						aria-label="Web fetch max bytes"
+						title="Web Fetch Max Bytes"
+						aria-label="Web Fetch Max Bytes"
 						value={webFetchMaxBytes}
 						onChange={(event) => setWebFetchMaxBytes(event.currentTarget.value)}
 						onBlur={() => {
@@ -788,7 +788,7 @@ export function SettingsView() {
 		},
 		{
 			id: "webFetchMaxChars",
-			title: "Web fetch max chars",
+			title: "Web Fetch Max Chars",
 			desc: "Character cap for the text returned to the model.",
 			cats: ["tools"],
 			modified: parsePositiveInt(webFetchMaxChars, 50_000) !== 50_000,
@@ -798,8 +798,8 @@ export function SettingsView() {
 						type="number"
 						min={0}
 						variant="compact"
-						title="Web fetch max chars"
-						aria-label="Web fetch max chars"
+						title="Web Fetch Max Chars"
+						aria-label="Web Fetch Max Chars"
 						value={webFetchMaxChars}
 						onChange={(event) => setWebFetchMaxChars(event.currentTarget.value)}
 						onBlur={() => {
@@ -825,7 +825,7 @@ export function SettingsView() {
 		},
 		{
 			id: "webFetchUserAgent",
-			title: "Web fetch user agent",
+			title: "Web Fetch User Agent",
 			desc: "User-Agent header sent with web_fetch requests.",
 			cats: ["tools"],
 			modified: webFetchUserAgent.trim() !== DEFAULT_WEB_FETCH_USER_AGENT,
@@ -833,8 +833,8 @@ export function SettingsView() {
 				<TextField className="w-[200px] shrink-0">
 					<TextFieldInput
 						variant="compact"
-						title="Web fetch user agent"
-						aria-label="Web fetch user agent"
+						title="Web Fetch User Agent"
+						aria-label="Web Fetch User Agent"
 						value={webFetchUserAgent}
 						onChange={(event) => setWebFetchUserAgent(event.currentTarget.value)}
 						onBlur={() => {
@@ -861,7 +861,7 @@ export function SettingsView() {
 		},
 		{
 			id: "compactionThreshold",
-			title: "Compaction threshold ratio",
+			title: "Compaction Threshold Ratio",
 			desc: "Auto-compact when usage reaches this fraction of the context window.",
 			cats: ["compaction"],
 			modified: (Number(compactionThreshold) || 0.8) !== 0.8,
@@ -873,8 +873,8 @@ export function SettingsView() {
 						max={1}
 						step={0.05}
 						variant="compact"
-						title="Compaction threshold ratio"
-						aria-label="Compaction threshold ratio"
+						title="Compaction Threshold Ratio"
+						aria-label="Compaction Threshold Ratio"
 						value={compactionThreshold}
 						onChange={(event) => setCompactionThreshold(event.currentTarget.value)}
 						onBlur={() => {
@@ -899,7 +899,7 @@ export function SettingsView() {
 		},
 		{
 			id: "compactionDigestMaxItems",
-			title: "Checkpoint digest items",
+			title: "Checkpoint Digest Items",
 			desc: "Max memories carried in a checkpoint digest; the newest events are always reserved.",
 			cats: ["compaction"],
 			modified: parsePositiveInt(compactionDigestMaxItems, 10) !== 10,
@@ -909,8 +909,8 @@ export function SettingsView() {
 						type="number"
 						min={0}
 						variant="compact"
-						title="Checkpoint digest items"
-						aria-label="Checkpoint digest items"
+						title="Checkpoint Digest Items"
+						aria-label="Checkpoint Digest Items"
 						value={compactionDigestMaxItems}
 						onChange={(event) => setCompactionDigestMaxItems(event.currentTarget.value)}
 						onBlur={() => {
@@ -931,7 +931,7 @@ export function SettingsView() {
 		},
 		{
 			id: "compactionOverflowRetries",
-			title: "Compact-and-retry attempts",
+			title: "Compact-and-retry Attempts",
 			desc: "Max compact-and-retry attempts after a context overflow.",
 			cats: ["compaction"],
 			modified: parsePositiveInt(compactionOverflowRetries, 1) !== 1,
@@ -941,8 +941,8 @@ export function SettingsView() {
 						type="number"
 						min={0}
 						variant="compact"
-						title="Compact-and-retry attempts"
-						aria-label="Compact-and-retry attempts"
+						title="Compact-and-retry Attempts"
+						aria-label="Compact-and-retry Attempts"
 						value={compactionOverflowRetries}
 						onChange={(event) => setCompactionOverflowRetries(event.currentTarget.value)}
 						onBlur={() => {
@@ -963,7 +963,7 @@ export function SettingsView() {
 		},
 		{
 			id: "retryMaxRetries",
-			title: "Retry max attempts",
+			title: "Retry Max Attempts",
 			desc: "Automatic retries on transient LLM errors; 0 disables retry.",
 			cats: ["retry"],
 			modified: parsePositiveInt(retryMaxRetries, DEFAULTS.retryMaxRetries) !== DEFAULTS.retryMaxRetries,
@@ -973,8 +973,8 @@ export function SettingsView() {
 						type="number"
 						min={0}
 						variant="compact"
-						title="Retry max attempts"
-						aria-label="Retry max attempts"
+						title="Retry Max Attempts"
+						aria-label="Retry Max Attempts"
 						value={retryMaxRetries}
 						onChange={(event) => setRetryMaxRetries(event.currentTarget.value)}
 						onBlur={() => {
@@ -992,7 +992,7 @@ export function SettingsView() {
 		},
 		{
 			id: "retryBaseDelayMs",
-			title: "Retry base delay (ms)",
+			title: "Retry Base Delay (ms)",
 			desc: "First retry waits this long; each retry doubles it.",
 			cats: ["retry"],
 			modified: parsePositiveInt(retryBaseDelayMs, DEFAULTS.retryBaseDelayMs) !== DEFAULTS.retryBaseDelayMs,
@@ -1002,8 +1002,8 @@ export function SettingsView() {
 						type="number"
 						min={0}
 						variant="compact"
-						title="Retry base delay (ms)"
-						aria-label="Retry base delay (ms)"
+						title="Retry Base Delay (ms)"
+						aria-label="Retry Base Delay (ms)"
 						value={retryBaseDelayMs}
 						onChange={(event) => setRetryBaseDelayMs(event.currentTarget.value)}
 						onBlur={() => {
@@ -1021,7 +1021,7 @@ export function SettingsView() {
 		},
 		{
 			id: "instr",
-			title: "Instructions file",
+			title: "Instructions File",
 			desc: "Instruction file detected per workspace.",
 			cats: ["general"],
 			modified: instructionsFile.trim() !== "" && instructionsFile.trim() !== DEFAULTS.instructions,
@@ -1029,8 +1029,8 @@ export function SettingsView() {
 				<TextField className="w-[200px] shrink-0">
 					<TextFieldInput
 						variant="compact"
-						title="Instructions file"
-						aria-label="Instructions file"
+						title="Instructions File"
+						aria-label="Instructions File"
 						value={instructionsFile}
 						onChange={(event) => setInstructionsFile(event.currentTarget.value)}
 						onBlur={() => {
@@ -1048,7 +1048,7 @@ export function SettingsView() {
 		},
 		{
 			id: "interval",
-			title: "Send message interval",
+			title: "Send Message Interval",
 			desc: "How often visible updates are sent during a run; ∞ sends only the first and final message.",
 			cats: ["general"],
 			modified: deliveryMode === "custom",
@@ -1058,8 +1058,8 @@ export function SettingsView() {
 						class="h-[32px] w-[150px] shrink-0 rounded-[6px] font-sans text-[13px]"
 						itemClass="font-sans text-[13px]"
 						contentClass="w-[150px] rounded-[6px]"
-						title="Send message interval"
-						ariaLabel="Send message interval"
+						title="Send Message Interval"
+						ariaLabel="Send Message Interval"
 						portalMount={rootRef.current}
 						value={deliveryMode}
 						onChange={(value) => {
@@ -1078,8 +1078,8 @@ export function SettingsView() {
 								type="number"
 								min={20}
 								variant="compact"
-								title="Send message interval seconds"
-								aria-label="Send message interval seconds"
+								title="Send Message Interval Seconds"
+								aria-label="Send Message Interval Seconds"
 								value={deliverySec}
 								onChange={(event) => setDeliverySec(event.currentTarget.value)}
 								onBlur={() => {
@@ -1098,7 +1098,7 @@ export function SettingsView() {
 		},
 		{
 			id: "shellContinuous",
-			title: "Continuous shell input",
+			title: "Continuous Shell Input",
 			desc: "Keep shell mode active after sending; turn off to leave shell mode as soon as a command is sent.",
 			cats: ["general"],
 			modified: shellContinuous !== DEFAULTS.shellContinuous,
@@ -1114,7 +1114,7 @@ export function SettingsView() {
 		},
 		{
 			id: "rememberSession",
-			title: "Remember last session",
+			title: "Remember Last Session",
 			desc: "On launch, reopen the conversation you had open and put the window back where it was.",
 			cats: ["general"],
 			modified: rememberSession !== DEFAULTS.rememberSession,
@@ -1146,7 +1146,7 @@ export function SettingsView() {
 		},
 		{
 			id: "memoryIdleMinutes",
-			title: "Memory idle delay",
+			title: "Memory Idle Delay",
 			desc: "Minutes of silence before background memory organization runs; 0 disables it.",
 			cats: ["memory"],
 			modified: memoryIdleMinutes !== String(DEFAULTS.memoryIdleMinutes),
@@ -1156,8 +1156,8 @@ export function SettingsView() {
 						type="number"
 						min={0}
 						variant="compact"
-						title="Memory idle delay (minutes)"
-						aria-label="Memory idle delay"
+						title="Memory Idle Delay (minutes)"
+						aria-label="Memory Idle Delay"
 						value={memoryIdleMinutes}
 						onChange={(event) => setMemoryIdleMinutes(event.currentTarget.value)}
 						onBlur={() => {
@@ -1174,7 +1174,7 @@ export function SettingsView() {
 		},
 		{
 			id: "memoryPendingRounds",
-			title: "Memory rounds before organize",
+			title: "Memory Rounds Before Organize",
 			desc: "User rounds since the last checkpoint before background memory organization runs; 0 disables it.",
 			cats: ["memory"],
 			modified: memoryPendingRounds !== String(DEFAULTS.memoryPendingRounds),
@@ -1184,8 +1184,8 @@ export function SettingsView() {
 						type="number"
 						min={0}
 						variant="compact"
-						title="Memory rounds before organize"
-						aria-label="Memory rounds before organize"
+						title="Memory Rounds Before Organize"
+						aria-label="Memory Rounds Before Organize"
 						value={memoryPendingRounds}
 						onChange={(event) => setMemoryPendingRounds(event.currentTarget.value)}
 						onBlur={() => {
@@ -1202,7 +1202,7 @@ export function SettingsView() {
 		},
 		{
 			id: "memoryMaxScenes",
-			title: "Max scene documents",
+			title: "Max Scene Documents",
 			desc: "Upper bound on active scene documents; at the limit the scene stage must merge existing scenes.",
 			cats: ["memory"],
 			modified: memoryMaxScenes !== String(DEFAULTS.memoryMaxScenes),
@@ -1212,8 +1212,8 @@ export function SettingsView() {
 						type="number"
 						min={1}
 						variant="compact"
-						title="Max scene documents"
-						aria-label="Max scene documents"
+						title="Max Scene Documents"
+						aria-label="Max Scene Documents"
 						value={memoryMaxScenes}
 						onChange={(event) => setMemoryMaxScenes(event.currentTarget.value)}
 						onBlur={() => {
@@ -1230,7 +1230,7 @@ export function SettingsView() {
 		},
 		{
 			id: "toastPlacement",
-			title: "Toast placement",
+			title: "Toast Placement",
 			desc: "Where transient notifications appear.",
 			cats: ["general"],
 			modified: toastPlacement !== DEFAULTS.toastPlacement,
@@ -1239,8 +1239,8 @@ export function SettingsView() {
 					class="h-[32px] w-[150px] shrink-0 rounded-[6px] font-sans text-[13px]"
 					itemClass="font-sans text-[13px]"
 					contentClass="w-[150px] rounded-[6px]"
-					title="Toast placement"
-					ariaLabel="Toast placement"
+					title="Toast Placement"
+					ariaLabel="Toast Placement"
 					portalMount={rootRef.current}
 					value={toastPlacement}
 					onChange={(value) => {
@@ -1259,7 +1259,7 @@ export function SettingsView() {
 		},
 		{
 			id: "toastDuration",
-			title: "Toast duration",
+			title: "Toast Duration",
 			desc: "Milliseconds before a toast auto-closes; 0 keeps it until dismissed.",
 			cats: ["general"],
 			modified: parsePositiveInt(toastDurationMs, DEFAULTS.toastDurationMs) !== DEFAULTS.toastDurationMs,
@@ -1270,8 +1270,8 @@ export function SettingsView() {
 						min={0}
 						step={500}
 						variant="compact"
-						title="Toast duration (ms)"
-						aria-label="Toast duration (ms)"
+						title="Toast Duration (ms)"
+						aria-label="Toast Duration (ms)"
 						value={toastDurationMs}
 						onChange={(event) => setToastDurationMs(event.currentTarget.value)}
 						onBlur={() => {
@@ -1288,7 +1288,7 @@ export function SettingsView() {
 		},
 		{
 			id: "skillsDirs",
-			title: "Skills directories",
+			title: "Skills Directories",
 			desc: "Each directory is scanned as <workspace>/<dir> (project) and <home>/<dir> (global).",
 			cats: ["skills"],
 			stacked: true,
@@ -1313,7 +1313,7 @@ export function SettingsView() {
 												value={dir}
 												onChange={(event) => updateSkillsDir(i, event.currentTarget.value)}
 												placeholder=".agents/skills"
-												aria-label="Skills directory"
+												aria-label="Skills Directory"
 												spellCheck={false}
 												onBlur={() => persistSkillsDirs()}
 												onKeyDown={(event) => {
@@ -1323,7 +1323,7 @@ export function SettingsView() {
 										</TextField>
 									</td>
 									<td className="pb-1 text-right">
-										<Button variant="ghost" size="sm" title="Remove directory" onClick={() => removeSkillsDir(i)}>
+										<Button variant="ghost" size="sm" title="Remove Directory" onClick={() => removeSkillsDir(i)}>
 											×
 										</Button>
 									</td>
@@ -1341,7 +1341,7 @@ export function SettingsView() {
 		},
 		{
 			id: "skillsWatch",
-			title: "Skill watching",
+			title: "Skill Watching",
 			desc: "Hot-reload skills on file changes.",
 			cats: ["skills"],
 			modified: skillsWatch !== DEFAULTS.skills_watch,
@@ -1357,7 +1357,7 @@ export function SettingsView() {
 		},
 		{
 			id: "skillsWatchDelay",
-			title: "Skill watch delay",
+			title: "Skill Watch Delay",
 			desc: "Milliseconds to debounce before refreshing skills after a change.",
 			cats: ["skills"],
 			modified: parsePositiveInt(skillsWatchDelay, DEFAULTS.skills_watch_delay_ms) !== DEFAULTS.skills_watch_delay_ms,
@@ -1368,8 +1368,8 @@ export function SettingsView() {
 						min={0}
 						step={100}
 						variant="compact"
-						title="Skill watch delay (ms)"
-						aria-label="Skill watch delay (ms)"
+						title="Skill Watch Delay (ms)"
+						aria-label="Skill Watch Delay (ms)"
 						value={skillsWatchDelay}
 						onChange={(event) => setSkillsWatchDelay(event.currentTarget.value)}
 						onBlur={() => {
@@ -1386,7 +1386,7 @@ export function SettingsView() {
 		},
 		{
 			id: "strictDelete",
-			title: "Strict delete mode",
+			title: "Strict Delete Mode",
 			desc: "Refuse `rm`/`rmdir` in bash and only allow the rm tool after a move to the trash has failed. Turn it off to let bash delete directly.",
 			cats: ["permission"],
 			modified: strictDelete !== DEFAULTS.strictDelete,
@@ -1402,7 +1402,7 @@ export function SettingsView() {
 		},
 		{
 			id: "explorerLineGap",
-			title: "File preview line gap",
+			title: "File Preview Line Gap",
 			desc: "Extra visual spacing between code lines; line-height is 1 + gap.",
 			cats: ["general"],
 			modified: Number(explorerLineGap) !== DEFAULTS.explorerLineGap,
@@ -1414,8 +1414,8 @@ export function SettingsView() {
 						max={1}
 						step={0.05}
 						variant="compact"
-						title="File preview line gap"
-						aria-label="File preview line gap"
+						title="File Preview Line Gap"
+						aria-label="File Preview Line Gap"
 						value={explorerLineGap}
 						onChange={(event) => setExplorerLineGap(event.currentTarget.value)}
 						onBlur={() => {
@@ -1435,7 +1435,7 @@ export function SettingsView() {
 		},
 		{
 			id: "explorerFoldBraces",
-			title: "Fold code",
+			title: "Fold Code",
 			desc: "Fold blocks, objects and elements in the reader's code, for the languages it parses: ts, tsx, js, jsx, python, html, css, json, yaml, xml.",
 			cats: ["general"],
 			modified: explorerFoldBraces !== DEFAULTS.explorerFoldBraces,
@@ -1451,7 +1451,7 @@ export function SettingsView() {
 		},
 		{
 			id: "explorerFoldMarkdown",
-			title: "Fold markdown",
+			title: "Fold Markdown",
 			desc: "Fold sections in a raw markdown file.",
 			cats: ["general"],
 			modified: explorerFoldMarkdown !== DEFAULTS.explorerFoldMarkdown,
@@ -1467,7 +1467,7 @@ export function SettingsView() {
 		},
 		{
 			id: "highlightMaxLineLength",
-			title: "Highlight line length limit",
+			title: "Highlight Line Length Limit",
 			desc: "Code lines longer than this many characters are shown unhighlighted; 0 lifts the limit.",
 			cats: ["general"],
 			modified: parsePositiveInt(highlightMaxLineLength, DEFAULTS.highlightMaxLineLength) !== DEFAULTS.highlightMaxLineLength,
@@ -1478,8 +1478,8 @@ export function SettingsView() {
 						min={0}
 						step={500}
 						variant="compact"
-						title="Highlight line length limit (characters)"
-						aria-label="Highlight line length limit (characters)"
+						title="Highlight Line Length Limit (characters)"
+						aria-label="Highlight Line Length Limit (characters)"
 						value={highlightMaxLineLength}
 						onChange={(event) => setHighlightMaxLineLength(event.currentTarget.value)}
 						onBlur={() => {
@@ -1498,7 +1498,7 @@ export function SettingsView() {
 		},
 		{
 			id: "highlightTimeLimit",
-			title: "Highlight time limit",
+			title: "Highlight Time Limit",
 			desc: "Milliseconds shiki may spend tokenizing one line before it gives up.",
 			cats: ["general"],
 			modified: parsePositiveInt(highlightTimeLimit, DEFAULTS.highlightTimeLimit) !== DEFAULTS.highlightTimeLimit,
@@ -1509,8 +1509,8 @@ export function SettingsView() {
 						min={0}
 						step={100}
 						variant="compact"
-						title="Highlight time limit (ms)"
-						aria-label="Highlight time limit (ms)"
+						title="Highlight Time Limit (ms)"
+						aria-label="Highlight Time Limit (ms)"
 						value={highlightTimeLimit}
 						onChange={(event) => setHighlightTimeLimit(event.currentTarget.value)}
 						onBlur={() => {
@@ -1529,7 +1529,7 @@ export function SettingsView() {
 		},
 		{
 			id: "paletteSearchIgnoreDirs",
-			title: "File search ignore list",
+			title: "File Search Ignore List",
 			desc: "Directories (and files like .DS_Store) the Cmd+P file search skips. Leave empty for the built-in list.",
 			cats: ["general"],
 			modified: parseIgnoreDirs().length > 0,
@@ -1538,8 +1538,8 @@ export function SettingsView() {
 					<TextFieldInput
 						variant="compact"
 						placeholder=".git, node_modules, dist"
-						title="File search ignore list"
-						aria-label="File search ignore list"
+						title="File Search Ignore List"
+						aria-label="File Search Ignore List"
 						value={paletteIgnoreDirs}
 						onChange={(event) => setPaletteIgnoreDirs(event.currentTarget.value)}
 						onBlur={() => {
@@ -1578,7 +1578,7 @@ export function SettingsView() {
 						onChange={(event) => setCp({ ...cp, id: event.currentTarget.value })}
 						readOnly={readonlyId}
 						placeholder="my-gateway"
-						aria-label="Custom provider id"
+						aria-label="Custom Provider ID"
 						spellCheck={false}
 					/>
 				</TextField>
@@ -1615,7 +1615,7 @@ export function SettingsView() {
 								value={value.name}
 								onChange={(event) => set({ ...value, name: event.currentTarget.value })}
 								placeholder="My Gateway"
-								aria-label="Display name"
+								aria-label="Display Name"
 								spellCheck={false}
 							/>
 						</TextField>
@@ -1628,12 +1628,12 @@ export function SettingsView() {
 								value={value.window}
 								onChange={(event) => set({ ...value, window: event.currentTarget.value })}
 								placeholder="128000"
-								aria-label="Default context window"
+								aria-label="Default Context Window"
 								spellCheck={false}
 							/>
 						</TextField>
 					</Field>
-					<Field label="Max tokens">
+					<Field label="Max Tokens">
 						<TextField className="w-full">
 							<TextFieldInput
 								variant="compact"
@@ -1641,7 +1641,7 @@ export function SettingsView() {
 								value={value.maxTokens}
 								onChange={(event) => set({ ...value, maxTokens: event.currentTarget.value })}
 								placeholder="8192"
-								aria-label="Default max tokens"
+								aria-label="Default Max Tokens"
 								spellCheck={false}
 							/>
 						</TextField>
@@ -1840,7 +1840,7 @@ export function SettingsView() {
 																			className="h-[30px] text-[12px]"
 																			type="password"
 																			placeholder={configured(id) ? "new key" : "sk-…"}
-																			aria-label="API key"
+																			aria-label="API Key"
 																			spellCheck={false}
 																			autoComplete="off"
 																			value={keyDraft}
@@ -1920,7 +1920,7 @@ export function SettingsView() {
 												}
 											}}
 										>
-											{adding ? "Cancel" : "+ Add provider"}
+											{adding ? "Cancel" : "+ Add Provider"}
 										</button>
 										{adding && (
 											<div className="pt-2">
@@ -1931,8 +1931,8 @@ export function SettingsView() {
 																class="h-[30px] w-40 rounded-[6px] font-sans text-[12px]"
 																itemClass="font-sans text-[12px]"
 																contentClass="w-40 rounded-[6px]"
-																title="Add provider"
-																ariaLabel="Add provider"
+																title="Add Provider"
+																ariaLabel="Add Provider"
 																placeholder="provider"
 																portalMount={rootRef.current}
 																value={toAdd || addable()[0] || ""}
@@ -1946,7 +1946,7 @@ export function SettingsView() {
 																		className="h-[30px] text-[12px]"
 																		type="password"
 																		placeholder="api key（添加必填）"
-																		aria-label="New provider api key"
+																		aria-label="New Provider API Key"
 																		spellCheck={false}
 																		autoComplete="off"
 																		value={keys[toAdd || addable()[0] || ""] ?? ""}

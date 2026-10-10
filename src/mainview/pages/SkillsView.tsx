@@ -144,7 +144,7 @@ export function SkillsView() {
 											value={name}
 											onChange={(event) => setName(event.currentTarget.value)}
 											placeholder="kebab-name"
-											aria-label="Skill name"
+											aria-label="Skill Name"
 											spellCheck={false}
 										/>
 									</TextField>
@@ -154,7 +154,7 @@ export function SkillsView() {
 											value={description}
 											onChange={(event) => setDescription(event.currentTarget.value)}
 											placeholder="Short description"
-											aria-label="Skill description"
+											aria-label="Skill Description"
 										/>
 									</TextField>
 									{error && <p className="skills-error">{error}</p>}

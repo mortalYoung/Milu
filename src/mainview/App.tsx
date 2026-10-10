@@ -456,47 +456,50 @@ export function App() {
 		{ key: "p", meta: true, handler: () => palette.launch() },
 	]);
 
+	const onMenuCommand = useRef<(action: string) => void>(() => {});
+	onMenuCommand.current = (action: string) => {
+		if (action === "letters.view-chat" || action === "letters.view-skills" || action === "letters.view-dashboard") {
+			setView(action.slice("letters.view-".length) as ViewId);
+			return;
+		}
+		if (action === "letters.settings") {
+			settings.mutate.setOpen(true);
+			return;
+		}
+		if (action === "letters.palette" || action === "letters.access") {
+			palette.launch(action === "letters.palette" ? "sessions" : "access");
+			return;
+		}
+		setView("chat");
+		switch (action) {
+			case "letters.new-partner":
+				openAddPartner();
+				return;
+			case "letters.details":
+				if (selected) openDetails(selected);
+				return;
+			case "letters.close-chat":
+				closeCurrentChat();
+				return;
+			case "letters.trajectory":
+				trajectory.mutate.setOpen(true);
+				return;
+			case "letters.replies":
+				dock.open("replies");
+				return;
+			case "letters.workspace":
+				dock.open("explorer");
+				return;
+			case "letters.git-changes":
+				dock.open("git");
+				return;
+			case "letters.toggle-list":
+				toggleList();
+		}
+	};
+
 	useEffect(() => {
-		rpc.addMessageListener("menu_command", ({ action }) => {
-			if (action === "letters.view-chat" || action === "letters.view-skills" || action === "letters.view-dashboard") {
-				setView(action.slice("letters.view-".length) as ViewId);
-				return;
-			}
-			if (action === "letters.settings") {
-				settings.mutate.setOpen(true);
-				return;
-			}
-			if (action === "letters.palette" || action === "letters.access") {
-				palette.launch(action === "letters.palette" ? "sessions" : "access");
-				return;
-			}
-			setView("chat");
-			switch (action) {
-				case "letters.new-partner":
-					openAddPartner();
-					return;
-				case "letters.details":
-					if (selected) openDetails(selected);
-					return;
-				case "letters.close-chat":
-					closeCurrentChat();
-					return;
-				case "letters.trajectory":
-					trajectory.mutate.setOpen(true);
-					return;
-				case "letters.replies":
-					dock.open("replies");
-					return;
-				case "letters.workspace":
-					dock.open("explorer");
-					return;
-				case "letters.git-changes":
-					dock.open("git");
-					return;
-				case "letters.toggle-list":
-					toggleList();
-			}
-		});
+		rpc.addMessageListener("menu_command", ({ action }) => onMenuCommand.current(action));
 	}, []);
 
 	const modalOpen = settingsOpen || detailsPartner != null;

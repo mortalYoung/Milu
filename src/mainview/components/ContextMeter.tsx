@@ -61,7 +61,7 @@ export function ContextMeter(props: { usage: ContextUsage }) {
 				{percent > 60 && <span className="context-meter-percent">{percent}%</span>}
 			</button>
 			{open && (
-				<div className="context-meter-panel" role="dialog" aria-label="Context usage">
+				<div className="context-meter-panel" role="dialog" aria-label="Context Usage">
 					<div className="meter-headline">
 						<span className="meter-title">
 							~{formatTokens(usedTokens)} / {formatTokens(props.usage.window)}

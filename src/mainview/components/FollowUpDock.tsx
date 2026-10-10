@@ -21,7 +21,7 @@ export function FollowUpDock() {
 	if (queued.length === 0) return null;
 
 	return (
-		<div className="followup-dock" role="list" aria-label="Queued messages">
+		<div className="followup-dock" role="list" aria-label="Queued Messages">
 			<div className="followup-dock-head">
 				<span className="followup-dock-tag">PENDING · {queued.length}</span>
 			</div>

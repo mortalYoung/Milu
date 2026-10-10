@@ -52,7 +52,7 @@ export function FloatFind(props: FloatFindProps) {
 			<button
 				type="button"
 				className="float-find-nav"
-				title="Previous Match (Shift+Enter)"
+				title="Previous match (Shift+Enter)"
 				aria-label="Previous match"
 				disabled={!found}
 				onMouseDown={(event) => event.preventDefault()}
@@ -63,7 +63,7 @@ export function FloatFind(props: FloatFindProps) {
 			<button
 				type="button"
 				className="float-find-nav"
-				title="Next Match (Enter)"
+				title="Next match (Enter)"
 				aria-label="Next match"
 				disabled={!found}
 				onMouseDown={(event) => event.preventDefault()}

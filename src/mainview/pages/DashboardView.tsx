@@ -108,7 +108,7 @@ const StatusSection = memo(function StatusSection(props: { todayTurns: number; t
 	};
 
 	return (
-		<section className="dashboard-status" aria-label="Letter status">
+		<section className="dashboard-status" aria-label="Chat Status">
 			<div className="dashboard-status-head">
 				<span className={CAP}>status · {activeCount > 0 ? "live" : "idle"}</span>
 				<span className={`text-[10px] text-muted ${NUM}`}>
@@ -299,7 +299,7 @@ export function DashboardView(props: { unread: (name: string) => boolean; onSele
 						</span>
 					</div>
 					<div className="dashboard-head-right">
-						<div className="dashboard-seg" role="group" aria-label="Reading window">
+						<div className="dashboard-seg" role="group" aria-label="Reading Window">
 							{WINDOWS.map((value) => (
 								<button key={value} type="button" className={span === value ? "on" : undefined} aria-pressed={span === value} onClick={() => dashboard.setDays(value)}>
 									{value}d
@@ -477,7 +477,7 @@ export function DashboardView(props: { unread: (name: string) => boolean; onSele
 								</div>
 							</section>
 
-							<section className="dashboard-card dashboard-runs" aria-label="Recent runs">
+							<section className="dashboard-card dashboard-runs" aria-label="Recent Runs">
 								<figcaption>
 									<span className={CAP}>recent runs</span>
 									<span className={`text-[10px] text-muted ${NUM}`}>{runs.length} today</span>

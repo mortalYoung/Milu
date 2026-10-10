@@ -79,7 +79,7 @@ export function McpSettingsPanel() {
 								queueSave();
 							}}
 							placeholder="~/.config/letters/mcp.json"
-							aria-label="Config file path"
+							aria-label="Config File Path"
 							spellCheck={false}
 						/>
 					</TextField>
@@ -99,14 +99,14 @@ export function McpSettingsPanel() {
 								setIdleTimeoutSec(event.currentTarget.value);
 								queueSave();
 							}}
-							aria-label="Idle timeout seconds"
+							aria-label="Idle Timeout Seconds"
 							spellCheck={false}
 						/>
 					</TextField>
 				</div>
 				<div className="grid grid-cols-[minmax(0,1fr)_240px] items-center gap-6 py-3.5">
 					<div>
-						<div className="font-serif text-[14px] text-ink">Default lifecycle</div>
+						<div className="font-serif text-[14px] text-ink">Default Lifecycle</div>
 						<div className="mt-1 font-sans text-[12px] text-muted">Lifecycle used for newly added MCP servers.</div>
 					</div>
 					<Select
@@ -117,12 +117,12 @@ export function McpSettingsPanel() {
 							queueSave();
 						}}
 						options={LIFECYCLES}
-						ariaLabel="Default lifecycle"
+						ariaLabel="Default Lifecycle"
 					/>
 				</div>
 				<div className="grid grid-cols-[minmax(0,1fr)_240px] items-center gap-6 py-3.5">
 					<div>
-						<div className="font-serif text-[14px] text-ink">Max buffer size</div>
+						<div className="font-serif text-[14px] text-ink">Max Buffer Size</div>
 						<div className="mt-1 font-sans text-[12px] text-muted">Maximum stdio message buffer size in bytes.</div>
 					</div>
 					<TextField className="w-full">
@@ -135,7 +135,7 @@ export function McpSettingsPanel() {
 								setMaxBufferSize(event.currentTarget.value);
 								queueSave();
 							}}
-							aria-label="Max buffer size"
+							aria-label="Max Buffer Size"
 							spellCheck={false}
 						/>
 					</TextField>

@@ -178,11 +178,11 @@ export function McpServersPanel() {
 		<div className="flex flex-col gap-4">
 			<div className="flex items-center justify-between gap-3">
 				<div>
-					<h2 className="font-serif text-[16px] font-semibold text-ink">MCP servers</h2>
+					<h2 className="font-serif text-[16px] font-semibold text-ink">MCP Servers</h2>
 					<p className="mt-0.5 font-sans text-[12px] text-muted">Configure local stdio servers and grant them to partners.</p>
 				</div>
 				<Button variant="outline" size="sm" onClick={startAdd}>
-					+ Add server
+					+ Add Server
 				</Button>
 			</div>
 
@@ -208,7 +208,7 @@ export function McpServersPanel() {
 									onChange={(event) => setName(event.currentTarget.value)}
 									variant="compact"
 									placeholder="github"
-									aria-label="Server name"
+									aria-label="Server Name"
 									disabled={editing != null}
 									spellCheck={false}
 								/>
@@ -247,7 +247,7 @@ export function McpServersPanel() {
 								value={envText}
 								onChange={(event) => setEnvText(event.currentTarget.value)}
 								placeholder={"KEY=value\nANOTHER=value"}
-								aria-label="Environment variables"
+								aria-label="Environment Variables"
 								spellCheck={false}
 							/>
 						</TextField>

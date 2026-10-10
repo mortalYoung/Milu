@@ -313,7 +313,7 @@ function DrawerContent(props: {
 		<aside className="traj-drawer traj-enter" ref={drawerRef}>
 			<div className="traj-head">
 				<span className="traj-title">Trajectory</span>
-				<div className="traj-mode-toggle" role="group" aria-label="Timeline projection">
+				<div className="traj-mode-toggle" role="group" aria-label="Timeline Projection">
 					{(["slice", "view"] as const).map((m) => (
 						<button
 							type="button"

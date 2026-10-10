@@ -251,7 +251,7 @@ export function CommandPalette(props: {
 						exit={{ opacity: 0, y: -6, scale: 0.995 }}
 						transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}
 					>
-						<div className="palette" ref={panelEl} role="dialog" aria-modal="false" aria-label="Command palette">
+						<div className="palette" ref={panelEl} role="dialog" aria-modal="false" aria-label="Command Palette">
 							<div className="palette-head">
 								<div className="palette-chips" role="group" aria-label="Mode">
 									{MODES.map((candidate) => (
