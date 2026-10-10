@@ -11,7 +11,7 @@ export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhi
 
 export type CommandKind = "execute" | "leadingInput" | "popupSelect";
 
-export type ChatPreviewKind = "user" | "send_message" | "command" | "skill" | "shell";
+export type ChatPreviewKind = "user" | "assistant" | "send_message" | "command" | "skill" | "shell";
 
 export type ExplorerRoot = "workspace" | "storage";
 
@@ -99,7 +99,7 @@ export interface TaskSummary {
 
 export interface ViewItem {
 	id: string;
-	kind: "user" | "send_message" | "escalation" | "error" | "aborted" | "command" | "skill" | "shell";
+	kind: "user" | "assistant" | "escalation" | "error" | "aborted" | "command" | "skill" | "shell";
 	text: string;
 	time: number;
 	skillName?: string;
@@ -107,6 +107,24 @@ export interface ViewItem {
 	to?: string;
 	peerKind?: "ask" | "reply";
 	requestId?: string;
+	thinking?: {
+		text: string;
+		redacted?: boolean;
+	};
+	/** A message the run said along the way, not the answer it ended on: a row in the timeline. */
+	say?: true;
+	/** How long the step that produced this item took, wall clock (the entry's own timing). */
+	stepMs?: number;
+	tool?: {
+		callId: string;
+		name: string;
+		summary: string;
+		status: "running" | "success" | "error";
+		/** The call's own arguments, pretty-printed — what the row's card shows. */
+		args?: string;
+		result?: string;
+		isError?: boolean;
+	};
 	escalation?: {
 		id: string;
 		command: string;
@@ -610,13 +628,6 @@ export type AppRPCSchema = __schema<{
 				};
 			};
 
-			history: {
-				params: {};
-				response: {
-					items: ViewItem[];
-				};
-			};
-
 			shell_execute: {
 				params: { command: string; timeout?: number };
 				response: { ok: boolean; error?: string; shellId?: string };
@@ -813,7 +824,6 @@ export type AppRPCSchema = __schema<{
 						skills_dirs?: string[];
 						skills_watch?: boolean;
 						skills_watch_delay_ms?: number;
-						sendMessageIntervalSec?: number | null;
 						shellContinuous?: boolean;
 						rememberSession?: boolean;
 						memoryEnabled?: boolean;
@@ -858,7 +868,6 @@ export type AppRPCSchema = __schema<{
 						skills_dirs?: string[];
 						skills_watch?: boolean;
 						skills_watch_delay_ms?: number;
-						sendMessageIntervalSec?: number | null;
 						shellContinuous?: boolean;
 						rememberSession?: boolean;
 						memoryEnabled?: boolean;

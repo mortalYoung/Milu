@@ -37,7 +37,6 @@ export interface Settings {
 	skills_dirs?: string[];
 	skills_watch?: boolean;
 	skills_watch_delay_ms?: number;
-	sendMessageIntervalSec?: number | null;
 	shellContinuous?: boolean;
 	rememberSession?: boolean;
 	memoryEnabled?: boolean;
@@ -105,12 +104,6 @@ export async function saveSettings(settings: Settings): Promise<void> {
 	await mkdir(join(homedir(), ".config", "letters"), { recursive: true });
 	await writeFile(SETTINGS_PATH, JSON.stringify(settings, null, 2) + "\n", { encoding: "utf8", mode: 0o600 });
 	await chmod(SETTINGS_PATH, 0o600);
-}
-
-export function sendMessageIntervalMs(settings: Settings): number {
-	const sec = settings.sendMessageIntervalSec;
-	if (sec == null) return Number.POSITIVE_INFINITY;
-	return Math.max(20, sec) * 1000;
 }
 
 function expandHome(path: string): string {

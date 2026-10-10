@@ -28,8 +28,8 @@ export const scroll = createScrollFollower({
 	anchor: domRowAnchor,
 	source: (onChange) =>
 		transcript.store.subscribe((state, previous) => {
-			if (state.blocks === previous.blocks) return;
-			onChange(state.blocks.length === 0);
+			if (state.items === previous.items) return;
+			onChange(state.items.length === 0);
 		}),
 });
 export const skills = createSkills(rpc, session.store, toast);

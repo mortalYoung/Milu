@@ -1441,12 +1441,8 @@
 	.msg-block {
 		@apply relative min-w-0 w-full;
 	}
-	.msg-block,
-	.msg-fold-group {
+	.msg-block {
 		margin-top: 20px;
-	}
-	.msg-fold-group > .msg-block:first-child {
-		margin-top: 0;
 	}
 	.msg-block-user {
 		margin-top: 40px;
@@ -1541,36 +1537,152 @@
 		background: var(--color-accent-teal);
 	}
 
-	.msg-fold {
-		@apply font-mono text-[10px] leading-none text-muted cursor-pointer bg-transparent border-0 p-0 underline-offset-2 hover:text-ink focus-visible:outline focus-visible:outline-1 focus-visible:outline-ink;
-		opacity: 0;
-		transition: opacity 140ms var(--ease-out);
+	/* 一个 assistant step 的注脚。运行中一行一次调用；结束后整组收成一行摘要，展开则是一条
+	   时间轴：竖线是结构，节点是状态，空心圈 = 想过（note）、实心 = 做过（line）。
+	   无框、无底色、无徽标 —— 层级只用线（P-97）。 */
+	.msg-step {
+		@apply min-w-0;
+		margin-top: 12px;
 	}
-	.msg-fold:hover,
-	.msg-fold:focus-visible,
-	.msg-fold-group:hover .msg-fold,
-	.msg-fold-group:has(:focus-visible) .msg-fold {
-		opacity: 1;
+	.msg-step.has-reply {
+		@apply border-b border-line;
+		padding-bottom: 10px;
 	}
-	@media (hover: none) {
-		.msg-fold {
-			opacity: 1;
-		}
+	.msg-step-sum {
+		@apply flex cursor-pointer items-baseline gap-2 border-0 bg-transparent p-0 text-left font-mono text-[10px] text-ink-soft;
+		line-height: 1.7;
 	}
-	@media (prefers-reduced-motion: reduce) {
-		.msg-fold {
-			transition: none;
-		}
+	.msg-step-sum:hover {
+		@apply text-ink;
 	}
-
-	.msg-earlier-body {
-		@apply flex min-h-0 flex-col overflow-y-auto overflow-x-hidden;
+	.msg-step-fail {
+		@apply text-signal;
 	}
-	.msg-earlier-item + .msg-earlier-item {
-		@apply mt-4 border-t border-line pt-4;
+	.msg-note-sep {
+		@apply text-muted-soft;
 	}
-	.msg-earlier-at {
-		@apply mb-1 block font-mono text-[10px] leading-none tabular-nums text-muted;
+	.msg-step-scroll {
+		@apply relative min-w-0;
+	}
+	.msg-step-rows {
+		@apply relative min-w-0;
+		padding-left: 16px;
+		margin-top: 8px;
+		max-height: min(420px, 50vh);
+		overflow-x: hidden;
+		overflow-y: auto;
+	}
+	.msg-step-fade {
+		@apply pointer-events-none absolute inset-x-0 bottom-0 block h-[22px];
+		background: linear-gradient(to top, var(--color-canvas), transparent);
+	}
+	.msg-step-rows::before {
+		content: "";
+		position: absolute;
+		left: 5px;
+		top: 8px;
+		bottom: 8px;
+		width: 0.5px;
+		background: var(--color-line);
+	}
+	.msg-note {
+		@apply relative flex min-w-0 flex-wrap items-baseline gap-x-2 font-mono text-[10px] text-muted;
+		line-height: 1.7;
+	}
+	.msg-note + .msg-note {
+		@apply mt-2;
+	}
+	.msg-note.is-open {
+		@apply cursor-pointer;
+	}
+	.msg-note.is-open:hover {
+		@apply text-ink-soft;
+	}
+	.msg-note.is-open:hover .msg-note-kind,
+	.msg-note.is-open:hover .msg-note-caret {
+		@apply text-ink-soft;
+	}
+	.msg-note-kind {
+		@apply shrink-0 text-ink-soft;
+	}
+	.msg-note-line {
+		@apply min-w-0 flex-1 truncate;
+	}
+	.msg-note-node {
+		@apply absolute size-[5px] rounded-full;
+		left: -13px;
+		top: 6px;
+		background: var(--color-canvas);
+		box-shadow: inset 0 0 0 1px var(--color-line-strong);
+	}
+	.msg-note-node.is-run {
+		background: var(--color-ink-soft);
+		box-shadow: none;
+	}
+	.msg-note-node.is-fail {
+		background: var(--color-signal);
+		box-shadow: none;
+	}
+	.msg-note-node.is-live {
+		background: var(--color-accent-teal);
+		box-shadow: none;
+		animation: work-dot 1.2s infinite;
+	}
+	.msg-note-caret {
+		@apply shrink-0 text-muted-soft;
+	}
+	.msg-note-card-wrap {
+		@apply relative mt-1.5 min-w-0;
+		flex-basis: 100%;
+	}
+	.msg-note-card {
+		@apply grid gap-2.5 rounded-md border border-line bg-surface p-2.5;
+		cursor: default;
+		max-height: min(360px, 45vh);
+		overflow-x: hidden;
+		overflow-y: auto;
+	}
+	.msg-note-card-fade {
+		@apply pointer-events-none absolute inset-x-[1px] bottom-[1px] block h-[22px];
+		border-bottom-left-radius: 6px;
+		border-bottom-right-radius: 6px;
+		background: linear-gradient(to top, var(--color-surface), transparent);
+	}
+	.msg-note-field {
+		@apply grid gap-1.5 min-w-0;
+	}
+	.msg-note-label {
+		@apply font-sans text-[10px] font-semibold uppercase tracking-[0.12em] text-muted;
+	}
+	.msg-note-pre {
+		@apply m-0 rounded-[4px] px-2.5 py-2 font-mono text-[12px] whitespace-pre-wrap;
+		background: var(--color-code-block-bg);
+		color: var(--color-ink-soft);
+		cursor: text;
+		line-height: 1.55;
+		overflow-wrap: anywhere;
+	}
+	.msg-note-md {
+		font-size: 13px;
+		line-height: 1.6;
+		color: var(--color-body);
+		cursor: text;
+		overflow-wrap: anywhere;
+	}
+	.msg-note-md pre,
+	.msg-note-md pre code {
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+	}
+	.msg-note-say {
+		@apply mt-1 min-w-0;
+		flex-basis: 100%;
+	}
+	.msg-note-md > :first-child {
+		@apply mt-0;
+	}
+	.msg-note-md > :last-child {
+		@apply mb-0;
 	}
 
 	.conv-preview-dots {

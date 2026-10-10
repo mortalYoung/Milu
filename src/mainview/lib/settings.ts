@@ -15,7 +15,6 @@ export interface SettingsData {
 	skills_dirs?: string[];
 	skills_watch?: boolean;
 	skills_watch_delay_ms?: number;
-	sendMessageIntervalSec?: number | null;
 	shellContinuous?: boolean;
 	rememberSession?: boolean;
 	memoryEnabled?: boolean;

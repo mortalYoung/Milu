@@ -39,6 +39,14 @@ export interface Entry {
 	command?: CommandInfo;
 	skill?: CommandInfo;
 	files?: string[];
+	/** What the model thought before it spoke — a row of its own, closed until asked. */
+	thinking?: { text: string; redacted?: boolean };
+	/** What it called, and what came back: one row per call, the card closed until asked. */
+	tool?: { name: string; summary: string; status: "running" | "success" | "error"; args?: string; result?: string; isError?: boolean };
+	/** Said along the way, not the answer: a row in the timeline instead of a bubble. */
+	say?: true;
+	/** The step's wall clock, off the entry's own timing — what the folded summary reports. */
+	stepMs?: number;
 
 	key?: string;
 }
@@ -62,8 +70,21 @@ export function makeReplyEntry(item: { text: string; time: number; from: string;
 	};
 }
 
-export function makeAgentEntry(text: string, time = Date.now(), files?: string[], to?: string): Entry {
-	return { id: nextId++, kind: "agent", text, time: fmtDateTime(new Date(time)), ...(files ? { files } : {}), ...(to ? { to } : {}) };
+export type AgentEntryExtras = Pick<Entry, "thinking" | "tool" | "stepMs" | "say">;
+
+export function makeAgentEntry(text: string, time = Date.now(), files?: string[], to?: string, extras: AgentEntryExtras = {}): Entry {
+	return {
+		id: nextId++,
+		kind: "agent",
+		text,
+		time: fmtDateTime(new Date(time)),
+		...(files ? { files } : {}),
+		...(to ? { to } : {}),
+		...(extras.thinking ? { thinking: extras.thinking } : {}),
+		...(extras.tool ? { tool: extras.tool } : {}),
+		...(extras.stepMs != null ? { stepMs: extras.stepMs } : {}),
+		...(extras.say ? { say: true } : {}),
+	};
 }
 
 export function makeEscalationEntry(item: { text: string; time: number; escalation: EscalationInfo }): Entry {

@@ -3,6 +3,7 @@ import { createStore } from "zustand/vanilla";
 import { projectView } from "../../shared/entry-meta";
 import type { ViewItem } from "../../shared/rpc";
 import {
+	type AgentEntryExtras,
 	type Entry,
 	makeAgentEntry,
 	makeCommandEntry,
@@ -69,44 +70,88 @@ export function buildView(items: ViewItem[]): Entry[] {
 			const entry = makeReplyEntry({ text: item.text, time: item.time, from: item.from, ...(item.requestId ? { requestId: item.requestId } : {}) });
 			pushItem(entry, item.id);
 		} else {
-			const entry = item.kind === "user" ? makeUserEntry(item.text, item.time, item.from) : makeAgentEntry(item.text, item.time, item.files, item.to);
+			const entry = item.kind === "user" ? makeUserEntry(item.text, item.time, item.from) : makeAgentEntry(item.text, item.time, item.files, item.to, agentExtras(item));
 			pushItem(entry, item.id);
 		}
 	}
 	return out;
 }
 
-export type ChatBlock = Entry | Entry[];
-
-export function blockKey(block: ChatBlock): string {
-	const entry = Array.isArray(block) ? block[0] : block;
-	return entry.key ?? String(entry.id);
+/** A message's own row, when it is a thought or a call rather than words. */
+function agentExtras(item: ViewItem): AgentEntryExtras {
+	const step = item.stepMs != null ? { stepMs: item.stepMs } : {};
+	if (item.thinking) return { thinking: item.thinking, ...step };
+	if (item.say) return { say: true, ...step };
+	if (!item.tool) return step;
+	const { name, summary, status, args, result, isError } = item.tool;
+	return {
+		tool: { name, summary, status, ...(args !== undefined ? { args } : {}), ...(result !== undefined ? { result } : {}), ...(isError ? { isError: true } : {}) },
+		...step,
+	};
 }
 
-export function groupView(view: Entry[]): ChatBlock[] {
-	const out: ChatBlock[] = [];
-	let stack: Entry[] | null = null;
-	const flush = () => {
-		if (stack) {
-			out.push(stack);
-			stack = null;
-		}
+export interface StepGroup {
+	key: string;
+	rows: Entry[];
+	/** A reply follows, so the group draws the hairline that parts it from the words. */
+	reply?: boolean;
+}
+
+export const stepKeyOf = (entry: Entry): string | null => (entry.tool || entry.thinking || entry.say ? (entry.key ?? String(entry.id)).replace(/-\d{1,2}$/, "") : null);
+
+/** Rows belong to the reply they were working towards, not to the assistant message that happened to
+ *  carry them: one answer can come after several messages, each with its own thought and calls, and
+ *  the reader thinks of that whole stretch as one reply. Rows that never find a reply (an aborted run,
+ *  a tool-only tail) fold among themselves, keyed by the entry that started them. */
+export function foldSteps(items: Entry[]): ({ entry: Entry } | { step: StepGroup })[] {
+	const out: ({ entry: Entry } | { step: StepGroup })[] = [];
+	let rows: Entry[] = [];
+	const idOf = (entry: Entry) => entry.key ?? String(entry.id);
+	const flush = (key?: string) => {
+		if (rows.length === 0) return;
+		const group = rows;
+		rows = [];
+		out.push({ step: { key: key ?? idOf(group[0]!), rows: group, ...(key ? { reply: true } : {}) } });
 	};
-	for (const entry of view) {
-		if (entry.kind === "agent" || entry.kind === "escalation") {
-			(stack ??= []).push(entry);
-		} else {
-			flush();
-			out.push(entry);
+	for (const entry of items) {
+		if (entry.tool || entry.thinking || entry.say) {
+			rows.push(entry);
+			continue;
 		}
+		flush(entry.kind === "agent" ? idOf(entry) : undefined);
+		out.push({ entry });
 	}
 	flush();
 	return out;
 }
 
+/** What a folded step says about itself: how long it took, how much it did, what failed. A count of
+ *  zero stays out, and a step under a second does not claim a duration at all. The time is the sum of
+ *  the turns it took — the same step can span several assistant messages. */
+export function stepSummary(rows: Entry[]): { text: string; fail?: boolean }[] {
+	const tools = rows.filter((row) => row.tool).length;
+	const failed = rows.filter((row) => row.tool?.status === "error").length;
+	const perEntry = new Map<string, number>();
+	for (const row of rows) {
+		const key = stepKeyOf(row);
+		if (key == null || row.stepMs == null || perEntry.has(key)) continue;
+		perEntry.set(key, row.stepMs);
+	}
+	const ms = [...perEntry.values()].reduce((total, value) => total + value, 0);
+	const parts: { text: string; fail?: boolean }[] = [];
+	if (ms >= 1000) parts.push({ text: `${(ms / 1000).toFixed(1)}s` });
+	if (tools > 0) parts.push({ text: `${tools} tool${tools === 1 ? "" : "s"}` });
+	if (failed > 0) parts.push({ text: `${failed} failed`, fail: true });
+	if (parts.length === 0) parts.push({ text: `${rows.length} thought${rows.length === 1 ? "" : "s"}` });
+	return parts;
+}
+
+export function itemKey(entry: Entry): string {
+	return entry.key ?? String(entry.id);
+}
+
 export interface TranscriptState {
 	items: Entry[];
-	blocks: ChatBlock[];
 }
 
 export interface TranscriptController {
@@ -115,12 +160,12 @@ export interface TranscriptController {
 }
 
 export function createTranscript(session: StoreApi<SessionData>) {
-	const store = createStore<TranscriptState>()(() => ({ items: [], blocks: [] }));
+	const store = createStore<TranscriptState>()(() => ({ items: [] }));
 
 	function recompute() {
 		const { origin } = session.getState();
 		const items = buildView(projectView(origin.entries, { baseDir: origin.baseDir }));
-		store.setState({ items, blocks: groupView(items) });
+		store.setState({ items });
 	}
 
 	session.subscribe((state, previous) => {

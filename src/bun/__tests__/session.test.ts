@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createSessionStore } from "../persist";
+import { projectView } from "../../shared/entry-meta";
+import type { ViewItem } from "../../shared/rpc";
+import { createSessionStore, type SessionStore } from "../persist";
 
 let dirs: string[] = [];
 
@@ -15,6 +17,11 @@ async function tempDir(): Promise<string> {
 	const dir = await mkdtemp(join(tmpdir(), "session-test-"));
 	dirs.push(dir);
 	return dir;
+}
+
+/** What the transcript would draw: the view projection over the log. */
+async function visible(session: SessionStore, dir: string): Promise<ViewItem[]> {
+	return projectView(await session.rawEntries(dir));
 }
 
 describe("session store (pi JSONL backend)", () => {
@@ -36,12 +43,16 @@ describe("session store (pi JSONL backend)", () => {
 		);
 		await scope.appendSendMessage("done", { toolCallId: "tc1" }, 3);
 
-		expect((await session.visibleHistory(dir)).map((m) => m.kind)).toEqual(["user", "send_message"]);
-		expect((await session.visibleHistory(dir))[1].text).toBe("done");
+		// The assistant's own blocks are what shows: the thought, the call, then the posted line.
+		const view = await visible(session, dir);
+		expect(view.map((m) => m.kind)).toEqual(["user", "assistant", "assistant", "assistant"]);
+		expect(view[1].thinking?.text).toBe("...");
+		expect(view[2].tool).toMatchObject({ name: "bash", status: "success", result: "out" });
+		expect(view[3].text).toBe("done");
 
 		// Reopen: a new instance on the same root restores
 		const reopened = createSessionStore();
-		expect((await reopened.visibleHistory(dir)).map((m) => m.kind)).toEqual(["user", "send_message"]);
+		expect((await visible(reopened, dir)).map((m) => m.kind)).toEqual(["user", "assistant", "assistant", "assistant"]);
 	});
 
 	it("scopes append to their own roots; per-dir reads stay isolated", async () => {
@@ -56,8 +67,8 @@ describe("session store (pi JSONL backend)", () => {
 
 		// Each scope's appends land in its own root — the view of a partner whose run is not
 		// active never sees the running partner's messages (or vice versa).
-		expect((await session.visibleHistory(dirA)).map((m) => m.text)).toEqual(["in A", "reply A"]);
-		expect((await session.visibleHistory(dirB)).map((m) => m.text)).toEqual(["in B"]);
+		expect((await visible(session, dirA)).map((m) => m.text)).toEqual(["in A", "reply A"]);
+		expect((await visible(session, dirB)).map((m) => m.text)).toEqual(["in B"]);
 
 		// Appends to one root never touch the other
 		await scopeB.appendSendMessage("reply B", {}, 4);
@@ -88,6 +99,10 @@ describe("session store (pi JSONL backend)", () => {
 		await scope.appendSendMessage("done", {}, 3);
 		expect(await session.lastMessage(dir)).toMatchObject({ kind: "send_message", text: "done", time: 3 });
 
+		// A message with words of its own is a preview too; tool-only turns are not.
+		await scope.appendAssistant({ blocks: [{ type: "text", text: "an answer" }] }, 4);
+		expect(await session.lastMessage(dir)).toMatchObject({ kind: "assistant", text: "an answer", time: 4 });
+
 		// Per-dir isolation: a different root's last message is independent
 		const dirB = await tempDir();
 		expect(await session.lastMessage(dirB)).toBeNull();
@@ -103,7 +118,7 @@ describe("session store (pi JSONL backend)", () => {
 		await second.scope(dir).appendUser("two", 3);
 
 		const third = createSessionStore();
-		expect((await third.visibleHistory(dir)).map((m) => m.text)).toEqual(["one", "reply one", "two"]);
+		expect((await visible(third, dir)).map((m) => m.text)).toEqual(["one", "reply one", "two"]);
 	});
 
 	it("rotateSession archives the current log and starts a fresh one", async () => {
@@ -111,12 +126,12 @@ describe("session store (pi JSONL backend)", () => {
 		const session = createSessionStore();
 		await session.scope(dir).appendUser("old", 1);
 		await session.scope(dir).appendSendMessage("old reply", {}, 2);
-		expect((await session.visibleHistory(dir)).map((m) => m.text)).toEqual(["old", "old reply"]);
+		expect((await visible(session, dir)).map((m) => m.text)).toEqual(["old", "old reply"]);
 
 		const before = await session.sessionStartedAt(dir);
 		const newId = await session.rotateSession(dir);
 		expect(newId).toBeTruthy();
-		expect(await session.visibleHistory(dir)).toEqual([]);
+		expect(await visible(session, dir)).toEqual([]);
 		expect(await session.rawEntries(dir)).toEqual([]);
 		// A cleared chat has no message left, but the fresh session dates the row: the start time moves forward.
 		expect(await session.lastMessage(dir)).toBeNull();
@@ -124,11 +139,11 @@ describe("session store (pi JSONL backend)", () => {
 
 		// new writes land in the fresh file
 		await session.scope(dir).appendUser("new", 3);
-		expect((await session.visibleHistory(dir)).map((m) => m.text)).toEqual(["new"]);
+		expect((await visible(session, dir)).map((m) => m.text)).toEqual(["new"]);
 
 		// reopening on the same root resumes the fresh (newest) session, old log stays archived
 		const reopened = createSessionStore();
-		expect((await reopened.visibleHistory(dir)).map((m) => m.text)).toEqual(["new"]);
+		expect((await visible(reopened, dir)).map((m) => m.text)).toEqual(["new"]);
 	});
 
 	it("forkTo re-creates the current session and keeps the cleared logs archived", async () => {
@@ -142,7 +157,7 @@ describe("session store (pi JSONL backend)", () => {
 		await session.forkTo(source, target);
 
 		const forked = createSessionStore();
-		expect((await forked.visibleHistory(target)).map((m) => m.text)).toEqual(["after the clear"]);
+		expect((await visible(forked, target)).map((m) => m.text)).toEqual(["after the clear"]);
 		expect(await forked.allRawEntries(target)).toHaveLength(2);
 	});
 });

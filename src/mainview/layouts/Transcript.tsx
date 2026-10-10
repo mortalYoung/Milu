@@ -1,6 +1,6 @@
 import { Check, ChevronRight, CircleStop, Copy, Pencil } from "lucide-react";
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "motion/react";
-import { type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Fragment, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { EVENTS } from "../../shared/events";
 import { BtwPanel } from "../components/BtwPanel";
@@ -19,10 +19,10 @@ import { For, Show } from "../lib/jsx";
 import { markdownFilesKey, paintMarkdown, renderMarkdown, renderMarkdownReady } from "../lib/markdown";
 import { rpc } from "../lib/rpc";
 import { SURFACE } from "../lib/surfaces";
-import { blockKey, type ChatBlock } from "../lib/transcript";
+import { foldSteps, itemKey, type StepGroup, stepKeyOf, stepSummary } from "../lib/transcript";
 import { cn } from "../lib/utils";
 
-const TRANSCRIPT_SKIP = [".load-earlier", ".md-copy", ".btw-cell", ".msg-rail", ".msg-fold"];
+const TRANSCRIPT_SKIP = [".load-earlier", ".md-copy", ".btw-cell", ".msg-rail"];
 
 function hasTextSelection(): boolean {
 	const selection = window.getSelection();
@@ -149,73 +149,153 @@ function escalationBody(esc: EscalationInfo, onRespond?: (id: string, approved: 
 	);
 }
 
-function StackFold(props: {
-	cards: Entry[];
-	anchorKey: string;
-	worker?: string;
-	locateFlashId?: number | null;
-	onEscalationRespond?: (id: string, approved: boolean) => void;
-	onBtw?: (anchorId: string) => void;
-	onBtwClose?: () => void;
-	activeBtwAnchor?: string | null;
-}) {
-	const [earlierOpen, setEarlierOpen] = useState(false);
-	const folded = Math.max(0, props.cards.length - 1);
-	const earlier = props.cards.slice(0, -1);
-	const last = props.cards[props.cards.length - 1]!;
-	const canFold = last.kind !== "escalation";
-	const fold =
-		folded > 0 ? (
-			<button
-				type="button"
-				className="msg-fold"
-				aria-haspopup="dialog"
-				title={`Show the ${folded} earlier ${folded === 1 ? "message" : "messages"}`}
-				onClick={() => setEarlierOpen(true)}
-			>
-				+{folded} earlier
-			</button>
-		) : undefined;
+const oneLineOf = (text: string): string => text.replace(/\s+/g, " ").trim();
 
-	return (
-		<div className="msg-fold-group" data-chat-anchor-key={props.anchorKey}>
-			<div
-				className={"msg-block msg-block-agent" + (props.locateFlashId === last.id ? " locate-flash" : "")}
-				id={"entry-" + last.id}
-				data-chat-anchor-key={last.key ?? String(last.id)}
-			>
-				{last.kind === "escalation" && last.escalation
-					? escalationBody(last.escalation, props.onEscalationRespond)
-					: messageBody(
-							last,
-							props.worker,
-							true,
-							props.onBtw,
-							props.activeBtwAnchor === last.key,
-							true,
-							props.onBtwClose,
-							!!props.activeBtwAnchor && props.activeBtwAnchor !== last.key,
-							canFold ? fold : undefined,
-						)}
+/** Caps a block's height and fades its bottom edge while there is more to read below. */
+function useScrollFade<T extends HTMLElement>(active: boolean) {
+	const ref = useRef<T | null>(null);
+	const [more, setMore] = useState(false);
+	useEffect(() => {
+		const el = ref.current;
+		if (!el) {
+			setMore(false);
+			return;
+		}
+		const update = () => {
+			const hidden = el.scrollHeight - el.clientHeight;
+			const next = hidden > 1 && el.scrollHeight - el.clientHeight - el.scrollTop > 1;
+			setMore((previous) => (previous === next ? previous : next));
+		};
+		update();
+		const frame = requestAnimationFrame(update);
+		el.addEventListener("scroll", update, { passive: true });
+		const resize = new ResizeObserver(update);
+		resize.observe(el);
+		for (const child of Array.from(el.children)) resize.observe(child);
+		return () => {
+			cancelAnimationFrame(frame);
+			el.removeEventListener("scroll", update);
+			resize.disconnect();
+		};
+	}, [active]);
+	return { ref, more };
+}
+
+/** One assistant step's footnotes: the calls it made and the thoughts behind them. A row is a single
+ *  line until it is asked for: what it opens is a card, never part of the flow. Once the step is over
+ *  the whole group folds into one summary line and unfolds on a click. */
+function NoteRow(props: { entry: Entry; open: boolean; working: boolean; onToggle: () => void }) {
+	const { entry } = props;
+	const tool = entry.tool;
+	const thinking = entry.thinking;
+	const card = useScrollFade<HTMLDivElement>(props.open);
+	// A message the run said along the way is copy, not a note: show the words themselves — no
+	// truncation, no card, nothing to click.
+	if (entry.say) {
+		return (
+			<div className="msg-note is-say" id={"entry-" + entry.id} data-chat-anchor-key={itemKey(entry)}>
+				<span className="msg-note-node" />
+				<span className="msg-note-kind">say</span>
+				<div className="msg-note-say md msg-note-md">
+					<Markdown text={entry.text} />
+				</div>
 			</div>
-			{!canFold && fold}
-			<Dialog open={earlierOpen} onOpenChange={setEarlierOpen}>
-				<DialogContent focusClose className="w-[560px] max-w-[560px] gap-0 bg-surface p-0">
-					<div className="flex max-h-[70vh] flex-col gap-3 p-5">
-						<DialogTitle className="font-serif text-[16px] font-medium tracking-normal text-ink">
-							{folded} earlier {folded === 1 ? "message" : "messages"}
-						</DialogTitle>
-						<div className="msg-earlier-body">
-							{earlier.map((card) => (
-								<div key={card.id} className="msg-earlier-item">
-									<span className="msg-earlier-at">{parseStamp(card.time)?.time ?? ""}</span>
-									<Markdown text={card.text} files={card.files} class="md msg-body" />
-								</div>
-							))}
-						</div>
+		);
+	}
+	const failed = tool?.status === "error";
+	const running = tool?.status === "running" && props.working;
+	const line = tool ? tool.summary : thinking?.redacted === true ? "redacted" : oneLineOf(thinking?.text ?? "");
+	const opens = tool ? (tool.args ?? "") !== "" || (tool.result ?? "") !== "" : thinking != null && thinking.redacted !== true && thinking.text !== "";
+	return (
+		<div
+			className={"msg-note" + (opens ? " is-open" : "")}
+			id={"entry-" + entry.id}
+			data-chat-anchor-key={itemKey(entry)}
+			role={opens ? "button" : undefined}
+			tabIndex={opens ? 0 : undefined}
+			aria-expanded={opens ? props.open : undefined}
+			onClick={
+				opens
+					? () => {
+							if (hasTextSelection()) return;
+							props.onToggle();
+						}
+					: undefined
+			}
+			onKeyDown={
+				opens
+					? (event) => {
+							if (event.key !== "Enter" && event.key !== " ") return;
+							event.preventDefault();
+							props.onToggle();
+						}
+					: undefined
+			}
+		>
+			<span className={"msg-note-node" + (running ? " is-live" : failed ? " is-fail" : tool ? " is-run" : "")} />
+			<span className="msg-note-kind">{tool ? tool.name : "think"}</span>
+			<span className="msg-note-sep">·</span>
+			<span className="msg-note-line">{line}</span>
+			{opens ? <span className="msg-note-caret">{props.open ? "⌄" : "›"}</span> : null}
+			{opens && props.open ? (
+				<div className="msg-note-card-wrap">
+					<div className="msg-note-card" ref={card.ref} onClick={(event) => event.stopPropagation()}>
+						{tool ? (
+							<>
+								{tool.args ? (
+									<div className="msg-note-field">
+										<span className="msg-note-label">args</span>
+										<pre className="msg-note-pre">{tool.args}</pre>
+									</div>
+								) : null}
+								{tool.result ? (
+									<div className="msg-note-field">
+										<span className="msg-note-label">{failed ? "result · failed" : "result"}</span>
+										<pre className="msg-note-pre">{tool.result}</pre>
+									</div>
+								) : null}
+							</>
+						) : (
+							<Markdown text={thinking?.text ?? ""} class="md msg-note-md" />
+						)}
 					</div>
-				</DialogContent>
-			</Dialog>
+					{card.more ? <span className="msg-note-card-fade" /> : null}
+				</div>
+			) : null}
+		</div>
+	);
+}
+
+function StepBlock(props: { group: StepGroup; working: boolean; open: boolean; onToggle: () => void; openRows: Set<string>; onToggleRow: (key: string) => void }) {
+	const { rows } = props.group;
+	const first = rows[0]!;
+	const collapsible = rows.length > 1;
+	const folded = collapsible && !props.working && !props.open;
+	const scroll = useScrollFade<HTMLDivElement>(!folded);
+	const summary = (
+		<button type="button" className="msg-step-sum" aria-expanded={!folded} onClick={props.onToggle}>
+			<span className="msg-note-caret">{folded ? "›" : "⌄"}</span>
+			{stepSummary(rows).map((part, index) => (
+				<Fragment key={part.text}>
+					{index > 0 ? <span className="msg-note-sep">·</span> : null}
+					<span className={part.fail ? "msg-step-fail" : undefined}>{part.text}</span>
+				</Fragment>
+			))}
+		</button>
+	);
+	return (
+		<div className={"msg-step" + (props.group.reply ? " has-reply" : "")} id={"entry-" + first.id} data-chat-anchor-key={itemKey(first)}>
+			{collapsible && !props.working ? summary : null}
+			{folded ? null : (
+				<div className="msg-step-scroll">
+					<div className="msg-step-rows" ref={scroll.ref}>
+						{rows.map((row) => (
+							<NoteRow key={itemKey(row)} entry={row} open={props.openRows.has(itemKey(row))} working={props.working} onToggle={() => props.onToggleRow(itemKey(row))} />
+						))}
+					</div>
+					{scroll.more ? <span className="msg-step-fade" /> : null}
+				</div>
+			)}
 		</div>
 	);
 }
@@ -235,7 +315,8 @@ export function Transcript(props: {
 	const scroll = useScroll();
 	const reduceMotion = useReducedMotion();
 
-	const { items, blocks } = useStore(controller.store, (state) => state);
+	const { items } = useStore(controller.store, (state) => state);
+	const display = foldSteps(items);
 	const locateFlashId = useStore(scroll.store, (state) => state.locateFlashId);
 	const entries = useStore(session.store, (state) => state.origin.entries);
 	const hasMore = useStore(session.store, (state) => state.origin.hasMore);
@@ -243,6 +324,8 @@ export function Transcript(props: {
 
 	const [expandedCommand, setExpandedCommand] = useState<string | null>(null);
 	const [collapsedShells, setCollapsedShells] = useState<Set<string>>(() => new Set());
+	const [openRows, setOpenRows] = useState<Set<string>>(() => new Set());
+	const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set());
 	const [skillDialog, setSkillDialog] = useState<{ name: string; content: string } | null>(null);
 	const [editingUserKey, setEditingUserKey] = useState<string | null>(null);
 	const [editDraft, setEditDraft] = useState("");
@@ -280,6 +363,24 @@ export function Transcript(props: {
 		observer.observe(content, { subtree: true, childList: true, characterData: true });
 		return () => observer.disconnect();
 	}, [find.open, find.refresh, scroll]);
+
+	function toggleGroup(key: string) {
+		setOpenGroups((prev) => {
+			const next = new Set(prev);
+			if (next.has(key)) next.delete(key);
+			else next.add(key);
+			return next;
+		});
+	}
+
+	function toggleRow(key: string) {
+		setOpenRows((prev) => {
+			const next = new Set(prev);
+			if (next.has(key)) next.delete(key);
+			else next.add(key);
+			return next;
+		});
+	}
 
 	function toggleShellOutput(key: string) {
 		setCollapsedShells((prev) => {
@@ -381,14 +482,20 @@ export function Transcript(props: {
 		if (!anchor || !inner) return;
 
 		let anchorEl: HTMLElement | null = null;
-		for (const block of blocks) {
-			const cards = Array.isArray(block) ? block : [block];
-			const card = cards.find((c) => (c.key ?? String(c.id)) === anchor);
-			if (card) {
-				anchorEl = document.getElementById("entry-" + card.id);
-				break;
+		let stepFirstId: number | null = null;
+		for (const entry of items) {
+			// A footnote row's step answers to its assistant entry's id, but the element that owns
+			// that id is the step wrapper (the group's first row), folded or not.
+			if (stepKeyOf(entry) === anchor) {
+				stepFirstId ??= entry.id;
+				continue;
 			}
+			if (itemKey(entry) !== anchor) continue;
+			stepFirstId = null;
+			anchorEl = document.getElementById("entry-" + entry.id);
+			break;
 		}
+		if (!anchorEl && stepFirstId != null) anchorEl = document.getElementById("entry-" + stepFirstId);
 		if (!anchorEl) return;
 		const target = anchorEl;
 
@@ -401,7 +508,7 @@ export function Transcript(props: {
 		observer.observe(target);
 		observer.observe(inner);
 		return () => observer.disconnect();
-	}, [props.activeBtwAnchor, blocks, scroll]);
+	}, [props.activeBtwAnchor, items, scroll]);
 
 	const worker = props.worker;
 	const btwAnchor = props.activeBtwAnchor;
@@ -449,48 +556,44 @@ export function Transcript(props: {
 					</div>
 				</Show>
 
-				<For each={blocks} by={blockKey}>
-					{(block: ChatBlock) => {
-						if (Array.isArray(block)) {
-							const card = block[0]!;
-							const key = blockKey(block);
-							if (block.length === 1) {
-								if (card.kind === "escalation" && card.escalation) {
-									return (
-										<div className="msg-escalation" id={"entry-" + card.id} data-chat-anchor-key={key}>
-											{escalationBody(card.escalation, props.onEscalationRespond)}
-										</div>
-									);
-								}
-								return (
-									<motion.div
-										className={"msg-block msg-block-agent" + (locateFlashId === card.id ? " locate-flash" : "") + (btwAnchor === key ? " btw-active" : "")}
-										id={"entry-" + card.id}
-										data-chat-anchor-key={key}
-										initial={{ opacity: 0, y: 6 }}
-										animate={{ opacity: 1, y: 0 }}
-										transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
-									>
-										{messageBody(card, worker, true, props.onBtw, btwAnchor === key, true, props.onBtwClose, !!btwAnchor && btwAnchor !== key)}
-									</motion.div>
-								);
-							}
+				<For each={display} by={(row) => ("step" in row ? `${row.step.key}:step` : itemKey(row.entry))}>
+					{(row) => {
+						if ("step" in row) {
 							return (
-								<StackFold
-									cards={block}
-									anchorKey={key}
-									worker={worker}
-									locateFlashId={locateFlashId}
-									onEscalationRespond={props.onEscalationRespond}
-									onBtw={props.onBtw}
-									onBtwClose={props.onBtwClose}
-									activeBtwAnchor={btwAnchor}
+								<StepBlock
+									group={row.step}
+									working={props.working}
+									open={openGroups.has(row.step.key)}
+									onToggle={() => toggleGroup(row.step.key)}
+									openRows={openRows}
+									onToggleRow={toggleRow}
 								/>
 							);
 						}
+						const entry = row.entry;
+						const key = itemKey(entry);
+						if (entry.kind === "agent" || entry.kind === "escalation") {
+							if (entry.kind === "escalation" && entry.escalation) {
+								return (
+									<div className="msg-escalation" id={"entry-" + entry.id} data-chat-anchor-key={key}>
+										{escalationBody(entry.escalation, props.onEscalationRespond)}
+									</div>
+								);
+							}
+							return (
+								<motion.div
+									className={"msg-block msg-block-agent" + (locateFlashId === entry.id ? " locate-flash" : "") + (btwAnchor === key ? " btw-active" : "")}
+									id={"entry-" + entry.id}
+									data-chat-anchor-key={key}
+									initial={{ opacity: 0, y: 6 }}
+									animate={{ opacity: 1, y: 0 }}
+									transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
+								>
+									{messageBody(entry, worker, true, props.onBtw, btwAnchor === key, true, props.onBtwClose, !!btwAnchor && btwAnchor !== key)}
+								</motion.div>
+							);
+						}
 
-						const entry = block;
-						const key = blockKey(block);
 						if (entry.kind === "user") {
 							const isEditing = editingUserKey === key;
 							return (

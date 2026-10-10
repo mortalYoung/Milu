@@ -21,7 +21,7 @@ import type { PartnerPrompt } from "./prompt";
 
 export interface AgentBridge {
 	onTurnStart: (turn: number) => void;
-	onMessage: (text: string) => void;
+	onMessage: () => void;
 	onEnd: (error?: string) => void;
 	onQueueChange: (event: QueueEvent) => void;
 	onPeerAsk?: (item: QueuedMessage) => void;
@@ -101,7 +101,6 @@ export interface AgentDeps {
 	readMemory?: (opts: QueryMemoryOptions) => Promise<MemoryRecord[]>;
 	sandbox?: SandboxManager;
 	confirmEscalation?: (request: EscalationRequest) => Promise<EscalationDecision>;
-	deliverIntervalMs?: () => number;
 	partnerDir?: string;
 	grantedSkills?: () => Promise<string[]>;
 	skills?: SkillsService;
@@ -239,7 +238,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			timestamp,
 		});
 		ctx.markVisible();
-		bridge.onMessage(text);
+		bridge.onMessage();
 	}
 
 	const failedBash: { command: string; run: number; turn: number; at: number }[] = [];
@@ -266,61 +265,37 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			.trim();
 	}
 
-	function autoDeliver(assistant: AssistantMessage) {
+	/** The run owes a peer an answer: the words just written are that answer, and this is the record
+	 *  that they went out. Nothing else about them is a delivery — the assistant entry is the message. */
+	function postPendingReply(assistant: AssistantMessage | undefined) {
+		const pending = deps.peer?.pendingReply() ?? null;
+		if (!pending || !assistant) return;
 		const text = assistantText(assistant);
 		if (!text) return;
-		if (deps.peer?.pendingReply()) return;
-		const hasToolCalls = assistant.content.some((block) => block.type === "toolCall");
-		if (hasToolCalls && runHasDelivered && ctx.visibleElapsedMs() < (deps.deliverIntervalMs?.() ?? Number.POSITIVE_INFINITY)) return;
-		runHasDelivered = true;
-		delivered.add(assistant);
-		deliverText(text);
-	}
-	function deliverText(text: string) {
-		const timestamp = Date.now();
-		const pending = deps.peer?.pendingReply() ?? null;
 		void deps.session
-			.appendSendMessage(text, { toolCallId: "harness-delivery", ...(pending ? { to: pending.to, requestId: pending.requestId, hop: pending.hop } : {}) }, timestamp)
-			.then(() => {
-				ctx.markVisible();
-				bridge.onMessage(text);
-			})
+			.appendSendMessage(text, { via: "harness", to: pending.to, requestId: pending.requestId, hop: pending.hop }, Date.now())
 			.catch((error) => console.error("session appendSendMessage failed:", error));
-		if (pending && deps.peer)
-			void deps.peer.reply({ to: pending.to, text, requestId: pending.requestId, hop: pending.hop }).catch((error) => console.error("peer reply failed:", error));
+		void deps.peer?.reply({ to: pending.to, text, requestId: pending.requestId, hop: pending.hop }).catch((error) => console.error("peer reply failed:", error));
 	}
 
-	function enforceDelivery(event: Extract<AgentEvent, { type: "agent_end" }>) {
-		if (agent.state.errorMessage) return;
-		let assistant: AssistantMessage | undefined;
-		for (let i = event.messages.length - 1; i >= 0; i--) {
-			if (event.messages[i].role === "assistant") {
-				assistant = event.messages[i] as AssistantMessage;
-				break;
-			}
+	/** The run's own last words: what an answer would be if anyone is waiting for one. */
+	function latestAssistant(messages: AgentMessage[]): AssistantMessage | undefined {
+		for (let i = messages.length - 1; i >= 0; i--) {
+			if (messages[i].role === "assistant") return messages[i] as AssistantMessage;
 		}
-		if (!assistant) return;
-		if (assistant.stopReason === "error" || assistant.stopReason === "aborted") return;
-		if (!deps.peer?.pendingReply() && assistant.content.some((b) => b.type === "toolCall")) return;
-		if (delivered.has(assistant)) return;
-		const text = assistantText(assistant);
-		if (!text) return;
-		deliverText(text);
+		return undefined;
 	}
 
 	const logError = (error: unknown) => console.error("session append failed:", error);
 
 	let run = 0;
 	let turn = 0;
-	const delivered = new Set<AssistantMessage>();
-	let runHasDelivered = false;
 
 	const handleEvent = (event: AgentEvent): Promise<void> | void => {
 		switch (event.type) {
 			case "agent_start":
 				run += 1;
 				turn = 0;
-				runHasDelivered = false;
 				return deps.session.appendAgentStart(run, Date.now()).catch(logError);
 			case "turn_start":
 				turn += 1;
@@ -398,7 +373,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 									runtime.speedDurationsMs.push(durationMs);
 								}
 							}
-							return autoDeliver(assistant);
+							bridge.onMessage();
 						})
 						.catch(logError);
 				}
@@ -454,7 +429,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 					return;
 				}
 				ctx.setRunning(false);
-				enforceDelivery(event);
+				postPendingReply(latestAssistant(event.messages));
 
 				return deps.session
 					.appendAgentEnd(run, aborted ? "aborted" : agent.state.errorMessage ? "error" : "completed", Date.now(), agent.state.errorMessage ?? undefined)
@@ -603,7 +578,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		const aborted = message.stopReason === "aborted" || stopRequested;
 		const error = aborted || message.stopReason !== "error" ? undefined : message.errorMessage;
 		for (const item of inbox) item.failed = Boolean(error);
-		enforceDelivery({ type: "agent_end", messages: end?.messages ?? agent.state.messages } as Extract<AgentEvent, { type: "agent_end" }>);
+		postPendingReply(latestAssistant(end?.messages ?? agent.state.messages));
 		await deps.session.appendAgentEnd(endedRun, aborted ? "aborted" : error ? "error" : "completed", Date.now(), error).catch(logError);
 		bridge.onEnd(error);
 	}
@@ -800,12 +775,12 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		chatAndWait: promptAndWait,
 		async sendMessage(text: string) {
 			const timestamp = Date.now();
-			await deps.session.appendSendMessage(text, { toolCallId: "command" }, timestamp);
+			await deps.session.appendSendMessage(text, { via: "command" }, timestamp);
 			deliverVisible(text, timestamp);
 		},
 		async sendShellMessage(text: string, shellId: string) {
 			const timestamp = Date.now();
-			await deps.session.appendSendMessage(text, { toolCallId: `shell:${shellId}` }, timestamp);
+			await deps.session.appendSendMessage(text, { via: "shell", shellId }, timestamp);
 			deliverVisible(text, timestamp);
 		},
 		stop() {

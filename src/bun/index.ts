@@ -97,7 +97,6 @@ import {
 	loadSettings,
 	type Settings,
 	saveSettings,
-	sendMessageIntervalMs,
 } from "./lib/settings";
 import { isBuiltinMcp } from "./mcp/builtin";
 import { loadMcpConfig, saveMcpConfig } from "./mcp/config";
@@ -333,18 +332,10 @@ async function taskHistory(partner: string): Promise<TaskHistoryRecord[]> {
 		});
 }
 
-type HistoryView = Awaited<ReturnType<typeof session.visibleHistory>>;
-interface HistoryViewCache {
-	signature: string;
-	items: HistoryView;
-}
-const historyViewCache = new Map<string, HistoryViewCache>();
-const HISTORY_CACHE_MAX = 64;
-
 async function notifyRunEnd(name: string, dir: string, error?: string): Promise<void> {
 	try {
 		const last = await session.lastMessage(dir);
-		const spoken = last?.kind === "send_message" ? last.text : "";
+		const spoken = last?.kind === "assistant" || last?.kind === "send_message" ? last.text : "";
 		const body = error || spoken || "Click to view the conversation";
 		Utils.showNotification({ title: `${name} · ${error ? "run ended with an error" : "finished"}`, body: body.slice(0, 140) });
 	} catch (failure) {
@@ -470,7 +461,6 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 			lastMessageTime: async () => (await session.lastMessage(dir))?.time ?? null,
 			readMemory,
 			sandbox,
-			deliverIntervalMs: () => sendMessageIntervalMs(settingsCache ?? settings),
 			partnerDir: dir,
 			grantedSkills: () => readPartnerGrantedSkills(dir),
 			skills: skillsService,
@@ -1520,25 +1510,6 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				};
 			},
 
-			history: async () => {
-				const target = viewPartner;
-				if (!target) return { items: [] };
-				const entries = await session.rawEntries(target.dir);
-				const lastId = entries.length > 0 ? entries[entries.length - 1].id : "";
-				const signature = `${entries.length}:${lastId}`;
-				const key = `history:${target.dir}`;
-				let cached = historyViewCache.get(key);
-				if (!cached || cached.signature !== signature) {
-					cached = { signature, items: await session.visibleHistory(target.dir, (await agents.get(target.name))?.agent.workspacePath ?? null) };
-					historyViewCache.set(key, cached);
-					if (historyViewCache.size > HISTORY_CACHE_MAX) {
-						const oldest = historyViewCache.keys().next().value;
-						if (oldest !== undefined) historyViewCache.delete(oldest);
-					}
-				}
-				return { items: cached.items };
-			},
-
 			get_status: async ({ name }) => {
 				const settings = await loadSettings();
 				const partnersList = await listPartners(settings);
@@ -2347,7 +2318,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 						const last = await session.lastMessage(getPartnerDir(settings, profile.name));
 						const kind = last?.kind;
 						const lastMessageKind: ChatPreviewKind | undefined =
-							kind === "user" || kind === "send_message" || kind === "command" || kind === "skill" || kind === "shell" ? kind : undefined;
+							kind === "user" || kind === "assistant" || kind === "send_message" || kind === "command" || kind === "skill" || kind === "shell" ? kind : undefined;
 						const startedAt = await session.sessionStartedAt(getPartnerDir(settings, profile.name));
 						const readAt = await readPartnerReadAt(getPartnerDir(settings, profile.name));
 						const agentEntry = await agents.get(profile.name);
@@ -2457,7 +2428,6 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 						memorySchedules.delete(target);
 						for (const runs of runMaps) runs.delete(target);
 						session.evictRoot(dir);
-						for (const key of [...historyViewCache.keys()]) if (key === `history:${dir}`) historyViewCache.delete(key);
 						if (viewPartner?.name === target) viewPartner = null;
 					}
 

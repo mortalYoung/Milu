@@ -1,8 +1,9 @@
 import type { Entry } from "@earendil-works/pi-agent-core";
 import { EVENTS } from "./events";
+import { contentText } from "./record";
 import type { ViewItem } from "./rpc";
 
-const DELIVERED_BY = "harness-delivery";
+// ——— produced paths ———
 
 interface EntryData {
 	callId?: unknown;
@@ -10,10 +11,7 @@ interface EntryData {
 	args?: unknown;
 	isError?: unknown;
 	toolCallId?: unknown;
-	text?: unknown;
 }
-
-// ——— produced paths ———
 
 type Producer = (args: unknown) => string | null;
 
@@ -132,10 +130,17 @@ export function attachMentionFiles(entries: Entry[], items: ViewItem[], baseDir:
 	const callPath = new Map<string, string | null>();
 	const producedRun = new Map<string, number>();
 	const produced: { run: number; seq: number; path: string }[] = [];
-	const closing = new Map<number, { id: string; seq: number }>();
+	const closing = new Map<number, string>();
 	const closed = new Set<number>();
 	let runKey = 0;
 	for (const entry of entries) {
+		if (entry.type === "message") {
+			// A message, not a delivery, is what carries the words: the run's last one owns them —
+			// and the files the run wrote before it, whether they came before or after it.
+			if (entry.message.role !== "assistant" || contentText(entry.message.content).trim() === "") continue;
+			closing.set(runKey, entry.id);
+			continue;
+		}
 		if (entry.type !== "custom") continue;
 		const data = (entry.data ?? {}) as EntryData;
 		if (entry.customType === EVENTS.agentStart) {
@@ -156,24 +161,20 @@ export function attachMentionFiles(entries: Entry[], items: ViewItem[], baseDir:
 			const absolute = workspacePath(path, baseDir);
 			if (!insideWorkspace(absolute, baseDir)) continue;
 			produced.push({ run: producedRun.get(callId) ?? runKey, seq: entry.seq, path: absolute });
-		} else if (entry.customType === EVENTS.sendMessage) {
-			if (nonEmptyString(data.toolCallId) !== DELIVERED_BY) continue;
-			if (nonEmptyString(data.text) === null) continue;
-			closing.set(runKey, { id: entry.id, seq: entry.seq });
 		} else if (entry.customType === EVENTS.agentEnd) {
 			closed.add(runKey);
 		}
 	}
 
 	const byItem = new Map<string, string[]>();
-	for (const [owner, mark] of closing) {
+	for (const [owner, id] of closing) {
 		if (!closed.has(owner)) continue;
 		const files: string[] = [];
 		for (const item of produced) {
-			if (item.run !== owner || item.seq > mark.seq || files.includes(item.path)) continue;
+			if (item.run !== owner || files.includes(item.path)) continue;
 			files.push(item.path);
 		}
-		if (files.length > 0) byItem.set(mark.id, files);
+		if (files.length > 0) byItem.set(id, files);
 	}
 
 	for (const item of items) {

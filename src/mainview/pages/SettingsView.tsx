@@ -227,8 +227,6 @@ export function SettingsView() {
 	const [memoryIdleMinutes, setMemoryIdleMinutes] = useState(() => String(initial?.memoryIdleMinutes ?? DEFAULTS.memoryIdleMinutes));
 	const [memoryMaxScenes, setMemoryMaxScenes] = useState(() => String(initial?.memoryMaxScenes ?? DEFAULTS.memoryMaxScenes));
 	const [memoryPendingRounds, setMemoryPendingRounds] = useState(() => String(initial?.memoryPendingRounds ?? DEFAULTS.memoryPendingRounds));
-	const [deliveryMode, setDeliveryMode] = useState<"unlimited" | "custom">(() => (typeof initial?.sendMessageIntervalSec === "number" ? "custom" : "unlimited"));
-	const [deliverySec, setDeliverySec] = useState(() => String(initial?.sendMessageIntervalSec ?? 20));
 	const [added, setAdded] = useState<string[]>(() => initial?.providers ?? []);
 	const [customProviders, setCustomProviders] = useState<CustomProvider[] | null>(() => initial?.customProviders ?? null);
 	const [toAdd, setToAdd] = useState("");
@@ -301,10 +299,6 @@ export function SettingsView() {
 			if (typeof s.memoryMaxScenes === "number") setMemoryMaxScenes(String(s.memoryMaxScenes));
 			if (typeof s.memoryIdleMinutes === "number") setMemoryIdleMinutes(String(s.memoryIdleMinutes));
 			if (typeof s.memoryPendingRounds === "number") setMemoryPendingRounds(String(s.memoryPendingRounds));
-			if (typeof s.sendMessageIntervalSec === "number") {
-				setDeliveryMode("custom");
-				setDeliverySec(String(s.sendMessageIntervalSec));
-			}
 			if (s.providers?.length) setAdded(s.providers);
 			if (s.customProviders) setCustomProviders(s.customProviders);
 		}
@@ -316,10 +310,6 @@ export function SettingsView() {
 
 	useEffect(() => () => clearTimeout(errorTimer.current), []);
 
-	const parsedDeliverySec = () => {
-		const n = parseInt(deliverySec, 10);
-		return Number.isFinite(n) ? Math.max(20, n) : 20;
-	};
 	const parseIgnoreDirs = () =>
 		paletteIgnoreDirs
 			.split(/[,\n]/)
@@ -340,7 +330,6 @@ export function SettingsView() {
 			skills_dirs: skillsDirs.map((dir) => dir.trim()).filter(Boolean),
 			skills_watch: skillsWatch,
 			skills_watch_delay_ms: parsePositiveInt(skillsWatchDelay, DEFAULTS.skills_watch_delay_ms),
-			sendMessageIntervalSec: deliveryMode === "unlimited" ? null : parsedDeliverySec(),
 			shellContinuous,
 			rememberSession,
 			memoryEnabled,
@@ -1044,56 +1033,6 @@ export function SettingsView() {
 						spellCheck={false}
 					/>
 				</TextField>
-			),
-		},
-		{
-			id: "interval",
-			title: "Send Message Interval",
-			desc: "How often visible updates are sent during a run; ∞ sends only the first and final message.",
-			cats: ["general"],
-			modified: deliveryMode === "custom",
-			control: (
-				<div className="flex h-[32px] items-center gap-2">
-					<Select
-						class="h-[32px] w-[150px] shrink-0 rounded-[6px] font-sans text-[13px]"
-						itemClass="font-sans text-[13px]"
-						contentClass="w-[150px] rounded-[6px]"
-						title="Send Message Interval"
-						ariaLabel="Send Message Interval"
-						portalMount={rootRef.current}
-						value={deliveryMode}
-						onChange={(value) => {
-							const next = value as "unlimited" | "custom";
-							setDeliveryMode(next);
-							void persist({ ...currentSettings(), sendMessageIntervalSec: next === "unlimited" ? null : parsedDeliverySec() });
-						}}
-						options={[
-							{ value: "unlimited", label: "∞ first + last" },
-							{ value: "custom", label: "custom" },
-						]}
-					/>
-					{deliveryMode === "custom" && (
-						<TextField className="h-[32px] w-[90px] shrink-0 gap-0">
-							<TextFieldInput
-								type="number"
-								min={20}
-								variant="compact"
-								title="Send Message Interval Seconds"
-								aria-label="Send Message Interval Seconds"
-								value={deliverySec}
-								onChange={(event) => setDeliverySec(event.currentTarget.value)}
-								onBlur={() => {
-									const sec = parsedDeliverySec();
-									setDeliverySec(String(sec));
-									void persist({ ...currentSettings(), sendMessageIntervalSec: sec });
-								}}
-								onKeyDown={(event) => {
-									if (event.key === "Enter" || event.key === "Escape") event.currentTarget.blur();
-								}}
-							/>
-						</TextField>
-					)}
-				</div>
 			),
 		},
 		{

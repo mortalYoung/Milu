@@ -106,15 +106,137 @@ function userVisit(entry: Entry, out: ViewItem[]): void {
 	});
 }
 
+/** How a `send_message` was produced. `via` is explicit on new logs; the tool call id is the
+ *  legacy tell, kept so old sessions read the same way. */
+export function sendMessageVia(entry: Entry): "harness" | "command" | "shell" {
+	if (entry.type !== "custom") return "command";
+	const data = entry.data as { via?: unknown; toolCallId?: unknown } | undefined;
+	const via = data?.via;
+	if (via === "harness" || via === "command" || via === "shell") return via;
+	const call = typeof data?.toolCallId === "string" ? data.toolCallId : "";
+	if (call === "harness-delivery") return "harness";
+	if (call.startsWith("shell:")) return "shell";
+	return "command";
+}
+
+/** A line a command or a skill posted. The harness's own deliveries are legacy: the assistant entry
+ *  carries the same words now, and only the fact they went out is kept (see attachPeerPosts). */
 function sendMessageVisit(entry: Entry, out: ViewItem[]): void {
 	if (entry.type !== "custom") return;
-	const data = entry.data as { text?: unknown; timestamp?: unknown; toolCallId?: unknown; to?: unknown } | undefined;
+	const data = entry.data as { text?: unknown; timestamp?: unknown } | undefined;
 	if (!data || typeof data.text !== "string") return;
-	if (typeof data.toolCallId === "string" && data.toolCallId.startsWith("shell:")) return;
-	out.push({
-		...row(entry.id, "send_message", data.text, typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0)),
-		...(typeof data.to === "string" ? { to: data.to } : {}),
+	if (sendMessageVia(entry) !== "command") return;
+	out.push(row(entry.id, "assistant", data.text, typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0)));
+}
+
+interface AssistantBlock {
+	type?: unknown;
+	text?: unknown;
+	thinking?: unknown;
+	redacted?: unknown;
+	id?: unknown;
+	name?: unknown;
+	arguments?: unknown;
+}
+
+const trimmed = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
+
+/** The assistant's own blocks, in the order it produced them: what it thought, what it called, what
+ *  it said. This is where a message becomes visible; a block that produced nothing is skipped. */
+function assistantVisit(entry: Entry, out: ViewItem[]): void {
+	if (entry.type !== "message" || entry.message.role !== "assistant") return;
+	const blocks = Array.isArray(entry.message.content) ? (entry.message.content as AssistantBlock[]) : [];
+	const time = entry.message.timestamp ?? entry.timestamp ?? 0;
+	// A step's wall clock, off the entry's own timing: what the folded summary reports.
+	const timing = (entry.message as { timing?: { turnStartTime?: unknown; completedTime?: unknown } }).timing;
+	const step = typeof timing?.turnStartTime === "number" && typeof timing?.completedTime === "number" ? { stepMs: Math.max(0, timing.completedTime - timing.turnStartTime) } : {};
+	const words = blocks.findIndex((block) => block.type === "text" && trimmed(block.text) !== "");
+	blocks.forEach((block, index) => {
+		const id = index === words || (words === -1 && index === 0) ? entry.id : `${entry.id}-${index}`;
+		if (block.type === "text") {
+			const value = trimmed(block.text);
+			if (value !== "") out.push({ ...row(id, "assistant", value, time), ...step });
+			return;
+		}
+		if (block.type === "thinking") {
+			const value = trimmed(block.thinking);
+			if (value === "" && block.redacted !== true) return;
+			out.push({ ...row(id, "assistant", "", time), ...step, thinking: { text: value, ...(block.redacted === true ? { redacted: true } : {}) } });
+			return;
+		}
+		if (block.type === "toolCall") {
+			out.push({
+				...row(id, "assistant", "", time),
+				...step,
+				tool: {
+					callId: String(block.id ?? ""),
+					name: String(block.name ?? ""),
+					summary: stringifyArgs(block.arguments).replace(/\s+/g, " ").trim(),
+					args: stringifyArgs(block.arguments),
+					status: "running",
+				},
+			});
+		}
 	});
+}
+
+/** A tool result is not a message: it hangs on the call it answers, closed until someone asks. */
+function toolResultVisit(entry: Entry, out: ViewItem[]): void {
+	if (entry.type !== "custom") return;
+	const data = entry.data as { toolCallId?: unknown; content?: unknown; isError?: unknown } | undefined;
+	const callId = typeof data?.toolCallId === "string" ? data.toolCallId : "";
+	if (callId === "") return;
+	const item = findLast(out, (row) => row.tool?.callId === callId);
+	if (!item?.tool) return;
+	const failed = data?.isError === true;
+	item.tool.status = failed ? "error" : "success";
+	item.tool.isError = failed;
+	item.tool.result = contentText(data?.content);
+}
+
+/** A run's body is the last thing it said. Everything the same run said before that is process, and
+ *  belongs in the timeline with the calls it made — the reader asked for one answer, not five. */
+function markProcessText(entries: Entry[], out: ViewItem[]): void {
+	const textItems = new Map<string, number[]>();
+	out.forEach((item, index) => {
+		if (item.tool || item.thinking || item.text === "") return;
+		const owner = item.id.replace(/-\d{1,2}$/, "");
+		const list = textItems.get(owner);
+		if (list) list.push(index);
+		else textItems.set(owner, [index]);
+	});
+	let run: number[] = [];
+	const flush = () => {
+		for (const index of run.slice(0, -1)) {
+			const item = out[index];
+			if (item?.text) item.say = true;
+		}
+		run = [];
+	};
+	for (const entry of entries) {
+		if (entry.type === "custom" && (entry.customType === EVENTS.agentStart || entry.customType === EVENTS.agentEnd)) {
+			flush();
+			continue;
+		}
+		if (entry.type !== "message" || entry.message.role !== "assistant") continue;
+		const indices = textItems.get(entry.id);
+		if (indices) run.push(...indices);
+	}
+	flush();
+}
+
+/** A harness copy of an answer that was also posted to a peer is not a message of its own: it is the
+ *  record that the words went out, so it decorates the bubble that carries them. */
+function attachPeerPosts(entries: Entry[], out: ViewItem[]): void {
+	for (const entry of entries) {
+		if (entry.type !== "custom" || entry.customType !== EVENTS.sendMessage) continue;
+		if (sendMessageVia(entry) !== "harness") continue;
+		const data = entry.data as { to?: unknown; text?: unknown } | undefined;
+		if (typeof data?.to !== "string") continue;
+		const spoken = typeof data.text === "string" ? data.text : "";
+		const target = findLast(out, (item) => item.kind === "assistant" && item.text === spoken) ?? findLast(out, (item) => item.kind === "assistant" && item.text !== "");
+		if (target) target.to = data.to;
+	}
 }
 
 function agentEndVisit(entry: Entry, out: ViewItem[]): void {
@@ -820,7 +942,7 @@ export const EVENT_META: Record<string, EntryMeta> = {
 					},
 	},
 	"role:assistant": {
-		view: {},
+		view: { visit: assistantVisit },
 		context: { visit: sliceAssistant },
 		data: assistantData,
 		trajectory: assistantNode,
@@ -849,7 +971,7 @@ export const EVENT_META: Record<string, EntryMeta> = {
 	[EVENTS.memoryRunEnd]: dataNode("custom", { chip: "MEM", caption: (record) => recordText(record, "data.reason") }),
 	[EVENTS.memoryContext]: { context: { visit: memoryContextVisit }, slice: { as: (record) => asProjected(record, memoryContextProject) }, ...dataNode("custom", { chip: "MEM" }) },
 
-	[EVENTS.toolResult]: { context: { visit: sliceToolResult }, data: toolResultData, trajectory: toolResultNode },
+	[EVENTS.toolResult]: { view: { visit: toolResultVisit }, context: { visit: sliceToolResult }, data: toolResultData, trajectory: toolResultNode },
 	[EVENTS.toolCall]: { trajectory: toolCallNode },
 	[EVENTS.agentStart]: { ...dataNode("change", { chip: "RUN", caption: (record) => `run ${recordNumber(record, "data.run") ?? "?"}` }), cursor: agentStartCursor },
 	[EVENTS.turnStart]: {
@@ -909,6 +1031,8 @@ export function projectView(entries: Entry[], options: ProjectViewOptions = {}):
 	for (const entry of entries) {
 		EVENT_META[entryKey(entry)]?.view?.visit?.(entry, out);
 	}
+	markProcessText(entries, out);
+	attachPeerPosts(entries, out);
 	attachMentionFiles(entries, out, options.baseDir ?? null);
 	return out;
 }

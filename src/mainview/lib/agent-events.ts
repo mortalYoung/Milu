@@ -86,7 +86,7 @@ export function createAgentEvents(
 			await session.mutate.refreshPartners().catch(() => {});
 			status.releaseTurn(partner);
 			const profile = session.store.getState().partners.find((p) => p.name === partner);
-			const last = profile?.lastMessageKind === "send_message" ? profile.lastMessage : undefined;
+			const last = profile?.lastMessageKind === "assistant" || profile?.lastMessageKind === "send_message" ? profile.lastMessage : undefined;
 			toast.push(
 				error
 					? {

@@ -3,13 +3,20 @@ import { basename, dirname, join } from "node:path";
 import type { AgentMessage, Entry } from "@earendil-works/pi-agent-core";
 import { JsonlSessionRepo, Session } from "@earendil-works/pi-agent-core";
 import { type AssistantMessage, type ToolResultMessage, type Usage, uuidv7 } from "@earendil-works/pi-ai";
-import type { RequestTool, SandboxMode, ViewItem } from "../../shared/rpc";
+import type { ChatPreviewKind, RequestTool, SandboxMode } from "../../shared/rpc";
 
 export type { ViewItem } from "../../shared/rpc";
 
+/** The one line a chat row or a run-end notice shows: the newest thing worth reading. */
+export interface LastMessage {
+	id: string;
+	kind: ChatPreviewKind;
+	text: string;
+	time: number;
+}
+
 import { buildResumeTurn, foldSlice } from "../core/slice";
 import { createExecutionEnv } from "../tools/execution-env";
-import { projectView } from "./entry-meta";
 import {
 	type AgentEndReason,
 	type CommandDoneEventData,
@@ -113,8 +120,7 @@ export interface SessionScope {
 
 export interface SessionStore {
 	scope(dir: string): SessionScope;
-	visibleHistory(dir: string, baseDir?: string | null): Promise<ViewItem[]>;
-	lastMessage(dir: string): Promise<ViewItem | null>;
+	lastMessage(dir: string): Promise<LastMessage | null>;
 	/** When the current (newest) session began — a rotated, still-empty conversation dates from here. */
 	sessionStartedAt(dir: string): Promise<number>;
 	deriveMessages(dir: string): Promise<AgentMessage[]>;
@@ -391,22 +397,26 @@ export function createSessionStore(): SessionStore {
 			await refreshEntries(state);
 			return (await session.getMetadata()).id;
 		},
-		async visibleHistory(dir, baseDir) {
-			const state = await stateFor(dir);
-			return projectView(state.entries, { baseDir: baseDir ?? null });
-		},
 		async sessionStartedAt(dir) {
 			const state = await stateFor(dir);
 			return (await state.session.getMetadata()).createdAt;
 		},
 		async lastMessage(dir) {
 			const state = await stateFor(dir);
-			let last: ViewItem | null = null;
+			let last: LastMessage | null = null;
 			for (const entry of state.entries) {
 				const time = (data: { timestamp?: unknown } | undefined) => (typeof data?.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0));
 				if (entry.type === "message" && entry.message.role === "user") {
 					const content = entry.message.content;
 					last = { id: entry.id, kind: "user", text: typeof content === "string" ? content : "", time: entry.message.timestamp ?? 0 };
+				} else if (entry.type === "message" && entry.message.role === "assistant") {
+					const blocks = Array.isArray(entry.message.content) ? (entry.message.content as { type?: unknown; text?: unknown }[]) : [];
+					const text = blocks
+						.filter((block) => block.type === "text")
+						.map((block) => String(block.text ?? ""))
+						.join("\n")
+						.trim();
+					if (text !== "") last = { id: entry.id, kind: "assistant", text, time: entry.message.timestamp ?? 0 };
 				} else if (entry.type === "custom" && entry.customType === EVENTS.sendMessage) {
 					const data = entry.data as { text: string; timestamp: number } | undefined;
 					if (!data) continue;
