@@ -1022,31 +1022,14 @@
 	.msg-rail.on .msg-rail-indicator {
 		top: 50%;
 	}
-	.msg-block.btw-active {
-		outline: 1.5px solid color-mix(in srgb, var(--color-ink) 55%, transparent);
-		outline-offset: 2px;
+	/* 被指着的那条：不加框（P-85 的判据——一圈描边读起来像「选中框」的噪声）。
+	   标记交给入口自己：宽窗是 rail 的 on 态，窄窗是元信息行里那颗 btw 的 on 态；
+	   两种情况下这条的元信息都常显，等于把「我在用」写在内容里。 */
+	.msg-block.btw-active .msg-copy,
+	.msg-block.btw-active .msg-btw,
+	.msg-block.btw-active .msg-at {
+		opacity: 1;
 	}
-	@container (max-width: 647px) {
-		.msg-rail {
-			top: -4px;
-			right: 56px;
-			bottom: auto;
-			width: 24px;
-			height: 24px;
-		}
-		.msg-rail-indicator {
-			top: 50%;
-			left: 50%;
-			width: 16px;
-			height: 16px;
-			transform: translate(-50%, -50%);
-		}
-		.msg-rail-indicator::before,
-		.msg-rail-indicator::after {
-			display: none;
-		}
-	}
-
 	.btw-flow {
 		@apply flex-1 min-h-0 overflow-y-auto flex flex-col gap-2;
 	}
@@ -1498,13 +1481,45 @@
 		@apply text-ink;
 		opacity: 1;
 	}
+	/* 窄窗里 btw 的入口：住在元信息行里，和复制按钮同一颗尺寸与手感 */
+	.msg-btw {
+		@apply flex size-[15px] shrink-0 items-center justify-center rounded-[4px] border-0 bg-transparent p-0 text-muted cursor-pointer;
+		opacity: 0;
+		transition: opacity 140ms var(--ease-out);
+	}
+	.msg-btw:hover {
+		@apply text-ink bg-hover;
+	}
+	.msg-btw:focus-visible {
+		@apply text-ink outline outline-1 outline-ink;
+		opacity: 1;
+	}
+	.msg-btw.on {
+		background: var(--color-selected);
+		color: var(--color-ink);
+	}
 	.msg-block:hover .msg-copy,
-	.msg-block:has(:focus-visible) .msg-copy {
+	.msg-block:hover .msg-btw,
+	.msg-block:has(:focus-visible) .msg-copy,
+	.msg-block:has(:focus-visible) .msg-btw {
 		opacity: 1;
 	}
 	@media (hover: none) {
-		.msg-copy {
+		.msg-copy,
+		.msg-btw {
 			opacity: 1;
+		}
+	}
+	/* btw 的入口跟着面板形态换：宽窗是 rail（面板并排在右），窄窗是元信息行里那颗（面板落到下方）。
+	   一个模式一个入口——同一条消息上不会同时有两个口。 */
+	@container (min-width: 874px) {
+		.msg-btw {
+			display: none;
+		}
+	}
+	@container (max-width: 873px) {
+		.msg-rail {
+			display: none;
 		}
 	}
 	.msg-block:hover .msg-at,

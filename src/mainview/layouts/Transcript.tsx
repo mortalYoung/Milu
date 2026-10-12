@@ -1,4 +1,4 @@
-import { Check, ChevronRight, CircleStop, Copy, Pencil } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, CircleStop, Copy, Pencil } from "lucide-react";
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "motion/react";
 import { Fragment, type ReactNode, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
@@ -87,6 +87,22 @@ function messageBody(
 			<div className="msg-meta">
 				{fold}
 				<CopyMessage text={card.text} />
+				{onBtw && card.kind === "agent" && showRail && (btwActive || !btwLocked) && (
+					<button
+						type="button"
+						className={"msg-btw" + (btwActive ? " on" : "")}
+						aria-expanded={btwActive}
+						title={btwActive ? "Close side question" : "Ask a side question below"}
+						aria-label={btwActive ? "Close side question" : "Ask a side question about this message"}
+						onClick={(event) => {
+							event.stopPropagation();
+							if (btwActive) onBtwClose?.();
+							else if (!btwLocked) onBtw(card.key ?? String(card.id));
+						}}
+					>
+						<ChevronDown size={11} />
+					</button>
+				)}
 				<span className="msg-at" title={[stamp?.date, stamp?.time].filter(Boolean).join(" ")}>
 					{stamp?.time}
 				</span>
