@@ -2474,7 +2474,7 @@ function buildMenu(): AppMenuItem[] {
 			submenu: [
 				{ role: "about", label: `About ${BRAND}` },
 				{ type: "divider" },
-				{ label: "Settings…", action: "letters.settings", accelerator: "Command+," },
+				{ label: "Settings…", action: "milu.settings", accelerator: "Command+," },
 				{ type: "divider" },
 				{ role: "hide", accelerator: "Command+H" },
 				{ role: "hideOthers", accelerator: "Command+Option+H" },
@@ -2486,31 +2486,31 @@ function buildMenu(): AppMenuItem[] {
 		{
 			label: "Chat",
 			submenu: [
-				{ label: "Create", action: "letters.new-partner", accelerator: "Command+N" },
-				{ label: "Close Chat", action: "letters.close-chat", accelerator: "Command+W" },
-				{ label: "Chat Detail", action: "letters.details", accelerator: "Command+E", enabled: menuState.partner },
+				{ label: "Create", action: "milu.new-partner", accelerator: "Command+N" },
+				{ label: "Close Chat", action: "milu.close-chat", accelerator: "Command+W" },
+				{ label: "Chat Detail", action: "milu.details", accelerator: "Command+E", enabled: menuState.partner },
 				{ type: "divider" },
-				{ label: "Open Trajectory", action: "letters.trajectory", enabled: menuState.partner },
-				{ label: "Open Replies", action: "letters.replies", enabled: menuState.partner },
+				{ label: "Open Trajectory", action: "milu.trajectory", enabled: menuState.partner },
+				{ label: "Open Replies", action: "milu.replies", enabled: menuState.partner },
 				{ type: "divider" },
-				{ label: "Open Workspace", action: "letters.workspace", enabled: menuState.workspace },
-				{ label: "Open Git Changes", action: "letters.git-changes", enabled: menuState.git },
+				{ label: "Open Workspace", action: "milu.workspace", enabled: menuState.workspace },
+				{ label: "Open Git Changes", action: "milu.git-changes", enabled: menuState.git },
 				{ type: "divider" },
-				{ label: "Toggle Chat List", action: "letters.toggle-list", accelerator: "Command+B" },
+				{ label: "Toggle Chat List", action: "milu.toggle-list", accelerator: "Command+B" },
 			],
 		},
 		{
 			label: "View",
 			submenu: [
-				{ label: "Command Palette…", action: "letters.palette", accelerator: "Command+P" },
-				{ label: "Manage Access…", action: "letters.access", accelerator: "Command+Shift+P" },
+				{ label: "Command Palette…", action: "milu.palette", accelerator: "Command+P" },
+				{ label: "Manage Access…", action: "milu.access", accelerator: "Command+Shift+P" },
 				{ type: "divider" },
 				{
 					label: "Switch to",
 					submenu: [
-						{ label: "Chat", action: "letters.view-chat" },
-						{ label: "Skills", action: "letters.view-skills" },
-						{ label: "Dashboard", action: "letters.view-dashboard" },
+						{ label: "Chat", action: "milu.view-chat" },
+						{ label: "Skills", action: "milu.view-skills" },
+						{ label: "Dashboard", action: "milu.view-dashboard" },
 					],
 				},
 				{ type: "divider" },
@@ -2544,7 +2544,7 @@ function refreshMenu() {
 
 ApplicationMenu.on("application-menu-clicked", (event) => {
 	const { action } = (event as { data?: { action?: string } }).data ?? {};
-	if (typeof action !== "string" || !action.startsWith("letters.")) return;
+	if (typeof action !== "string" || !action.startsWith("milu.")) return;
 	rpc.send.menu_command({ action });
 });
 
@@ -2615,4 +2615,4 @@ mainWindow.on("blur", () => {
 	appFocused = false;
 });
 
-console.log("\x1b[32mletters started — agent ready\x1b[0m");
+console.log("\x1b[32mmilu started — agent ready\x1b[0m");

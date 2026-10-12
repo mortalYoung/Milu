@@ -27,11 +27,11 @@ export interface Entry {
 	kind: "user" | "agent" | "sys" | "sep" | "escalation" | "command" | "skill" | "shell" | "reply";
 	text: string;
 	time?: string;
-	/** The letter this message came from, when another correspondent wrote it (A2A). */
+	/** The chat this message came from, when another correspondent wrote it (A2A). */
 	from?: string;
-	/** The letter this message was also posted to, when it answers another correspondent (A2A). */
+	/** The chat this message was also posted to, when it answers another correspondent (A2A). */
 	to?: string;
-	/** Set on an incoming answer from another letter: renders as a reply card, not a user bubble. */
+	/** Set on an incoming answer from another chat: renders as a reply card, not a user bubble. */
 	reply?: PeerReplyInfo;
 	error?: boolean;
 	aborted?: boolean;

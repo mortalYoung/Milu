@@ -1,15 +1,14 @@
 /**
- * LLM api keys — stored apart from settings in ~/.config/letters/.credentials.yaml
+ * LLM api keys — stored apart from settings in `~/.config/milu/.credentials.yaml`
  * (mode 0600), keyed by provider id. Settings hold the provider selection only;
  * this file holds the secrets. Loaded once into an in-memory cache at startup
  * (agents resolve keys synchronously); writes update the cache + file together.
  */
 import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { join } from "node:path";
 import { parse, stringify } from "yaml";
+import { configDir, configPath } from "./home";
 
-const CREDENTIALS_PATH = join(homedir(), ".config", "letters", ".credentials.yaml");
+const CREDENTIALS_PATH = configPath(".credentials.yaml");
 
 /** In-memory provider → key cache (the only reader agents see). */
 let cache: Record<string, string> = {};
@@ -31,7 +30,7 @@ export function getApiKey(provider: string): string | undefined {
 
 /** Set a provider's key: merge into the file (atomic tmp+rename, mode 0600) and refresh the cache. */
 export async function setApiKey(provider: string, key: string): Promise<void> {
-	await mkdir(join(homedir(), ".config", "letters"), { recursive: true });
+	await mkdir(configDir(), { recursive: true });
 	const merged = { ...cache, [provider]: key };
 	await writeCredentialsFile(merged);
 	cache = merged;
@@ -47,7 +46,7 @@ export async function deleteApiKey(provider: string): Promise<void> {
 }
 
 async function writeCredentialsFile(credentials: Record<string, string>): Promise<void> {
-	await mkdir(join(homedir(), ".config", "letters"), { recursive: true });
+	await mkdir(configDir(), { recursive: true });
 	const tmp = `${CREDENTIALS_PATH}.tmp`;
 	await writeFile(tmp, stringify(credentials), { encoding: "utf8", mode: 0o600 });
 	await chmod(tmp, 0o600);

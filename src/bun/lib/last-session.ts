@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
+import { configPath } from "./home";
 
 export interface WindowFrame {
 	x: number;
@@ -15,7 +15,7 @@ export interface LastSession {
 	partner: string | null;
 }
 
-const STATE_PATH = join(homedir(), ".config", "letters", "last-session.json");
+const STATE_PATH = configPath("last-session.json");
 const MIN_WIDTH = 480;
 const MIN_HEIGHT = 320;
 

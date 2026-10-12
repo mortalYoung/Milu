@@ -69,7 +69,7 @@ export function validateCustomProviders(list: CustomProvider[]): string | null {
 	const seen = new Set<string>();
 	for (const def of list) {
 		if (!/^[a-z0-9-]{1,32}$/.test(def.id)) {
-			return `Invalid provider id "${def.id}" — use lowercase letters, digits and dashes.`;
+			return `Invalid provider id "${def.id}" — use lowercase alphanumerics and dashes.`;
 		}
 		if ((getBuiltinProviders() as readonly string[]).includes(def.id)) return `Provider id "${def.id}" collides with a built-in provider.`;
 		if (seen.has(def.id)) return `Duplicate provider id "${def.id}".`;

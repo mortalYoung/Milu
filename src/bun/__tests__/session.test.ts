@@ -148,7 +148,7 @@ describe("session store (pi JSONL backend)", () => {
 
 	it("forkTo re-creates the current session and keeps the cleared logs archived", async () => {
 		const source = await tempDir();
-		const target = join(await tempDir(), "Letters-fork");
+		const target = join(await tempDir(), "milu-fork");
 		const session = createSessionStore();
 		await session.scope(source).appendUser("before the clear", 1);
 		await session.rotateSession(source);

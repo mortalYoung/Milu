@@ -178,7 +178,7 @@ export class McpManager {
 		session.state = "connecting";
 		session.error = undefined;
 		try {
-			const client = new Client({ name: "letters", version: "0.1.0" });
+			const client = new Client({ name: "milu", version: "0.1.0" });
 			const transport = new StdioClientTransport({
 				command: session.config.transport.command,
 				...(session.config.transport.args ? { args: session.config.transport.args } : {}),

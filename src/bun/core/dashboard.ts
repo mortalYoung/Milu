@@ -188,7 +188,7 @@ export async function buildDashboardOverview(session: SessionReader, requestedDa
 
 	ttfts.sort((a, b) => a - b);
 	const totals: DashboardTotals = {
-		letters: profiles.length,
+		chats: profiles.length,
 		turns,
 		freshTokens,
 		cacheTokens: Math.max(0, totalTokens - freshTokens),

@@ -14,7 +14,7 @@ import { ToastHost } from "./components/ToastHost";
 import { TrajectoryDrawer } from "./components/TrajectoryDrawer";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./components/ui/dialog";
 import { TooltipProvider } from "./components/ui/tooltip";
-import { Letter } from "./layouts/Letter";
+import { Workbench } from "./layouts/Workbench";
 import { registerSurfaceRoot } from "./lib/active-surface";
 import { AgentStatusProvider } from "./lib/contexts/agent-status-context";
 import { CommandDirectoryProvider } from "./lib/contexts/commands-context";
@@ -248,7 +248,7 @@ function ChatView(props: {
 		});
 		const parts: number[] = [];
 		if (laid.list.mode === "flow") parts.push(laid.list.width);
-		parts.push(laid.letter);
+		parts.push(laid.workbench);
 		if (laid.dock.mode === "flow") parts.push(laid.dock.width);
 		return parts.map((value) => Math.round(value)).join(" / ");
 	}
@@ -320,7 +320,7 @@ function ChatView(props: {
 				<div className="chat-row">
 					{selected ? (
 						<div className={"chat-body" + (btwAnchor ? " btw-open" : "")}>
-							<Letter
+							<Workbench
 								worker={selected}
 								working={busy}
 								historyLoading={loading}
@@ -473,42 +473,42 @@ export function App() {
 
 	const onMenuCommand = useRef<(action: string) => void>(() => {});
 	onMenuCommand.current = (action: string) => {
-		if (action === "letters.view-chat" || action === "letters.view-skills" || action === "letters.view-dashboard") {
-			setView(action.slice("letters.view-".length) as ViewId);
+		if (action === "milu.view-chat" || action === "milu.view-skills" || action === "milu.view-dashboard") {
+			setView(action.slice("milu.view-".length) as ViewId);
 			return;
 		}
-		if (action === "letters.settings") {
+		if (action === "milu.settings") {
 			settings.mutate.setOpen(true);
 			return;
 		}
-		if (action === "letters.palette" || action === "letters.access") {
-			palette.launch(action === "letters.palette" ? "sessions" : "access");
+		if (action === "milu.palette" || action === "milu.access") {
+			palette.launch(action === "milu.palette" ? "sessions" : "access");
 			return;
 		}
 		setView("chat");
 		switch (action) {
-			case "letters.new-partner":
+			case "milu.new-partner":
 				openAddPartner();
 				return;
-			case "letters.details":
+			case "milu.details":
 				if (selected) openDetails(selected);
 				return;
-			case "letters.close-chat":
+			case "milu.close-chat":
 				closeCurrentChat();
 				return;
-			case "letters.trajectory":
+			case "milu.trajectory":
 				trajectory.mutate.setOpen(true);
 				return;
-			case "letters.replies":
+			case "milu.replies":
 				dock.open("replies");
 				return;
-			case "letters.workspace":
+			case "milu.workspace":
 				dock.open("explorer");
 				return;
-			case "letters.git-changes":
+			case "milu.git-changes":
 				dock.open("git");
 				return;
-			case "letters.toggle-list":
+			case "milu.toggle-list":
 				toggleList();
 		}
 	};

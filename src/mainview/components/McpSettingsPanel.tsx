@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { MCP_CONFIG_FILE } from "../../shared/home";
 import { rpc } from "../lib/rpc";
 import { Select } from "./ui/select";
 import { TextField, TextFieldInput } from "./ui/text-field";
@@ -11,7 +12,7 @@ const LIFECYCLES = [
 ];
 
 export function McpSettingsPanel() {
-	const [configFile, setConfigFile] = useState("~/.config/letters/mcp.json");
+	const [configFile, setConfigFile] = useState(MCP_CONFIG_FILE);
 	const [idleTimeoutSec, setIdleTimeoutSec] = useState("60");
 	const [defaultLifecycle, setDefaultLifecycle] = useState("lazy");
 	const [maxBufferSize, setMaxBufferSize] = useState(String(10 * 1024 * 1024));
@@ -78,7 +79,7 @@ export function McpSettingsPanel() {
 								setConfigFile(event.currentTarget.value);
 								queueSave();
 							}}
-							placeholder="~/.config/letters/mcp.json"
+							placeholder={MCP_CONFIG_FILE}
 							aria-label="Config File Path"
 							spellCheck={false}
 						/>

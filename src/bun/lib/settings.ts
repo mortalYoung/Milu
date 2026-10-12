@@ -1,7 +1,8 @@
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { COMMANDS_DIR, MCP_CONFIG_FILE } from "../../shared/home";
 import type { SandboxMode } from "../permission";
+import { configDir, configPath, expandHome } from "./home";
 
 export type ThemeMode = "system" | "light" | "dark";
 
@@ -66,8 +67,8 @@ const DEFAULT_SETTINGS: Settings = {
 	partner_profile_path: "~/.partner/",
 	detect_instructions_file: "AGENTS.md",
 	defaultSandboxMode: "workspace-write",
-	commands_path: "~/.config/letters/commands",
-	mcp_config_path: "~/.config/letters/mcp.json",
+	commands_path: COMMANDS_DIR,
+	mcp_config_path: MCP_CONFIG_FILE,
 	theme: "system",
 	toastPlacement: "bottomcenter",
 	toastDurationMs: 4000,
@@ -85,7 +86,7 @@ const DEFAULT_SETTINGS: Settings = {
 	highlight: { tokenizeMaxLineLength: 3000, tokenizeTimeLimit: 500 },
 };
 
-const SETTINGS_PATH = join(homedir(), ".config", "letters", "settings.json");
+const SETTINGS_PATH = configPath("settings.json");
 
 export async function loadSettings(): Promise<Settings> {
 	try {
@@ -101,13 +102,9 @@ export async function loadSettings(): Promise<Settings> {
 }
 
 export async function saveSettings(settings: Settings): Promise<void> {
-	await mkdir(join(homedir(), ".config", "letters"), { recursive: true });
+	await mkdir(configDir(), { recursive: true });
 	await writeFile(SETTINGS_PATH, JSON.stringify(settings, null, 2) + "\n", { encoding: "utf8", mode: 0o600 });
 	await chmod(SETTINGS_PATH, 0o600);
-}
-
-function expandHome(path: string): string {
-	return path.startsWith("~") ? join(homedir(), path.slice(1)) : path;
 }
 
 export function partnerRoot(settings: Settings): string {
@@ -118,10 +115,8 @@ export function getPartnerDir(settings: Settings, name: string): string {
 	return join(partnerRoot(settings), name);
 }
 
-const DEFAULT_COMMANDS_PATH = "~/.config/letters/commands";
-
-export const DEFAULT_MCP_CONFIG_PATH = "~/.config/letters/mcp.json";
+export const DEFAULT_MCP_CONFIG_PATH = MCP_CONFIG_FILE;
 
 export function commandsDir(settings: Settings): string {
-	return expandHome(settings.commands_path?.trim() ? settings.commands_path : DEFAULT_COMMANDS_PATH);
+	return expandHome(settings.commands_path?.trim() ? settings.commands_path : COMMANDS_DIR);
 }

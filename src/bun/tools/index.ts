@@ -489,9 +489,9 @@ function mcpCallTool(deps: ToolDeps): AgentTool<typeof mcpCallSchema, McpCallDet
 
 const peerSchema = Type.Object({
 	op: Type.Union([Type.Literal("list"), Type.Literal("ask")], {
-		description: 'What to do: "list" the letters you can write to, or "ask" one of them something.',
+		description: 'What to do: "list" the chats you can write to, or "ask" one of them something.',
 	}),
-	peer: Type.Optional(Type.String({ description: "ask: the letter to write to (a name from list)" })),
+	peer: Type.Optional(Type.String({ description: "ask: the chat to write to (a name from list)" })),
 	text: Type.Optional(Type.String({ description: "ask: what to ask it. Its answer arrives later, as a new message." })),
 });
 type PeerDetails = { ok: boolean; error?: string; requestId?: string };
@@ -501,15 +501,15 @@ function peerTool(deps: ToolDeps): AgentTool<typeof peerSchema, PeerDetails> {
 		name: "peer",
 		label: "Peer",
 		description:
-			"Write to another letter. It is a separate correspondent with its own workspace, persona and tools: it decides whether and how to answer, and its answer arrives later as a new message. The call is asynchronous — after asking, end your turn and never answer on its behalf.",
+			"Write to another chat. It is a separate correspondent with its own workspace, persona and tools: it decides whether and how to answer, and its answer arrives later as a new message. The call is asynchronous — after asking, end your turn and never answer on its behalf.",
 		parameters: peerSchema,
 		async execute(_toolCallId, params) {
-			if (!deps.peer) return { content: [{ type: "text", text: "No other letters are reachable from this session." }], details: { ok: false, error: "unavailable" } };
+			if (!deps.peer) return { content: [{ type: "text", text: "No other chats are reachable from this session." }], details: { ok: false, error: "unavailable" } };
 			try {
 				if (params.op === "list") {
 					const members = await deps.peer.list();
 					const text =
-						members.length === 0 ? "(no other letters)" : members.map((member) => (member.forkedFrom ? `${member.name} (fork of ${member.forkedFrom})` : member.name)).join("\n");
+						members.length === 0 ? "(no other chats)" : members.map((member) => (member.forkedFrom ? `${member.name} (fork of ${member.forkedFrom})` : member.name)).join("\n");
 					return { content: [{ type: "text", text }], details: { ok: true } };
 				}
 				if (!params.peer || !params.text) return { content: [{ type: "text", text: 'peer ask needs both "peer" and "text".' }], details: { ok: false, error: "missing-field" } };

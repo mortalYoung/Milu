@@ -31,7 +31,7 @@ export async function gitRepoRoot(workspace: string): Promise<string> {
 	return res.stdout.trim();
 }
 
-function statusLetter(code: string): GitChangeStatus {
+function statusCode(code: string): GitChangeStatus {
 	if (code === "?") return "U";
 	if (code === "C") return "A";
 	return (["M", "A", "D", "R"].includes(code) ? code : "M") as GitChangeStatus;
@@ -55,9 +55,9 @@ function parseStatus(stdout: string): GitChange[] {
 		if (x === "?" && y === "?") {
 			changes.push({ path, status: "U", staged: false, untracked: true });
 		} else if (x !== " ") {
-			changes.push({ path, status: statusLetter(x), staged: true, ...(from ? { from } : {}) });
+			changes.push({ path, status: statusCode(x), staged: true, ...(from ? { from } : {}) });
 		} else if (y !== " ") {
-			changes.push({ path, status: statusLetter(y), staged: false, ...(from ? { from } : {}) });
+			changes.push({ path, status: statusCode(y), staged: false, ...(from ? { from } : {}) });
 		}
 	}
 	return changes;

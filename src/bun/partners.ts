@@ -49,7 +49,7 @@ export class PartnerError extends Error {}
 
 function validateName(name: string): void {
 	if (!name || !NAME_PATTERN.test(name)) {
-		throw new PartnerError("Name is required (letters, digits, '_', '-', max 64)");
+		throw new PartnerError("Name is required (alphanumeric, '_' or '-', max 64)");
 	}
 	if (RESERVED_NAMES.has(name.toLowerCase())) {
 		throw new PartnerError(`Name "${name}" cannot be used as a folder`);

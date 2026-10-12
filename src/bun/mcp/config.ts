@@ -15,7 +15,7 @@ export function mcpConfigPath(settings: Pick<Settings, "mcp_config_path">): stri
 }
 
 export function validateMcpServerName(name: string): string | null {
-	if (!SERVER_NAME_RE.test(name)) return "Server name must be letters, digits, '_' or '-', max 64";
+	if (!SERVER_NAME_RE.test(name)) return "Server name must be alphanumeric, with '_' or '-', max 64";
 	return null;
 }
 

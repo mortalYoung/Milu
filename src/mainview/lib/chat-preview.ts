@@ -42,7 +42,7 @@ export function previewFor(partner: PartnerItem): string {
 /**
  * The one partner matcher, shared by the palette's Sessions mode and the chat list's filter: name,
  * workspace and persona are each fuzzy-scored; a name hit outranks everything, then the score,
- * then workspace, then persona, and the most recently active letter breaks the tie.
+ * then workspace, then persona, and the most recently active chat breaks the tie.
  */
 export function filterPartners(partners: PartnerItem[], query: string): PartnerItem[] {
 	const q = query.trim();

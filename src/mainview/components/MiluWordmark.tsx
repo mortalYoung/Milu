@@ -18,7 +18,7 @@ export function MiluWordmark(props: { class?: string }) {
 					<rect className="milu-wipe" x="52.3" y="44.1" width="403" height="64" fill={`url(#milu-reveal-${uid})`} />
 				</mask>
 			</defs>
-			<path className="milu-letters" d={WORDMARK_PATH} fill="currentColor" fillRule="nonzero" mask={`url(#milu-reveal-mask-${uid})`} />
+			<path className="milu-mark" d={WORDMARK_PATH} fill="currentColor" fillRule="nonzero" mask={`url(#milu-reveal-mask-${uid})`} />
 		</svg>
 	);
 }

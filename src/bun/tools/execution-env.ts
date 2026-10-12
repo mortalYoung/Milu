@@ -316,12 +316,12 @@ export function createExecutionEnv(cwd: string, permission?: Permission): TaskEx
 		async createTempFile(options) {
 			checkAbort(options?.abortSignal);
 			try {
-				const dir = await mkdtemp(join(tmpdir(), "letters-"));
+				const dir = await mkdtemp(join(tmpdir(), "milu-"));
 				const path = join(dir, `${options?.prefix ?? ""}${Date.now()}${options?.suffix ?? ""}`);
 				await writeFile(path, "");
 				return ok(path);
 			} catch (e) {
-				return err(mapFileError(join(tmpdir(), "letters-"), e));
+				return err(mapFileError(join(tmpdir(), "milu-"), e));
 			}
 		},
 		async exec(command, options) {

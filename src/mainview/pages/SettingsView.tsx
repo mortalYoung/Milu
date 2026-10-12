@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { DEFAULT_WEB_FETCH_USER_AGENT } from "../../shared/brand";
+import { COMMANDS_DIR } from "../../shared/home";
 import type { CustomModel, CustomProvider, SandboxMode, ThemeMode, ToastPlacement } from "../../shared/rpc";
 import { Button } from "../components/Button";
 import { McpSettingsPanel } from "../components/McpSettingsPanel";
@@ -30,7 +31,7 @@ type CatId = (typeof CATS)[number]["id"];
 const DEFAULTS = {
 	path: "~/.partner/",
 	instructions: "AGENTS.md",
-	commandsPath: "~/.config/letters/commands",
+	commandsPath: COMMANDS_DIR,
 	retryMaxRetries: 2,
 	retryBaseDelayMs: 500,
 	bashTimeoutSec: 15,

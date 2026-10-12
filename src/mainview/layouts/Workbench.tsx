@@ -16,10 +16,10 @@ function send(text: string) {
 }
 
 /**
- * 信纸这一列（转录 + 输入区）。它只跟着「信里的内容」重渲染 ——
+ * 工作台这一列（转录 + 输入区）。它只跟着「会话里的内容」重渲染 ——
  * 侧栏、dock、窗口宽度都改不动它：那些只动外面那一层的宽度，重排交给 CSS。
  */
-export const Letter = memo(function Letter(props: {
+export const Workbench = memo(function Workbench(props: {
 	worker: string;
 	working: boolean;
 	historyLoading: boolean;

@@ -10,7 +10,7 @@ export interface PeerAsk {
 	hop: number;
 }
 
-/** The answer a letter owes right now: who is waiting, and for what. */
+/** The answer a chat owes right now: who is waiting, and for what. */
 export interface PendingReply {
 	to: string;
 	requestId: string;
@@ -30,7 +30,7 @@ export interface PeerHost {
 
 const inbound = new Map<string, PeerAsk>();
 
-/** The hop counter a letter is currently working at: 0 when the user asked, N when answering a peer. */
+/** The hop counter a chat is currently working at: 0 when the user asked, N when answering a peer. */
 export function peerHopFor(partner: string): number {
 	return inbound.get(partner)?.hop ?? 0;
 }
@@ -79,10 +79,10 @@ export async function askPeer(
 ): Promise<{ ok: true; requestId: string } | { ok: false; error: string }> {
 	const text = input.text.trim();
 	if (text === "") return { ok: false, error: "the message is empty" };
-	if (input.to === input.from) return { ok: false, error: "a letter cannot write to itself" };
+	if (input.to === input.from) return { ok: false, error: "a chat cannot write to itself" };
 	if (input.hop + 1 > PEER_HOP_LIMIT) return answerCappedAsk(input);
 	const target = await host.endpoint(input.to);
-	if (!target) return { ok: false, error: `no letter named "${input.to}"` };
+	if (!target) return { ok: false, error: `no chat named "${input.to}"` };
 	const requestId = randomUUID();
 	await target.chat(text, { source: "peer", peer: input.from, peerKind: "ask", requestId, hop: input.hop + 1 });
 	return { ok: true, requestId };

@@ -22,7 +22,7 @@ A working desktop harness.
 
 ### Download
 
-[Releases](https://github.com/mortalYoung/letters/releases)
+[Releases](https://github.com/mortalYoung/Milu/releases)
 
 ### Development
 
@@ -70,7 +70,7 @@ bun run dev
 
 </div>
 
-[github-issues-link]: https://github.com/mortalYoung/letters/issues
+[github-issues-link]: https://github.com/mortalYoung/Milu/issues
 [bun-shield]: https://img.shields.io/badge/Bun-1.4-fbf0df?labelColor=black&logo=bun&logoColor=white&style=flat-square
 [bun-link]: https://bun.sh
 [electrobun-shield]: https://img.shields.io/badge/Electrobun-2.0.1-2f6f9f?labelColor=black&style=flat-square

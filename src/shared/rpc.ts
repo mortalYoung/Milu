@@ -361,7 +361,7 @@ export interface DashboardPartnerStats {
 }
 
 export interface DashboardTotals {
-	letters: number;
+	chats: number;
 	turns: number;
 	freshTokens: number;
 	cacheTokens: number;

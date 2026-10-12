@@ -16,7 +16,7 @@ describe("buildSystemPrompt framework", () => {
 	test("IDENTIFY is a static role sentence (no runtime injection)", () => {
 		const p = buildIdentify();
 		expect(p).toContain("You are a helpful software engineer assistant");
-		expect(p).not.toMatch(/model|framework|LETTERS/i);
+		expect(p).not.toMatch(/model|framework|milu/i);
 	});
 
 	test("PERSONA: persona generated when present (role sentence lives in IDENTIFY, not duplicated)", () => {

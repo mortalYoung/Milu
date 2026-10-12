@@ -169,20 +169,6 @@
 	color: var(--color-muted-soft);
 }
 
-@utility letter-lines {
-	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='32'%3E%3Cline x1='0' y1='31' x2='120' y2='31' stroke='%23ddd6c6' stroke-opacity='0.65'/%3E%3C/svg%3E");
-	background-size: 100% 32px;
-	line-height: 32px;
-}
-@media (prefers-color-scheme: dark) {
-	:root:not([data-theme="light"]) .letter-lines {
-		background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='32'%3E%3Cline x1='0' y1='31' x2='120' y2='31' stroke='%23343026' stroke-opacity='0.65'/%3E%3C/svg%3E");
-	}
-}
-:root[data-theme="dark"] .letter-lines {
-	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='32'%3E%3Cline x1='0' y1='31' x2='120' y2='31' stroke='%23343026' stroke-opacity='0.65'/%3E%3C/svg%3E");
-}
-
 @layer components {
 	/* ——— sidebar: windowbar / brand / toolbar / body / foot ——— */
 	.sidebar {
@@ -776,38 +762,6 @@
 		margin: var(--gap-reading) 0 11px;
 	}
 
-	.letter-lines-input {
-		@apply letter-lines w-full resize-none bg-transparent border-0 rounded-none px-0 py-0 font-mono text-[14px] text-ink placeholder:text-muted outline-none focus-visible:outline-none;
-	}
-
-	.letter-lines .md {
-		line-height: 32px;
-	}
-	.letter-note {
-		@apply font-sans text-[12px] leading-relaxed text-muted;
-	}
-	.letter-ps-spacer {
-		@apply mt-5;
-	}
-	.letter-footer {
-		@apply flex items-center justify-end gap-2 border-t border-line pt-4 mt-1;
-	}
-	.letter-read {
-		@apply font-serif text-[16px] leading-[1.7] text-ink;
-	}
-	.letter-blank {
-		@apply font-serif text-[14px] text-muted;
-	}
-	.letter-ps {
-		@apply border-t border-line pt-3 mt-1 flex items-baseline gap-2;
-	}
-	.letter-ps-label {
-		@apply font-serif text-[16px] font-semibold text-ink shrink-0;
-	}
-
-	.letter-pps {
-		@apply mt-3.5 flex flex-col gap-1.5;
-	}
 	.activity-heatmap {
 		@apply flex-1 flex flex-col gap-[5px] select-none min-w-0;
 	}
@@ -909,7 +863,7 @@
 		@apply h-[52px] shrink-0 border-b border-line;
 	}
 
-	/* ——— the letter's own bar, on the pane, not on the window ——— */
+	/* ——— the workbench's own bar, on the pane, not on the window ——— */
 	.chat-bar {
 		@apply relative flex flex-none select-none items-center justify-between gap-2 border-b border-line;
 		padding-left: var(--page-gutter);
@@ -3479,7 +3433,7 @@ html.theme-flip *::after {
 
 /* ————————————————— Dashboard console（B · 训练台） —————————————————
    从上到下：现在（谁在写、写到哪）→ 这个窗口（一格一量纲 + 相对上一窗口的变化）→ 三条曲线 →
-   一年的日历 → letters 与最近发生的事。信息密度调低，所以每一块之间留 16-20px 的呼吸。 */
+   一年的日历 → chats 与最近发生的事。信息密度调低，所以每一块之间留 16-20px 的呼吸。 */
 .dashboard-page {
 	@apply flex flex-1 min-h-0 flex-col;
 }
@@ -3707,7 +3661,7 @@ html.theme-flip *::after {
 	@apply ml-2;
 }
 
-/* letters + recent runs */
+/* chats + recent runs */
 .dashboard-split {
 	@apply mt-5 grid gap-4;
 	grid-template-columns: 1.6fr minmax(0, 1fr);
