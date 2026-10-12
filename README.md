@@ -4,8 +4,7 @@
 
 <h1>Milu</h1>
 
-A desktop harness for a small staff of AI correspondents: one window, several of
-them, each with its own desk, memory, and mail.
+A working desktop harness.
 
 [![][bun-shield]][bun-link]
 [![][electrobun-shield]][electrobun-link]
@@ -13,7 +12,7 @@ them, each with its own desk, memory, and mail.
 [![][tailwind-shield]][tailwind-link]<br/>
 [![][mcp-shield]][mcp-link]
 
-[Design system](./DESIGN.md) · [Repo conventions](./CLAUDE.md) · [Icon pipeline](./assets/README.md) · [Report Bug][github-issues-link]
+[Website](./README.md) · [Report Bug][github-issues-link]
 
 ![](https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/rainbow.png)
 
@@ -23,9 +22,7 @@ them, each with its own desk, memory, and mail.
 
 ### Download
 
-The latest build is on **[Releases](https://github.com/mortalYoung/letters/releases)**
-(macOS, arm64). Drag it into Applications. The app is unsigned for now, so the
-first launch goes through **System Settings → Privacy & Security → Open Anyway**.
+[Releases](https://github.com/mortalYoung/letters/releases)
 
 ### Development
 
@@ -34,43 +31,34 @@ bun install
 bun run dev
 ```
 
-| Command | What it does |
-|---|---|
-| `bun run dev` | build the view, then run with watch |
-| `bun run dev:view` | Vite watch — rebuild the view on change |
-| `bun run build` | build the view, then a production build (`--env=stable`) |
-| `bun run build:dev` | the same, on the dev channel |
-| `bun run start:log` | dev with the console teed into `.logs/` |
-| `bun run typecheck` / `format:check` | the gate: types, then formatting |
-| `bun run icons` | regenerate the icon set from `assets/milu.png` |
-
-One Bun process owns everything that matters — the agent runs, the session log, and
-the sandbox — and the window is only a view of it. `CLAUDE.md` carries the map;
-`src/shared/` holds the types and pure projections both sides share.
-
 ## Features
 
-One decision underneath all of it: the agent as correspondent, not chat box.
+- **Less is More** — keep everything just enough for you: a minimal prompt, a simple
+  interface, fewer tools.
+- **Optional workspace** — run the agent without workspace for statistics or other global tasks.
+- **Memory** — each chat keeps its own memory, split into facts, issues and decisions.
+  Keep talking and it grows into SOPs and a persona that sounds like you.
+- **Long-term chat** — memory and cache hits wired in, so one chat per partner always
+  works in context.
+- **Keyboard** — `⌘P` opens a palette to switch chats, open files, or give a chat access to
+  skills and MCP servers.
+- **Permission** — a hard ceiling on the agent: the sandbox confines it, `rm` is
+  force-delete only, anything wider needs a human.
+- **Local** — everything runs on your machine: no account, no server, no telemetry, and
+  your keys and data stay on disk.
+- **Everything as a log** — sessions are append-only, and every view is built from them:
+  transcript, dashboard, trajectory, replies, git diff, explorer.
 
-- **Letter grammar** — delivered rounds, postmark times, a signature line, and one
-  channel back to you (`send_message`) instead of a token stream.
-- **A staff of correspondents** — several partners in one window, each with its own
-  workspace, session log, memory, persona, sandbox mode, model, skills, and MCP
-  grants; forks for keeping a variant beside the original.
-- **Folded memory** — rounds folded into `memories → scenes → persona`, an idle
-  scheduler, and a self-healing cursor.
-- **Partner to partner** — `peer { op: "list" | "ask" }`, answers delivered into
-  the asker's own conversation, a four-hop cap on an exchange.
-- **Kernel-level confinement** — writes outside the workspace and the storage are
-  denied by the kernel, a git repository's hooks stay read-only, one wider command
-  needs human approval, and the refusal says what it was.
-- **Everything as a log** — append-only JSONL sessions, the transcript as a
-  projection of that file, any view rebuildable from it.
-- **An inspectable desk** — a per-partner dashboard (turns, tokens, TTFT, memory on
-  disk), a trajectory drawer, a replies outline, git changes with a diff view, a
-  file explorer.
-- **Keyboard first** — `/` commands and `@` mentions in one menu grammar, `⌘P` for
-  the palette, `⌘⇧P` for who-can-use-what, model·effort as a chip in the input pill.
+## Why not
+
+- **Claude Code** — a nice model under a bad harness: a swollen prompt, 80% of its
+  functions useless for normal scenes, and — the important part — no source to read.
+- **Codex** — an expert at making things complex, then persuading you that's the point. An
+  acquired taste, apparently compulsory.
+- **Kimi Code** — a bad UI swollen with functions. Less is More? Never heard of it.
+- **ZCode** — Schrödinger's *open-source*: you can't tell without opening the box — and GLM
+  is in there either way.
+- **dsh** — DeepSeek Harness: a talented harness — just don't hand it to a non-programmer.
 
 ---
 
