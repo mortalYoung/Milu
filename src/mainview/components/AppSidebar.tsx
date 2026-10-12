@@ -426,7 +426,7 @@ export function AppSidebar(props: {
 			</button>
 
 			<Dialog open={confirmDelete != null} onOpenChange={(open) => !open && setConfirmDelete(null)}>
-				<DialogContent className="w-[320px]">
+				<DialogContent size={{ w: 320 }}>
 					<DialogHeader>
 						<DialogTitle>Delete partner</DialogTitle>
 						<DialogDescription>

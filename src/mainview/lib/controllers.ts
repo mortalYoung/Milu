@@ -13,6 +13,7 @@ import { rpc } from "./rpc";
 import { createScrollFollower, domRowAnchor } from "./scroll-follower";
 import { createSession, type PartnerItem } from "./session";
 import { createSettings } from "./settings";
+import { createShell } from "./shell";
 import { createSkills } from "./skills";
 import { createTasks } from "./tasks";
 import { createToast } from "./toast";
@@ -40,7 +41,15 @@ export const commands = createCommandDirectory(rpc, toast);
 export const metrics = createMetrics(rpc, session.store);
 export const settings = createSettings(rpc, toast);
 export const trajectory = createTrajectory(session);
-export const dock = createDock({ onOpen: () => trajectory.mutate.setOpen(false), partner: () => session.store.getState().selected });
+export const dock = createDock({
+	// 右侧同时只留一个浮层：换面板关掉轨迹，开面板关掉左边的列表浮层
+	onOpen: () => {
+		trajectory.mutate.setOpen(false);
+		shell.dismissListOverlay();
+	},
+	partner: () => session.store.getState().selected,
+});
+export const shell = createShell({ dock: () => dock });
 export const palette = createPalette();
 export const tasks = createTasks(rpc);
 export const dashboard = createDashboard(rpc);

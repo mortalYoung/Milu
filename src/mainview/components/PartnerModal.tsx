@@ -32,7 +32,7 @@ export function PartnerModal(props: PartnerModalProps) {
 
 	return (
 		<Dialog open={props.open} onOpenChange={props.onOpenChange}>
-			<DialogContent className="w-[600px] max-w-[min(600px,calc(100vw-32px))] gap-0 overflow-hidden bg-surface p-0" onEscapeKeyDown={holdClose} onInteractOutside={holdClose}>
+			<DialogContent size={{ w: 600 }} className="gap-0 overflow-hidden bg-surface p-0" onEscapeKeyDown={holdClose} onInteractOutside={holdClose}>
 				<DialogHeader className="sr-only">
 					<DialogTitle>Create</DialogTitle>
 					<DialogDescription>Create a new partner in the configured directory.</DialogDescription>

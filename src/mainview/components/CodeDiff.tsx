@@ -504,6 +504,9 @@ function mirrorScroll(a: EditorView, b: EditorView): () => void {
 	};
 }
 
+/** 两栏并排需要的地方：每边至少 ~260px；低于这个就自己叠成一栏（默认 dock 560 仍然并排） */
+export const SIDE_BY_SIDE_MIN = 520;
+
 export function CodeDiff(props: { original: string; modified: string; lang: string | null; sideBySide: boolean; wrap: boolean; ignoreWhitespace: boolean }) {
 	const hostEl = useRef<HTMLDivElement>(null);
 	const wrapCompartment = useRef(new Compartment());

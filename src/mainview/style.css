@@ -131,6 +131,8 @@
 
 	:root {
 		color-scheme: light dark;
+		/* 一条 gutter：顶条 / 信纸 / composer 共用同一条纵轴。窄窗收它，不缩字号（字号是阅读契约） */
+		--page-gutter: clamp(16px, 2vw, 24px);
 	}
 	:root[data-theme="light"] {
 		color-scheme: light;
@@ -412,6 +414,16 @@
 	}
 	.conv-pane.collapsed {
 		@apply w-0 opacity-0;
+	}
+	/* 手动要回来的聊天列表：窗口装不下成列，就盖在信纸上（贴边、满高、一条影）。
+	   没有 grip —— 浮层不是一列，是被收起来的，不该能拖。 */
+	.conv-pane.floating {
+		position: absolute;
+		top: 0;
+		bottom: 0;
+		left: 0;
+		z-index: 30;
+		box-shadow: 12px 0 32px color-mix(in srgb, var(--color-ink) 10%, transparent);
 	}
 	.chat-page:has(.conv-grip.dragging) .conv-pane {
 		transition: none;
@@ -878,7 +890,7 @@
 	}
 	.composer-slot {
 		@apply flex-none;
-		padding: 0 16px 12px;
+		padding: 0 var(--page-gutter) 12px;
 	}
 	/* ——— the macOS zone: rail + list carry the top 52px, content columns do not ——— */
 	.mac-plate {
@@ -899,8 +911,22 @@
 
 	/* ——— the letter's own bar, on the pane, not on the window ——— */
 	.chat-bar {
-		@apply relative flex flex-none select-none items-center justify-between gap-2 border-b border-line px-[18px];
+		@apply relative flex flex-none select-none items-center justify-between gap-2 border-b border-line;
+		padding-left: var(--page-gutter);
+		padding-right: var(--page-gutter);
 		height: var(--bar-h, 52px);
+		/* 条自己是个容器：名字和右边那排工具怎么排，由条自己的宽说了算 */
+		container-type: inline-size;
+	}
+	/* 行宽不够时名字不再居中绝对定位 —— 右边那排工具（~199px）会压到它 */
+	@container (max-width: 699px) {
+		.chat-bar-name {
+			position: static;
+			transform: none;
+			flex: 1 1 auto;
+			min-width: 0;
+			max-width: none;
+		}
 	}
 	/* no sidebar: the pane's bar starts at the window edge, so it lets the lights keep the corner */
 	.chat-bar.at-edge {
@@ -2132,6 +2158,31 @@
 	.dock.leaving {
 		opacity: 0;
 		transition-duration: 110ms;
+	}
+	/* 浮层：不在流里的一列 —— 贴边、保持自己的宽、不推挤信纸；Esc / 同一个工具按钮关掉。
+	   没有 grip：浮层不是一列，是被收起来的，不该能拖。 */
+	.dock.floating {
+		position: absolute;
+		top: 0;
+		right: 0;
+		bottom: 0;
+		z-index: 30;
+		border-left: 0.5px solid var(--color-line);
+		box-shadow: -12px 0 32px color-mix(in srgb, var(--color-ink) 10%, transparent);
+		transition:
+			transform 180ms var(--ease-out),
+			opacity 160ms var(--ease-out);
+		@starting-style {
+			transform: translateX(18px);
+			opacity: 0;
+		}
+	}
+	/* 一次只给一面：列表和详情之间那条线没人需要 */
+	.dock.floating .dock-pane {
+		border-right-color: transparent;
+	}
+	.dock.floating.leaving {
+		transform: translateX(14px);
 	}
 	/* 换面板：旧列脱流，只交叉淡出，不再占宽度 */
 	.dock.leaving.out {

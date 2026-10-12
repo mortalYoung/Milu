@@ -8,7 +8,7 @@ import { ESCAPE_ORDER, useEscapeLayer } from "../lib/escape";
 import { languageForPath } from "../lib/markdown";
 import { rpc } from "../lib/rpc";
 import { SURFACE } from "../lib/surfaces";
-import { CodeDiff } from "./CodeDiff";
+import { CodeDiff, SIDE_BY_SIDE_MIN } from "./CodeDiff";
 import { type DockListControls, DockListToggle, DockShell } from "./DockShell";
 
 interface GitData {
@@ -59,6 +59,8 @@ const openDiffsStore = createStore<{ files: Record<string, GitChangeItem> }>()((
 export function GitChangesDrawer(props: {
 	open: boolean;
 	partner: string | null;
+	mode: "flow" | "overlay";
+	pane: boolean;
 	width: number;
 	paneWidth: number;
 	listOpen: boolean;
@@ -91,6 +93,8 @@ export function GitChangesDrawer(props: {
 	function setSelected(next: GitChangeItem | null) {
 		const partner = props.partner;
 		if (!partner) return;
+		/* 浮层里一次只给一面：选中的那一刻，脸从列表翻到差异 */
+		if (next && props.mode === "overlay" && props.listOpen) props.onToggleList();
 		openDiffsStore.setState((state) => {
 			if ((state.files[partner] ?? null) === next) return state;
 			const copy = { ...state.files };
@@ -100,10 +104,12 @@ export function GitChangesDrawer(props: {
 		});
 	}
 
+	/* 浮层里列表和详情轮流占一面：详情不在屏上时，Esc 该关的是整个浮层，不是这份差异 */
+	const detailFace = props.mode !== "overlay" || !props.listOpen;
 	useEscapeLayer({
 		id: "git.detail",
 		order: ESCAPE_ORDER.dockDetail,
-		isOpen: () => props.open && selected != null,
+		isOpen: () => props.open && selected != null && detailFace,
 		close: () => setSelected(null),
 	});
 
@@ -171,6 +177,8 @@ export function GitChangesDrawer(props: {
 
 	const both = sides && sides.ok ? sides : null;
 	const comparable = both != null && !both.binary && !both.tooLarge;
+	/* 两栏并排是偏好，也还要地方：窄列里自己叠成一栏（偏好不动，窗口拉开就又并排） */
+	const bothSides = props.sideBySide && props.width >= SIDE_BY_SIDE_MIN;
 	const sidesError = sides && !sides.ok ? sides.error : null;
 	const stats = { add: both?.add ?? 0, del: both?.del ?? 0 };
 
@@ -224,6 +232,8 @@ export function GitChangesDrawer(props: {
 		<DockShell
 			open={props.open}
 			panelId="git"
+			mode={props.mode}
+			pane={props.pane}
 			width={props.width}
 			paneWidth={props.paneWidth}
 			listTitle={`changes · ${staged.length + unstaged.length}`}
@@ -239,7 +249,7 @@ export function GitChangesDrawer(props: {
 							style={{ "--explorer-line-height": lineHeight, "--explorer-line-height-em": `${lineHeight}em` } as React.CSSProperties}
 						>
 							<div className="git-diff-head">
-								{!list.open && <DockListToggle open={false} onToggle={list.toggle} />}
+								{!list.open && list.fits && <DockListToggle open={false} onToggle={list.toggle} />}
 								<div className="git-diff-title">
 									<span className="git-file-name">{basename(shownChange.path)}</span>
 									{(stats.add > 0 || stats.del > 0) && (
@@ -266,7 +276,7 @@ export function GitChangesDrawer(props: {
 											className={"dock-btn" + (props.sideBySide ? " on" : "")}
 											aria-pressed={props.sideBySide}
 											aria-label={props.sideBySide ? "Show one column" : "Show both sides"}
-											title={props.sideBySide ? "Show one column" : "Show both sides"}
+											title={props.sideBySide && !bothSides ? "Both sides need a wider column" : props.sideBySide ? "Show one column" : "Show both sides"}
 											onClick={props.onToggleSideBySide}
 										>
 											<Columns2 size={11} />
@@ -305,7 +315,7 @@ export function GitChangesDrawer(props: {
 									original={both.original}
 									modified={both.modified}
 									lang={languageForPath(shownChange.path)}
-									sideBySide={props.sideBySide}
+									sideBySide={bothSides}
 									wrap={props.wrap}
 									ignoreWhitespace={props.ignoreWhitespace}
 								/>

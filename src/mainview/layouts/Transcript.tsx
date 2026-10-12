@@ -517,7 +517,7 @@ export function Transcript(props: {
 		<MotionConfig reducedMotion="user">
 			<ScrollRegion
 				scroll={scroll}
-				class="transcript flex-1 min-h-0 px-4 py-3"
+				class="transcript flex-1 min-h-0 px-[var(--page-gutter)] py-3"
 				id="transcript"
 				ariaLive="polite"
 				innerClass={cn("transcript-inner", btwAnchor && "btw-open")}
@@ -792,7 +792,7 @@ export function Transcript(props: {
 			</ScrollRegion>
 
 			<Dialog open={skillDialog != null} onOpenChange={(open) => !open && setSkillDialog(null)}>
-				<DialogContent focusClose className="w-[560px] max-w-[560px] bg-surface p-0 gap-0">
+				<DialogContent focusClose size={{ w: 560 }} className="bg-surface p-0 gap-0">
 					<DialogTitle className="sr-only">{skillDialog?.name ?? ""}</DialogTitle>
 					<div className="flex max-h-[70vh] flex-col gap-3 p-5">
 						<div className="font-mono text-[14px] font-medium text-ink">skill · {skillDialog?.name}</div>

@@ -1,22 +1,20 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import type { RailView } from "../shared/rpc";
 import { AppSidebar } from "./components/AppSidebar";
 import { ChatPaneBar } from "./components/ChatPaneBar";
 import { CommandPalette } from "./components/CommandPalette";
-import { Composer } from "./components/Composer";
 import { DockGrip } from "./components/DockGrip";
 import { ExplorerDrawer } from "./components/ExplorerDrawer";
 import { GitChangesDrawer } from "./components/GitChangesDrawer";
 import { PartnerDetailsDialog } from "./components/PartnerDetailsDialog";
 import { PartnerModal } from "./components/PartnerModal";
 import { RepliesPane } from "./components/RepliesPane";
-import { TaskLogDialog } from "./components/TaskLogDialog";
 import { ToastHost } from "./components/ToastHost";
 import { TrajectoryDrawer } from "./components/TrajectoryDrawer";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./components/ui/dialog";
 import { TooltipProvider } from "./components/ui/tooltip";
-import { Transcript } from "./layouts/Transcript";
+import { Letter } from "./layouts/Letter";
 import { registerSurfaceRoot } from "./lib/active-surface";
 import { AgentStatusProvider } from "./lib/contexts/agent-status-context";
 import { CommandDirectoryProvider } from "./lib/contexts/commands-context";
@@ -44,6 +42,7 @@ import {
 	selectPartner,
 	session,
 	settings,
+	shell,
 	skills,
 	status,
 	tasks as tasksCtl,
@@ -52,7 +51,7 @@ import {
 	transcript,
 	unread,
 } from "./lib/controllers";
-import { DOCK_MIN, LIST_DEFAULT, LIST_MAX, LIST_MIN, WORKBENCH_MIN, WORKBENCH_TARGET } from "./lib/dock";
+import { DOCK_MIN, LIST_DEFAULT, LIST_MAX, LIST_MIN, WORKBENCH_MIN } from "./lib/dock";
 import { ESCAPE_ORDER, type EscapeLayer, escapeTop } from "./lib/escape";
 import { useFindRouter } from "./lib/find";
 import { GRIP_WIDTH } from "./lib/grip";
@@ -61,6 +60,7 @@ import { warmUpMarkdown } from "./lib/markdown";
 import type { PartnerFormData } from "./lib/partner-form";
 import { rpc } from "./lib/rpc";
 import type { PartnerItem } from "./lib/session";
+import { shellLayout } from "./lib/shell-layout";
 import { SURFACE } from "./lib/surfaces";
 import { zoomOnDoubleClick } from "./lib/zoom";
 import { DashboardView } from "./pages/DashboardView";
@@ -70,6 +70,12 @@ import { SkillsView } from "./pages/SkillsView";
 const escapeLayers: EscapeLayer[] = [
 	{ id: "palette", order: ESCAPE_ORDER.palette, isOpen: () => palette.store.getState().open, close: () => palette.close() },
 	{ id: "trajectory", order: ESCAPE_ORDER.trajectory, isOpen: () => trajectory.store.getState().open, close: () => trajectory.mutate.setOpen(false) },
+	{
+		id: "chatlist",
+		order: ESCAPE_ORDER.listOverlay,
+		isOpen: () => shell.store.getState().listMode === "overlay",
+		close: () => shell.dismissListOverlay(),
+	},
 	{ id: "dock", order: ESCAPE_ORDER.dock, isOpen: () => dock.panel() != null, close: () => dock.close() },
 ];
 
@@ -103,14 +109,6 @@ async function onPromotePartner(name: string) {
 	await session.mutate.refreshPartners();
 }
 
-function onSend(text: string) {
-	scroll.pin(true);
-	void rpc.request.chat({ text }).then((res) => {
-		if (res.accepted) composer.clear(session.store.getState().selected ?? "");
-		void session.mutate.refreshHistory();
-	});
-}
-
 function onOpenPath(path: string, editorId?: string) {
 	void rpc.request.open_path({ path, editorId }).then((res) => {
 		if (!res.ok) toast.push({ title: "Couldn't open folder", body: res.error ?? "No supported editor found" }, "error");
@@ -122,8 +120,6 @@ function ChatView(props: {
 	editors: { id: string; name: string }[];
 	onViewDetails: (name: string) => void;
 	onAddPartner: () => void;
-	listCollapsed: boolean;
-	onToggleList: () => void;
 	onOpenSettings: () => void;
 }) {
 	const partners = useStore(session.store, (state) => state.partners);
@@ -148,11 +144,14 @@ function ChatView(props: {
 
 	const [btwAnchor, setBtwAnchor] = useState<string | null>(null);
 	const [taskOpen, setTaskOpen] = useState(false);
+	const openTasks = useCallback(() => setTaskOpen(true), []);
 	const taskVersion = useStore(tasksCtl.store, (state) => state.version);
 	const taskOutput = useStore(tasksCtl.store, (state) => state.output);
 	const taskList = useStore(tasksCtl.store, (state) => state.tasks);
 	const listWidth = useStore(dock.store, (state) => state.listWidth);
 	const listOpen = useStore(dock.store, (state) => state.listOpen);
+	const listPref = useStore(shell.store, (state) => state.listOpen);
+	const listOverride = useStore(shell.store, (state) => state.listOverride);
 	const rowObserver = useRef<ResizeObserver | null>(null);
 	const rowEl = useRef<HTMLDivElement>(null);
 	const [rowWidth, setRowWidth] = useState(0);
@@ -167,10 +166,14 @@ function ChatView(props: {
 		rowObserver.current?.disconnect();
 		rowObserver.current = null;
 		if (!el) return;
-		const observer = new ResizeObserver(() => setRowWidth(el.clientWidth));
+		const observer = new ResizeObserver(() => {
+			setRowWidth(el.clientWidth);
+			shell.setRow(el.clientWidth);
+		});
 		observer.observe(el);
 		rowObserver.current = observer;
 		setRowWidth(el.clientWidth);
+		shell.setRow(el.clientWidth);
 	}
 
 	useEffect(
@@ -209,60 +212,89 @@ function ChatView(props: {
 		return partner?.lastMessageAt != null && partner.lastMessageAt > (readAt[name] ?? 0);
 	};
 
-	/* 三个区各守自己的宽：sidebar 与 dock 各自是存好的定值，workbench 是唯一的余量。
-	   渲染路径上谁都不夹邻居 —— 所以拖着 sidebar 不会让 dock 变，拖着 dock 也不会让 sidebar 变。 */
-	const workbenchFloor = docked ? WORKBENCH_MIN : WORKBENCH_TARGET;
-	const listWidthNow = Math.max(LIST_MIN, Math.min(listWidth, LIST_MAX));
-	const dockWidthNow = docked ? (rowWidth === 0 ? dockWidth : Math.max(DOCK_MIN, Math.min(dockWidth, rowWidth - 2 * GRIP_WIDTH))) : 0;
+	/* 三个区的宽度规则都在 shellLayout 里（一处分级）：信纸是主人，列表和 dock 是客人 ——
+	   装不下就离场，谁都不许把信纸夹窄。见 lib/shell-layout.ts。 */
+	const layout = shellLayout({ row: rowWidth, listWidth, listOpen: listPref, listOverride, dockOpen: docked, dockWidth });
+	const listMode = layout.list.mode;
+	const dockMode = layout.dock.mode;
+	const listWidthNow = layout.list.width;
+	const dockWidthNow = layout.dock.width;
+	const listInFlow = listMode === "flow";
+	const dockInFlow = dockMode === "flow";
+	/* 信纸的宽就是这一行的余量：在流里的列扣掉，浮层一点都不扣 —— 不用谁去钉它 */
+	const listColumn = listInFlow ? listWidthNow + GRIP_WIDTH : 0;
+	const dockColumn = dockInFlow ? dockWidthNow + GRIP_WIDTH : 0;
 
-	/* 让位（把 chatlist 藏起来）只由"这一行装不下三家的地板"触发，和当前拖到哪儿无关 ——
-	   否则拖 dock 就能把 sidebar 拖消失，而反向不会，两个方向就不对称了。 */
-	const listHidden = props.listCollapsed || (rowWidth > 0 && docked && rowWidth - 2 * GRIP_WIDTH < LIST_MIN + DOCK_MIN + workbenchFloor);
-
-	const workbenchSpace = Math.max(0, rowWidth - GRIP_WIDTH - (listHidden ? 0 : listWidthNow + GRIP_WIDTH) - (docked ? dockWidthNow + GRIP_WIDTH : 0));
-
-	/* 只有拖动才用"给 workbench 留地板"兜住荒诞值：两个方向同一个公式，只是角色互换。
-	   上限不低于当前值 —— 否则在窄窗口里一按下鼠标就会"啪"地缩一下。 */
+	/* 拖动上限 = 邻居让到底（它的最小宽）、信纸保住地板时还能给多少。
+	   上限不低于当前值 —— 否则在窄窗口里一按下鼠标就会「啪」地缩一下。 */
 	const listMax = Math.max(
 		LIST_MIN,
 		listWidthNow,
-		rowWidth === 0 ? LIST_MAX : Math.min(LIST_MAX, rowWidth - GRIP_WIDTH - (docked ? dockWidthNow + GRIP_WIDTH : 0) - workbenchFloor),
+		rowWidth === 0 ? LIST_MAX : Math.min(LIST_MAX, rowWidth - GRIP_WIDTH - (dockInFlow ? DOCK_MIN + GRIP_WIDTH : 0) - WORKBENCH_MIN),
 	);
-	const dockMax = Math.max(DOCK_MIN, dockWidthNow, rowWidth === 0 ? dockWidthNow : rowWidth - GRIP_WIDTH - (listHidden ? 0 : listWidthNow + GRIP_WIDTH) - workbenchFloor);
+	const dockMax = Math.max(DOCK_MIN, dockWidthNow, rowWidth === 0 ? dockWidthNow : rowWidth - GRIP_WIDTH - (listInFlow ? LIST_MIN + GRIP_WIDTH : 0) - WORKBENCH_MIN);
+	const workbenchSpace = Math.max(0, rowWidth - listColumn - dockColumn);
 
-	/* 拖动时上方那串数字：按左→右列出现在真的在屏上的区（被拖的那个用拖动中的值），
-	   所以三栏全开是 `sidebar / workbench / dock`，两栏就是两个数。 */
+	/* 拖动时上方那串数字：就是拿拖动中的值再过一遍 shellLayout —— 读数不会和规则分家。
+	   三栏全开是 `sidebar / workbench / dock`，两栏就是两个数。 */
 	function splitReadout(dragged: "list" | "dock", width: number): string {
-		const list = listHidden ? 0 : dragged === "list" ? width : listWidthNow;
-		const dockNow = docked ? (dragged === "dock" ? width : dockWidthNow) : 0;
-		const grips = (list > 0 ? 1 : 0) + (dockNow > 0 ? 1 : 0);
-		const workbench = Math.max(0, rowWidth - grips * GRIP_WIDTH - list - dockNow);
-		const parts = list > 0 ? [list] : [];
-		parts.push(workbench);
-		if (dockNow > 0) parts.push(dockNow);
+		const laid = shellLayout({
+			row: rowWidth,
+			listWidth: dragged === "list" ? width : listWidth,
+			listOpen: listPref,
+			listOverride,
+			dockOpen: docked,
+			dockWidth: dragged === "dock" ? width : dockWidth,
+		});
+		const parts: number[] = [];
+		if (laid.list.mode === "flow") parts.push(laid.list.width);
+		parts.push(laid.letter);
+		if (laid.dock.mode === "flow") parts.push(laid.dock.width);
 		return parts.map((value) => Math.round(value)).join(" / ");
 	}
 
+	/* 形态给外壳读一次（macOS 那块玻璃跟不跟画布走）—— 在着色前写，免得角落闪一帧 */
+	useLayoutEffect(() => {
+		shell.publishListMode(listMode);
+	});
+
+	/* 一列从「在流里」被窗口挤出来，就直接关掉：浮层只能由用户当场打开，没有「窗口把我挤成浮层」这回事。
+	   在 layout effect 里做，所以那一帧的浮层还没着色就被换掉了。 */
+	const prevModes = useRef({ list: listMode, dock: dockMode });
+	useLayoutEffect(() => {
+		const prev = prevModes.current;
+		prevModes.current = { list: listMode, dock: dockMode };
+		if (prev.dock === "flow" && dockMode === "overlay") dock.close();
+		if (prev.list === "flow" && listMode === "overlay") shell.dismissListOverlay();
+	});
+
 	return (
 		<div className="chat-page" ref={bindRow}>
-			<div className={"conv-pane" + (listHidden ? " collapsed" : "")} style={{ width: listHidden ? undefined : listWidthNow }} inert={listHidden}>
+			<div
+				className={"conv-pane" + (listInFlow ? "" : listMode === "overlay" ? " floating" : " collapsed")}
+				style={listInFlow || listMode === "overlay" ? { width: listWidthNow } : undefined}
+				inert={listMode === "collapsed"}
+			>
 				<AppSidebar
 					partners={partners}
 					loading={partnersLoading}
 					selected={selected}
 					unread={isUnread}
-					onSelect={(name) => selectPartner(partners.find((p) => p.name === name) ?? null)}
+					onSelect={(name) => {
+						if (listMode !== "flow") shell.dismissListOverlay();
+						selectPartner(partners.find((p) => p.name === name) ?? null);
+					}}
 					onAddPartner={props.onAddPartner}
 					onDelete={(name) => void onDeletePartner(name)}
 					onViewDetails={props.onViewDetails}
 					onDuplicate={(name) => void runCopy("duplicate", name)}
 					onFork={(name) => void runCopy("fork", name)}
 					onPromote={(name) => void onPromotePartner(name)}
-					onToggleList={props.onToggleList}
+					onToggleList={shell.toggleList}
 					onOpenSettings={props.onOpenSettings}
 				/>
 			</div>
-			{!listHidden && (
+			{listInFlow && (
 				<DockGrip
 					class="conv-grip"
 					width={() => listWidthNow}
@@ -281,42 +313,26 @@ function ChatView(props: {
 					dock={dock}
 					selected={selected}
 					onViewDetails={props.onViewDetails}
-					listCollapsed={props.listCollapsed}
-					listHidden={listHidden}
-					onToggleList={props.onToggleList}
+					listInFlow={listInFlow}
+					listShown={listMode !== "collapsed"}
+					onToggleList={shell.toggleList}
 				/>
 				<div className="chat-row">
 					{selected ? (
 						<div className={"chat-body" + (btwAnchor ? " btw-open" : "")}>
-							<div className="chat-main">
-								<div className="chat-column">
-									<div className="chat-transcript-region">
-										<Transcript
-											working={busy}
-											historyLoading={loading}
-											worker={selected}
-											onEscalationRespond={(id, approved) => void rpc.request.sandbox_respond({ id, approved })}
-											onBtw={setBtwAnchor}
-											onBtwClose={() => setBtwAnchor(null)}
-											activeBtwAnchor={btwAnchor}
-										/>
-									</div>
-									<div className="composer-slot">
-										<Composer
-											onSend={onSend}
-											onStop={() => void rpc.request.stop({})}
-											onShell={(command) => {
-												scroll.pin(true);
-												return rpc.request.shell_execute({ command });
-											}}
-											onTasks={() => setTaskOpen(true)}
-											hasTasks={taskList.length > 0}
-											taskRunning={taskList.filter((task) => task.status === "running").length}
-										/>
-										<TaskLogDialog open={taskOpen} onOpenChange={setTaskOpen} tasks={taskList} partner={selected} version={taskVersion} output={taskOutput} />
-									</div>
-								</div>
-							</div>
+							<Letter
+								worker={selected}
+								working={busy}
+								historyLoading={loading}
+								activeBtwAnchor={btwAnchor}
+								onBtwAnchor={setBtwAnchor}
+								tasks={taskList}
+								taskVersion={taskVersion}
+								taskOutput={taskOutput}
+								taskOpen={taskOpen}
+								onTaskOpenChange={setTaskOpen}
+								onTaskOpen={openTasks}
+							/>
 						</div>
 					) : (
 						<div className="chat-main">
@@ -326,7 +342,7 @@ function ChatView(props: {
 							</div>
 						</div>
 					)}
-					{docked && (
+					{dockInFlow && (
 						<DockGrip
 							class="dock-grip-edge"
 							width={() => dockWidthNow}
@@ -334,7 +350,7 @@ function ChatView(props: {
 							max={dockMax}
 							side="right"
 							label="Resize the dock"
-							half={() => Math.round((workbenchSpace + dockWidthNow) / 2)}
+							half={() => Math.round((workbenchSpace + dockColumn) / 2)}
 							readout={(width) => splitReadout("dock", width)}
 							onResize={dock.setDockWidth}
 							onCommit={dock.commitDockWidth}
@@ -346,7 +362,9 @@ function ChatView(props: {
 								open={panel === "explorer"}
 								partner={selected}
 								reveal={reveal}
-								width={docked ? dockWidthNow : 0}
+								mode={dockMode === "overlay" ? "overlay" : "flow"}
+								pane={layout.dock.pane}
+								width={dockMode === "closed" ? 0 : dockWidthNow}
 								paneWidth={paneWidth}
 								listOpen={listOpen}
 								onToggleList={dock.toggleListOpen}
@@ -356,7 +374,9 @@ function ChatView(props: {
 							<GitChangesDrawer
 								open={panel === "git"}
 								partner={selected}
-								width={docked ? dockWidthNow : 0}
+								mode={dockMode === "overlay" ? "overlay" : "flow"}
+								pane={layout.dock.pane}
+								width={dockMode === "closed" ? 0 : dockWidthNow}
 								paneWidth={paneWidth}
 								listOpen={listOpen}
 								onToggleList={dock.toggleListOpen}
@@ -389,7 +409,6 @@ export function App() {
 	const finds = useFindRouter();
 	const [view, setView] = useState<ViewId>("chat");
 	const [editors, setEditors] = useState<{ id: string; name: string }[]>([]);
-	const [listCollapsed, setListCollapsed] = useState(() => localStorage.getItem("chatlist.collapsed") === "1");
 	const [showModal, setShowModal] = useState(false);
 	const [detailsPartner, setDetailsPartner] = useState<PartnerItem | null>(null);
 
@@ -400,6 +419,8 @@ export function App() {
 	const toasts = useStore(toast.store, (state) => state.toasts);
 	const settingsOpen = useStore(settings.store, (state) => state.open);
 	const settingsSnapshot = useStore(settings.store, (state) => state.snapshot);
+	const listMode = useStore(shell.store, (state) => state.listMode);
+	const listCollapsed = listMode !== "flow";
 	void palette;
 
 	useEffect(() => {
@@ -421,13 +442,7 @@ export function App() {
 		};
 	}, [partners]);
 
-	const toggleList = () => {
-		setListCollapsed((collapsed) => {
-			const next = !collapsed;
-			localStorage.setItem("chatlist.collapsed", next ? "1" : "0");
-			return next;
-		});
-	};
+	const toggleList = shell.toggleList;
 
 	useKeybindings([
 		{
@@ -552,8 +567,6 @@ export function App() {
 																					editors={editors}
 																					onViewDetails={openDetails}
 																					onAddPartner={openAddPartner}
-																					listCollapsed={listCollapsed}
-																					onToggleList={toggleList}
 																					onOpenSettings={() => settings.mutate.setOpen(true)}
 																				/>
 																			)}
@@ -563,7 +576,8 @@ export function App() {
 																</div>
 																<Dialog open={settingsOpen} onOpenChange={settings.mutate.setOpen}>
 																	<DialogContent
-																		className="w-[820px] max-w-none h-[640px] grid-rows-[auto_1fr] overflow-hidden bg-surface border-print-line p-0"
+																		size={{ w: 820, h: 640 }}
+																		className="grid-rows-[auto_1fr] overflow-hidden bg-surface border-print-line p-0"
 																		onOpenAutoFocus={(event) => event.preventDefault()}
 																	>
 																		<DialogHeader className="px-4 pt-4">

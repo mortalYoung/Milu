@@ -33,10 +33,11 @@ export const LIST_MIN = 200;
 export const LIST_MAX = 480;
 export const LIST_DEFAULT = 240;
 
+/** The detail beside the pane: below this the pane stands aside and the detail takes the column. */
+export const DOCK_DETAIL_MIN = 320;
+
 /** The workbench is the remainder; both drags must leave it this much. */
 export const WORKBENCH_MIN = 420;
-/** With the dock closed the sidebar keeps its old floor: the letter's own measure. */
-export const WORKBENCH_TARGET = 592;
 
 export interface DockState {
 	panels: Record<string, DockPanel | null>;

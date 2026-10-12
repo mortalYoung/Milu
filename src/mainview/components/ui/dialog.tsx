@@ -1,5 +1,5 @@
 import { Dialog as DialogPrimitive } from "radix-ui";
-import { type ComponentProps, useRef } from "react";
+import { type ComponentProps, type CSSProperties, useRef } from "react";
 import { cn } from "../../lib/utils";
 
 export const Dialog = DialogPrimitive.Root;
@@ -23,9 +23,22 @@ export function DialogContent({
 	layerClass,
 	overlayClass,
 	focusClose,
+	size,
+	style,
 	...rest
-}: ComponentProps<typeof DialogPrimitive.Content> & { layerClass?: string; overlayClass?: string; focusClose?: boolean }) {
+}: ComponentProps<typeof DialogPrimitive.Content> & {
+	layerClass?: string;
+	overlayClass?: string;
+	focusClose?: boolean;
+	/** 设计宽度（可选高度）：不论窗口多窄都收进去，留一条 gutter 透气 —— 弹窗自己滚，不出屏 */
+	size?: { w: number; h?: number };
+}) {
 	const closeRef = useRef<HTMLButtonElement>(null);
+	const fit: CSSProperties = {
+		...(size ? { width: `min(${size.w}px, calc(100vw - 2 * var(--page-gutter)))`, maxWidth: "100%" } : {}),
+		...(size?.h ? { height: `min(${size.h}px, calc(100vh - 2 * var(--page-gutter)))` } : {}),
+		maxHeight: "calc(100vh - 2 * var(--page-gutter))",
+	};
 
 	const close = (
 		<DialogPrimitive.Close
@@ -50,6 +63,7 @@ export function DialogContent({
 						className,
 						layerClass,
 					)}
+					style={{ ...fit, ...style }}
 					onOpenAutoFocus={
 						focusClose
 							? (event) => {

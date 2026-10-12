@@ -368,6 +368,8 @@ export function ExplorerDrawer(props: {
 	open: boolean;
 	partner: string | null;
 	reveal?: RevealTarget | null;
+	mode: "flow" | "overlay";
+	pane: boolean;
 	width: number;
 	paneWidth: number;
 	listOpen: boolean;
@@ -420,6 +422,8 @@ export function ExplorerDrawer(props: {
 
 	/* VSCode-like: every opened file is a tab; one of them is active. */
 	function openTab(next: SelectedFile) {
+		/* 浮层里一次只给一面：选中的那一刻，脸从列表翻到文件 */
+		if (props.mode === "overlay" && props.listOpen) props.onToggleList();
 		const state = readTabs(props.partner);
 		const tabs = state.tabs.some((tab) => tab.path === next.path) ? state.tabs.map((tab) => (tab.path === next.path ? next : tab)) : [...state.tabs, next];
 		writeTabs(props.partner, { tabs, active: next.path });
@@ -571,10 +575,12 @@ export function ExplorerDrawer(props: {
 		tabStrip.current?.querySelector<HTMLElement>(".explorer-tab.on")?.scrollIntoView({ inline: "nearest", block: "nearest" });
 	}, []);
 
+	/* 浮层里列表和详情轮流占一面：详情不在屏上时，Esc 该关的是整个浮层，不是这份文件 */
+	const detailFace = props.mode !== "overlay" || !props.listOpen;
 	useEscapeLayer({
 		id: "explorer.detail",
 		order: ESCAPE_ORDER.dockDetail,
-		isOpen: () => props.open && selected != null,
+		isOpen: () => props.open && selected != null && detailFace,
 		close: () => setSelected(null),
 	});
 
@@ -693,6 +699,8 @@ export function ExplorerDrawer(props: {
 		<DockShell
 			open={props.open}
 			panelId="explorer"
+			mode={props.mode}
+			pane={props.pane}
 			width={props.width}
 			paneWidth={props.paneWidth}
 			listTitle={`${rootName} · ${rootState?.entries?.length ?? 0}`}
@@ -705,7 +713,7 @@ export function ExplorerDrawer(props: {
 					shownFile ? (
 						<div className={"explorer-reader dock-detail" + (leaving ? " leaving" : "")}>
 							<div className="explorer-reader-head">
-								{!list.open && <DockListToggle open={false} onToggle={list.toggle} />}
+								{!list.open && list.fits && <DockListToggle open={false} onToggle={list.toggle} />}
 								<div className="explorer-tabs" ref={tabStrip}>
 									{openTabs.tabs.map((tab) => (
 										<div className={"explorer-tab" + (tab.path === openTabs.active ? " on" : "")} key={tab.path}>

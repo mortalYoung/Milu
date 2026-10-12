@@ -135,7 +135,7 @@ export function SkillsView() {
 								}
 							}}
 						>
-							<DialogContent className="w-[480px] max-w-[480px] bg-canvas p-5">
+							<DialogContent size={{ w: 480 }} className="bg-canvas p-5">
 								<DialogTitle className="font-serif text-[16px] font-semibold text-ink">New global skill</DialogTitle>
 								<div className="mt-4 flex flex-col gap-3">
 									<TextField className="w-full">

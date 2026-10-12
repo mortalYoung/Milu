@@ -164,7 +164,7 @@ export function PartnerDetailsDialog(props: {
 
 	return (
 		<Dialog open={open} onOpenChange={props.onOpenChange}>
-			<DialogContent focusClose className="w-[820px] max-w-[820px] bg-surface text-ink p-0 gap-0 overflow-hidden">
+			<DialogContent focusClose size={{ w: 820 }} className="bg-surface text-ink p-0 gap-0 overflow-hidden">
 				<DialogTitle className="sr-only">{partner?.name ?? ""}</DialogTitle>
 				{partner && (
 					<div className="flex h-[min(720px,86vh)] w-full flex-col overflow-x-hidden">

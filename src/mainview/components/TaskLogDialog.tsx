@@ -197,7 +197,7 @@ export function TaskLogDialog(props: { open: boolean; onOpenChange: (open: boole
 
 	return (
 		<Dialog open={props.open} onOpenChange={props.onOpenChange}>
-			<DialogContent focusClose className="w-[880px] max-w-[880px] bg-surface text-ink p-0 gap-0 overflow-hidden">
+			<DialogContent focusClose size={{ w: 880 }} className="bg-surface text-ink p-0 gap-0 overflow-hidden">
 				<DialogTitle className="sr-only">Tasks</DialogTitle>
 				<div className="flex w-full max-h-[min(80vh,720px)] flex-col overflow-hidden" ref={attachRoot}>
 					<div className="flex shrink-0 items-baseline gap-3 border-b border-line px-5 pt-4 pb-3 pr-12">

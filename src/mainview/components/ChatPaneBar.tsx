@@ -14,8 +14,10 @@ export function ChatPaneBar(props: {
 	dock: Dock;
 	selected: string | null;
 	onViewDetails: (name: string) => void;
-	listCollapsed: boolean;
-	listHidden: boolean;
+	/** 列表在流里（占着左边那一列）；不在流里时条从窗口边起，给红绿灯留出角 */
+	listInFlow: boolean;
+	/** 列表此刻看得见（在流里或浮层）；看不见时条左边给它一个回来的按钮 */
+	listShown: boolean;
 	onToggleList: () => void;
 }) {
 	const status = useAgentStatus();
@@ -87,9 +89,9 @@ export function ChatPaneBar(props: {
 	);
 
 	return (
-		<div className={"chat-bar electrobun-webkit-app-region-drag" + (props.listHidden ? " at-edge" : "")} onDoubleClick={zoomOnDoubleClick}>
+		<div className={"chat-bar electrobun-webkit-app-region-drag" + (props.listInFlow ? "" : " at-edge")} onDoubleClick={zoomOnDoubleClick}>
 			<div className="chat-bar-lead">
-				{props.listCollapsed && (
+				{!props.listShown && (
 					<button type="button" className={barIconClass + " list-expand"} title="Show chat list (⌘B)" aria-label="Show chat list" onClick={props.onToggleList}>
 						<PanelLeftOpen size={16} />
 					</button>

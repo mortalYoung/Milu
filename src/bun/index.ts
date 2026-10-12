@@ -2556,6 +2556,9 @@ void armSkillsWatchers();
 let restoreFrame: { x: number; y: number; width: number; height: number } | null = null;
 
 const DEFAULT_FRAME: WindowFrame = { x: 120, y: 60, width: 1200, height: 800 };
+/** 窗口的地板：这版 Electrobun 的 BrowserWindow 没有 minSize，就在 resize 里自己兜住 ——
+    比这更窄的窗里，三个区怎么排都不是能读的样子（信纸地板 420 + 至少一列）。 */
+const WINDOW_MIN = { width: 560, height: 480 };
 let rememberSession = startupSettings.rememberSession !== false;
 let lastSession: LastSession = (rememberSession ? readLastSession() : null) ?? { frame: DEFAULT_FRAME, maximized: false, partner: null };
 let frameTimer: ReturnType<typeof setTimeout> | undefined;
@@ -2567,10 +2570,27 @@ const mainWindow: BrowserWindow = new BrowserWindow({
 	trafficLightOffset: { x: 0, y: 10 },
 	url: "views://mainview/index.html",
 	rpc,
-	frame: { ...lastSession.frame },
+	frame: {
+		...lastSession.frame,
+		width: Math.max(lastSession.frame.width, WINDOW_MIN.width),
+		height: Math.max(lastSession.frame.height, WINDOW_MIN.height),
+	},
 });
 
 if (lastSession.maximized) mainWindow.maximize();
+
+function clampWindowSize(): void {
+	const frame = mainWindow.getFrame();
+	const width = Math.max(frame.width, WINDOW_MIN.width);
+	const height = Math.max(frame.height, WINDOW_MIN.height);
+	if (width === frame.width && height === frame.height) return;
+	mainWindow.setSize(width, height);
+}
+
+function onWindowResize(): void {
+	clampWindowSize();
+	rememberWindowFrame();
+}
 
 function rememberWindowFrame(): void {
 	if (!rememberSession) return;
@@ -2579,7 +2599,7 @@ function rememberWindowFrame(): void {
 	frameTimer = setTimeout(() => writeLastSession(lastSession), 400);
 }
 
-mainWindow.on("resize", rememberWindowFrame);
+mainWindow.on("resize", onWindowResize);
 mainWindow.on("move", rememberWindowFrame);
 
 electrobunApp.on("before-quit", () => {

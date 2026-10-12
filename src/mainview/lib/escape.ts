@@ -17,6 +17,7 @@ export const ESCAPE_ORDER = {
 	readerFind: 78,
 	readerSelection: 77,
 	dockDetail: 75,
+	listOverlay: 72,
 	dock: 70,
 	chatListSearch: 65,
 } as const;

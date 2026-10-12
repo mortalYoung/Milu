@@ -195,7 +195,7 @@ export function McpServersPanel() {
 					}
 				}}
 			>
-				<DialogContent className="w-[560px] max-w-[560px] bg-surface p-0 gap-0">
+				<DialogContent size={{ w: 560 }} className="bg-surface p-0 gap-0">
 					<DialogHeader className="border-b border-line px-5 pb-3 pt-4">
 						<DialogTitle className="font-serif text-[16px] font-semibold text-ink">{editing ? `Edit ${editing}` : "Add MCP server"}</DialogTitle>
 					</DialogHeader>
