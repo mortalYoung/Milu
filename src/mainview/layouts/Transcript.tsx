@@ -368,7 +368,7 @@ export function Transcript(props: {
 	const [editSaving, setEditSaving] = useState(false);
 	const [editError, setEditError] = useState<string | null>(null);
 
-	const userEditEls = useRef(new Map<string, HTMLDivElement>());
+	const userEditEls = useRef(new Map<string, HTMLTextAreaElement>());
 	const pinnedShellOutput = useRef(new Set<string>());
 
 	const findRoot = useRef<HTMLDivElement | null>(null);
@@ -509,7 +509,12 @@ export function Transcript(props: {
 	useEffect(() => {
 		if (!editingUserKey) return;
 		const el = userEditEls.current.get(editingUserKey);
-		if (el) requestAnimationFrame(() => el.focus());
+		if (!el) return;
+		requestAnimationFrame(() => {
+			el.focus();
+			el.setSelectionRange(el.value.length, el.value.length);
+			el.scrollTop = el.scrollHeight;
+		});
 	}, [editingUserKey]);
 
 	useEffect(() => {
@@ -639,39 +644,52 @@ export function Transcript(props: {
 							return (
 								<div className="msg-block msg-block-user group" data-chat-anchor-key={key}>
 									<div
-										className={"msg-user" + (isEditing ? " msg-user-editing" : "") + (locateFlashId === entry.id ? " locate-flash" : "")}
+										className={"msg-user" + (isEditing ? " editing" : "") + (locateFlashId === entry.id ? " locate-flash" : "")}
 										id={"entry-" + entry.id}
 										data-chat-anchor-key={key}
-										contentEditable={isEditing ? "plaintext-only" : undefined}
-										role={isEditing ? "textbox" : undefined}
-										aria-multiline={isEditing ? true : undefined}
-										ref={(el) => {
-											if (el) userEditEls.current.set(key, el);
-										}}
-										onInput={(event) => {
-											if (!isEditing) return;
-											setEditDraft((event.currentTarget as HTMLElement).innerText ?? "");
-										}}
-										onKeyDown={(event) => {
-											if (!isEditing) return;
-											if (event.key === "Escape") {
-												event.preventDefault();
-												cancelEdit();
-											}
-											if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-												event.preventDefault();
-												void saveEdit();
-											}
+										onMouseDown={(event) => {
+											if (!isEditing || event.target !== event.currentTarget) return;
+											event.preventDefault();
+											userEditEls.current.get(key)?.focus();
 										}}
 									>
-										{entry.text}
+										{isEditing ? (
+											<span className="msg-user-edit-wrap" data-draft={editDraft}>
+												<textarea
+													ref={(el) => {
+														if (el) userEditEls.current.set(key, el);
+													}}
+													className="msg-user-edit-input"
+													aria-label="Edit message"
+													spellCheck={false}
+													value={editDraft}
+													onChange={(event) => setEditDraft(event.currentTarget.value)}
+													onKeyDown={(event) => {
+														if (event.nativeEvent.isComposing) return;
+														if (event.key === "Escape") {
+															event.preventDefault();
+															cancelEdit();
+														}
+														if (event.key === "Enter" && !event.shiftKey) {
+															event.preventDefault();
+															void saveEdit();
+														}
+													}}
+													onBlur={() => {
+														if (!editSaving) cancelEdit();
+													}}
+												/>
+											</span>
+										) : (
+											entry.text
+										)}
 									</div>
 									<span className="sr-only">you</span>
 									<div className="msg-meta">
 										<span className="msg-at">{formatHistoryTime(entry.time)}</span>
 										{entry.from && <span className="msg-chip">from {entry.from}</span>}
 										{isEditing ? (
-											<span className="msg-user-edit-hint">{editSaving ? "resending…" : "enter save · esc cancel"}</span>
+											<span className="msg-user-edit-hint">{editSaving ? "resending…" : "enter save · esc or blur cancels"}</span>
 										) : (
 											key === editableUserKey &&
 											!props.working && (

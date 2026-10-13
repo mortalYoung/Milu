@@ -1251,14 +1251,33 @@
 	.msg-user-edit-link {
 		@apply flex size-5 items-center justify-center rounded-[4px] text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-selected hover:text-ink focus-visible:opacity-100;
 	}
-	.msg-user-editing {
+	/* 编辑态：同一个气泡，换成受控 textarea。框和描边一律不画 —— 一个隐形的镜像字把包裹盒撐成正文的大小，textarea 绝对定位盖在它上面 */
+	.msg-user.editing {
 		cursor: text;
-		caret-color: var(--color-line-strong);
-		min-height: 44px;
 	}
-	.msg-user-editing:focus {
-		outline: 1.5px solid var(--color-ink);
-		outline-offset: 2px;
+	.msg-user-edit-wrap {
+		@apply relative block;
+	}
+	.msg-user-edit-wrap::after {
+		content: attr(data-draft) " ";
+		display: block;
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+		visibility: hidden;
+	}
+	.msg-user-edit-input {
+		position: absolute;
+		inset: 0;
+		padding: 0;
+		border: 0;
+		outline: none;
+		background: transparent;
+		resize: none;
+		overflow: hidden;
+		font: inherit;
+		line-height: inherit;
+		color: inherit;
+		caret-color: var(--color-ink);
 	}
 	.msg-user-edit-hint {
 		@apply font-sans text-[10px] text-muted;
