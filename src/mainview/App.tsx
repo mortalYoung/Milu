@@ -1,7 +1,9 @@
+import { MotionConfig, motion, useReducedMotion, type Variants } from "motion/react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 import type { RailView } from "../shared/rpc";
 import { AppSidebar } from "./components/AppSidebar";
+import { Button } from "./components/Button";
 import { ChatPaneBar } from "./components/ChatPaneBar";
 import { CommandPalette } from "./components/CommandPalette";
 import { DockGrip } from "./components/DockGrip";
@@ -13,6 +15,7 @@ import { RepliesPane } from "./components/RepliesPane";
 import { ToastHost } from "./components/ToastHost";
 import { TrajectoryDrawer } from "./components/TrajectoryDrawer";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "./components/ui/dialog";
+import { Kbd, KbdGroup } from "./components/ui/kbd";
 import { TooltipProvider } from "./components/ui/tooltip";
 import { Workbench } from "./layouts/Workbench";
 import { registerSurfaceRoot } from "./lib/active-surface";
@@ -113,6 +116,79 @@ function onOpenPath(path: string, editorId?: string) {
 	void rpc.request.open_path({ path, editorId }).then((res) => {
 		if (!res.ok) toast.push({ title: "Couldn't open folder", body: res.error ?? "No supported editor found" }, "error");
 	});
+}
+
+const WELCOME_HEAD = "Say something and it starts.";
+let welcomeTyped = false;
+
+const WELCOME_RISE: Variants = {
+	hidden: { opacity: 0, y: 6 },
+	show: { opacity: 1, y: 0, transition: { duration: 0.24, ease: [0.23, 1, 0.32, 1] } },
+};
+
+function WelcomePane(props: { onNewChat: () => void; onOpenSettings: () => void }) {
+	const reduceMotion = useReducedMotion();
+	const [chars, setChars] = useState(() => (welcomeTyped || reduceMotion ? WELCOME_HEAD.length : 0));
+	const typing = chars < WELCOME_HEAD.length;
+
+	useEffect(() => {
+		if (reduceMotion) {
+			setChars(WELCOME_HEAD.length);
+			return;
+		}
+		if (!typing) {
+			welcomeTyped = true;
+			return;
+		}
+		const id = setTimeout(() => setChars((n) => n + 1), chars === 0 ? 220 : 26 + Math.random() * 26);
+		return () => clearTimeout(id);
+	}, [chars, typing, reduceMotion]);
+
+	return (
+		<MotionConfig reducedMotion="user">
+			<motion.div className="flex flex-col items-center" initial="hidden" animate="show" variants={{ hidden: {}, show: { transition: { staggerChildren: 0.06 } } }}>
+				<motion.h2 variants={WELCOME_RISE} className="m-0 max-w-[26ch] font-serif text-[27px] leading-[1.28] font-medium tracking-[-0.01em] text-balance text-ink">
+					<span className="relative inline-block">
+						{WELCOME_HEAD.slice(0, chars)}
+						<motion.span
+							aria-hidden="true"
+							className="absolute top-1/2 -right-[5px] h-[0.92em] w-[2px] -translate-y-1/2 bg-muted-soft"
+							animate={typing ? { opacity: [1, 1, 0, 0] } : { opacity: 0 }}
+							transition={typing ? { duration: 1, times: [0, 0.5, 0.5, 1], repeat: Number.POSITIVE_INFINITY, ease: "linear" } : { duration: 0.3, delay: 0.5 }}
+						/>
+					</span>
+				</motion.h2>
+				<motion.p variants={WELCOME_RISE} className="mt-2.5 mb-[18px] max-w-[44ch] text-[13px] text-muted">
+					A new chat, or the one you left open. Each keeps its own memory, model and permissions.
+				</motion.p>
+				<motion.div variants={WELCOME_RISE}>
+					<Button variant="primary" class="h-9 rounded-[6px] px-4 text-[13px]" onClick={props.onNewChat}>
+						<span>new chat</span>
+						<span className="font-mono text-[10px] text-on-ink/70">⌘N</span>
+					</Button>
+				</motion.div>
+				<motion.div variants={WELCOME_RISE} className="mt-[26px] flex flex-col items-center">
+					<div className="h-px w-[92px] bg-line" />
+					<div className="mt-3 flex flex-col items-start gap-1.5 text-[11.5px]">
+						<button type="button" className="flex items-center gap-2 text-muted transition-colors hover:text-ink" onClick={() => palette.launch()}>
+							<KbdGroup>
+								<Kbd>⌘</Kbd>
+								<Kbd>P</Kbd>
+							</KbdGroup>
+							<span className="border-b border-dotted border-muted-soft pb-px">searches everything</span>
+						</button>
+						<button type="button" className="flex items-center gap-2 text-muted transition-colors hover:text-ink" onClick={props.onOpenSettings}>
+							<KbdGroup>
+								<Kbd>⌘</Kbd>
+								<Kbd>,</Kbd>
+							</KbdGroup>
+							<span className="border-b border-dotted border-muted-soft pb-px">settings</span>
+						</button>
+					</div>
+				</motion.div>
+			</motion.div>
+		</MotionConfig>
+	);
 }
 
 function ChatView(props: {
@@ -336,9 +412,8 @@ function ChatView(props: {
 						</div>
 					) : (
 						<div className="chat-main">
-							<div className="flex flex-1 flex-col items-center justify-center gap-3 text-center" ref={emptyWindow}>
-								<p className="font-serif text-[16px] text-ink-soft">— select a partner to begin —</p>
-								<p className="eyebrow">the chat list is on the left</p>
+							<div className="flex flex-1 flex-col items-center justify-center px-14 text-center" ref={emptyWindow}>
+								<WelcomePane onNewChat={props.onAddPartner} onOpenSettings={props.onOpenSettings} />
 							</div>
 						</div>
 					)}
