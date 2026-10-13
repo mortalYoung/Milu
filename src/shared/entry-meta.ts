@@ -194,8 +194,9 @@ function toolResultVisit(entry: Entry, out: ViewItem[]): void {
 	item.tool.result = contentText(data?.content);
 }
 
-/** A run's body is the last thing it said. Everything the same run said before that is process, and
- *  belongs in the timeline with the calls it made — the reader asked for one answer, not five. */
+/** A turn's body is the last thing it said. Everything the same turn said before that is process, and
+ *  belongs in the timeline with the calls it made — the reader asked for one answer, not five. A queued
+ *  follow-up runs as its own turn inside the same agent run, and that turn's answer is a body too. */
 function markProcessText(entries: Entry[], out: ViewItem[]): void {
 	const textItems = new Map<string, number[]>();
 	out.forEach((item, index) => {
@@ -213,8 +214,9 @@ function markProcessText(entries: Entry[], out: ViewItem[]): void {
 		}
 		run = [];
 	};
+	const closesReply = (type: string) => type === EVENTS.agentStart || type === EVENTS.agentEnd || type === EVENTS.turnStart || type === EVENTS.turnEnd;
 	for (const entry of entries) {
-		if (entry.type === "custom" && (entry.customType === EVENTS.agentStart || entry.customType === EVENTS.agentEnd)) {
+		if (entry.type === "custom" && closesReply(entry.customType)) {
 			flush();
 			continue;
 		}
