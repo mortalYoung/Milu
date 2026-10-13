@@ -4,8 +4,6 @@ import type { ChatPreviewKind } from "../../shared/rpc";
 import { createInFlightBoolean } from "./inflight";
 import type { RPC } from "./rpc";
 
-const PAGE_SIZE = 500;
-
 export interface PartnerItem {
 	name: string;
 	persona?: string;
@@ -65,10 +63,7 @@ export function createSession(rpc: RPC) {
 		try {
 			if (get().selected !== name) return;
 			const existing = get().origin.entries;
-			const res =
-				existing.length === 0
-					? await rpc.request.session_origin({ name, limit: PAGE_SIZE })
-					: await rpc.request.session_origin({ name, mode: "newer", cursor: existing.at(-1)!.id, limit: PAGE_SIZE });
+			const res = existing.length === 0 ? await rpc.request.session_origin({ name }) : await rpc.request.session_origin({ name, mode: "newer", cursor: existing.at(-1)!.id });
 			if (res.reset || existing.length === 0) {
 				patchOrigin({ entries: res.entries, hasMore: res.hasMore, total: res.total, baseDir: res.baseDir });
 				return;
@@ -100,7 +95,7 @@ export function createSession(rpc: RPC) {
 		if (!oldest) return;
 		patchOrigin({ loading: true });
 		try {
-			const res = await rpc.request.session_origin({ name, mode: "older", cursor: oldest, limit: PAGE_SIZE });
+			const res = await rpc.request.session_origin({ name, mode: "older", cursor: oldest });
 			if (get().selected !== name) return;
 			if (res.reset) {
 				patchOrigin({ entries: res.entries, hasMore: res.hasMore, total: res.total, baseDir: res.baseDir });

@@ -10,7 +10,7 @@ import { getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
 import { ApplicationMenu, BrowserView, BrowserWindow, app as electrobunApp, Utils } from "electrobun/main";
 import { BRAND } from "../shared/brand";
 import { mcpChangedText } from "../shared/events";
-import { projectOrigin } from "../shared/origin";
+import { originWindow, projectOrigin } from "../shared/origin";
 import type { AppRPCSchema, ChatPreviewKind, RailView } from "../shared/rpc";
 import { loadCustomCommands, mergeCommandDefinitions } from "./commands/custom";
 import { defaultCommands } from "./commands/defaults";
@@ -1425,6 +1425,9 @@ async function editLastUserRpc(text: string) {
 	}
 }
 
+/** A page of the origin log is six conversations — six prompts and everything each of them set off. */
+const ORIGIN_CONVERSATIONS = 6;
+
 const rpc = BrowserView.defineRPC<AppRPCSchema>({
 	handlers: {
 		requests: {
@@ -1473,41 +1476,14 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				return { accepted: true };
 			},
 
-			session_origin: async ({ name, mode, cursor, limit = 200 }) => {
+			session_origin: async ({ name, mode, cursor }) => {
 				const settings = await loadSettings();
 				const profile = (await listPartners(settings)).find((p) => p.name === name);
 				if (!profile) return { entries: [], total: 0, hasMore: false, reset: false, baseDir: null };
 				const dir = getPartnerDir(settings, name);
 				const baseDir = (await agents.get(name))?.agent.workspacePath ?? null;
 				const origin = projectOrigin(await session.rawEntries(dir));
-				const total = origin.length;
-				let start: number;
-				let end: number;
-				let reset = false;
-				if (!mode || !cursor) {
-					end = total;
-					start = Math.max(0, end - limit);
-				} else {
-					const idx = origin.findIndex((e) => e.id === cursor);
-					if (idx < 0) {
-						reset = true;
-						end = total;
-						start = Math.max(0, end - limit);
-					} else if (mode === "older") {
-						end = idx;
-						start = Math.max(0, end - limit);
-					} else {
-						start = idx + 1;
-						end = Math.min(total, start + limit);
-					}
-				}
-				return {
-					entries: origin.slice(start, end),
-					total,
-					hasMore: start > 0,
-					reset,
-					baseDir,
-				};
+				return { ...originWindow(origin, { mode, cursor, conversations: ORIGIN_CONVERSATIONS }), baseDir };
 			},
 
 			get_status: async ({ name }) => {

@@ -618,7 +618,7 @@ export type AppRPCSchema = __schema<{
 			};
 
 			session_origin: {
-				params: { name: string; mode?: "older" | "newer"; cursor?: string; limit?: number };
+				params: { name: string; mode?: "older" | "newer"; cursor?: string };
 				response: {
 					entries: Entry[];
 					total: number;
