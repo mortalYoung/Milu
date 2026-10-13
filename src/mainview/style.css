@@ -3120,24 +3120,59 @@
 		}
 	}
 
+	/* 排队消息：紧贴在输入卡上方的一条，占位而不是浮在上面 —— 正文因为这个条变矮，不会被它盖住 */
 	.followup-dock {
-		position: absolute;
-		bottom: calc(100% + 8px);
-		left: 50%;
-		transform: translateX(-50%);
-		width: calc(100% - 2rem);
+		width: 100%;
+		/* 比输入卡窄 32px（= 消息列自己的测量线，卡是它每侧多 16px） */
 		max-width: var(--transcript-measure);
-		@apply bg-surface border border-line rounded-[6px] py-1 max-h-[200px] overflow-y-auto z-40;
-		animation: pop-in 180ms cubic-bezier(0.23, 1, 0.32, 1);
+		margin: 0 auto;
+		@apply bg-surface;
+		border: 0.5px solid var(--color-line);
+		border-bottom-width: 0;
+		border-radius: 12px 12px 0 0;
+		box-shadow: 0 2px 8px color-mix(in srgb, var(--color-ink) 7%, transparent);
+	}
+	/* 和卡连成一摞：影由最上面那层投，接缝处的圆角抹平，头是圆的、底是卡的圆角 */
+	.composer-slot:has(.followup-dock) .composer-box {
+		box-shadow: none;
+		border-top-left-radius: 0;
+		border-top-right-radius: 0;
 	}
 	.followup-dock-head {
-		@apply px-3 pt-1 pb-1;
+		@apply flex h-[26px] w-full cursor-pointer items-center gap-1.5 border-0 bg-transparent px-3 text-left;
+	}
+	.followup-dock-head:hover .followup-dock-caret,
+	.followup-dock-head:focus-visible .followup-dock-caret {
+		color: var(--color-ink);
+	}
+	.followup-dock-head:focus-visible {
+		outline: 2px solid var(--color-ink);
+		outline-offset: -2px;
+		border-radius: 12px 12px 0 0;
+	}
+	.followup-dock-caret {
+		@apply flex-none text-muted-soft transition-colors;
 	}
 	.followup-dock-tag {
-		@apply inline-block px-[7px] pt-[1px] pb-[2px] border border-dashed border-signal rounded-[4px] font-mono text-[10px] tracking-[0.06em] text-signal;
+		@apply rounded-[4px] border border-line px-[6px] pt-[1px] pb-[2px] font-mono text-[10px] tracking-[0.12em] text-muted uppercase;
+	}
+	.followup-dock-count {
+		@apply text-ink;
+
+		font-variant-numeric: tabular-nums;
+	}
+	.followup-dock-note {
+		@apply pl-1 font-sans text-[11px] text-muted;
+	}
+	/* 行多时只让行滚：头一直在，正文最多被占 200px */
+	.followup-dock-rows {
+		@apply max-h-[200px] overflow-y-auto border-t border-line-soft;
 	}
 	.followup-dock-row {
 		@apply relative flex items-baseline py-1 pl-[26px] pr-3 border-t border-line-soft;
+	}
+	.followup-dock-row:first-child {
+		border-top-width: 0;
 	}
 	.followup-dock-edit {
 		@apply flex flex-1 min-w-0 items-baseline gap-2.5 text-left;
@@ -3234,8 +3269,7 @@
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.composer-command-hint,
-		.command-menu,
-		.followup-dock {
+		.command-menu {
 			animation: none;
 		}
 	}

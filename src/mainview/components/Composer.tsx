@@ -19,7 +19,6 @@ import { filterMentions } from "../lib/mentions";
 import { detectTrigger, parseCommand } from "../lib/trigger";
 import { CommandMenu } from "./CommandMenu";
 import { ContextMeter } from "./ContextMeter";
-import { FollowUpDock } from "./FollowUpDock";
 import { PartnerMenu } from "./PartnerMenu";
 import {
 	DropdownMenu,
@@ -456,7 +455,6 @@ export function Composer(props: {
 					<span className="composer-command-hint-args">{commandHint.hint}</span>
 				</div>
 			)}
-			<FollowUpDock />
 			<div className="composer-row">
 				<div className={"composer-box" + (shellMode ? " shell" : "")}>
 					<div className="composer-input-layer">

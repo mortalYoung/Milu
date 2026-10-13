@@ -1,6 +1,7 @@
 import { memo, useCallback } from "react";
 import type { TaskSummary } from "../../shared/rpc";
 import { Composer } from "../components/Composer";
+import { FollowUpDock } from "../components/FollowUpDock";
 import { TaskLogDialog } from "../components/TaskLogDialog";
 import { useScroll } from "../lib/contexts/scroll-context";
 import { composer, scroll, session } from "../lib/controllers";
@@ -60,6 +61,7 @@ export const Workbench = memo(function Workbench(props: {
 					/>
 				</div>
 				<div className="composer-slot">
+					<FollowUpDock />
 					<Composer onSend={send} onStop={onStop} onShell={onShell} onTasks={props.onTaskOpen} hasTasks={props.tasks.length > 0} taskRunning={taskRunning} />
 					<TaskLogDialog
 						open={props.taskOpen}
