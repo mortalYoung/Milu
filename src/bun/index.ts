@@ -2351,6 +2351,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 			},
 			set_view: async ({ view }) => {
 				railView = view;
+				refreshMenu();
 				return { ok: true };
 			},
 
@@ -2463,7 +2464,12 @@ function buildMenu(): AppMenuItem[] {
 			label: "Chat",
 			submenu: [
 				{ label: "Create", action: "milu.new-partner", accelerator: "Command+N" },
-				{ label: "Close Chat", action: "milu.close-chat", accelerator: "Command+W" },
+				{
+					label: railView === "chat" ? "Close Chat" : railView === "dashboard" ? "Close Dashboard" : "Close Skills",
+					action: "milu.close-chat",
+					accelerator: "Command+W",
+					enabled: railView !== "chat" || menuState.partner,
+				},
 				{ label: "Chat Detail", action: "milu.details", accelerator: "Command+E", enabled: menuState.partner },
 				{ type: "divider" },
 				{ label: "Open Trajectory", action: "milu.trajectory", enabled: menuState.partner },

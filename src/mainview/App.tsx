@@ -1,3 +1,4 @@
+import { Blocks, LayoutDashboard } from "lucide-react";
 import { MotionConfig, motion, useReducedMotion, type Variants } from "motion/react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
@@ -126,7 +127,7 @@ const WELCOME_RISE: Variants = {
 	show: { opacity: 1, y: 0, transition: { duration: 0.24, ease: [0.23, 1, 0.32, 1] } },
 };
 
-function WelcomePane(props: { onNewChat: () => void; onOpenSettings: () => void }) {
+function WelcomePane(props: { onNewChat: () => void; onOpenSettings: () => void; onDashboard: () => void; onSkills: () => void }) {
 	const reduceMotion = useReducedMotion();
 	const [chars, setChars] = useState(() => (welcomeTyped || reduceMotion ? WELCOME_HEAD.length : 0));
 	const typing = chars < WELCOME_HEAD.length;
@@ -161,10 +162,16 @@ function WelcomePane(props: { onNewChat: () => void; onOpenSettings: () => void 
 				<motion.p variants={WELCOME_RISE} className="mt-2.5 mb-[18px] max-w-[44ch] text-[13px] text-muted">
 					A new chat, or the one you left open. Each keeps its own memory, model and permissions.
 				</motion.p>
-				<motion.div variants={WELCOME_RISE}>
+				<motion.div variants={WELCOME_RISE} className="flex flex-wrap items-center justify-center gap-2">
 					<Button variant="primary" class="h-9 rounded-[6px] px-4 text-[13px]" onClick={props.onNewChat}>
 						<span>new chat</span>
-						<span className="font-mono text-[10px] text-on-ink/70">⌘N</span>
+						<Kbd className="h-4 min-w-0 bg-on-ink/15 px-1 text-[10px] text-on-ink/75">⌘N</Kbd>
+					</Button>
+					<Button variant="outline" class="h-9 rounded-[6px] px-3 text-[13px]" onClick={props.onDashboard} icon={<LayoutDashboard size={13} />}>
+						dashboard
+					</Button>
+					<Button variant="outline" class="h-9 rounded-[6px] px-3 text-[13px]" onClick={props.onSkills} icon={<Blocks size={13} />}>
+						skills &amp; mcp
 					</Button>
 				</motion.div>
 				<motion.div variants={WELCOME_RISE} className="mt-[26px] flex flex-col items-center">
@@ -194,9 +201,13 @@ function WelcomePane(props: { onNewChat: () => void; onOpenSettings: () => void 
 function ChatView(props: {
 	selected: string | null;
 	editors: { id: string; name: string }[];
+	view: RailView;
+	unread: (name: string) => boolean;
 	onViewDetails: (name: string) => void;
 	onAddPartner: () => void;
 	onOpenSettings: () => void;
+	onOpenDashboard: () => void;
+	onOpenSkills: () => void;
 }) {
 	const partners = useStore(session.store, (state) => state.partners);
 	const partnersLoading = useStore(session.partnersLoading.store, (state) => state.loading);
@@ -358,7 +369,7 @@ function ChatView(props: {
 					unread={isUnread}
 					onSelect={(name) => {
 						if (listMode !== "flow") shell.dismissListOverlay();
-						selectPartner(partners.find((p) => p.name === name) ?? null);
+						openChat.run(name);
 					}}
 					onAddPartner={props.onAddPartner}
 					onDelete={(name) => void onDeletePartner(name)}
@@ -385,90 +396,99 @@ function ChatView(props: {
 				/>
 			)}
 			<div className="chat-area">
-				<ChatPaneBar
-					dock={dock}
-					selected={selected}
-					onViewDetails={props.onViewDetails}
-					listInFlow={listInFlow}
-					listShown={listMode !== "collapsed"}
-					onToggleList={shell.toggleList}
-				/>
-				<div className="chat-row">
-					{selected ? (
-						<div className={"chat-body" + (btwAnchor ? " btw-open" : "")}>
-							<Workbench
-								worker={selected}
-								working={busy}
-								historyLoading={loading}
-								activeBtwAnchor={btwAnchor}
-								onBtwAnchor={setBtwAnchor}
-								tasks={taskList}
-								taskVersion={taskVersion}
-								taskOutput={taskOutput}
-								taskOpen={taskOpen}
-								onTaskOpenChange={setTaskOpen}
-								onTaskOpen={openTasks}
-							/>
-						</div>
-					) : (
-						<div className="chat-main">
-							<div className="flex flex-1 flex-col items-center justify-center px-14 text-center" ref={emptyWindow}>
-								<WelcomePane onNewChat={props.onAddPartner} onOpenSettings={props.onOpenSettings} />
-							</div>
-						</div>
-					)}
-					{dockInFlow && (
-						<DockGrip
-							class="dock-grip-edge"
-							width={() => dockWidthNow}
-							min={DOCK_MIN}
-							max={dockMax}
-							side="right"
-							label="Resize the dock"
-							half={() => Math.round((workbenchSpace + dockColumn) / 2)}
-							readout={(width) => splitReadout("dock", width)}
-							onResize={dock.setDockWidth}
-							onCommit={dock.commitDockWidth}
+				{props.view !== "chat" ? (
+					<>
+						<div className="view-strip electrobun-webkit-app-region-drag" onDoubleClick={zoomOnDoubleClick} />
+						{props.view === "dashboard" ? <DashboardView unread={props.unread} onSelect={(name) => openChat.run(name)} /> : <SkillsView />}
+					</>
+				) : (
+					<>
+						<ChatPaneBar
+							dock={dock}
+							selected={selected}
+							onViewDetails={props.onViewDetails}
+							listInFlow={listInFlow}
+							listShown={listMode !== "collapsed"}
+							onToggleList={shell.toggleList}
 						/>
-					)}
-					{selected && (
-						<>
-							<ExplorerDrawer
-								open={panel === "explorer"}
-								partner={selected}
-								reveal={reveal}
-								mode={dockMode === "overlay" ? "overlay" : "flow"}
-								pane={layout.dock.pane}
-								width={dockMode === "closed" ? 0 : dockWidthNow}
-								paneWidth={paneWidth}
-								listOpen={listOpen}
-								onToggleList={dock.toggleListOpen}
-								wrap={wrap}
-								onToggleWrap={dock.toggleWrap}
-							/>
-							<GitChangesDrawer
-								open={panel === "git"}
-								partner={selected}
-								mode={dockMode === "overlay" ? "overlay" : "flow"}
-								pane={layout.dock.pane}
-								width={dockMode === "closed" ? 0 : dockWidthNow}
-								paneWidth={paneWidth}
-								listOpen={listOpen}
-								onToggleList={dock.toggleListOpen}
-								sideBySide={sideBySide}
-								onToggleSideBySide={dock.toggleSideBySide}
-								wrap={wrap}
-								onToggleWrap={dock.toggleWrap}
-								ignoreWhitespace={ignoreWhitespace}
-								onToggleIgnoreWhitespace={dock.toggleIgnoreWhitespace}
-								onRevealInExplorer={(path) => dock.revealInExplorer(path)}
-							/>
-						</>
-					)}
-				</div>
+						<div className="chat-row">
+							{selected ? (
+								<div className={"chat-body" + (btwAnchor ? " btw-open" : "")}>
+									<Workbench
+										worker={selected}
+										working={busy}
+										historyLoading={loading}
+										activeBtwAnchor={btwAnchor}
+										onBtwAnchor={setBtwAnchor}
+										tasks={taskList}
+										taskVersion={taskVersion}
+										taskOutput={taskOutput}
+										taskOpen={taskOpen}
+										onTaskOpenChange={setTaskOpen}
+										onTaskOpen={openTasks}
+									/>
+								</div>
+							) : (
+								<div className="chat-main">
+									<div className="flex flex-1 flex-col items-center justify-center px-14 text-center" ref={emptyWindow}>
+										<WelcomePane onNewChat={props.onAddPartner} onOpenSettings={props.onOpenSettings} onDashboard={props.onOpenDashboard} onSkills={props.onOpenSkills} />
+									</div>
+								</div>
+							)}
+							{dockInFlow && (
+								<DockGrip
+									class="dock-grip-edge"
+									width={() => dockWidthNow}
+									min={DOCK_MIN}
+									max={dockMax}
+									side="right"
+									label="Resize the dock"
+									half={() => Math.round((workbenchSpace + dockColumn) / 2)}
+									readout={(width) => splitReadout("dock", width)}
+									onResize={dock.setDockWidth}
+									onCommit={dock.commitDockWidth}
+								/>
+							)}
+							{selected && (
+								<>
+									<ExplorerDrawer
+										open={panel === "explorer"}
+										partner={selected}
+										reveal={reveal}
+										mode={dockMode === "overlay" ? "overlay" : "flow"}
+										pane={layout.dock.pane}
+										width={dockMode === "closed" ? 0 : dockWidthNow}
+										paneWidth={paneWidth}
+										listOpen={listOpen}
+										onToggleList={dock.toggleListOpen}
+										wrap={wrap}
+										onToggleWrap={dock.toggleWrap}
+									/>
+									<GitChangesDrawer
+										open={panel === "git"}
+										partner={selected}
+										mode={dockMode === "overlay" ? "overlay" : "flow"}
+										pane={layout.dock.pane}
+										width={dockMode === "closed" ? 0 : dockWidthNow}
+										paneWidth={paneWidth}
+										listOpen={listOpen}
+										onToggleList={dock.toggleListOpen}
+										sideBySide={sideBySide}
+										onToggleSideBySide={dock.toggleSideBySide}
+										wrap={wrap}
+										onToggleWrap={dock.toggleWrap}
+										ignoreWhitespace={ignoreWhitespace}
+										onToggleIgnoreWhitespace={dock.toggleIgnoreWhitespace}
+										onRevealInExplorer={(path) => dock.revealInExplorer(path)}
+									/>
+								</>
+							)}
+						</div>
+					</>
+				)}
 			</div>
-			<RepliesPane open={panel === "replies"} />
-			<TrajectoryDrawer />
+			{props.view === "chat" && <RepliesPane open={panel === "replies"} />}
+			{props.view === "chat" && <TrajectoryDrawer />}
 		</div>
 	);
 }
@@ -479,7 +499,6 @@ function closeCurrentChat() {
 	if (!session.store.getState().selected) return;
 	selectPartner(null);
 }
-
 export function App() {
 	const finds = useFindRouter();
 	const [view, setView] = useState<ViewId>("chat");
@@ -518,6 +537,14 @@ export function App() {
 	}, [partners]);
 
 	const toggleList = shell.toggleList;
+	/* ⌘W 关掉的是 workbench 上现在那样东西：dashboard / skills 先退回 chat，chat 里才是关掉当前会话 */
+	const closeWorkbench = useCallback(() => {
+		if (view !== "chat") {
+			setView("chat");
+			return;
+		}
+		closeCurrentChat();
+	}, [view]);
 
 	useKeybindings([
 		{
@@ -540,7 +567,7 @@ export function App() {
 		{ key: ",", meta: true, handler: () => settings.mutate.setOpen(true) },
 		{ key: "b", meta: true, handler: () => toggleList() },
 		{ key: "n", meta: true, handler: () => openAddPartner() },
-		{ key: "w", meta: true, handler: () => closeCurrentChat() },
+		{ key: "w", meta: true, handler: () => closeWorkbench() },
 		{ key: "e", meta: true, handler: () => selected && openDetails(selected) },
 		{ key: "p", meta: true, shift: true, handler: () => palette.launch("access") },
 		{ key: "p", meta: true, handler: () => palette.launch() },
@@ -569,7 +596,7 @@ export function App() {
 				if (selected) openDetails(selected);
 				return;
 			case "milu.close-chat":
-				closeCurrentChat();
+				closeWorkbench();
 				return;
 			case "milu.trajectory":
 				trajectory.mutate.setOpen(true);
@@ -603,7 +630,11 @@ export function App() {
 		if (!res.ok) return res.error ?? "Failed to create partner";
 		setShowModal(false);
 		void session.mutate.refreshPartners();
-		if (res.profile) selectPartner(res.profile);
+		if (res.profile) {
+			/* the profile comes back from the RPC, so select it by value: `partners` has not refreshed yet */
+			setView("chat");
+			selectPartner(res.profile);
+		}
 		return null;
 	};
 
@@ -629,22 +660,19 @@ export function App() {
 															<TooltipProvider>
 																<div className="flex min-h-0 flex-1 flex-col">
 																	<div className="relative flex min-h-0 flex-1">
-																		<div className={"mac-plate" + (listCollapsed || view !== "chat" ? " tinted" : "")} />
+																		<div className={"mac-plate" + (listCollapsed ? " tinted" : "")} />
 																		<main className="flex min-w-0 flex-1 flex-col bg-qw-bg">
-																			{view !== "chat" && <div className="view-strip electrobun-webkit-app-region-drag" onDoubleClick={zoomOnDoubleClick} />}
-																			{view === "dashboard" ? (
-																				<DashboardView unread={isUnread} onSelect={(name) => selectPartner(partners.find((p) => p.name === name) ?? null)} />
-																			) : view === "skills" ? (
-																				<SkillsView />
-																			) : (
-																				<ChatView
-																					selected={selected}
-																					editors={editors}
-																					onViewDetails={openDetails}
-																					onAddPartner={openAddPartner}
-																					onOpenSettings={() => settings.mutate.setOpen(true)}
-																				/>
-																			)}
+																			<ChatView
+																				selected={selected}
+																				editors={editors}
+																				view={view}
+																				unread={isUnread}
+																				onViewDetails={openDetails}
+																				onAddPartner={openAddPartner}
+																				onOpenSettings={() => settings.mutate.setOpen(true)}
+																				onOpenDashboard={() => setView("dashboard")}
+																				onOpenSkills={() => setView("skills")}
+																			/>
 																			<ToastHost toasts={toasts} placement={settingsSnapshot.settings?.toastPlacement ?? "bottomcenter"} onDismiss={toast.dismiss} />
 																		</main>
 																	</div>
