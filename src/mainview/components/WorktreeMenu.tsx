@@ -6,6 +6,7 @@ import { useCommandDirectory } from "../lib/contexts/commands-context";
 import { useToast } from "../lib/contexts/toast-context";
 import { rpc } from "../lib/rpc";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
+import { Tip } from "./ui/tooltip";
 
 interface WorktreeData {
 	worktrees: GitWorktreeItem[];
@@ -64,9 +65,11 @@ export function WorktreeMenu(props: { partner: string | null; buttonClass: strin
 				if (open && props.partner !== null) void load(props.partner);
 			}}
 		>
-			<DropdownMenuTrigger type="button" className={props.buttonClass} title={title} aria-label="Worktrees">
-				<FolderTree size={16} />
-			</DropdownMenuTrigger>
+			<Tip label={title}>
+				<DropdownMenuTrigger type="button" className={props.buttonClass} aria-label="Worktrees">
+					<FolderTree size={16} />
+				</DropdownMenuTrigger>
+			</Tip>
 			<DropdownMenuContent className="min-w-[320px] max-w-[380px] rounded-[6px] p-0">
 				<div className="wt-head">
 					<span className="eyebrow">Worktrees</span>
@@ -82,9 +85,9 @@ export function WorktreeMenu(props: { partner: string | null; buttonClass: strin
 								<span className="wt-name">{worktree.branch ?? "detached"}</span>
 								{isCurrent(worktree) && <span className="wt-check">✓</span>}
 							</span>
-							<span className="wt-path" title={worktree.path}>
-								{formatWorkspacePath(worktree.path, 46)}
-							</span>
+							<Tip label={worktree.path} className="max-w-[320px]">
+								<span className="wt-path">{formatWorkspacePath(worktree.path, 46)}</span>
+							</Tip>
 						</DropdownMenuItem>
 					))}
 				</div>

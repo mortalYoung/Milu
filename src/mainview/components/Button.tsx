@@ -1,31 +1,22 @@
-import type { ReactNode } from "react";
+import type { ButtonHTMLAttributes, ReactNode, Ref } from "react";
 import { Button as UIButton } from "./ui/button";
 
 export type ButtonVariant = "default" | "primary" | "destructive" | "outline" | "secondary" | "ghost";
 
-export function Button(props: {
-	variant?: ButtonVariant;
-	size?: "default" | "sm" | "lg" | "icon";
-	icon?: ReactNode;
-	onClick?: () => void;
-	disabled?: boolean;
-	title?: string;
-	type?: "button" | "submit";
-	class?: string;
-	children?: ReactNode;
-}) {
+export function Button(
+	props: ButtonHTMLAttributes<HTMLButtonElement> & {
+		variant?: ButtonVariant;
+		size?: "default" | "sm" | "lg" | "icon";
+		icon?: ReactNode;
+		class?: string;
+		ref?: Ref<HTMLButtonElement>;
+	},
+) {
+	const { variant = "default", size = "default", icon, class: cls, children, ref, type = "button", ...rest } = props;
 	return (
-		<UIButton
-			variant={props.variant ?? "default"}
-			size={props.size ?? "default"}
-			className={props.class}
-			onClick={props.onClick}
-			disabled={props.disabled}
-			title={props.title}
-			type={props.type ?? "button"}
-		>
-			{props.icon}
-			{props.children}
+		<UIButton ref={ref} variant={variant} size={size} className={cls} type={type} {...rest}>
+			{icon}
+			{children}
 		</UIButton>
 	);
 }

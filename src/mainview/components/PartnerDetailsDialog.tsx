@@ -13,7 +13,7 @@ import { EditorPathButton } from "./EditorPathButton";
 import { MemorySection } from "./MemorySection";
 import { Dialog, DialogContent, DialogTitle } from "./ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuGroupLabel, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import { Tip } from "./ui/tooltip";
 
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 
@@ -54,7 +54,7 @@ function ValueMenu(props: { label: string; value: string; title: string; childre
 			<span className="text-[12px] text-muted">{props.label}</span>
 			<DropdownMenu>
 				<DropdownMenuTrigger asChild>
-					<button type="button" className="runtime-value" title={props.title}>
+					<button type="button" className="runtime-value" aria-label={`${props.label}: ${props.title}`}>
 						<span className="truncate">{props.value}</span>
 						<ChevronDown size={9} className="runtime-caret" />
 					</button>
@@ -77,7 +77,7 @@ export function PartnerDetailsDialog(props: {
 	const [lastPartner, setLastPartner] = useState<PartnerItem | null>(null);
 	/* keep the content mounted through the close animation: Radix unmounts after it */
 	const partner = props.partner ?? lastPartner;
-	const [personaOpen, setPersonaOpen] = useState(false);
+	const [personaOpen, setPersonaOpen] = useState(true);
 	const [days, setDays] = useState<Awaited<ReturnType<typeof rpc.request.partner_activity>>["days"] | null>(null);
 	const [skills, setSkills] = useState<Awaited<ReturnType<typeof rpc.request.skill_list>>["skills"] | null>(null);
 	const [mcpGrants, setMcpGrants] = useState<Awaited<ReturnType<typeof rpc.request.mcp_partner_grants>>["servers"] | null>(null);
@@ -172,7 +172,7 @@ export function PartnerDetailsDialog(props: {
 							<div className="size-10 rounded-md bg-ink text-canvas flex items-center justify-center font-sans text-[18px] font-bold">{avatarInitial(partner.name)}</div>
 							<div className="min-w-0">
 								<h2 className="font-sans text-[16px] font-semibold text-ink leading-tight">{partner.name}</h2>
-								<p className="font-sans text-[12px] text-muted truncate" title={partner.path}>
+								<p className="font-sans text-[12px] text-muted truncate">
 									{partner.path} · created {formatDate(partner.createdAt)}
 								</p>
 							</div>
@@ -239,43 +239,49 @@ export function PartnerDetailsDialog(props: {
 										<div className="grid gap-2 font-sans text-[12px]">
 											<div className={FACT_LINE}>
 												<span className="text-[12px] text-muted">Tokens</span>
-												<span
-													className={FACT_VALUE}
-													title={
+												<Tip
+													className="max-w-[340px] leading-snug"
+													label={
 														sessionUsage
 															? `this session · ${sessionUsage.messages} assistant turns · in ${sessionUsage.input} · out ${sessionUsage.output} · cache read ${sessionUsage.cacheRead} · cache write ${sessionUsage.cacheWrite}`
-															: undefined
+															: "no turns in this session yet"
 													}
 												>
-													{sessionUsage ? (
-														<>
-															in <AnimatedNumber value={sessionUsage.input} format={formatTokens} /> · out <AnimatedNumber value={sessionUsage.output} format={formatTokens} />
-														</>
-													) : (
-														"—"
-													)}
-												</span>
+													<span className={FACT_VALUE}>
+														{sessionUsage ? (
+															<>
+																in <AnimatedNumber value={sessionUsage.input} format={formatTokens} /> · out <AnimatedNumber value={sessionUsage.output} format={formatTokens} />
+															</>
+														) : (
+															"—"
+														)}
+													</span>
+												</Tip>
 											</div>
 											<div className={FACT_LINE}>
 												<span className="text-[12px] text-muted">Cache Share</span>
-												<span
-													className={FACT_VALUE}
-													title={cacheShare != null ? `cache read of billed tokens · ${formatTokens(sessionUsage?.cacheRead ?? 0)} of ${formatTokens(billed)}` : undefined}
+												<Tip
+													className="max-w-[340px] leading-snug"
+													label={
+														cacheShare != null
+															? `cache read of billed tokens · ${formatTokens(sessionUsage?.cacheRead ?? 0)} of ${formatTokens(billed)}`
+															: "no billed tokens in this session yet"
+													}
 												>
-													{cacheShare != null ? <AnimatedNumber value={cacheShare} format={percent} /> : "—"}
-												</span>
+													<span className={FACT_VALUE}>{cacheShare != null ? <AnimatedNumber value={cacheShare} format={percent} /> : "—"}</span>
+												</Tip>
 											</div>
 											<div className={FACT_LINE}>
 												<span className="text-[12px] text-muted">TTFT</span>
-												<span className={FACT_VALUE} title={ttftTitle}>
-													{stats?.runtime.lastTtftMs != null ? <AnimatedNumber value={stats.runtime.lastTtftMs} format={seconds} /> : "—"}
-												</span>
+												<Tip className="max-w-[340px] leading-snug" label={ttftTitle}>
+													<span className={FACT_VALUE}>{stats?.runtime.lastTtftMs != null ? <AnimatedNumber value={stats.runtime.lastTtftMs} format={seconds} /> : "—"}</span>
+												</Tip>
 											</div>
 											<div className={FACT_LINE}>
 												<span className="text-[12px] text-muted">Throughput</span>
-												<span className={FACT_VALUE} title="output ÷ generation time · session mean">
-													{stats?.runtime.avgTps != null ? <AnimatedNumber value={stats.runtime.avgTps} format={tokensPerSecond} /> : "—"}
-												</span>
+												<Tip label="output ÷ generation time · session mean">
+													<span className={FACT_VALUE}>{stats?.runtime.avgTps != null ? <AnimatedNumber value={stats.runtime.avgTps} format={tokensPerSecond} /> : "—"}</span>
+												</Tip>
 											</div>
 										</div>
 									</div>
@@ -300,16 +306,11 @@ export function PartnerDetailsDialog(props: {
 											</div>
 											<div className={FACT_LINE}>
 												<span className="text-[12px] text-muted">Size</span>
-												<Tooltip delayDuration={120}>
-													<TooltipTrigger asChild>
-														<span tabIndex={-1} className={FACT_VALUE}>
-															<span className="underline decoration-dotted decoration-ink/30 underline-offset-2">
-																{usage ? <AnimatedNumber value={usage.bytes} format={formatBytes} /> : "-"}
-															</span>
-														</span>
-													</TooltipTrigger>
-													<TooltipContent side="top" className="leading-snug">
-														{usage?.parts.length ? (
+												<Tip
+													side="top"
+													className="leading-snug"
+													label={
+														usage?.parts.length ? (
 															<ul className="flex flex-col gap-0.5">
 																{usage.parts.map((part) => (
 																	<li className="flex items-baseline gap-2" key={part.label}>
@@ -320,9 +321,15 @@ export function PartnerDetailsDialog(props: {
 															</ul>
 														) : (
 															"no files yet"
-														)}
-													</TooltipContent>
-												</Tooltip>
+														)
+													}
+												>
+													<span tabIndex={-1} className={FACT_VALUE}>
+														<span className="underline decoration-dotted decoration-ink/30 underline-offset-2">
+															{usage ? <AnimatedNumber value={usage.bytes} format={formatBytes} /> : "-"}
+														</span>
+													</span>
+												</Tip>
 											</div>
 											{runtime && (
 												<>
@@ -370,8 +377,8 @@ export function PartnerDetailsDialog(props: {
 												{skills && skills.length > 0 ? (
 													<ul className="mt-1 flex flex-col gap-1">
 														{skills.map((skill) => (
-															<li className="w-fit rounded-md border border-line px-1.5 py-0.5 font-mono text-[12px] text-muted" key={skill.name}>
-																{skill.name} <span className="text-muted">· {skill.scope}</span>
+															<li className="w-full rounded-md border border-line px-1.5 py-0.5 font-mono text-[12px] text-muted" key={skill.name}>
+																<span className="wrap-anywhere">{skill.name}</span> <span className="text-muted">· {skill.scope}</span>
 															</li>
 														))}
 													</ul>
@@ -384,9 +391,14 @@ export function PartnerDetailsDialog(props: {
 												{mcpGrants && mcpGrants.length > 0 ? (
 													<ul className="mt-1 flex flex-col gap-1">
 														{mcpGrants.map((server) => (
-															<li className="flex w-fit items-center gap-1.5 rounded-md border border-line px-1.5 py-0.5 font-mono text-[12px] text-muted" key={server.name}>
-																<span className={"size-1.5 shrink-0 rounded-full " + mcpStateColor(server.state)} title={server.state} />
-																{server.name} <span className="text-muted">· {server.toolCount} tools</span>
+															<li
+																className="flex w-full min-w-0 items-center gap-1.5 rounded-md border border-line px-1.5 py-0.5 font-mono text-[12px] text-muted"
+																key={server.name}
+															>
+																<Tip label={server.state}>
+																	<span className={"size-1.5 shrink-0 rounded-full " + mcpStateColor(server.state)} />
+																</Tip>
+																<span className="min-w-0 wrap-anywhere">{server.name}</span> <span className="shrink-0 text-muted">· {server.toolCount} tools</span>
 															</li>
 														))}
 													</ul>

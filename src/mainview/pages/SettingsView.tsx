@@ -9,6 +9,7 @@ import { PickFile } from "../components/PickFile";
 import { Select } from "../components/ui/select";
 import { Switch as SwitchToggle } from "../components/ui/switch";
 import { TextField, TextFieldInput } from "../components/ui/text-field";
+import { Tip } from "../components/ui/tooltip";
 import { registerSurfaceRoot } from "../lib/active-surface";
 import { useSettings } from "../lib/contexts/settings-context";
 import { useFindHandler } from "../lib/find";
@@ -552,7 +553,6 @@ export function SettingsView() {
 				max={opts.max}
 				step={opts.step}
 				variant="compact"
-				title={opts.title}
 				aria-label={opts.ariaLabel}
 				value={value}
 				onChange={(event) => setValue(event.currentTarget.value)}
@@ -614,7 +614,6 @@ export function SettingsView() {
 					class="h-[32px] w-[200px] shrink-0 rounded-[6px] font-sans text-[13px]"
 					itemClass="font-sans text-[13px]"
 					contentClass="w-[200px] rounded-[6px]"
-					title="Default Sandbox Mode"
 					ariaLabel="Default Sandbox Mode"
 					portalMount={rootRef.current}
 					value={defaultSandboxMode}
@@ -641,7 +640,6 @@ export function SettingsView() {
 				<PickFile
 					class="w-[200px] shrink-0"
 					value={path}
-					title="Partner Profile Path"
 					ariaLabel="Partner Profile Path"
 					onPick={(next) => {
 						setPath(next);
@@ -662,7 +660,6 @@ export function SettingsView() {
 				<PickFile
 					class="w-[200px] shrink-0"
 					value={commandsPath}
-					title="Commands Directory"
 					ariaLabel="Commands Directory"
 					onPick={(next) => {
 						setCommandsPath(next);
@@ -685,7 +682,6 @@ export function SettingsView() {
 						type="number"
 						min={1}
 						variant="compact"
-						title="Bash Timeout (s)"
 						aria-label="Bash Timeout (s)"
 						value={bashTimeoutSec}
 						onChange={(event) => setBashTimeoutSec(event.currentTarget.value)}
@@ -714,7 +710,6 @@ export function SettingsView() {
 						type="number"
 						min={0}
 						variant="compact"
-						title="Web Fetch Timeout (ms)"
 						aria-label="Web Fetch Timeout (ms)"
 						value={webFetchTimeout}
 						onChange={(event) => setWebFetchTimeout(event.currentTarget.value)}
@@ -751,7 +746,6 @@ export function SettingsView() {
 						type="number"
 						min={0}
 						variant="compact"
-						title="Web Fetch Max Bytes"
 						aria-label="Web Fetch Max Bytes"
 						value={webFetchMaxBytes}
 						onChange={(event) => setWebFetchMaxBytes(event.currentTarget.value)}
@@ -788,7 +782,6 @@ export function SettingsView() {
 						type="number"
 						min={0}
 						variant="compact"
-						title="Web Fetch Max Chars"
 						aria-label="Web Fetch Max Chars"
 						value={webFetchMaxChars}
 						onChange={(event) => setWebFetchMaxChars(event.currentTarget.value)}
@@ -823,7 +816,6 @@ export function SettingsView() {
 				<TextField className="w-[200px] shrink-0">
 					<TextFieldInput
 						variant="compact"
-						title="Web Fetch User Agent"
 						aria-label="Web Fetch User Agent"
 						value={webFetchUserAgent}
 						onChange={(event) => setWebFetchUserAgent(event.currentTarget.value)}
@@ -863,7 +855,6 @@ export function SettingsView() {
 						max={1}
 						step={0.05}
 						variant="compact"
-						title="Compaction Threshold Ratio"
 						aria-label="Compaction Threshold Ratio"
 						value={compactionThreshold}
 						onChange={(event) => setCompactionThreshold(event.currentTarget.value)}
@@ -899,7 +890,6 @@ export function SettingsView() {
 						type="number"
 						min={0}
 						variant="compact"
-						title="Checkpoint Digest Items"
 						aria-label="Checkpoint Digest Items"
 						value={compactionDigestMaxItems}
 						onChange={(event) => setCompactionDigestMaxItems(event.currentTarget.value)}
@@ -931,7 +921,6 @@ export function SettingsView() {
 						type="number"
 						min={0}
 						variant="compact"
-						title="Compact-and-retry Attempts"
 						aria-label="Compact-and-retry Attempts"
 						value={compactionOverflowRetries}
 						onChange={(event) => setCompactionOverflowRetries(event.currentTarget.value)}
@@ -963,7 +952,6 @@ export function SettingsView() {
 						type="number"
 						min={0}
 						variant="compact"
-						title="Retry Max Attempts"
 						aria-label="Retry Max Attempts"
 						value={retryMaxRetries}
 						onChange={(event) => setRetryMaxRetries(event.currentTarget.value)}
@@ -992,7 +980,6 @@ export function SettingsView() {
 						type="number"
 						min={0}
 						variant="compact"
-						title="Retry Base Delay (ms)"
 						aria-label="Retry Base Delay (ms)"
 						value={retryBaseDelayMs}
 						onChange={(event) => setRetryBaseDelayMs(event.currentTarget.value)}
@@ -1019,7 +1006,6 @@ export function SettingsView() {
 				<TextField className="w-[200px] shrink-0">
 					<TextFieldInput
 						variant="compact"
-						title="Instructions File"
 						aria-label="Instructions File"
 						value={instructionsFile}
 						onChange={(event) => setInstructionsFile(event.currentTarget.value)}
@@ -1096,7 +1082,6 @@ export function SettingsView() {
 						type="number"
 						min={0}
 						variant="compact"
-						title="Memory Idle Delay (minutes)"
 						aria-label="Memory Idle Delay"
 						value={memoryIdleMinutes}
 						onChange={(event) => setMemoryIdleMinutes(event.currentTarget.value)}
@@ -1124,7 +1109,6 @@ export function SettingsView() {
 						type="number"
 						min={0}
 						variant="compact"
-						title="Memory Rounds Before Organize"
 						aria-label="Memory Rounds Before Organize"
 						value={memoryPendingRounds}
 						onChange={(event) => setMemoryPendingRounds(event.currentTarget.value)}
@@ -1152,7 +1136,6 @@ export function SettingsView() {
 						type="number"
 						min={1}
 						variant="compact"
-						title="Max Scene Documents"
 						aria-label="Max Scene Documents"
 						value={memoryMaxScenes}
 						onChange={(event) => setMemoryMaxScenes(event.currentTarget.value)}
@@ -1179,7 +1162,6 @@ export function SettingsView() {
 					class="h-[32px] w-[150px] shrink-0 rounded-[6px] font-sans text-[13px]"
 					itemClass="font-sans text-[13px]"
 					contentClass="w-[150px] rounded-[6px]"
-					title="Toast Placement"
 					ariaLabel="Toast Placement"
 					portalMount={rootRef.current}
 					value={toastPlacement}
@@ -1210,7 +1192,6 @@ export function SettingsView() {
 						min={0}
 						step={500}
 						variant="compact"
-						title="Toast Duration (ms)"
 						aria-label="Toast Duration (ms)"
 						value={toastDurationMs}
 						onChange={(event) => setToastDurationMs(event.currentTarget.value)}
@@ -1263,9 +1244,11 @@ export function SettingsView() {
 										</TextField>
 									</td>
 									<td className="pb-1 text-right">
-										<Button variant="ghost" size="sm" title="Remove Directory" onClick={() => removeSkillsDir(i)}>
-											×
-										</Button>
+										<Tip label="Remove Directory">
+											<Button variant="ghost" size="sm" aria-label="Remove Directory" onClick={() => removeSkillsDir(i)}>
+												×
+											</Button>
+										</Tip>
 									</td>
 								</tr>
 							))}
@@ -1308,7 +1291,6 @@ export function SettingsView() {
 						min={0}
 						step={100}
 						variant="compact"
-						title="Skill Watch Delay (ms)"
 						aria-label="Skill Watch Delay (ms)"
 						value={skillsWatchDelay}
 						onChange={(event) => setSkillsWatchDelay(event.currentTarget.value)}
@@ -1354,7 +1336,6 @@ export function SettingsView() {
 						max={1}
 						step={0.05}
 						variant="compact"
-						title="File Preview Line Gap"
 						aria-label="File Preview Line Gap"
 						value={explorerLineGap}
 						onChange={(event) => setExplorerLineGap(event.currentTarget.value)}
@@ -1418,7 +1399,6 @@ export function SettingsView() {
 						min={0}
 						step={500}
 						variant="compact"
-						title="Highlight Line Length Limit (characters)"
 						aria-label="Highlight Line Length Limit (characters)"
 						value={highlightMaxLineLength}
 						onChange={(event) => setHighlightMaxLineLength(event.currentTarget.value)}
@@ -1449,7 +1429,6 @@ export function SettingsView() {
 						min={0}
 						step={100}
 						variant="compact"
-						title="Highlight Time Limit (ms)"
 						aria-label="Highlight Time Limit (ms)"
 						value={highlightTimeLimit}
 						onChange={(event) => setHighlightTimeLimit(event.currentTarget.value)}
@@ -1478,7 +1457,6 @@ export function SettingsView() {
 					<TextFieldInput
 						variant="compact"
 						placeholder=".git, node_modules, dist"
-						title="File Search Ignore List"
 						aria-label="File Search Ignore List"
 						value={paletteIgnoreDirs}
 						onChange={(event) => setPaletteIgnoreDirs(event.currentTarget.value)}
@@ -1681,7 +1659,11 @@ export function SettingsView() {
 													providerMatches.map((id) => (
 														<div className="flex items-center gap-2 py-3.5" key={id}>
 															<span className="font-serif text-[14px] text-ink">{highlight(id, q)}</span>
-															{configured(id) && <span className="size-[5px] shrink-0 rounded-full bg-ink-soft" title="configured" />}
+															{configured(id) && (
+																<Tip label="configured">
+																	<span className="size-[5px] shrink-0 rounded-full bg-ink-soft" />
+																</Tip>
+															)}
 														</div>
 													))}
 											</div>
@@ -1735,11 +1717,13 @@ export function SettingsView() {
 														<div className={cn(COLS, "py-2")}>
 															<span className="flex min-w-0 items-center gap-2">
 																<span className="truncate font-serif text-[13px] text-ink">{id}</span>
-																{configured(id) && <span className="size-[5px] shrink-0 rounded-full bg-ink-soft" title="configured" />}
+																{configured(id) && (
+																	<Tip label="configured">
+																		<span className="size-[5px] shrink-0 rounded-full bg-ink-soft" />
+																	</Tip>
+																)}
 															</span>
-															<span className="truncate font-mono text-[10px] text-muted" title={rowBaseUrl(id) ?? ""}>
-																{rowBaseUrl(id)}
-															</span>
+															<span className="truncate font-mono text-[10px] text-muted">{rowBaseUrl(id)}</span>
 															<span className="font-mono text-[10px] text-muted">{rowModelCount(id)}</span>
 															<span className="flex items-center justify-end gap-1">
 																<button
@@ -1871,7 +1855,6 @@ export function SettingsView() {
 																class="h-[30px] w-40 rounded-[6px] font-sans text-[12px]"
 																itemClass="font-sans text-[12px]"
 																contentClass="w-40 rounded-[6px]"
-																title="Add Provider"
 																ariaLabel="Add Provider"
 																placeholder="provider"
 																portalMount={rootRef.current}

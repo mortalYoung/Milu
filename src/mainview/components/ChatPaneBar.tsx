@@ -5,6 +5,7 @@ import { useTrajectory } from "../lib/contexts/trajectory-context";
 import { useTranscript } from "../lib/contexts/transcript-context";
 import type { Dock } from "../lib/dock";
 import { zoomOnDoubleClick } from "../lib/zoom";
+import { Tip } from "./ui/tooltip";
 import { WorktreeMenu } from "./WorktreeMenu";
 
 const barIconClass =
@@ -42,30 +43,32 @@ export function ChatPaneBar(props: {
 	const isOpen = (which: "explorer" | "git" | "replies") => panel === which;
 
 	const explorerButton = hasWorkspace ? (
-		<button
-			type="button"
-			className={barIconClass + (isOpen("explorer") ? " on" : "")}
-			aria-pressed={isOpen("explorer")}
-			title="Explorer"
-			aria-label="Toggle explorer"
-			onClick={() => props.dock.toggle("explorer")}
-		>
-			<Folder size={16} />
-		</button>
+		<Tip label="Explorer">
+			<button
+				type="button"
+				className={barIconClass + (isOpen("explorer") ? " on" : "")}
+				aria-pressed={isOpen("explorer")}
+				aria-label="Toggle explorer"
+				onClick={() => props.dock.toggle("explorer")}
+			>
+				<Folder size={16} />
+			</button>
+		</Tip>
 	) : null;
 
 	const gitButton = hasChanges ? (
-		<button
-			type="button"
-			className={barIconClass + " relative" + (isOpen("git") ? " on" : "")}
-			aria-pressed={isOpen("git")}
-			title={`Git Changes · ${changeLabel}`}
-			aria-label={`Toggle git changes, ${changeLabel}`}
-			onClick={() => props.dock.toggle("git")}
-		>
-			<GitBranch size={16} />
-			<span className="header-badge">{changeBadge}</span>
-		</button>
+		<Tip label={`Git Changes · ${changeLabel}`}>
+			<button
+				type="button"
+				className={barIconClass + " relative" + (isOpen("git") ? " on" : "")}
+				aria-pressed={isOpen("git")}
+				aria-label={`Toggle git changes, ${changeLabel}`}
+				onClick={() => props.dock.toggle("git")}
+			>
+				<GitBranch size={16} />
+				<span className="header-badge">{changeBadge}</span>
+			</button>
+		</Tip>
 	) : null;
 
 	const worktreesButton = hasWorktrees ? (
@@ -92,52 +95,63 @@ export function ChatPaneBar(props: {
 		<div className={"chat-bar electrobun-webkit-app-region-drag" + (props.listInFlow ? "" : " at-edge")} onDoubleClick={zoomOnDoubleClick}>
 			<div className="chat-bar-lead">
 				{!props.listShown && (
-					<button type="button" className={barIconClass + " list-expand"} title="Show chat list (⌘B)" aria-label="Show chat list" onClick={props.onToggleList}>
-						<PanelLeftOpen size={16} />
-					</button>
+					<Tip label="Show chat list (⌘B)">
+						<button type="button" className={barIconClass + " list-expand"} aria-label="Show chat list" onClick={props.onToggleList}>
+							<PanelLeftOpen size={16} />
+						</button>
+					</Tip>
 				)}
 			</div>
 
-			<div className="chat-bar-name" title="View details" onClick={() => props.selected && props.onViewDetails(props.selected)}>
-				<span>{props.selected ?? "Chat"}</span>
-				{status.isBusyForSelected() && (
-					<span className="chat-bar-status" title="Working…">
-						<span className="work-dot" />
-						<span className="work-dot" />
-						<span className="work-dot" />
-						Writing…
-					</span>
-				)}
-			</div>
+			<Tip label="View details">
+				<button
+					type="button"
+					className="chat-bar-name p-0 text-left"
+					aria-label={props.selected ? `${props.selected} — view details` : "View details"}
+					onClick={() => props.selected && props.onViewDetails(props.selected)}
+				>
+					<span>{props.selected ?? "Chat"}</span>
+					{status.isBusyForSelected() && (
+						<span className="chat-bar-status">
+							<span className="work-dot" />
+							<span className="work-dot" />
+							<span className="work-dot" />
+							Writing…
+						</span>
+					)}
+				</button>
+			</Tip>
 
 			<div className="chat-bar-tools">
 				{dockTools}
-				<button
-					type="button"
-					className={barIconClass + (isOpen("replies") ? " on" : "")}
-					aria-pressed={isOpen("replies")}
-					title={panel === "replies" ? "Hide replies" : "Show replies"}
-					aria-label="Toggle replies"
-					disabled={!hasConversation}
-					onClick={() => props.dock.toggle("replies")}
-				>
-					<ListTree size={16} />
-				</button>
+				<Tip label={panel === "replies" ? "Hide replies" : "Show replies"}>
+					<button
+						type="button"
+						aria-label={panel === "replies" ? "Hide replies" : "Show replies"}
+						className={barIconClass + (isOpen("replies") ? " on" : "")}
+						aria-pressed={isOpen("replies")}
+						disabled={!hasConversation}
+						onClick={() => props.dock.toggle("replies")}
+					>
+						<ListTree size={16} />
+					</button>
+				</Tip>
 
-				<button
-					type="button"
-					className={barIconClass + (trajectoryOpen ? " on" : "")}
-					aria-pressed={trajectoryOpen}
-					title={trajectoryOpen ? "Close trajectory" : "Open trajectory"}
-					aria-label="Toggle trajectory"
-					disabled={!hasConversation}
-					onClick={() => {
-						if (!trajectoryOpen) props.dock.close();
-						trajectory.mutate.toggle();
-					}}
-				>
-					<Activity size={16} />
-				</button>
+				<Tip label={trajectoryOpen ? "Close trajectory" : "Open trajectory"}>
+					<button
+						type="button"
+						aria-label={trajectoryOpen ? "Close trajectory" : "Open trajectory"}
+						className={barIconClass + (trajectoryOpen ? " on" : "")}
+						aria-pressed={trajectoryOpen}
+						disabled={!hasConversation}
+						onClick={() => {
+							if (!trajectoryOpen) props.dock.close();
+							trajectory.mutate.toggle();
+						}}
+					>
+						<Activity size={16} />
+					</button>
+				</Tip>
 			</div>
 		</div>
 	);

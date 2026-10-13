@@ -11,7 +11,6 @@ export function Select(props: {
 	onChange: (value: string) => void;
 	options: SelectOption[];
 	placeholder?: string;
-	title?: string;
 	ariaLabel?: string;
 	class?: string;
 	itemClass?: string;
@@ -21,7 +20,6 @@ export function Select(props: {
 	return (
 		<SelectPrimitive.Root value={props.value} onValueChange={props.onChange}>
 			<SelectPrimitive.Trigger
-				title={props.title}
 				aria-label={props.ariaLabel}
 				className={cn(
 					"group inline-flex h-[30px] items-center justify-between gap-2 rounded-[6px] border border-line bg-transparent px-2.5 font-mono text-[10px] text-ink-soft outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-surface data-[state=open]:border-ink",

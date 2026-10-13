@@ -33,7 +33,7 @@ import {
 	DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { Kbd, KbdGroup } from "./ui/kbd";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import { Tip, Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 const MAX_HEIGHT = 120;
 
@@ -499,21 +499,24 @@ export function Composer(props: {
 					</div>
 					{hasActions && (
 						<div className="composer-actions">
-							<button
-								type="button"
-								className={"composer-icon-btn" + (shellMode ? " on" : "")}
-								title="Shell mode (⇥)"
-								aria-label="Shell mode"
-								aria-pressed={shellMode}
-								onClick={() => setShellMode((value) => !value)}
-							>
-								<DollarSign size={15} />
-							</button>
+							<Tip label="Shell mode (⇥)">
+								<button
+									type="button"
+									className={"composer-icon-btn" + (shellMode ? " on" : "")}
+									aria-label="Shell mode"
+									aria-pressed={shellMode}
+									onClick={() => setShellMode((value) => !value)}
+								>
+									<DollarSign size={15} />
+								</button>
+							</Tip>
 							{props.hasTasks && (
 								<div className="composer-task-slot">
-									<button type="button" className="composer-icon-btn" title="Tasks" aria-label="Tasks" onClick={() => props.onTasks?.()}>
-										<Terminal size={15} />
-									</button>
+									<Tip label="Tasks">
+										<button type="button" className="composer-icon-btn" aria-label="Tasks" onClick={() => props.onTasks?.()}>
+											<Terminal size={15} />
+										</button>
+									</Tip>
 									{(props.taskRunning ?? 0) > 0 && <span className="composer-task-count">{props.taskRunning}</span>}
 								</div>
 							)}
@@ -548,13 +551,7 @@ export function Composer(props: {
 											<span className="composer-model-slide">
 												<span className="composer-model-sep" aria-hidden="true" />
 												<DropdownMenuTrigger asChild>
-													<button
-														type="button"
-														className="composer-model-label"
-														tabIndex={modelExpanded ? 0 : -1}
-														aria-hidden={modelExpanded ? undefined : true}
-														title="Model / Effort"
-													>
+													<button type="button" className="composer-model-label" tabIndex={modelExpanded ? 0 : -1} aria-hidden={modelExpanded ? undefined : true}>
 														{modelLabel}
 
 														<span>· {agentData.thinking_level}</span>
@@ -610,15 +607,16 @@ export function Composer(props: {
 								)}
 								{metricsData?.contextUsage ? <ContextMeter usage={metricsData.contextUsage} /> : null}
 								{showSend && (
-									<button
-										type="button"
-										className={"composer-send" + (busy ? " composer-stop" : "")}
-										title={busy ? "Stop" : "Send"}
-										aria-label={busy ? "Stop" : "Send"}
-										onClick={() => (busy ? props.onStop() : void submit())}
-									>
-										{busy ? <Square size={12} /> : <ArrowUp size={13} />}
-									</button>
+									<Tip label={busy ? "Stop" : "Send"}>
+										<button
+											type="button"
+											className={"composer-send" + (busy ? " composer-stop" : "")}
+											aria-label={busy ? "Stop" : "Send"}
+											onClick={() => (busy ? props.onStop() : void submit())}
+										>
+											{busy ? <Square size={12} /> : <ArrowUp size={13} />}
+										</button>
+									</Tip>
 								)}
 							</div>
 						</div>

@@ -2,6 +2,7 @@ import { activityAt, convTime, previewFor } from "../lib/chat-preview";
 import { fileGlyph } from "../lib/file-icons";
 import { type PaletteRow, splitPath } from "../lib/palette";
 import { Avatar } from "./ui/avatar";
+import { Tip } from "./ui/tooltip";
 
 export function PaletteList(props: { rows: PaletteRow[]; index: number; unread: (name: string) => boolean; onPick: (row: PaletteRow) => void; onHover: (index: number) => void }) {
 	const isSelected = (index: number) => index === props.index;
@@ -35,7 +36,11 @@ export function PaletteList(props: { rows: PaletteRow[]; index: number; unread: 
 								<span className="palette-row-sub">{previewFor(row.partner) || "—"}</span>
 							</span>
 							{row.partner.workspace && <span className="palette-row-dir">{splitPath(row.partner.workspace).name}</span>}
-							{props.unread(row.partner.name) && <span className="conv-unread-dot" title="new messages" />}
+							{props.unread(row.partner.name) && (
+								<Tip label="new messages">
+									<span className="conv-unread-dot" />
+								</Tip>
+							)}
 							<span className="palette-row-time">{convTime(activityAt(row.partner))}</span>
 						</button>
 					);

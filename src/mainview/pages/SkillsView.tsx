@@ -4,6 +4,7 @@ import { Button } from "../components/Button";
 import { McpServersPanel } from "../components/McpServersPanel";
 import { Dialog, DialogContent, DialogTitle } from "../components/ui/dialog";
 import { TextField, TextFieldInput } from "../components/ui/text-field";
+import { Tip } from "../components/ui/tooltip";
 import { rpc } from "../lib/rpc";
 import type { PartnerItem } from "../lib/session";
 
@@ -201,17 +202,19 @@ export function SkillsView() {
 									</div>
 									<p className="skill-card-desc">{skill.description}</p>
 									<div className="skill-card-foot">
-										<div className="skill-avatars" title={skill.grantedPartners.length > 0 ? skill.grantedPartners.join(" · ") : "no grants"}>
-											{skill.grantedPartners.length > 0 ? (
-												skill.grantedPartners.map((partner) => (
-													<span className="skill-avatar" key={partner}>
-														{partner.charAt(0)}
-													</span>
-												))
-											) : (
-												<span className="skill-avatars-empty">no grants</span>
-											)}
-										</div>
+										<Tip label={skill.grantedPartners.length > 0 ? skill.grantedPartners.join(" · ") : "granted to nobody yet"} className="max-w-[340px] leading-snug">
+											<div className="skill-avatars">
+												{skill.grantedPartners.length > 0 ? (
+													skill.grantedPartners.map((partner) => (
+														<span className="skill-avatar" key={partner}>
+															{partner.charAt(0)}
+														</span>
+													))
+												) : (
+													<span className="skill-avatars-empty">no grants</span>
+												)}
+											</div>
+										</Tip>
 										<button
 											type="button"
 											className={"skill-delete" + (confirming === skill.name ? " armed" : "")}
@@ -227,9 +230,9 @@ export function SkillsView() {
 									{openSkill === skill.name && (
 										<div className="skill-card-more" onClick={(event) => event.stopPropagation()}>
 											{skill.path && (
-												<div className="skill-card-path" title={skill.path}>
-													{skill.path}
-												</div>
+												<Tip label={skill.path} className="max-w-[420px] break-all">
+													<div className="skill-card-path">{skill.path}</div>
+												</Tip>
 											)}
 											<div className="skill-grants">
 												{partners.map((partner) => (

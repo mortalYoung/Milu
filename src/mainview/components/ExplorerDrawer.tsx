@@ -20,6 +20,7 @@ import { CodeReader, PreviewBusy } from "./CodeReader";
 import { type DockListControls, DockListToggle, DockShell } from "./DockShell";
 import { FloatFind } from "./FloatFind";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "./ui/context-menu";
+import { Tip } from "./ui/tooltip";
 
 interface DirState {
 	status: "loading" | "ready" | "error";
@@ -270,7 +271,6 @@ function ExplorerNode(props: {
 						className={"explorer-row" + (selected ? " selected" : "") + (props.entry.ignored ? " ignored" : "") + (menuOpen ? " menu-open" : "")}
 						data-path={props.entry.path}
 						style={{ paddingLeft: `${10 + props.depth * 16}px` }}
-						title={props.entry.kind === "link" && props.entry.linkTarget ? `${props.entry.name} → ${props.entry.linkTarget}` : undefined}
 						onClick={activate}
 					>
 						{isDir && (isOpen ? <ChevronDown size={11} className="explorer-chevron" /> : <ChevronRight size={11} className="explorer-chevron" />)}
@@ -717,13 +717,17 @@ export function ExplorerDrawer(props: {
 								<div className="explorer-tabs" ref={tabStrip}>
 									{openTabs.tabs.map((tab) => (
 										<div className={"explorer-tab" + (tab.path === openTabs.active ? " on" : "")} key={tab.path}>
-											<button type="button" className="explorer-tab-main" title={tab.path} onClick={() => activateTab(tab.path)}>
-												{fileGlyph(tab.name, "explorer-tab-icon")}
-												<span className="explorer-tab-name">{tab.name}</span>
-											</button>
-											<button type="button" className="explorer-tab-close" title={`Close ${tab.name}`} aria-label={`Close ${tab.name}`} onClick={() => closeTab(tab.path)}>
-												<X size={11} />
-											</button>
+											<Tip label={tab.path} className="max-w-[420px] break-all">
+												<button type="button" className="explorer-tab-main" onClick={() => activateTab(tab.path)}>
+													{fileGlyph(tab.name, "explorer-tab-icon")}
+													<span className="explorer-tab-name">{tab.name}</span>
+												</button>
+											</Tip>
+											<Tip label={`Close ${tab.name}`}>
+												<button type="button" className="explorer-tab-close" aria-label={`Close ${tab.name}`} onClick={() => closeTab(tab.path)}>
+													<X size={11} />
+												</button>
+											</Tip>
 										</div>
 									))}
 								</div>
@@ -731,48 +735,42 @@ export function ExplorerDrawer(props: {
 								<div className="explorer-reader-actions">
 									{liveRange && (
 										<>
-											<button type="button" className="explorer-tag" title={`Copy ${shownFile.path}#${rangeLabel}`} onClick={copyLiveRange}>
-												⧉ {rangeLabel}
-											</button>
-											<button
-												type="button"
-												className="dock-btn"
-												title={`Quote ${shownFile.path}#${rangeLabel} in the composer`}
-												aria-label="Quote in the composer"
-												onClick={quoteInMessage}
-											>
-												<MessageSquareQuote size={11} />
-											</button>
+											<Tip label={`Copy ${rangeLabel}`}>
+												<button type="button" className="explorer-tag" onClick={copyLiveRange}>
+													⧉ {rangeLabel}
+												</button>
+											</Tip>
+											<Tip label="Quote in the composer">
+												<button type="button" className="dock-btn" aria-label="Quote in the composer" onClick={quoteInMessage}>
+													<MessageSquareQuote size={11} />
+												</button>
+											</Tip>
 										</>
 									)}
 									{rawToggle && (
-										<button
-											type="button"
-											className={"dock-btn" + (isRaw ? " on" : "")}
-											aria-pressed={isRaw}
-											aria-label={isRaw ? "Show rendered markdown" : "Show raw markdown"}
-											title={isRaw ? "Show rendered markdown" : "Show raw markdown"}
-											onClick={toggleRaw}
-										>
-											<Pilcrow size={11} />
-										</button>
+										<Tip label={isRaw ? "Show rendered markdown" : "Show raw markdown"}>
+											<button
+												type="button"
+												className={"dock-btn" + (isRaw ? " on" : "")}
+												aria-pressed={isRaw}
+												aria-label={isRaw ? "Show rendered markdown" : "Show raw markdown"}
+												onClick={toggleRaw}
+											>
+												<Pilcrow size={11} />
+											</button>
+										</Tip>
 									)}
-									<button
-										type="button"
-										className={"dock-btn" + (props.wrap ? " on" : "")}
-										aria-pressed={props.wrap}
-										aria-label="Wrap long lines"
-										title={props.wrap ? "Stop wrapping long lines" : "Wrap long lines"}
-										onClick={props.onToggleWrap}
-									>
-										<WrapText size={11} />
-									</button>
+									<Tip label={props.wrap ? "Stop wrapping long lines" : "Wrap long lines"}>
+										<button type="button" className={"dock-btn" + (props.wrap ? " on" : "")} aria-pressed={props.wrap} aria-label="Wrap long lines" onClick={props.onToggleWrap}>
+											<WrapText size={11} />
+										</button>
+									</Tip>
 								</div>
 							</div>
 
 							{/* breadcrumbs：head 下面独立一行，中间没有分隔线 */}
 							<div className="explorer-dir-row">
-								<nav className="explorer-dir" aria-label="File Path" title={shownFile.path}>
+								<nav className="explorer-dir" aria-label="File Path">
 									{dirSegments.map((segment, index) => (
 										<button
 											type="button"

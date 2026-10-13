@@ -5,6 +5,7 @@ import { convTime } from "../lib/chat-preview";
 import { rpc } from "../lib/rpc";
 import { formatTokens } from "../lib/utils";
 import { MemoryTrajectoryDialog } from "./MemoryTrajectoryDialog";
+import { Tip } from "./ui/tooltip";
 
 const EYEBROW = "font-sans text-[12px] font-semibold uppercase tracking-[0.12em] text-muted";
 const CARD = "border border-line bg-surface rounded-md";
@@ -25,7 +26,7 @@ function fileTooltip(files: { label: string; bytes: number }[]): string {
 }
 
 export function MemorySection(props: { partner: string }) {
-	const [open, setOpen] = useState(false);
+	const [open, setOpen] = useState(true);
 	const [openRecord, setOpenRecord] = useState<string | null>(null);
 	const [openScene, setOpenScene] = useState<string | null>(null);
 	const [showProfile, setShowProfile] = useState(false);
@@ -81,18 +82,22 @@ export function MemorySection(props: { partner: string }) {
 							{overview.resultsBytes > 0 && <span className="bg-ink" style={{ width: `${percent(overview.resultsBytes)}%`, minWidth: "3px" }} />}
 							{overview.traceBytes > 0 && <span className="bg-ink/25" style={{ width: `${percent(overview.traceBytes)}%`, minWidth: "3px" }} />}
 						</div>
-						<div className="flex items-baseline gap-2 font-mono text-[12px] tabular-nums" title={fileTooltip(overview.results)}>
-							<span className="text-ink">Results</span>
-							<span className="ml-auto text-muted">
-								{formatBytes(overview.resultsBytes)} · {percent(overview.resultsBytes).toFixed(0)}%
-							</span>
-						</div>
-						<div className="flex items-baseline gap-2 font-mono text-[12px] tabular-nums" title={fileTooltip(overview.trace)}>
-							<span className="text-ink">Trace log</span>
-							<span className="ml-auto text-muted">
-								{formatBytes(overview.traceBytes)} · {percent(overview.traceBytes).toFixed(0)}%
-							</span>
-						</div>
+						<Tip label={fileTooltip(overview.results)} className="max-w-[340px] leading-snug">
+							<div className="flex items-baseline gap-2 font-mono text-[12px] tabular-nums">
+								<span className="text-ink">Results</span>
+								<span className="ml-auto text-muted">
+									{formatBytes(overview.resultsBytes)} · {percent(overview.resultsBytes).toFixed(0)}%
+								</span>
+							</div>
+						</Tip>
+						<Tip label={fileTooltip(overview.trace)} className="max-w-[340px] leading-snug">
+							<div className="flex items-baseline gap-2 font-mono text-[12px] tabular-nums">
+								<span className="text-ink">Trace log</span>
+								<span className="ml-auto text-muted">
+									{formatBytes(overview.traceBytes)} · {percent(overview.traceBytes).toFixed(0)}%
+								</span>
+							</div>
+						</Tip>
 						<p className="font-sans text-[10px] text-muted">
 							{overview.pending.pending ? `${overview.pending.rounds} rounds not extracted yet` : "all extracted"} · {overview.runsTotal} run(s) logged
 						</p>
@@ -119,9 +124,9 @@ export function MemorySection(props: { partner: string }) {
 											<span className={KIND_CHIP}>{record.kind}</span>
 											<span className={"min-w-0 flex-1 truncate font-sans text-[13px] " + (record.superseded ? "text-muted line-through" : "text-ink")}>{record.summary}</span>
 											{record.overRecallCap && (
-												<span className="shrink-0 font-mono text-[12px] text-signal" title={`detail is longer than the ${overview.agentDetailLimit} chars the agent can recall`}>
-													truncated
-												</span>
+												<Tip className="max-w-[340px] leading-snug" label={`detail is longer than the ${overview.agentDetailLimit} chars the agent can recall`}>
+													<span className="shrink-0 font-mono text-[12px] text-signal">truncated</span>
+												</Tip>
 											)}
 											<span className="shrink-0 font-mono text-[10px] tabular-nums text-muted">{convTime(record.createdAt)}</span>
 										</button>
@@ -228,12 +233,12 @@ export function MemorySection(props: { partner: string }) {
 										<span className="shrink-0 text-muted">+{run.added}</span>
 										<span className="shrink-0 text-muted">{(run.durationMs / 1000).toFixed(1)}s</span>
 										{run.usage && (
-											<span
-												className="shrink-0 text-muted"
-												title={`${run.usage.calls} calls · in ${run.usage.input} · out ${run.usage.output} · cache read ${run.usage.cacheRead} · cache write ${run.usage.cacheWrite}`}
+											<Tip
+												className="max-w-[340px] leading-snug"
+												label={`${run.usage.calls} calls · in ${run.usage.input} · out ${run.usage.output} · cache read ${run.usage.cacheRead} · cache write ${run.usage.cacheWrite}`}
 											>
-												{formatTokens(run.usage.input + run.usage.output + run.usage.cacheRead + run.usage.cacheWrite)} tok
-											</span>
+												<span className="shrink-0 text-muted">{formatTokens(run.usage.input + run.usage.output + run.usage.cacheRead + run.usage.cacheWrite)} tok</span>
+											</Tip>
 										)}
 										<span className="ml-auto shrink-0 text-muted">{formatBytes(run.bytes)}</span>
 										<button

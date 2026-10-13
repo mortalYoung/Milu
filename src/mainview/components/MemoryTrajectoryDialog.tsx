@@ -4,6 +4,7 @@ import { convTime } from "../lib/chat-preview";
 import { rpc } from "../lib/rpc";
 import { formatTokens } from "../lib/utils";
 import { Dialog, DialogContent, DialogTitle } from "./ui/dialog";
+import { Tip } from "./ui/tooltip";
 
 const MONO = "font-mono tabular-nums";
 
@@ -108,7 +109,11 @@ export function MemoryTrajectoryDialog(props: { partner: string; run: MemoryRunV
 							<div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[12px] text-muted">
 								<span>{(run.durationMs / 1000).toFixed(1)}s</span>
 								<span>+{run.added} added</span>
-								{run.usage && <span title={usageTitle(run.usage)}>{formatTokens(totalTokens(run.usage))} tok</span>}
+								{run.usage && (
+									<Tip label={usageTitle(run.usage)}>
+										<span>{formatTokens(totalTokens(run.usage))} tok</span>
+									</Tip>
+								)}
 								<span>{(run.bytes / 1024).toFixed(1)} KB</span>
 								{trace?.model && <span>{trace.model}</span>}
 								{trace?.attempts != null && <span>{trace.attempts} attempt(s)</span>}

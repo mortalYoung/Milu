@@ -3,6 +3,7 @@ import { useStore } from "zustand";
 import { useComposer } from "../lib/contexts/composer-context";
 import { useInbox } from "../lib/contexts/inbox-context";
 import { useSession } from "../lib/contexts/session-context";
+import { Tip } from "./ui/tooltip";
 
 const clock = (ts: number) => {
 	const date = new Date(ts);
@@ -31,19 +32,20 @@ export function FollowUpDock() {
 						<X size={12} />
 					</button>
 					{item.source !== "task" ? (
-						<button
-							type="button"
-							className="followup-dock-edit"
-							title={item.content}
-							onClick={() => {
-								void inbox.cancel(partner, item.id);
-								composer.prefill(item.content);
-							}}
-						>
-							<p className="followup-dock-text">{item.content}</p>
-							{item.failed && <span className="followup-dock-fail">failed</span>}
-							<span className="followup-dock-time">{clock(item.timestamp)}</span>
-						</button>
+						<Tip label={item.content} className="max-w-[320px] leading-snug">
+							<button
+								type="button"
+								className="followup-dock-edit"
+								onClick={() => {
+									void inbox.cancel(partner, item.id);
+									composer.prefill(item.content);
+								}}
+							>
+								<p className="followup-dock-text">{item.content}</p>
+								{item.failed && <span className="followup-dock-fail">failed</span>}
+								<span className="followup-dock-time">{clock(item.timestamp)}</span>
+							</button>
+						</Tip>
 					) : (
 						<div className="followup-dock-edit static">
 							<span className="followup-dock-task">task</span>

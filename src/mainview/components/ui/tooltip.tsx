@@ -1,5 +1,5 @@
 import { Tooltip as TooltipPrimitive } from "radix-ui";
-import type { ComponentProps } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { cn } from "../../lib/utils";
 
 export const Tooltip = TooltipPrimitive.Root;
@@ -8,6 +8,17 @@ export const TooltipProvider = TooltipPrimitive.Provider;
 
 export function TooltipPortal({ children }: { children: React.ReactNode }) {
 	return <TooltipPrimitive.Portal>{children}</TooltipPrimitive.Portal>;
+}
+
+export function Tip(props: { label: ReactNode; side?: "top" | "right" | "bottom" | "left"; className?: string; children: ReactNode }) {
+	return (
+		<TooltipPrimitive.Root delayDuration={120}>
+			<TooltipPrimitive.Trigger asChild>{props.children}</TooltipPrimitive.Trigger>
+			<TooltipContent side={props.side} className={props.className}>
+				{props.label}
+			</TooltipContent>
+		</TooltipPrimitive.Root>
+	);
 }
 
 export function TooltipContent({ className, sideOffset = 4, ...rest }: ComponentProps<typeof TooltipPrimitive.Content>) {

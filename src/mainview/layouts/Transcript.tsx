@@ -7,6 +7,7 @@ import { BtwPanel } from "../components/BtwPanel";
 import { FloatFind } from "../components/FloatFind";
 import { ScrollRegion } from "../components/ScrollRegion";
 import { Dialog, DialogContent, DialogTitle } from "../components/ui/dialog";
+import { Tip } from "../components/ui/tooltip";
 import { registerSurfaceRoot } from "../lib/active-surface";
 import { copyText } from "../lib/clipboard";
 import { useScroll } from "../lib/contexts/scroll-context";
@@ -52,19 +53,20 @@ function Markdown(props: { text: string; files?: string[]; class?: string }) {
 function CopyMessage(props: { text: string }) {
 	const [copied, setCopied] = useState(false);
 	return (
-		<button
-			type="button"
-			className={"msg-copy" + (copied ? " copied" : "")}
-			title={copied ? "Copied" : "Copy message"}
-			aria-label={copied ? "Copied" : "Copy message"}
-			onClick={() => {
-				copyText(props.text);
-				setCopied(true);
-				window.setTimeout(() => setCopied(false), 1200);
-			}}
-		>
-			{copied ? <Check size={11} /> : <Copy size={11} />}
-		</button>
+		<Tip label={copied ? "Copied" : "Copy message"}>
+			<button
+				type="button"
+				className={"msg-copy" + (copied ? " copied" : "")}
+				aria-label={copied ? "Copied" : "Copy message"}
+				onClick={() => {
+					copyText(props.text);
+					setCopied(true);
+					window.setTimeout(() => setCopied(false), 1200);
+				}}
+			>
+				{copied ? <Check size={11} /> : <Copy size={11} />}
+			</button>
+		</Tip>
 	);
 }
 
@@ -88,24 +90,25 @@ function messageBody(
 				{fold}
 				<CopyMessage text={card.text} />
 				{onBtw && card.kind === "agent" && showRail && (btwActive || !btwLocked) && (
-					<button
-						type="button"
-						className={"msg-btw" + (btwActive ? " on" : "")}
-						aria-expanded={btwActive}
-						title={btwActive ? "Close side question" : "Ask a side question below"}
-						aria-label={btwActive ? "Close side question" : "Ask a side question about this message"}
-						onClick={(event) => {
-							event.stopPropagation();
-							if (btwActive) onBtwClose?.();
-							else if (!btwLocked) onBtw(card.key ?? String(card.id));
-						}}
-					>
-						<ChevronDown size={11} />
-					</button>
+					<Tip label={btwActive ? "Close side question" : "Ask a side question below"}>
+						<button
+							type="button"
+							className={"msg-btw" + (btwActive ? " on" : "")}
+							aria-expanded={btwActive}
+							aria-label={btwActive ? "Close side question" : "Ask a side question about this message"}
+							onClick={(event) => {
+								event.stopPropagation();
+								if (btwActive) onBtwClose?.();
+								else if (!btwLocked) onBtw(card.key ?? String(card.id));
+							}}
+						>
+							<ChevronDown size={11} />
+						</button>
+					</Tip>
 				)}
-				<span className="msg-at" title={[stamp?.date, stamp?.time].filter(Boolean).join(" ")}>
-					{stamp?.time}
-				</span>
+				<Tip label={[stamp?.date, stamp?.time].filter(Boolean).join(" ")}>
+					<span className="msg-at">{stamp?.time}</span>
+				</Tip>
 				{card.to && <span className="msg-chip">→ {card.to}</span>}
 			</div>
 			{onBtw && card.kind === "agent" && showRail && (
@@ -282,11 +285,29 @@ function NoteRow(props: { entry: Entry; open: boolean; working: boolean; onToggl
 	);
 }
 
-function StepBlock(props: { group: StepGroup; working: boolean; open: boolean; onToggle: () => void; openRows: Set<string>; onToggleRow: (key: string) => void }) {
+function BtwCell(props: { worker: string; anchorEntryId: string; onClose?: () => void }) {
+	const reduceMotion = useReducedMotion();
+	return (
+		<AnimatePresence>
+			<motion.div
+				key="btw"
+				className="btw-cell"
+				initial={{ opacity: 0, clipPath: "inset(0% 100% 0% 0%)" }}
+				animate={{ opacity: 1, clipPath: "inset(0% 0% 0% 0%)" }}
+				exit={{ opacity: 0, clipPath: "inset(0% 100% 0% 0%)", transition: { duration: reduceMotion ? 0 : 0.16, ease: [0.23, 1, 0.32, 1] } }}
+				transition={{ duration: reduceMotion ? 0 : 0.22, ease: [0.23, 1, 0.32, 1] }}
+			>
+				<BtwPanel name={props.worker} anchorEntryId={props.anchorEntryId} onClose={props.onClose} />
+			</motion.div>
+		</AnimatePresence>
+	);
+}
+
+function StepBlock(props: { group: StepGroup; working: boolean; live: boolean; open: boolean; onToggle: () => void; openRows: Set<string>; onToggleRow: (key: string) => void }) {
 	const { rows } = props.group;
 	const first = rows[0]!;
 	const collapsible = rows.length > 1;
-	const folded = collapsible && !props.working && !props.open;
+	const folded = collapsible && !props.live && !props.open;
 	const scroll = useScrollFade<HTMLDivElement>(!folded);
 	const summary = (
 		<button type="button" className="msg-step-sum" aria-expanded={!folded} onClick={props.onToggle}>
@@ -301,7 +322,7 @@ function StepBlock(props: { group: StepGroup; working: boolean; open: boolean; o
 	);
 	return (
 		<div className={"msg-step" + (props.group.reply ? " has-reply" : "")} id={"entry-" + first.id} data-chat-anchor-key={itemKey(first)}>
-			{collapsible && !props.working ? summary : null}
+			{collapsible && !props.live ? summary : null}
 			{folded ? null : (
 				<div className="msg-step-scroll">
 					<div className="msg-step-rows" ref={scroll.ref}>
@@ -329,7 +350,6 @@ export function Transcript(props: {
 	const session = useSession();
 	const skillDirectory = useSkills();
 	const scroll = useScroll();
-	const reduceMotion = useReducedMotion();
 
 	const { items } = useStore(controller.store, (state) => state);
 	const display = foldSteps(items);
@@ -573,12 +593,13 @@ export function Transcript(props: {
 				</Show>
 
 				<For each={display} by={(row) => ("step" in row ? `${row.step.key}:step` : itemKey(row.entry))}>
-					{(row) => {
+					{(row, index) => {
 						if ("step" in row) {
 							return (
 								<StepBlock
 									group={row.step}
 									working={props.working}
+									live={props.working && index() === display.length - 1}
 									open={openGroups.has(row.step.key)}
 									onToggle={() => toggleGroup(row.step.key)}
 									openRows={openRows}
@@ -597,16 +618,19 @@ export function Transcript(props: {
 								);
 							}
 							return (
-								<motion.div
-									className={"msg-block msg-block-agent" + (locateFlashId === entry.id ? " locate-flash" : "") + (btwAnchor === key ? " btw-active" : "")}
-									id={"entry-" + entry.id}
-									data-chat-anchor-key={key}
-									initial={{ opacity: 0, y: 6 }}
-									animate={{ opacity: 1, y: 0 }}
-									transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
-								>
-									{messageBody(entry, worker, true, props.onBtw, btwAnchor === key, true, props.onBtwClose, !!btwAnchor && btwAnchor !== key)}
-								</motion.div>
+								<>
+									<motion.div
+										className={"msg-block msg-block-agent" + (locateFlashId === entry.id ? " locate-flash" : "") + (btwAnchor === key ? " btw-active" : "")}
+										id={"entry-" + entry.id}
+										data-chat-anchor-key={key}
+										initial={{ opacity: 0, y: 6 }}
+										animate={{ opacity: 1, y: 0 }}
+										transition={{ duration: 0.2, ease: [0.23, 1, 0.32, 1] }}
+									>
+										{messageBody(entry, worker, true, props.onBtw, btwAnchor === key, true, props.onBtwClose, !!btwAnchor && btwAnchor !== key)}
+									</motion.div>
+									{btwAnchor === key && worker ? <BtwCell worker={worker} anchorEntryId={key} onClose={props.onBtwClose} /> : null}
+								</>
 							);
 						}
 
@@ -651,9 +675,11 @@ export function Transcript(props: {
 										) : (
 											key === editableUserKey &&
 											!props.working && (
-												<button type="button" className="msg-user-edit-link" title="Edit message" aria-label="Edit message" onClick={() => startEdit(key, entry.text)}>
-													<Pencil size={12} />
-												</button>
+												<Tip label="Edit message">
+													<button type="button" className="msg-user-edit-link" aria-label="Edit message" onClick={() => startEdit(key, entry.text)}>
+														<Pencil size={12} />
+													</button>
+												</Tip>
 											)
 										)}
 									</div>
@@ -787,21 +813,6 @@ export function Transcript(props: {
 								<span className="work-dot" />
 								<span className="work-dot" />
 							</div>
-						</motion.div>
-					)}
-				</AnimatePresence>
-
-				<AnimatePresence>
-					{btwAnchor && worker && (
-						<motion.div
-							key="btw"
-							className="btw-cell"
-							initial={{ opacity: 0, clipPath: "inset(0% 100% 0% 0%)" }}
-							animate={{ opacity: 1, clipPath: "inset(0% 0% 0% 0%)" }}
-							exit={{ opacity: 0, clipPath: "inset(0% 100% 0% 0%)", transition: { duration: reduceMotion ? 0 : 0.16, ease: [0.23, 1, 0.32, 1] } }}
-							transition={{ duration: reduceMotion ? 0 : 0.22, ease: [0.23, 1, 0.32, 1] }}
-						>
-							<BtwPanel name={worker} anchorEntryId={btwAnchor} onClose={() => props.onBtwClose?.()} />
 						</motion.div>
 					)}
 				</AnimatePresence>

@@ -34,7 +34,6 @@ export function PickFile(props: {
 				value={props.value}
 				readOnly
 				placeholder={props.placeholder ?? "Choose a directory…"}
-				title={props.value || props.title || "Choose a directory…"}
 				aria-label={props.ariaLabel ?? props.title ?? "Choose a directory"}
 				onClick={() => void pick()}
 				onKeyDown={(event) => {

@@ -4,6 +4,7 @@ import type { PartnerActivityDay } from "../../shared/rpc";
 import { ActivityHeatmap, HEATMAP_WEEKS } from "../components/ActivityHeatmap";
 import { AnimatedNumber } from "../components/AnimatedNumber";
 import { DashboardChart } from "../components/DashboardChart";
+import { Tip } from "../components/ui/tooltip";
 import { useAgentStatus } from "../lib/contexts/agent-status-context";
 import { useDashboard } from "../lib/contexts/dashboard-context";
 import { useInbox } from "../lib/contexts/inbox-context";
@@ -457,7 +458,11 @@ export function DashboardView(props: { unread: (name: string) => boolean; onSele
 													<td className="name">
 														{row.partner.name}
 														{row.partner.forkedFrom && <span className="dashboard-fork">fork</span>}
-														{props.unread(row.partner.name) && <span className="conv-unread-dot" title="new messages" />}
+														{props.unread(row.partner.name) && (
+															<Tip label="new messages">
+																<span className="conv-unread-dot" />
+															</Tip>
+														)}
 													</td>
 													<td>
 														<span className="dashboard-fresh">

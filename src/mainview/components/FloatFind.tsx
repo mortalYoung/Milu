@@ -3,6 +3,7 @@ import { motion } from "motion/react";
 import { useRef } from "react";
 import type { FloatFindProps } from "../lib/find";
 import { imeGuard } from "../lib/ime";
+import { Tip } from "./ui/tooltip";
 
 export function FloatFind(props: FloatFindProps) {
 	const { query, result } = props;
@@ -14,6 +15,12 @@ export function FloatFind(props: FloatFindProps) {
 	const imeRef = useRef<ReturnType<typeof imeGuard> | null>(null);
 	if (!imeRef.current) imeRef.current = imeGuard((value) => latest.current.onQuery(value));
 	const ime = imeRef.current;
+
+	const countChip = (
+		<span className={"float-find-count" + (searching && !found ? " empty" : "")} aria-live="polite" aria-hidden={count === ""}>
+			{count}
+		</span>
+	);
 
 	return (
 		<motion.div
@@ -45,36 +52,37 @@ export function FloatFind(props: FloatFindProps) {
 					onCompositionStart={ime.onStart}
 					onCompositionEnd={(event) => ime.onEnd(event.nativeEvent, event.currentTarget)}
 				/>
-				<span className={"float-find-count" + (searching && !found ? " empty" : "")} aria-live="polite" title={props.hint} aria-hidden={count === ""}>
-					{count}
-				</span>
+				{props.hint ? (
+					<Tip label={props.hint} className="max-w-[260px] leading-snug">
+						{countChip}
+					</Tip>
+				) : (
+					countChip
+				)}
 			</span>
-			<button
-				type="button"
-				className="float-find-nav"
-				title="Previous match (Shift+Enter)"
-				aria-label="Previous match"
-				disabled={!found}
-				onMouseDown={(event) => event.preventDefault()}
-				onClick={() => props.onStep(-1)}
-			>
-				<ChevronUp size={14} />
-			</button>
-			<button
-				type="button"
-				className="float-find-nav"
-				title="Next match (Enter)"
-				aria-label="Next match"
-				disabled={!found}
-				onMouseDown={(event) => event.preventDefault()}
-				onClick={() => props.onStep(1)}
-			>
-				<ChevronDown size={14} />
-			</button>
+			<Tip label="Previous match (Shift+Enter)">
+				<button
+					type="button"
+					className="float-find-nav"
+					aria-label="Previous match"
+					disabled={!found}
+					onMouseDown={(event) => event.preventDefault()}
+					onClick={() => props.onStep(-1)}
+				>
+					<ChevronUp size={14} />
+				</button>
+			</Tip>
+			<Tip label="Next match (Enter)">
+				<button type="button" className="float-find-nav" aria-label="Next match" disabled={!found} onMouseDown={(event) => event.preventDefault()} onClick={() => props.onStep(1)}>
+					<ChevronDown size={14} />
+				</button>
+			</Tip>
 			<span className="float-find-divider" />
-			<button type="button" className="float-find-close" title="Close (Esc)" aria-label="Close find" onClick={props.onClose}>
-				<X size={14} />
-			</button>
+			<Tip label="Close (Esc)">
+				<button type="button" className="float-find-close" aria-label="Close find" onClick={props.onClose}>
+					<X size={14} />
+				</button>
+			</Tip>
 		</motion.div>
 	);
 }

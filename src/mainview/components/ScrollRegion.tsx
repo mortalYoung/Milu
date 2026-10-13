@@ -4,6 +4,7 @@ import { useStore } from "zustand";
 import { Show } from "../lib/jsx";
 import type { ScrollFollower } from "../lib/scroll-follower";
 import { cn } from "../lib/utils";
+import { Tip } from "./ui/tooltip";
 
 export function ScrollRegion(props: {
 	scroll: ScrollFollower;
@@ -37,9 +38,11 @@ export function ScrollRegion(props: {
 				</div>
 			</section>
 			<Show when={!following}>
-				<button type="button" className="back-to-bottom" title="Back to latest" aria-label="Back to latest" onClick={() => props.scroll.pin(true)}>
-					<ArrowDown size={13} />
-				</button>
+				<Tip label="Back to latest">
+					<button type="button" className="back-to-bottom" aria-label="Back to latest" onClick={() => props.scroll.pin(true)}>
+						<ArrowDown size={13} />
+					</button>
+				</Tip>
 			</Show>
 			{props.overlay}
 		</div>

@@ -6,6 +6,7 @@ import { Button } from "./Button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Select } from "./ui/select";
 import { TextField, TextFieldInput, TextFieldLabel, TextFieldTextArea } from "./ui/text-field";
+import { Tip } from "./ui/tooltip";
 
 type McpServerItem = Awaited<ReturnType<typeof rpc.request.mcp_list>>["servers"][number];
 type Lifecycle = "lazy" | "eager" | "keep-alive" | "lazy-keep-alive";
@@ -272,7 +273,10 @@ export function McpServersPanel() {
 				{servers.map((server) => (
 					<div className="rounded-[6px] border border-line bg-surface p-3" key={server.name}>
 						<div className="flex items-center gap-3">
-							<span className={"size-2 shrink-0 rounded-full " + mcpStateColor(server.state)} title={server.state} />
+							{}
+							<Tip label={server.state}>
+								<span className={"size-2 shrink-0 rounded-full " + mcpStateColor(server.state)} />
+							</Tip>
 							<span className="min-w-0 flex-1">
 								<span className="block truncate font-serif text-[14px] font-semibold text-ink">{server.name}</span>
 								<span className="block truncate font-mono text-[10px] text-muted">

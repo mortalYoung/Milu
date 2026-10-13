@@ -10,6 +10,7 @@ import { rpc } from "../lib/rpc";
 import { SURFACE } from "../lib/surfaces";
 import { CodeDiff, SIDE_BY_SIDE_MIN } from "./CodeDiff";
 import { type DockListControls, DockListToggle, DockShell } from "./DockShell";
+import { Tip } from "./ui/tooltip";
 
 interface GitData {
 	repoRoot: string;
@@ -261,54 +262,45 @@ export function GitChangesDrawer(props: {
 									{sidesError && <span className="git-diff-error">{sidesError}</span>}
 								</div>
 								<div className="git-diff-actions">
-									<button
-										type="button"
-										className="dock-btn"
-										aria-label="Reveal this file in the explorer"
-										title="Reveal this file in the explorer"
-										onClick={() => props.onRevealInExplorer(shownChange.path)}
-									>
-										<LocateFixed size={11} />
-									</button>
+									<Tip label="Reveal this file in the explorer">
+										<button type="button" className="dock-btn" aria-label="Reveal this file in the explorer" onClick={() => props.onRevealInExplorer(shownChange.path)}>
+											<LocateFixed size={11} />
+										</button>
+									</Tip>
 									{comparable && (
+										<Tip label={props.sideBySide && !bothSides ? "Both sides need a wider column" : props.sideBySide ? "Show one column" : "Show both sides"}>
+											<button
+												type="button"
+												className={"dock-btn" + (props.sideBySide ? " on" : "")}
+												aria-pressed={props.sideBySide}
+												aria-label={props.sideBySide ? "Show one column" : "Show both sides"}
+												onClick={props.onToggleSideBySide}
+											>
+												<Columns2 size={11} />
+											</button>
+										</Tip>
+									)}
+									<Tip label={props.wrap ? "Stop wrapping long lines" : "Wrap long lines"}>
+										<button type="button" className={"dock-btn" + (props.wrap ? " on" : "")} aria-pressed={props.wrap} aria-label="Wrap long lines" onClick={props.onToggleWrap}>
+											<WrapText size={11} />
+										</button>
+									</Tip>
+									<Tip label={props.ignoreWhitespace ? "Show whitespace changes" : "Ignore leading and trailing whitespace"}>
 										<button
 											type="button"
-											className={"dock-btn" + (props.sideBySide ? " on" : "")}
-											aria-pressed={props.sideBySide}
-											aria-label={props.sideBySide ? "Show one column" : "Show both sides"}
-											title={props.sideBySide && !bothSides ? "Both sides need a wider column" : props.sideBySide ? "Show one column" : "Show both sides"}
-											onClick={props.onToggleSideBySide}
+											className={"dock-btn" + (props.ignoreWhitespace ? " on" : "")}
+											aria-pressed={props.ignoreWhitespace}
+											aria-label="Ignore leading and trailing whitespace"
+											onClick={props.onToggleIgnoreWhitespace}
 										>
-											<Columns2 size={11} />
+											<Space size={11} />
 										</button>
-									)}
-									<button
-										type="button"
-										className={"dock-btn" + (props.wrap ? " on" : "")}
-										aria-pressed={props.wrap}
-										aria-label="Wrap long lines"
-										title={props.wrap ? "Stop wrapping long lines" : "Wrap long lines"}
-										onClick={props.onToggleWrap}
-									>
-										<WrapText size={11} />
-									</button>
-									<button
-										type="button"
-										className={"dock-btn" + (props.ignoreWhitespace ? " on" : "")}
-										aria-pressed={props.ignoreWhitespace}
-										aria-label="Ignore leading and trailing whitespace"
-										title={props.ignoreWhitespace ? "Show whitespace changes" : "Ignore leading and trailing whitespace"}
-										onClick={props.onToggleIgnoreWhitespace}
-									>
-										<Space size={11} />
-									</button>
+									</Tip>
 								</div>
 							</div>
 							{/* breadcrumbs：head 下面单独一行，与 head 之间不画线 */}
 							<div className="git-dir-row">
-								<span className="git-dir" title={shownChange.path}>
-									{dirname(shownChange.path)}
-								</span>
+								<span className="git-dir">{dirname(shownChange.path)}</span>
 							</div>
 							{comparable && both ? (
 								<CodeDiff

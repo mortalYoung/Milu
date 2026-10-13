@@ -1,6 +1,6 @@
 import type { PartnerActivityDay } from "../../shared/rpc";
 import { formatTokens } from "../lib/utils";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import { Tip } from "./ui/tooltip";
 
 const CELL = 10;
 const GAP = 2;
@@ -99,12 +99,9 @@ export function ActivityHeatmap(props: { days: PartnerActivityDay[]; weeks?: num
 					}}
 				>
 					{shown.map((day) => (
-						<Tooltip key={day.ts} delayDuration={120}>
-							<TooltipTrigger asChild>
-								<div tabIndex={-1} className={`activity-cell hlv-${levelOf(loadOf(day))}`} />
-							</TooltipTrigger>
-							<TooltipContent side="top">{tipFor(day)}</TooltipContent>
-						</Tooltip>
+						<Tip key={day.ts} side="top" label={tipFor(day)}>
+							<div tabIndex={-1} className={`activity-cell hlv-${levelOf(loadOf(day))}`} />
+						</Tip>
 					))}
 				</div>
 			</div>

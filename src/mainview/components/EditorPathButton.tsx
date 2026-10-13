@@ -1,6 +1,7 @@
 import { ExternalLink } from "lucide-react";
 import { formatWorkspacePath } from "../lib/composer-input";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "./ui/context-menu";
+import { Tip } from "./ui/tooltip";
 
 export function EditorPathButton(props: {
 	path: string;
@@ -13,17 +14,19 @@ export function EditorPathButton(props: {
 	const title = `${props.path} — open folder in code editor`;
 	return (
 		<ContextMenu>
-			<ContextMenuTrigger asChild>
-				<button type="button" className={"path-open min-w-0 " + (props.class ?? "")} title={title} onClick={() => props.onOpenPath?.(props.path)}>
-					{props.label ? (
-						<>
-							<span className="path-label">{props.label}</span>{" "}
-						</>
-					) : null}
-					<span className="truncate">{formatWorkspacePath(props.path, props.max ?? 36)}</span>
-					<ExternalLink size={10} className="path-external" />
-				</button>
-			</ContextMenuTrigger>
+			<Tip label={title}>
+				<ContextMenuTrigger asChild>
+					<button type="button" className={"path-open min-w-0 " + (props.class ?? "")} onClick={() => props.onOpenPath?.(props.path)}>
+						{props.label ? (
+							<>
+								<span className="path-label">{props.label}</span>{" "}
+							</>
+						) : null}
+						<span className="truncate">{formatWorkspacePath(props.path, props.max ?? 36)}</span>
+						<ExternalLink size={10} className="path-external" />
+					</button>
+				</ContextMenuTrigger>
+			</Tip>
 			<ContextMenuContent size="sm" portal={false}>
 				{(props.editors ?? []).map((editor) => (
 					<ContextMenuItem key={editor.id} size="sm" onSelect={() => props.onOpenPath?.(props.path, editor.id)}>

@@ -4,6 +4,7 @@ import { registerSurfaceRoot } from "../lib/active-surface";
 import { DOCK_EXIT_MS, usePresence } from "../lib/presence";
 import type { SurfaceId } from "../lib/surfaces";
 import { isInteractive } from "../lib/utils";
+import { Tip } from "./ui/tooltip";
 
 export interface DockListControls {
 	open: boolean;
@@ -15,16 +16,11 @@ export interface DockListControls {
 /** 列表的开关：家在列表自己的 head 上；列表收起后它改住在内容 head 的左端（和侧栏那个按钮同一个写法）。 */
 export function DockListToggle(props: { open: boolean; onToggle: () => void }) {
 	return (
-		<button
-			type="button"
-			className="dock-btn"
-			aria-expanded={props.open}
-			aria-label={props.open ? "Collapse the list" : "Show the list"}
-			title={props.open ? "Collapse the list" : "Show the list"}
-			onClick={props.onToggle}
-		>
-			{props.open ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
-		</button>
+		<Tip label={props.open ? "Collapse the list" : "Show the list"}>
+			<button type="button" className="dock-btn" aria-expanded={props.open} aria-label={props.open ? "Collapse the list" : "Show the list"} onClick={props.onToggle}>
+				{props.open ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
+			</button>
+		</Tip>
 	);
 }
 

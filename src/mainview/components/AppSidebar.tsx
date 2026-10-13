@@ -29,7 +29,7 @@ import {
 	DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
 import { Kbd, KbdGroup } from "./ui/kbd";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
+import { Tip, Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 export type { PartnerItem };
 
@@ -87,20 +87,21 @@ function ChatRow(props: {
 					<span className="conv-name-wrap">
 						<span className="conv-name">{partner.name}</span>
 						{props.childCount != null && props.childCount > 0 && (
-							<button
-								type="button"
-								className="conv-fork-count"
-								aria-expanded={props.expanded}
-								aria-label={`${props.expanded ? "Collapse" : "Expand"} ${props.childCount} fork${props.childCount === 1 ? "" : "s"} of ${partner.name}`}
-								title={props.expanded ? "Collapse forks" : "Expand forks"}
-								onClick={(event) => {
-									event.stopPropagation();
-									props.onToggle?.();
-								}}
-							>
-								{props.expanded ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
-								{props.childCount}
-							</button>
+							<Tip label={props.expanded ? "Collapse forks" : "Expand forks"}>
+								<button
+									type="button"
+									className="conv-fork-count"
+									aria-expanded={props.expanded}
+									aria-label={`${props.expanded ? "Collapse" : "Expand"} ${props.childCount} fork${props.childCount === 1 ? "" : "s"} of ${partner.name}`}
+									onClick={(event) => {
+										event.stopPropagation();
+										props.onToggle?.();
+									}}
+								>
+									{props.expanded ? <ChevronDown size={9} /> : <ChevronRight size={9} />}
+									{props.childCount}
+								</button>
+							</Tip>
 						)}
 					</span>
 					<span className="conv-time">{convTime(activityAt(partner))}</span>
@@ -108,7 +109,7 @@ function ChatRow(props: {
 				<span className="conv-preview">
 					<span className="conv-preview-main">
 						{props.working ? (
-							<span className="conv-preview-dots" title="Working…">
+							<span className="conv-preview-dots">
 								<span className="work-dot" />
 								<span className="work-dot" />
 								<span className="work-dot" />
@@ -118,7 +119,9 @@ function ChatRow(props: {
 						)}
 					</span>
 					<Show when={props.unread}>
-						<span className="conv-unread-dot" title="new messages" />
+						<Tip label="new messages">
+							<span className="conv-unread-dot" />
+						</Tip>
 					</Show>
 				</span>
 			</span>
@@ -129,13 +132,15 @@ function ChatRow(props: {
 					setOpenMenu(open);
 				}}
 			>
-				<DropdownMenuTrigger
-					className={"conv-ellipsis" + (openMenu ? " opacity-100" : " opacity-0 group-hover:opacity-100")}
-					title="More"
-					onClick={(event) => event.stopPropagation()}
-				>
-					<MoreVertical size={14} />
-				</DropdownMenuTrigger>
+				<Tip label="More">
+					<DropdownMenuTrigger
+						className={"conv-ellipsis" + (openMenu ? " opacity-100" : " opacity-0 group-hover:opacity-100")}
+						aria-label={`More actions for ${partner.name}`}
+						onClick={(event) => event.stopPropagation()}
+					>
+						<MoreVertical size={14} />
+					</DropdownMenuTrigger>
+				</Tip>
 				<DropdownMenuContent side="right" align="start" onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()} className="min-w-44 p-1">
 					<DropdownMenuItem className={MENU_ITEM_CLASS} onSelect={() => props.onViewDetails()}>
 						<Info size={13} className="text-muted" />
@@ -330,17 +335,16 @@ export function AppSidebar(props: {
 						/>
 					</span>
 				</div>
-				<Tooltip delayDuration={150}>
-					<TooltipTrigger asChild>
-						<button type="button" className="conv-icon-btn electrobun-webkit-app-region-no-drag" aria-label="Create a partner" onClick={props.onAddPartner}>
-							<SquarePen size={14} />
-						</button>
-					</TooltipTrigger>
-					<TooltipContent>Create (⌘N)</TooltipContent>
-				</Tooltip>
-				<button type="button" className="sidebar-toggle electrobun-webkit-app-region-no-drag" title="Hide chat list (⌘B)" aria-label="Hide chat list" onClick={props.onToggleList}>
-					<PanelLeftClose size={16} />
-				</button>
+				<Tip label="Create (⌘N)">
+					<button type="button" className="conv-icon-btn electrobun-webkit-app-region-no-drag" aria-label="Create a chat" onClick={props.onAddPartner}>
+						<SquarePen size={14} />
+					</button>
+				</Tip>
+				<Tip label="Hide chat list (⌘B)">
+					<button type="button" className="sidebar-toggle electrobun-webkit-app-region-no-drag" aria-label="Hide chat list" onClick={props.onToggleList}>
+						<PanelLeftClose size={16} />
+					</button>
+				</Tip>
 			</div>
 
 			<div className="sidebar-brand">
@@ -349,7 +353,7 @@ export function AppSidebar(props: {
 			</div>
 
 			<div className="sidebar-body">
-				{props.partners.length === 0 && !props.loading && <div className="px-1 py-3 text-[13px] text-muted">No partners yet</div>}
+				{props.partners.length === 0 && !props.loading && <div className="px-2 pt-1 text-[13px] text-muted">no chats yet</div>}
 
 				{searching && props.partners.length > 0 && visibleRoots.length === 0 && (
 					<div className="px-1 py-3">
@@ -417,13 +421,15 @@ export function AppSidebar(props: {
 				</div>
 			</div>
 
-			<button type="button" className="sidebar-foot" title="Settings" aria-label="Settings" onClick={props.onOpenSettings}>
-				<Settings size={15} />
-				<KbdGroup className="ml-auto">
-					<Kbd>⌘</Kbd>
-					<Kbd>,</Kbd>
-				</KbdGroup>
-			</button>
+			<Tip label="Settings">
+				<button type="button" className="sidebar-foot" aria-label="Settings" onClick={props.onOpenSettings}>
+					<Settings size={15} />
+					<KbdGroup className="ml-auto">
+						<Kbd>⌘</Kbd>
+						<Kbd>,</Kbd>
+					</KbdGroup>
+				</button>
+			</Tip>
 
 			<Dialog open={confirmDelete != null} onOpenChange={(open) => !open && setConfirmDelete(null)}>
 				<DialogContent size={{ w: 320 }}>

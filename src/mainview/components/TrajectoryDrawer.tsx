@@ -11,6 +11,7 @@ import { rowAnchorAt, rowAnchorTop } from "../lib/scroll-anchor";
 import { createScrollFollower } from "../lib/scroll-follower";
 import type { TrajectoryMode } from "../lib/trajectory";
 import { ScrollRegion } from "./ScrollRegion";
+import { Tip } from "./ui/tooltip";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const fmtDateTime = (ts: number) => {
@@ -315,19 +316,21 @@ function DrawerContent(props: {
 				<span className="traj-title">Trajectory</span>
 				<div className="traj-mode-toggle" role="group" aria-label="Timeline Projection">
 					{(["slice", "view"] as const).map((m) => (
-						<button
-							type="button"
-							key={m}
-							className={"traj-mode" + (props.mode === m ? " on" : "")}
-							onClick={() => props.onModeChange(m)}
-							aria-pressed={props.mode === m}
-							title={m === "slice" ? "Model context (slice)" : "Chat view"}
-						>
-							{m}
-						</button>
+						<Tip label={m === "slice" ? "Model context (slice)" : "Chat view"}>
+							<button
+								type="button"
+								aria-label={m === "slice" ? "Model context (slice)" : "Chat view"}
+								key={m}
+								className={"traj-mode" + (props.mode === m ? " on" : "")}
+								onClick={() => props.onModeChange(m)}
+								aria-pressed={props.mode === m}
+							>
+								{m}
+							</button>
+						</Tip>
 					))}
 				</div>
-				<button type="button" className="traj-close" title="Close" onClick={props.onClose}>
+				<button type="button" aria-label="Close" className="traj-close" onClick={props.onClose}>
 					×
 				</button>
 			</div>
@@ -367,7 +370,7 @@ function DrawerContent(props: {
 					<div className="traj-popover-head">
 						<span className="traj-popover-chip">{selectedRow.chip}</span>
 						<span className="traj-popover-title">{short(selectedRow.caption)}</span>
-						<button type="button" className="traj-popover-close" title="Close" onClick={() => setSelectedKey(null)}>
+						<button type="button" aria-label="Close" className="traj-popover-close" onClick={() => setSelectedKey(null)}>
 							×
 						</button>
 					</div>
