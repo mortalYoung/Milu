@@ -113,6 +113,23 @@ export interface QueuedMessageRpc {
 	hop?: number;
 }
 
+/** One schedule that is still to fire, with the chat it belongs to — the welcome screen's queue. */
+export interface WelcomeSchedule {
+	partner: string;
+	id: string;
+	title: string;
+	nextRunAt: number;
+	running: boolean;
+}
+
+/** A background task still running, with the chat that started it. */
+export interface WelcomeTask {
+	partner: string;
+	id: string;
+	command: string;
+	startedAt: number;
+}
+
 export interface TaskSummary {
 	id: string;
 	command: string;
@@ -557,6 +574,11 @@ export type AppRPCSchema = __schema<{
 				response: { items: QueuedMessageRpc[] };
 			};
 
+			welcome_overview: {
+				params: {};
+				response: { schedules: WelcomeSchedule[]; tasks: WelcomeTask[] };
+			};
+
 			task_list: {
 				params: { name: string };
 				response: { tasks: TaskSummary[] };
@@ -682,13 +704,13 @@ export type AppRPCSchema = __schema<{
 			};
 
 			open_path: {
-				params: { path: string; editorId?: string };
+				params: { path: string; editorId?: string; via?: "default" | "finder" };
 				response: { ok: boolean; error?: string };
 			};
 
 			list_editors: {
 				params: {};
-				response: { editors: { id: string; name: string }[] };
+				response: { editors: { id: string; name: string }[]; finder: boolean };
 			};
 
 			explorer_children: {
@@ -1048,6 +1070,16 @@ export type AppRPCSchema = __schema<{
 						lastMessageKind?: ChatPreviewKind;
 
 						startedAt?: number;
+
+						/** The workspace this chat works in, and what it is: `worktree` (a linked one), `repo`, or a plain `dir`. */
+						workspace?: string | null;
+
+						/** Where this chat keeps its files (the agent's own scratch area). */
+						storage?: string | null;
+
+						workspaceKind?: "worktree" | "repo" | "dir" | null;
+
+						workspaceRepo?: string | null;
 
 						readAt?: number;
 						writing: boolean;

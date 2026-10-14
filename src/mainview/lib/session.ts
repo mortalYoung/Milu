@@ -16,6 +16,11 @@ export interface PartnerItem {
 	lastMessageKind?: ChatPreviewKind;
 	readAt?: number;
 	workspace?: string | null;
+	/** Where this chat keeps its files (the agent's own scratch area). */
+	storage?: string | null;
+	/** What the workspace is: a linked worktree, a repo checkout, or a plain directory. */
+	workspaceKind?: "worktree" | "repo" | "dir" | null;
+	workspaceRepo?: string | null;
 	writing?: boolean;
 }
 

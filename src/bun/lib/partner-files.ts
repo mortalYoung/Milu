@@ -4,16 +4,20 @@ import { join } from "node:path";
 import type { ThinkingLevel } from "../../shared/rpc";
 import type { SandboxMode } from "../permission";
 import { sandboxFilePath, workspaceFilePath } from "../permission";
+import { workspaceFacts } from "./git-changes";
 import { getPartnerDir, loadSettings } from "./settings";
 
-// Workspace persistence: per-partner file (survives restart; re-validated on restore).
+/** Workspace persistence: per-partner file (survives restart; re-validated on restore). The stable
+ *  facts (which repo, linked worktree or main checkout) are read once here, at the moment of the
+ *  switch — the chat list reads them for free instead of spawning git on every refresh. */
 export async function persistWorkspace(dir: string, path: string | null) {
 	try {
 		if (path == null) {
 			await rm(workspaceFilePath(dir), { force: true });
-		} else {
-			await writeFile(workspaceFilePath(dir), JSON.stringify({ path }, null, 2), "utf8");
+			return;
 		}
+		const facts = await workspaceFacts(path);
+		await writeFile(workspaceFilePath(dir), JSON.stringify({ path, ...facts }, null, 2), "utf8");
 	} catch (error) {
 		console.error("persistWorkspace failed:", error);
 	}

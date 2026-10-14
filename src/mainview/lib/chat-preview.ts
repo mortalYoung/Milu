@@ -4,13 +4,59 @@ import type { PartnerItem } from "./session";
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const pad = (n: number) => String(n).padStart(2, "0");
 
-/** Directory time: today → "10:42"; otherwise → "JUL 28" */
+const clockOf = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+/** `JUL 28`, with the year when it is not this one — a date with no year is a lie three years later. */
+function stampOf(d: Date, now: number): string {
+	return `${MONTHS[d.getMonth()]} ${d.getDate()}${d.getFullYear() === new Date(now).getFullYear() ? "" : ` ${d.getFullYear()}`}`;
+}
+
+/** Whole days between the two calendar dates: today is 0, yesterday is 1, and DST does not shift it. */
+function dayGap(ts: number, now: number): number {
+	const from = new Date(ts);
+	from.setHours(0, 0, 0, 0);
+	const to = new Date(now);
+	to.setHours(0, 0, 0, 0);
+	return Math.round((to.getTime() - from.getTime()) / 86_400_000);
+}
+
+/**
+ * An instant on a timeline (a memory run, a schedule's ETA): today → "10:42", otherwise → "JUL 28".
+ * Future instants stay dates — "next …" must never read as "3d ago".
+ */
 export function convTime(ts: number): string {
 	const d = new Date(ts);
-	if (d.toDateString() === new Date().toDateString()) {
-		return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-	}
-	return `${MONTHS[d.getMonth()]} ${d.getDate()}`;
+	return d.toDateString() === new Date().toDateString() ? clockOf(d) : stampOf(d, Date.now());
+}
+
+export interface NextRunParts {
+	/** `OCT 15` (the year joins in when it is not this one), or empty for today. */
+	day: string;
+	/** How many days out, when it is not today; the caller draws it as a subscript. */
+	offset: number | null;
+	clock: string;
+}
+
+/** When a schedule fires next, in three parts: today is the clock alone, otherwise `OCT 15 ₊₁ 10:30`. */
+export function describeNextRun(ts: number, now = Date.now()): NextRunParts {
+	const d = new Date(ts);
+	const days = -dayGap(ts, now);
+	const clock = clockOf(d);
+	if (days === 0) return { day: "", offset: null, clock };
+	const day = stampOf(d, now);
+	return { day, offset: days > 0 ? days : null, clock };
+}
+
+/**
+ * A list row's recency (chat rows, ⌘K rows): today → "10:42", within thirty days → "3d ago",
+ * older → "JUL 28" (with the year when it is not this one).
+ */
+export function listTime(ts: number, now = Date.now()): string {
+	const d = new Date(ts);
+	const days = dayGap(ts, now);
+	if (days === 0) return clockOf(d);
+	if (days >= 1 && days <= 30) return `${days}d ago`;
+	return stampOf(d, now);
 }
 
 /** Single-line preview for a list row: collapse newlines/whitespace so the truncate ellipsis works. */

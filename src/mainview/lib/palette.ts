@@ -68,17 +68,27 @@ export function pickableIndexes(rows: PaletteRow[]): number[] {
 	return rows.map((row, index) => (row.kind === "header" || (row.kind === "grant" && row.grant.alwaysOn) ? -1 : index)).filter((index) => index >= 0);
 }
 
+function rangeOf(first: number, second: number): RevealRange | null {
+	if (first < 1 || second < 1) return null;
+	return { start: Math.min(first, second), end: Math.max(first, second) };
+}
+
+/** `path#35` · `path#35-40` · `path.ts:35` · `path.ts:35-40` · `path.ts:35:12` (the column is dropped). */
 export function parseFileQuery(query: string): { path: string; range: RevealRange | null } {
-	const at = query.indexOf("#");
-	if (at === -1) return { path: query.trim(), range: null };
-	const tail = query.slice(at + 1).trim();
-	const match = /^(\d+)(?:-(\d+))?$/.exec(tail);
-	if (!match) return { path: query.trim(), range: null };
-	const before = query.slice(0, at).trim();
-	const first = Number(match[1]);
-	const second = match[2] ? Number(match[2]) : first;
-	if (first < 1 || second < 1) return { path: before, range: null };
-	return { path: before, range: { start: Math.min(first, second), end: Math.max(first, second) } };
+	const trimmed = query.trim();
+	const at = trimmed.indexOf("#");
+	if (at !== -1) {
+		const tail = /^(\d+)(?:-(\d+))?$/.exec(trimmed.slice(at + 1).trim());
+		if (!tail) return { path: trimmed, range: null };
+		const first = Number(tail[1]);
+		return { path: trimmed.slice(0, at).trim(), range: rangeOf(first, tail[2] ? Number(tail[2]) : first) };
+	}
+	const colon = /^(.*?):(\d+)(?::(\d+))?(?:-(\d+))?$/.exec(trimmed);
+	if (colon) {
+		const first = Number(colon[2]);
+		return { path: colon[1]!.trim(), range: rangeOf(first, colon[4] ? Number(colon[4]) : first) };
+	}
+	return { path: trimmed, range: null };
 }
 
 export function splitPath(path: string): { dir: string; name: string } {

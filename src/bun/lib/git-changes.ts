@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { basename, isAbsolute, relative, resolve, sep } from "node:path";
 import { canonicalPath, isInside } from "../permission/roots";
 
 export type GitChangeStatus = "M" | "A" | "D" | "R" | "U";
@@ -124,6 +124,25 @@ export async function gitWorktrees(workspace: string): Promise<GitWorktreesResul
 	const containing = worktrees.filter((worktree) => isInside(here, canonicalPath(worktree.path)));
 	containing.sort((a, b) => b.path.length - a.path.length);
 	return { worktrees, current: containing[0]?.path ?? null };
+}
+
+export interface WorkspaceFacts {
+	kind: "worktree" | "repo" | "dir";
+	/** The main checkout's directory name — what a human calls "the repo". */
+	repo: string | null;
+}
+
+/** What a workspace *is*, for labels: which repo, and whether we sit in a linked worktree of it. */
+export async function workspaceFacts(path: string): Promise<WorkspaceFacts> {
+	try {
+		const { worktrees, current } = await gitWorktrees(path);
+		const main = worktrees[0];
+		if (!main) return { kind: "dir", repo: null };
+		const here = canonicalPath(current ?? path);
+		return { kind: canonicalPath(main.path) === here ? "repo" : "worktree", repo: basename(main.path) };
+	} catch {
+		return { kind: "dir", repo: null };
+	}
 }
 
 function ensureWithin(root: string, target: string): void {

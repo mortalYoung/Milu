@@ -436,6 +436,19 @@
 	.conv-rows {
 		@apply flex flex-col gap-[2px] flex-1 min-h-0 overflow-y-auto;
 	}
+	/* 还有内容的那一侧渐隐。用 mask 而不是叠一层底色：底色会随主题与 mac-plate 的染色变 */
+	.conv-rows.has-below {
+		-webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent);
+		mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent);
+	}
+	.conv-rows.has-above {
+		-webkit-mask-image: linear-gradient(to top, #000 calc(100% - 22px), transparent);
+		mask-image: linear-gradient(to top, #000 calc(100% - 22px), transparent);
+	}
+	.conv-rows.has-above.has-below {
+		-webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%);
+		mask-image: linear-gradient(to bottom, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%);
+	}
 	.conv-skeleton {
 		@apply flex items-center gap-2.5 px-2 mr-3 py-[9px];
 	}
@@ -508,6 +521,13 @@
 		@apply flex-1 min-w-0 truncate;
 	}
 
+	/* 有 workspace 才多这一行：工作区身份（⊳ = linked worktree，记号照 WorktreeMenu 的 FolderTree） */
+	.conv-ws {
+		@apply flex items-center gap-[3px] mt-[3px] min-w-0 font-mono text-[10px] text-muted-soft;
+	}
+	.conv-ws > svg {
+		@apply shrink-0;
+	}
 	.conv-ellipsis {
 		@apply absolute right-1.5 top-1/2 -translate-y-1/2 size-6 flex items-center justify-center rounded-md text-muted cursor-pointer transition-opacity bg-surface/80;
 	}
@@ -864,6 +884,113 @@
 	}
 
 	/* ——— the workbench's own bar, on the pane, not on the window ——— */
+	/* ——— welcome · 时间线单列（编辑式左偏移 + 一条刻线）——— */
+	.welcome {
+		@apply flex flex-col;
+		/* 编辑式偏移：宽窗口靠左三分，窄窗口自然收回 —— 破掉"一切都居中" */
+		padding-left: clamp(0px, 7vw, 96px);
+		max-width: 620px;
+	}
+	.welcome-head {
+		@apply m-0 font-serif font-medium text-ink;
+		font-size: clamp(28px, 3.1vw, 38px);
+		line-height: 1.22;
+		letter-spacing: -0.6px;
+		max-width: 22ch;
+		text-wrap: balance;
+	}
+	.welcome-caret {
+		@apply absolute top-1/2 -right-[5px] h-[0.92em] w-[2px] -translate-y-1/2 bg-muted-soft;
+	}
+	.welcome-sub {
+		@apply mt-3 mb-0 text-[13.5px] text-muted;
+		max-width: 46ch;
+		line-height: 1.6;
+	}
+	.welcome-tl {
+		@apply relative mt-12 flex flex-col gap-8;
+	}
+	.welcome-spine {
+		@apply absolute bottom-1 left-[3px] top-1 w-px origin-top;
+		background: color-mix(in srgb, var(--color-ink) 8%, transparent);
+	}
+	.welcome-grp {
+		@apply flex flex-col gap-1.5;
+	}
+	.welcome-eyebrow {
+		@apply m-0 pl-[18px] font-sans text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-soft;
+	}
+	.welcome-eyebrow.is-live {
+		color: var(--color-accent-teal);
+	}
+	.welcome-row-item {
+		@apply flex;
+	}
+	.welcome-row {
+		@apply relative flex w-full items-baseline gap-2.5 rounded-[4px] py-[5px] pr-1.5 pl-[18px] text-left transition-colors;
+	}
+	@media (hover: hover) and (pointer: fine) {
+		.welcome-row:hover {
+			background: var(--hover);
+		}
+		.welcome-row:hover .welcome-chat {
+			border-bottom-color: var(--color-muted-soft);
+		}
+	}
+	.welcome-tick {
+		@apply absolute left-0 top-[11px] size-[7px] rounded-full border border-muted-soft bg-canvas;
+	}
+	.welcome-row-item.is-live .welcome-tick {
+		border-color: var(--color-accent-teal);
+		background: var(--color-accent-teal);
+	}
+	.welcome-when {
+		@apply w-[104px] shrink-0 font-mono text-[11px] tabular-nums text-muted;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.welcome-what {
+		@apply min-w-0 flex-1 truncate font-sans text-[12.5px] text-ink;
+	}
+	.welcome-chat {
+		@apply shrink-0 border-b border-transparent font-serif text-[12.5px] text-ink-soft transition-colors;
+	}
+	.welcome-offset {
+		@apply text-[8.5px] text-muted-soft;
+	}
+	.welcome-state {
+		@apply w-[54px] shrink-0 text-right font-mono text-[10px] text-muted;
+	}
+	.welcome-state.is-live {
+		color: var(--color-accent-teal);
+	}
+	.welcome-empty {
+		@apply relative flex w-full items-baseline gap-2.5 py-[5px] pr-1.5 pl-[18px];
+	}
+	.welcome-hint {
+		@apply min-w-0 truncate font-mono text-[10.5px] text-muted-soft;
+	}
+	.welcome-more {
+		@apply pl-[18px] font-mono text-[10px] text-muted-soft;
+	}
+	.welcome-acts {
+		@apply mt-12 flex flex-col items-start gap-6;
+	}
+	.welcome-buttons {
+		@apply flex flex-wrap items-center gap-2;
+	}
+	/* 快捷键表：名称靠左、键位靠右，两行右边缘对齐 */
+	.welcome-keys {
+		@apply flex w-[220px] flex-col gap-1.5 text-[11.5px] text-muted;
+	}
+	.welcome-key {
+		@apply flex w-full items-center justify-between gap-3 transition-colors hover:text-ink;
+	}
+	.welcome-key span {
+		@apply border-b border-dotted border-muted-soft pb-px;
+	}
+
 	.chat-bar {
 		@apply relative flex flex-none select-none items-center justify-between gap-2 border-b border-line;
 		padding-left: var(--page-gutter);

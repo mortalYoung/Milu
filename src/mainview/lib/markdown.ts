@@ -456,6 +456,6 @@ export function installMarkdownClickHandler(deps: { rpc: RPC; toast: Toast; dock
 			});
 			return;
 		}
-		deps.dock.revealInExplorer(workspaceRelativePath(path, baseDir), parseLineRange(mention?.getAttribute("data-range")));
+		deps.dock.revealInExplorer(workspaceRelativePath(path, baseDir), parseLineRange(mention?.getAttribute("data-range")), { collapseTree: true });
 	});
 }

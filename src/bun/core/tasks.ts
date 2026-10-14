@@ -251,6 +251,14 @@ export function createTaskRegistry(deps: TaskRegistryDeps) {
 		return [...live, ...historic].sort((a, b) => b.startedAt - a.startedAt);
 	}
 
+	/** Every live task on this machine, with the chat it belongs to — the welcome screen's list. */
+	function listRunning(): { partner: string; task: TaskSummary }[] {
+		return [...tasks.values()]
+			.filter((task) => task.status === "running")
+			.map((task) => ({ partner: task.partner, task: summary(task) }))
+			.sort((a, b) => b.task.startedAt - a.task.startedAt);
+	}
+
 	async function target(id: string): Promise<ReadTarget | null> {
 		const live = tasks.get(id);
 		if (live) return { logPath: live.logPath, status: live.status, exitCode: live.exitCode, pending: live.queue };
@@ -424,7 +432,7 @@ export function createTaskRegistry(deps: TaskRegistryDeps) {
 		}
 	}
 
-	return { start, get, list, read, stop, subscribe, reapAll };
+	return { start, get, list, listRunning, read, stop, subscribe, reapAll };
 }
 
 export type TaskRegistry = ReturnType<typeof createTaskRegistry>;

@@ -37,6 +37,38 @@ export async function ensureWorkspace(dir: string): Promise<string | null> {
 	return null;
 }
 
+export interface WorkspaceRef {
+	path: string;
+	kind: "worktree" | "repo" | "dir" | null;
+	repo: string | null;
+}
+
+/** The persisted workspace plus its stable facts, in one read. Old files carry only `path`. */
+export async function readWorkspaceRef(dir: string): Promise<WorkspaceRef | null> {
+	const storagePath = join(dir, "storage");
+	try {
+		const raw = await readFile(workspaceFilePath(dir), "utf8");
+		const saved = JSON.parse(raw) as { path?: unknown; kind?: unknown; repo?: unknown };
+		if (typeof saved.path !== "string" || validateWorkspace(saved.path, { storagePath }) !== null) return null;
+		const kind = saved.kind === "worktree" || saved.kind === "repo" || saved.kind === "dir" ? saved.kind : null;
+		return { path: saved.path, kind, repo: typeof saved.repo === "string" ? saved.repo : null };
+	} catch {
+		return null;
+	}
+}
+
+/** A workspace.json written before the facts existed carries only a path: fill them in once. */
+export async function backfillWorkspaceFacts(dir: string, persist: (dir: string, path: string | null) => Promise<void>): Promise<void> {
+	try {
+		const raw = await readFile(workspaceFilePath(dir), "utf8");
+		const saved = JSON.parse(raw) as { path?: unknown; kind?: unknown };
+		if (typeof saved.path !== "string" || saved.kind != null) return;
+		await persist(dir, saved.path);
+	} catch {
+		// nothing persisted, nothing to fill
+	}
+}
+
 export async function hasInvalidPersistedWorkspace(dir: string): Promise<boolean> {
 	const storagePath = join(dir, "storage");
 	try {

@@ -11,7 +11,7 @@ import { ApplicationMenu, BrowserView, BrowserWindow, app as electrobunApp, Util
 import { BRAND } from "../shared/brand";
 import { mcpChangedText } from "../shared/events";
 import { originWindow, projectOrigin } from "../shared/origin";
-import type { AppRPCSchema, ChatPreviewKind, RailView, ScheduleItem } from "../shared/rpc";
+import type { AppRPCSchema, ChatPreviewKind, RailView, ScheduleItem, WelcomeSchedule } from "../shared/rpc";
 import { loadCustomCommands, mergeCommandDefinitions } from "./commands/custom";
 import { defaultCommands } from "./commands/defaults";
 import { createCommandRegistry } from "./commands/registry";
@@ -71,6 +71,7 @@ import {
 	type DueFire,
 	describeRule,
 	hasSchedules,
+	loadSchedules,
 	newDefinition,
 	parseCronWhen,
 	parseWhen,
@@ -83,12 +84,23 @@ import {
 import { createTaskRegistry, DEFAULT_REMIND_AFTER_SEC, type TaskHistoryRecord } from "./core/tasks";
 import { aggregateUsage, lastUsage } from "./core/trajectory";
 import { deleteApiKey, getApiKey, loadCredentials, setApiKey } from "./lib/credentials";
-import { ensureModel, ensureSandboxMode, ensureStoragePath, ensureWorkspace, hasInvalidPersistedWorkspace, isThinkingLevel } from "./lib/ensure";
+import {
+	backfillWorkspaceFacts,
+	ensureModel,
+	ensureSandboxMode,
+	ensureStoragePath,
+	ensureWorkspace,
+	hasInvalidPersistedWorkspace,
+	isThinkingLevel,
+	readWorkspaceRef,
+	type WorkspaceRef,
+} from "./lib/ensure";
 import { listChildren, readFilePreview, readImageDataUrl } from "./lib/explorer";
 import { createFileWatch } from "./lib/file-watch";
 import { gitChanges, gitDiff, gitFileSides, gitOverview, gitWorktrees } from "./lib/git-changes";
+import { expandHome } from "./lib/home";
 import { clearLastSession, type LastSession, readLastSession, type WindowFrame, writeLastSession } from "./lib/last-session";
-import { listInstalledEditors, openInCodeEditor } from "./lib/open-in-editor";
+import { editorNames, FOLDER_BROWSER_AVAILABLE, listInstalledEditors, openInCodeEditor, openInFinder } from "./lib/open-in-editor";
 import {
 	partnerDirFor,
 	persistModel,
@@ -390,6 +402,12 @@ function tildify(path: string): string {
 	if (path === home) return "~";
 	if (path.startsWith(home + sep)) return `~${path.slice(home.length)}`;
 	return path;
+}
+
+/** The list row's workspace: path plus the stable facts, so a row can say "⊳ repo" without git. */
+async function partnerWorkspaceFacts(dir: string): Promise<{ workspace: string | null; workspaceKind: WorkspaceRef["kind"]; workspaceRepo: string | null }> {
+	const ref = await readWorkspaceRef(dir);
+	return { workspace: ref ? tildify(ref.path) : null, workspaceKind: ref?.kind ?? null, workspaceRepo: ref?.repo ?? null };
 }
 
 async function findPartner(name: string): Promise<PartnerInput | undefined> {
@@ -1332,8 +1350,9 @@ async function reconcileTerminalStates(_dir: string): Promise<{ commands: number
 async function applyWorkspace(entry: PartnerAgent, path: string | null): Promise<{ ok: true; workspace: string | null } | { ok: false; error: string }> {
 	if (entry.agent.isStreaming) return { ok: false, error: "agent is running" };
 	let resolved: string | null = null;
+	// Paths are shown tildified; every entry that takes one back has to expand it again.
 	if (path) {
-		const decision = entry.agent.permission.setWorkspace(path);
+		const decision = entry.agent.permission.setWorkspace(expandHome(path.trim()));
 		if (!decision.allowed) return { ok: false, error: decision.reason };
 		resolved = decision.resolved;
 	}
@@ -1976,7 +1995,7 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 					skills: unique.map((c) => ({
 						name: c.name,
 						description: c.description,
-						...(c.path ? { path: c.path } : {}),
+						...(c.path ? { path: tildify(c.path) } : {}),
 						grantedPartners: byName.get(c.name) ?? [],
 					})),
 				};
@@ -2051,6 +2070,23 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 
 			open_external: ({ url }) => ({ ok: Utils.openExternal(url) }),
 
+			welcome_overview: async () => {
+				const settings = await loadSettings();
+				const schedules: WelcomeSchedule[] = [];
+				for (const profile of await listPartners(settings)) {
+					const dir = getPartnerDir(settings, profile.name);
+					if (!(await hasSchedules(dir))) continue;
+					for (const item of await loadSchedules(dir)) {
+						if (!item.enabled || item.lifecycleStatus !== "active") continue;
+						const next = item.retryAt ?? item.nextRunAt;
+						if (next == null) continue;
+						schedules.push({ partner: profile.name, id: item.id, title: item.title, nextRunAt: next, running: item.running });
+					}
+				}
+				schedules.sort((a, b) => a.nextRunAt - b.nextRunAt);
+				return { schedules, tasks: taskRegistry.listRunning().map(({ partner, task }) => ({ partner, id: task.id, command: task.command, startedAt: task.startedAt })) };
+			},
+
 			task_list: async ({ name }) => ({ tasks: await taskRegistry.list(name) }),
 
 			task_read: ({ name, id, offset, before, lines }) =>
@@ -2063,13 +2099,24 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 
 			task_stop: ({ name, id }) => taskRegistry.stop(id, "user", name),
 
-			open_path: async ({ path, editorId }) => {
-				const opened = await openInCodeEditor(path, editorId);
-				return opened ? { ok: true } : { ok: false, error: "No supported code editor found" };
+			open_path: async ({ path, editorId, via }) => {
+				const opened = via === "finder" ? await openInFinder(path) : await openInCodeEditor(path, editorId);
+				if (opened.ok) return { ok: true };
+				const error =
+					opened.reason === "missing-path"
+						? `${path} is gone`
+						: opened.reason === "editor-missing"
+							? `${editorId} is not installed`
+							: opened.reason === "no-editor"
+								? `no code editor found (${editorNames()})`
+								: `no editor would take ${path} — nor did the default app`;
+				console.error("open_path failed:", path, opened.reason, editorId ?? via ?? "default");
+				return { ok: false, error };
 			},
 
 			list_editors: async () => ({
 				editors: listInstalledEditors().map((e) => ({ id: e.id, name: e.name })),
+				finder: FOLDER_BROWSER_AVAILABLE,
 			}),
 
 			explorer_children: async ({ name, root, path }) => {
@@ -2147,7 +2194,8 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				if (!entry) return { ok: false as const, error: "no partner selected" };
 				if (!entry.agent.workspacePath) return { ok: false as const, error: "workspace not set" };
 				try {
-					return { ok: true as const, ...(await gitWorktrees(entry.agent.workspacePath)) };
+					const found = await gitWorktrees(entry.agent.workspacePath);
+					return { ok: true as const, worktrees: found.worktrees.map((tree) => ({ ...tree, path: tildify(tree.path) })), current: found.current ? tildify(found.current) : null };
 				} catch (error) {
 					return { ok: false as const, error: error instanceof Error ? error.message : String(error) };
 				}
@@ -2579,8 +2627,11 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 						const writing = agentEntry?.agent.isStreaming === true || runningCommandPartners.has(profile.name);
 						return {
 							...profile,
-							path: getPartnerDir(settings, profile.name),
-							workspace: await ensureWorkspace(getPartnerDir(settings, profile.name)),
+							// Display paths are tildified here, the way `get_status` already sends them: the view shows
+							// them and hands them back to `open_path`, which expands `~` again.
+							path: tildify(getPartnerDir(settings, profile.name)),
+							storage: tildify(join(getPartnerDir(settings, profile.name), "storage")),
+							...(await partnerWorkspaceFacts(getPartnerDir(settings, profile.name))),
 							readAt,
 							startedAt,
 							writing,
@@ -2873,7 +2924,18 @@ electrobunApp.on("before-quit", () => {
 	clearTimeout(frameTimer);
 	if (rememberSession) writeLastSession({ ...lastSession, frame: mainWindow.getFrame(), maximized: mainWindow.isMaximized() });
 });
+/** Old workspace files carry only a path: one git read each, at boot, so the list stays free of git. */
+async function backfillWorkspaceFactsOnce(): Promise<void> {
+	try {
+		const settings = await loadSettings();
+		for (const profile of await listPartners(settings)) await backfillWorkspaceFacts(getPartnerDir(settings, profile.name), persistWorkspace);
+	} catch (error) {
+		console.error("workspace facts backfill failed:", error);
+	}
+}
+
 void startScheduleClocks();
+void backfillWorkspaceFactsOnce();
 mainWindow.on("focus", () => {
 	appFocused = true;
 });

@@ -1,4 +1,4 @@
-import { activityAt, convTime, previewFor } from "../lib/chat-preview";
+import { activityAt, listTime, previewFor } from "../lib/chat-preview";
 import { fileGlyph } from "../lib/file-icons";
 import { type PaletteRow, splitPath } from "../lib/palette";
 import { Avatar } from "./ui/avatar";
@@ -41,7 +41,7 @@ export function PaletteList(props: { rows: PaletteRow[]; index: number; unread: 
 									<span className="conv-unread-dot" />
 								</Tip>
 							)}
-							<span className="palette-row-time">{convTime(activityAt(row.partner))}</span>
+							<span className="palette-row-time">{listTime(activityAt(row.partner))}</span>
 						</button>
 					);
 				}

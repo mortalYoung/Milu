@@ -150,13 +150,17 @@ export function createDock(options: { onOpen?: () => void; partner?: () => strin
 		});
 	}
 
-	function revealInExplorer(path: string, range?: RevealRange | null) {
+	/** `collapseTree` is for "jump to this file" gestures (a link, a line reference): the reader takes
+	 *  the column and the tree waits behind its toggle. It is remembered — opening the tree by hand
+	 *  brings it back for good. */
+	function revealInExplorer(path: string, range?: RevealRange | null, opts?: { collapseTree?: boolean }) {
 		const partner = current();
 		if (!partner) return;
 		options.onOpen?.();
 		seq += 1;
 		const reveal: RevealTarget = { path, seq, ...(range ? { range } : {}) };
-		store.setState((state) => ({ reveal, panels: { ...state.panels, [partner]: "explorer" } }));
+		if (opts?.collapseTree) localStorage.setItem(LIST_OPEN_KEY, "0");
+		store.setState((state) => ({ reveal, panels: { ...state.panels, [partner]: "explorer" }, ...(opts?.collapseTree ? { listOpen: false } : {}) }));
 	}
 
 	return {

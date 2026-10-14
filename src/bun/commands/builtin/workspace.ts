@@ -1,12 +1,5 @@
-import { homedir } from "node:os";
-import { join } from "node:path";
+import { expandHome } from "../../lib/home";
 import type { CommandDefinition } from "../types";
-
-function expandHome(path: string): string {
-	if (path === "~") return homedir();
-	if (path.startsWith("~/")) return join(homedir(), path.slice(2));
-	return path;
-}
 
 export const command: CommandDefinition = {
 	name: "workspace",

@@ -1,15 +1,34 @@
-import { ArrowUpFromLine, ChevronDown, ChevronRight, Copy, CopyPlus, Files, GitFork, Info, MoreVertical, PanelLeftClose, Search, Settings, SquarePen, Trash2 } from "lucide-react";
+import {
+	ArrowUpFromLine,
+	ChevronDown,
+	ChevronRight,
+	Copy,
+	CopyPlus,
+	Files,
+	FolderOpen,
+	FolderTree,
+	GitFork,
+	Info,
+	MoreVertical,
+	PanelLeftClose,
+	Search,
+	Settings,
+	SquarePen,
+	Trash2,
+} from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import miluMark from "../../../assets/milu.png";
 import { registerSurfaceRoot } from "../lib/active-surface";
-import { activityAt, convTime, filterPartners, previewFor } from "../lib/chat-preview";
+import { activityAt, filterPartners, listTime, previewFor } from "../lib/chat-preview";
 import { copyText } from "../lib/clipboard";
+import { formatWorkspacePath } from "../lib/composer-input";
 import { useAgentStatus } from "../lib/contexts/agent-status-context";
 import { ESCAPE_ORDER, useEscapeLayer } from "../lib/escape";
 import { useFindHandler } from "../lib/find";
 import { imeGuard } from "../lib/ime";
 import { Show } from "../lib/jsx";
+import { useScrollEdges } from "../lib/scroll-edges";
 import type { PartnerItem } from "../lib/session";
 import { SURFACE } from "../lib/surfaces";
 import { isInteractive } from "../lib/utils";
@@ -48,6 +67,48 @@ function DeleteMenuItem(props: { onSelect: () => void }) {
 	);
 }
 
+/** A row's workspace label: the repo's name (a linked worktree says so with its icon), or the path when it is not a repo. */
+function workspaceLabel(partner: PartnerItem): string {
+	if (partner.workspace && (partner.workspaceKind === "worktree" || partner.workspaceKind === "repo") && partner.workspaceRepo) return partner.workspaceRepo;
+	return formatWorkspacePath(partner.workspace ?? "", 30);
+}
+
+/** One place a row sends a folder. The entries are whatever this machine actually has — the list is
+ *  probed once at startup, so the menu never offers an app that isn't installed. */
+export interface OpenTargets {
+	editors: { id: string; name: string }[];
+	finder: boolean;
+}
+
+function OpenSub(props: { label: string; path: string | null; targets: OpenTargets; onOpenPath: (path: string, editorId?: string, via?: "default" | "finder") => void }) {
+	if (!props.path) return null;
+	const path = props.path;
+	const open = (via?: "default" | "finder", editorId?: string) => props.onOpenPath(path, editorId, via);
+	return (
+		<DropdownMenuSub>
+			<DropdownMenuSubTrigger className="px-2 py-1 text-[14px] gap-1.5 text-ink hover:bg-ink/10 focus:bg-ink/10 data-[highlighted]:bg-ink/10">
+				<FolderOpen size={13} className="text-muted" />
+				<span>{props.label}</span>
+			</DropdownMenuSubTrigger>
+			<DropdownMenuSubContent className="min-w-44 p-1">
+				<DropdownMenuItem className={MENU_ITEM_CLASS} onSelect={() => open("default")}>
+					<span>Open with default</span>
+				</DropdownMenuItem>
+				{props.targets.finder && (
+					<DropdownMenuItem className={MENU_ITEM_CLASS} onSelect={() => open("finder")}>
+						<span>Open with Finder</span>
+					</DropdownMenuItem>
+				)}
+				{props.targets.editors.map((editor) => (
+					<DropdownMenuItem className={MENU_ITEM_CLASS} key={editor.id} onSelect={() => open(undefined, editor.id)}>
+						<span>Open with {editor.name}</span>
+					</DropdownMenuItem>
+				))}
+			</DropdownMenuSubContent>
+		</DropdownMenuSub>
+	);
+}
+
 function ChatRow(props: {
 	partner: PartnerItem;
 	selected: boolean;
@@ -63,6 +124,8 @@ function ChatRow(props: {
 	onFork: () => void;
 	onPromote: () => void;
 	onDelete: () => void;
+	onOpenPath: (path: string, editorId?: string, via?: "default" | "finder") => void;
+	openTargets: OpenTargets;
 }) {
 	const { partner } = props;
 	const isFork = partner.forkedFrom !== undefined;
@@ -104,7 +167,7 @@ function ChatRow(props: {
 							</Tip>
 						)}
 					</span>
-					<span className="conv-time">{convTime(activityAt(partner))}</span>
+					<span className="conv-time">{listTime(activityAt(partner))}</span>
 				</span>
 				<span className="conv-preview">
 					<span className="conv-preview-main">
@@ -124,6 +187,14 @@ function ChatRow(props: {
 						</Tip>
 					</Show>
 				</span>
+				<Show when={partner.workspace}>
+					<Tip label={partner.workspace ?? ""}>
+						<span className="conv-ws">
+							{partner.workspaceKind === "worktree" && <FolderTree size={10} />}
+							<span className="truncate">{workspaceLabel(partner)}</span>
+						</span>
+					</Tip>
+				</Show>
 			</span>
 			<DropdownMenu
 				open={openMenu}
@@ -172,8 +243,17 @@ function ChatRow(props: {
 					<DropdownMenuSeparator className="my-0.5" />
 					<DropdownMenuItem className={MENU_ITEM_CLASS} onSelect={() => copyText(partner.path)}>
 						<Copy size={13} className="text-muted" />
-						<span>Copy Path</span>
+						<span>Copy directory path</span>
 					</DropdownMenuItem>
+					{partner.workspace && (
+						<DropdownMenuItem className={MENU_ITEM_CLASS} onSelect={() => copyText(partner.workspace ?? "")}>
+							<Copy size={13} className="text-muted" />
+							<span>Copy workspace path</span>
+						</DropdownMenuItem>
+					)}
+					<DropdownMenuSeparator className="my-0.5" />
+					<OpenSub label="Open workspace" path={partner.workspace ?? null} targets={props.openTargets} onOpenPath={props.onOpenPath} />
+					<OpenSub label="Open storage" path={partner.storage ?? null} targets={props.openTargets} onOpenPath={props.onOpenPath} />
 					<DropdownMenuSeparator className="my-0.5" />
 					<DeleteMenuItem onSelect={props.onDelete} />
 				</DropdownMenuContent>
@@ -196,6 +276,8 @@ export function AppSidebar(props: {
 	onPromote: (name: string) => void;
 	onToggleList: () => void;
 	onOpenSettings: () => void;
+	onOpenPath: (path: string, editorId?: string, via?: "default" | "finder") => void;
+	openTargets: OpenTargets;
 }) {
 	const status = useAgentStatus();
 	const writing = useStore(status.store, (state) => state.writing);
@@ -205,6 +287,7 @@ export function AppSidebar(props: {
 	const [searchOpen, setSearchOpen] = useState(false);
 	const [searchTip, setSearchTip] = useState(false);
 	const searchRef = useRef<HTMLInputElement>(null);
+	const listEdges = useScrollEdges([props.partners, query, expanded, props.loading]);
 	const attachRoot = useCallback((element: HTMLElement | null) => {
 		if (!element) return;
 		return registerSurfaceRoot(element, SURFACE.chatList);
@@ -367,7 +450,7 @@ export function AppSidebar(props: {
 					</div>
 				)}
 
-				<div className="conv-rows">
+				<div className={"conv-rows" + (listEdges.above ? " has-above" : "") + (listEdges.below ? " has-below" : "")} ref={listEdges.ref}>
 					{props.partners.length === 0 && props.loading
 						? Array.from({ length: SKELETON_ROWS }, (_, index) => (
 								<div className="conv-skeleton" key={index} aria-busy="true">
@@ -397,6 +480,8 @@ export function AppSidebar(props: {
 											onFork={() => props.onFork(root.name)}
 											onPromote={() => props.onPromote(root.name)}
 											onDelete={() => setConfirmDelete(root.name)}
+											onOpenPath={props.onOpenPath}
+											openTargets={props.openTargets}
 										/>
 										{isExpanded &&
 											leaves.map((leaf) => (
@@ -413,6 +498,8 @@ export function AppSidebar(props: {
 													onFork={() => props.onFork(leaf.name)}
 													onPromote={() => props.onPromote(leaf.name)}
 													onDelete={() => setConfirmDelete(leaf.name)}
+													onOpenPath={props.onOpenPath}
+													openTargets={props.openTargets}
 												/>
 											))}
 									</Fragment>

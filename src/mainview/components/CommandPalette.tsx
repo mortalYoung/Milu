@@ -169,9 +169,11 @@ export function CommandPalette(props: {
 			if (!row.grant.alwaysOn && props.partner) void toggleGrant(row.grant, props.partner);
 			return;
 		}
+		// The range has to be read while the query is still there: closing clears it.
+		const range = row.kind === "file" ? parseFileQuery(palette.store.getState().query).range : null;
 		palette.close();
 		if (row.kind === "session") props.onSelectPartner(row.partner.name);
-		else props.onRevealFile(row.file.path, parseFileQuery(palette.store.getState().query).range);
+		else props.onRevealFile(row.file.path, range);
 	};
 
 	function onKeyDown(event: React.KeyboardEvent<HTMLInputElement>) {
