@@ -875,11 +875,15 @@
 	/* 行宽不够时名字不再居中绝对定位 —— 右边那排工具（~199px）会压到它 */
 	@container (max-width: 699px) {
 		.chat-bar-name {
-			position: static;
+			position: relative;
 			transform: none;
 			flex: 1 1 auto;
 			min-width: 0;
 			max-width: none;
+		}
+		/* 窄条上名字不再居中，药丸就跟着名字走（不挂在 100% 处） */
+		.chat-bar-name .chat-bar-sched {
+			@apply static translate-y-0;
 		}
 	}
 	/* no sidebar: the pane's bar starts at the window edge, so it lets the lights keep the corner */
@@ -901,11 +905,63 @@
 		@apply flex min-w-0 items-center gap-2;
 	}
 	.chat-bar-name {
-		@apply absolute left-1/2 top-1/2 flex min-w-0 max-w-[46%] -translate-x-1/2 -translate-y-1/2 cursor-pointer items-center font-mono text-[13px] leading-none text-ink-soft;
+		@apply absolute left-1/2 top-1/2 flex min-w-0 max-w-[46%] -translate-x-1/2 -translate-y-1/2 items-center;
 	}
-	.chat-bar-name > span {
+	/* 名字仍然居中：药丸绝对挂在名字右边，不参与居中，所以有/没有它都不动名字 */
+	.chat-bar-name:has(.chat-bar-sched) {
+		@apply max-w-[38%];
+	}
+	.chat-bar-name-text {
+		@apply flex min-w-0 cursor-pointer items-center font-mono text-[13px] leading-none text-ink-soft;
+	}
+	.chat-bar-name-text > span {
 		@apply truncate;
 	}
+	/* 有定时任务时，名字右边挂一枚“几个、下一次什么时候”的小药丸 */
+	.chat-bar-sched {
+		@apply absolute left-full top-1/2 ml-1.5 flex h-[18px] -translate-y-1/2 items-center gap-1 rounded-full border border-line px-1.5 font-mono text-[10px] leading-none text-muted;
+	}
+	.chat-bar-sched:hover {
+		@apply border-line-strong text-ink;
+	}
+	/* 名字右边那枚药丸弹出来的快捷视图：只看不管理，管理仍然在详情里 */
+	.sched-pop {
+		@apply flex w-[330px] max-w-[80vw] flex-col;
+	}
+	.sched-pop-head {
+		@apply flex items-baseline gap-2 border-b border-line px-3 py-2;
+	}
+	.sched-pop-eyebrow {
+		@apply font-sans text-[11px] font-semibold uppercase tracking-[0.12em] text-muted;
+	}
+	.sched-pop-summary {
+		@apply min-w-0 flex-1 truncate text-right font-mono text-[10.5px] text-muted-soft;
+	}
+	.sched-pop-rows {
+		@apply flex max-h-[300px] flex-col overflow-y-auto;
+	}
+	.sched-pop-row {
+		@apply flex flex-col gap-[3px] border-b border-line-soft px-3 py-2 last:border-b-0;
+	}
+	.sched-pop-clock {
+		@apply font-mono text-[10px] uppercase tracking-[0.08em] text-muted;
+	}
+	.sched-pop-title {
+		@apply truncate font-sans text-[12px] text-ink;
+	}
+	.sched-pop-facts {
+		@apply truncate font-mono text-[10.5px] text-muted;
+	}
+	.sched-pop-facts.is-failed {
+		@apply text-signal;
+	}
+	.sched-pop-facts.is-missed {
+		@apply text-accent-amber;
+	}
+	.sched-pop-more {
+		@apply border-t border-line px-3 py-1.5 text-left font-sans text-[11px] text-muted hover:bg-hover hover:text-ink;
+	}
+
 	.chat-bar-tools {
 		@apply flex shrink-0 items-center gap-1;
 	}
@@ -1093,6 +1149,100 @@
 	}
 	/* 卡片内整宽的展开头 / 行：focus 圈必须内嵌，外扩的 ring 会溢到卡片边框之外，看起来像"外框变红" */
 	.card-head:focus-visible,
+	/* ——— scheduled tasks · the axis (see docs/2026-10-13-scheduled-tasks-plan.md §5.6) ——— */
+	.sch-axis {
+		@apply flex flex-col gap-2;
+	}
+	.sch-group {
+		@apply flex flex-col;
+	}
+	.sch-day {
+		@apply flex items-baseline justify-between gap-2 pb-1 font-mono text-[10px] tracking-[0.1em] text-muted;
+	}
+	.sch-slot {
+		@apply grid grid-cols-[44px_10px_minmax(0,1fr)] items-start;
+	}
+	.sch-at {
+		@apply pr-1.5 pt-[7px] text-right font-mono text-[11px] tabular-nums text-ink-soft;
+	}
+	.sch-spine {
+		@apply relative self-stretch;
+	}
+	.sch-spine::before {
+		content: "";
+		@apply absolute bottom-0 left-[4px] top-0 w-px bg-line;
+	}
+	.sch-spine i {
+		@apply absolute left-[0.5px] top-[10px] block size-2 rounded-full border-[1.5px] border-muted-soft bg-surface;
+	}
+	.sch-slot.is-next .sch-spine i {
+		@apply border-ink bg-ink;
+	}
+	.sch-slot.is-fail .sch-spine i {
+		@apply border-signal bg-signal;
+	}
+	.sch-slot.is-miss .sch-spine i {
+		@apply border-accent-amber bg-accent-amber;
+	}
+	.sch-slot.is-span .sch-spine::before {
+		@apply left-[3px] w-[3px] rounded-full bg-line-strong;
+	}
+	.sch-slot.is-span .sch-spine i {
+		@apply hidden;
+	}
+	.sch-body {
+		@apply relative flex min-w-0 flex-col pb-2 pl-2;
+	}
+	.sch-row {
+		@apply flex min-w-0 flex-col gap-[3px] pr-14 text-left;
+	}
+	.sch-title {
+		@apply truncate font-sans text-[12px] text-ink;
+	}
+	.sch-facts {
+		@apply truncate font-mono text-[11px] text-muted;
+	}
+	.sch-actions {
+		@apply absolute right-0 top-0 flex gap-1 opacity-60 transition-opacity;
+	}
+	.sch-slot:hover .sch-actions,
+	.sch-slot:focus-within .sch-actions {
+		@apply opacity-100;
+	}
+	.sch-icon {
+		@apply flex size-[22px] shrink-0 items-center justify-center rounded-[5px] border border-line bg-transparent text-ink-soft hover:bg-hover hover:text-ink;
+	}
+	.sch-detail {
+		@apply mt-2 flex flex-col gap-1.5 rounded-[6px] border border-line-soft bg-canvas p-2;
+	}
+	.sch-prompt {
+		@apply font-sans text-[12px] leading-[1.6] text-ink;
+	}
+	.sch-meta {
+		@apply flex items-baseline gap-1.5 font-mono text-[11px] text-muted;
+	}
+	.sch-runs {
+		@apply flex flex-col gap-0.5 border-t border-line-soft pt-1.5;
+	}
+	.sch-runs li {
+		@apply flex items-baseline gap-2 font-mono text-[11px];
+	}
+	.sch-confirm {
+		@apply flex items-center gap-2 border-t border-line-soft pt-2 font-sans text-[12px] text-ink;
+	}
+	.sch-folded {
+		@apply pb-1 pl-[54px] font-mono text-[10px] text-muted-soft;
+	}
+	.sch-now {
+		@apply grid grid-cols-[44px_minmax(0,1fr)] items-center;
+	}
+	.sch-now .sch-at {
+		@apply pt-0 font-semibold text-ink;
+	}
+	.sch-now-line {
+		@apply h-px bg-ink/35;
+	}
+
 	.memory-row:focus-visible {
 		outline: 2px solid var(--color-ink);
 		outline-offset: -2px;
@@ -1248,6 +1398,39 @@
 		width: fit-content;
 		overflow-wrap: anywhere;
 	}
+	/* ——— a prompt a schedule sent: the bubble keeps its origin on the same row ——— */
+	.msg-origin {
+		@apply ml-auto flex w-fit max-w-[74%] items-baseline gap-1.5 pb-1 pl-2 font-mono text-[10px] text-muted;
+	}
+	.msg-origin-badge {
+		@apply shrink-0 rounded-[4px] border border-line px-1 py-[1px] uppercase tracking-[0.06em];
+	}
+	.msg-origin-title {
+		@apply min-w-0 truncate;
+	}
+	.msg-origin-when {
+		@apply shrink-0 text-muted-soft;
+	}
+	.msg-origin-status {
+		@apply shrink-0;
+	}
+	.msg-origin-status.is-done {
+		@apply text-ink-soft;
+	}
+	.msg-origin-status.is-failed {
+		@apply text-signal;
+	}
+	.msg-origin-status.is-missed {
+		@apply text-accent-amber;
+	}
+	.msg-origin-status.is-dispatched,
+	.msg-origin-status.is-skipped {
+		@apply text-muted-soft;
+	}
+	.msg-origin-error {
+		@apply min-w-0 truncate text-signal;
+	}
+
 	.msg-user-edit-link {
 		@apply flex size-5 items-center justify-center rounded-[4px] text-muted opacity-0 transition-opacity group-hover:opacity-100 hover:bg-selected hover:text-ink focus-visible:opacity-100;
 	}

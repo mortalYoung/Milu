@@ -35,6 +35,7 @@ export const EVENTS = {
 	shellDone: "shell/done",
 	taskStart: "task/start",
 	taskEnd: "task/end",
+	scheduleRun: "schedule/run",
 	retryScheduled: "retry/scheduled",
 	retryStarted: "retry/started",
 } as const;
@@ -132,6 +133,21 @@ export interface TaskEndEventData {
 	status: TaskStatus;
 	exitCode?: number;
 	signalCode?: string;
+}
+
+export type ScheduleRunTrigger = "schedule" | "manual" | "catchup";
+
+export type ScheduleRunEventStatus = "dispatched" | "done" | "failed" | "skipped" | "missed";
+
+/** One fire of a scheduled task, as it appears in the conversation it set off. */
+export interface ScheduleRunEventData {
+	runId: string;
+	scheduleId: string;
+	scheduleTitle: string;
+	scheduledAt: number;
+	trigger: ScheduleRunTrigger;
+	status: ScheduleRunEventStatus;
+	error?: string;
 }
 
 export interface SkillDigestItem {

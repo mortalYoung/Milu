@@ -50,6 +50,7 @@ export function FollowUpDock() {
 										}}
 									>
 										<p className="followup-dock-text">{item.content}</p>
+										{item.source === "schedule" && <span className="followup-dock-task">scheduled</span>}
 										{item.failed && <span className="followup-dock-fail">failed</span>}
 										<span className="followup-dock-time">{clock(item.timestamp)}</span>
 									</button>

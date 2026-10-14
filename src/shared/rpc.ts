@@ -73,13 +73,41 @@ export interface CommandHistoryItem {
 	text?: string;
 }
 
+export interface ScheduleItem {
+	id: string;
+	title: string;
+	display: string;
+	kind: "once" | "interval" | "cron";
+	describe: string;
+	text: string;
+	nextRunAt: number | null;
+	retryAt: number | null;
+	status: "active" | "paused" | "finished";
+	running: boolean;
+	runCount: number;
+	lastError: string | null;
+	createdAt: number;
+}
+
+export interface ScheduleRunItem {
+	runId: string;
+	scheduleId: string;
+	scheduledAt: number;
+	dispatchedAt: number | null;
+	trigger: "schedule" | "manual" | "catchup";
+	status: "dispatched" | "done" | "failed" | "skipped" | "missed";
+	error?: string;
+	attempts: number;
+}
+
 export interface QueuedMessageRpc {
 	id: string;
 	content: string;
 	timestamp: number;
 	failed?: boolean;
-	source?: "user" | "task" | "peer";
+	source?: "user" | "task" | "peer" | "schedule";
 	taskId?: string;
+	scheduleId?: string;
 	peer?: string;
 	requestId?: string;
 	hop?: number;
@@ -135,7 +163,22 @@ export interface ViewItem {
 	};
 	command?: CommandHistoryItem;
 	skill?: CommandHistoryItem;
+	/** Set on a message a schedule sent: the row shows where it came from, not just what it said. */
+	schedule?: ScheduleOrigin;
 	files?: string[];
+}
+
+export type ScheduleTrigger = "schedule" | "manual" | "catchup";
+
+export type ScheduleRunStatus = "dispatched" | "done" | "failed" | "skipped" | "missed";
+
+export interface ScheduleOrigin {
+	scheduleId: string;
+	title: string;
+	runId?: string;
+	trigger?: ScheduleTrigger;
+	status?: ScheduleRunStatus;
+	error?: string;
 }
 
 export interface SkillDescriptor {
@@ -730,6 +773,31 @@ export type AppRPCSchema = __schema<{
 				response: { overview: MemoryOverview | null };
 			};
 
+			schedule_list: {
+				params: { name: string };
+				response: { items: ScheduleItem[]; history: ScheduleRunItem[] };
+			};
+
+			schedule_create: {
+				params: { name: string; when: string; text: string; title?: string };
+				response: { ok: boolean; id?: string; describe?: string; error?: string };
+			};
+
+			schedule_update: {
+				params: { name: string; id: string; patch: { enabled?: boolean; text?: string; when?: string; title?: string } };
+				response: { ok: boolean; describe?: string; error?: string };
+			};
+
+			schedule_run: {
+				params: { name: string; id: string };
+				response: { ok: boolean; error?: string };
+			};
+
+			schedule_delete: {
+				params: { name: string; id: string };
+				response: { ok: boolean };
+			};
+
 			dashboard_overview: {
 				params: { days?: number };
 				response: { overview: DashboardOverview };
@@ -1126,6 +1194,8 @@ export type AppRPCSchema = __schema<{
 			file_changed: { path: string };
 
 			sandbox_mode_update: {};
+
+			schedule_update: { partner: string };
 
 			escalation_update: { partner?: string; escalationId?: string; command?: string; from?: SandboxMode; to?: SandboxMode; resolved?: boolean };
 

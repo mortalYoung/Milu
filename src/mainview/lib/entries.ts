@@ -22,6 +22,15 @@ export interface CommandInfo {
 	status: "running" | "success" | "error" | "interrupted";
 }
 
+export interface ScheduleOriginInfo {
+	scheduleId: string;
+	title: string;
+	runId?: string;
+	trigger?: "schedule" | "manual" | "catchup";
+	status?: "dispatched" | "done" | "failed" | "skipped" | "missed";
+	error?: string;
+}
+
 export interface Entry {
 	id: number;
 	kind: "user" | "agent" | "sys" | "sep" | "escalation" | "command" | "skill" | "shell" | "reply";
@@ -38,6 +47,8 @@ export interface Entry {
 	escalation?: EscalationInfo;
 	command?: CommandInfo;
 	skill?: CommandInfo;
+	/** Set on a prompt a schedule sent: the row shows where it came from. */
+	schedule?: ScheduleOriginInfo;
 	files?: string[];
 	/** What the model thought before it spoke — a row of its own, closed until asked. */
 	thinking?: { text: string; redacted?: boolean };
@@ -56,8 +67,8 @@ const pad = (n: number) => String(n).padStart(2, "0");
 
 const fmtDateTime = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 
-export function makeUserEntry(text: string, time = Date.now(), from?: string): Entry {
-	return { id: nextId++, kind: "user", text, time: fmtDateTime(new Date(time)), ...(from ? { from } : {}) };
+export function makeUserEntry(text: string, time = Date.now(), from?: string, schedule?: ScheduleOriginInfo): Entry {
+	return { id: nextId++, kind: "user", text, time: fmtDateTime(new Date(time)), ...(from ? { from } : {}), ...(schedule ? { schedule } : {}) };
 }
 
 export function makeReplyEntry(item: { text: string; time: number; from: string; requestId?: string }): Entry {

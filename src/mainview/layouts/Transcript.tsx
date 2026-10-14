@@ -643,6 +643,17 @@ export function Transcript(props: {
 							const isEditing = editingUserKey === key;
 							return (
 								<div className="msg-block msg-block-user group" data-chat-anchor-key={key}>
+									{entry.schedule ? (
+										<div className="msg-origin">
+											<span className="msg-origin-badge">scheduled</span>
+											<span className="msg-origin-title">{entry.schedule.title}</span>
+											<span className="msg-origin-when">{entry.schedule.trigger === "manual" ? "manual" : "on time"}</span>
+											{entry.schedule.status ? (
+												<span className={"msg-origin-status is-" + entry.schedule.status}>{entry.schedule.status === "done" ? "ok" : entry.schedule.status}</span>
+											) : null}
+											{entry.schedule.error ? <span className="msg-origin-error">{entry.schedule.error}</span> : null}
+										</div>
+									) : null}
 									<div
 										className={"msg-user" + (isEditing ? " editing" : "") + (locateFlashId === entry.id ? " locate-flash" : "")}
 										id={"entry-" + entry.id}

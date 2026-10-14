@@ -1,6 +1,6 @@
 import type { AgentMessage, Entry } from "@earendil-works/pi-agent-core";
 import type { ToolResultMessage } from "@earendil-works/pi-ai";
-import { type CompactionEventData, contextChangedText, EVENTS, instructionsChangedText, mcpChangedText, type RewindEventData } from "./events";
+import { type CompactionEventData, contextChangedText, EVENTS, instructionsChangedText, mcpChangedText, type RewindEventData, type ScheduleRunEventData } from "./events";
 import { attachMentionFiles } from "./file-mentions";
 import { contentText, eventNumber, type RawUsage, toTrajectoryUsage } from "./record";
 import type { EntryPayload, SandboxMode, TrajectoryBlock, TrajectoryRecord, TrajectoryUsage, ViewItem } from "./rpc";
@@ -95,7 +95,15 @@ function findLast(out: ViewItem[], predicate: (item: ViewItem) => boolean): View
 function userVisit(entry: Entry, out: ViewItem[]): void {
 	if (entry.type !== "message" || entry.message.role !== "user") return;
 	const content = entry.message.content;
-	const meta = entry.message as { skill?: unknown; from?: unknown; peerKind?: unknown; requestId?: unknown };
+	const meta = entry.message as {
+		skill?: unknown;
+		from?: unknown;
+		peerKind?: unknown;
+		requestId?: unknown;
+		scheduleId?: unknown;
+		scheduleRunId?: unknown;
+		scheduleTitle?: unknown;
+	};
 	const text = typeof content === "string" ? content : "";
 	out.push({
 		...row(entry.id, "user", text, entry.message.timestamp ?? entry.timestamp ?? 0),
@@ -103,6 +111,15 @@ function userVisit(entry: Entry, out: ViewItem[]): void {
 		...(typeof meta.from === "string" ? { from: meta.from } : {}),
 		...(meta.peerKind === "ask" || meta.peerKind === "reply" ? { peerKind: meta.peerKind } : {}),
 		...(typeof meta.requestId === "string" ? { requestId: meta.requestId } : {}),
+		...(typeof meta.scheduleId === "string"
+			? {
+					schedule: {
+						scheduleId: meta.scheduleId,
+						title: typeof meta.scheduleTitle === "string" ? meta.scheduleTitle : meta.scheduleId,
+						...(typeof meta.scheduleRunId === "string" ? { runId: meta.scheduleRunId } : {}),
+					},
+				}
+			: {}),
 	});
 }
 
@@ -350,6 +367,25 @@ function shellDoneVisit(entry: Entry, out: ViewItem[]): void {
 	if (item?.kind !== "shell" || !item.command) return;
 	item.command.status = data.kind === "error" ? "error" : "success";
 	if (typeof data.text === "string") item.command.text = data.text;
+}
+
+function scheduleRunVisit(entry: Entry, out: ViewItem[]): void {
+	if (entry.type !== "custom") return;
+	const data = entry.data as Partial<ScheduleRunEventData> | undefined;
+	if (data?.scheduleId == null) return;
+	const runId = typeof data.runId === "string" ? data.runId : "";
+	const item = findLast(
+		out,
+		(row) => row.kind === "user" && Boolean(row.schedule) && (runId ? row.schedule?.runId === runId : row.schedule?.scheduleId === String(data.scheduleId)),
+	);
+	if (!item?.schedule) return;
+	const status = data.status ?? "dispatched";
+	item.schedule.status = status;
+	if (typeof data.runId === "string") item.schedule.runId = data.runId;
+	if (data.trigger) item.schedule.trigger = data.trigger;
+	if (typeof data.scheduleTitle === "string" && data.scheduleTitle) item.schedule.title = data.scheduleTitle;
+	if (typeof data.error === "string" && data.error) item.schedule.error = data.error;
+	else delete item.schedule.error;
 }
 
 function rewindVisit(entry: Entry, out: ViewItem[]): void {
@@ -969,6 +1005,7 @@ export const EVENT_META: Record<string, EntryMeta> = {
 	[EVENTS.skillDone]: { view: { visit: skillDoneVisit }, ...dataNode("skill", { chip: "SKILL", caption: (record) => recordText(record, "data.kind") }) },
 	[EVENTS.shellRun]: { view: { visit: shellVisit }, ...dataNode("custom", { chip: "SHLL", caption: (record) => firstLine(recordText(record, "data.command")) }) },
 	[EVENTS.shellDone]: { view: { visit: shellDoneVisit }, ...dataNode("custom", { chip: "SHLL", caption: (record) => recordText(record, "data.kind") }) },
+	[EVENTS.scheduleRun]: { view: { visit: scheduleRunVisit }, ...dataNode("custom", { chip: "SCHED", caption: (record) => recordText(record, "data.scheduleTitle") }) },
 	[EVENTS.memoryRunStart]: dataNode("custom", { chip: "MEM", caption: (record) => recordText(record, "data.stage") }),
 	[EVENTS.memoryRunEnd]: dataNode("custom", { chip: "MEM", caption: (record) => recordText(record, "data.reason") }),
 	[EVENTS.memoryContext]: { context: { visit: memoryContextVisit }, slice: { as: (record) => asProjected(record, memoryContextProject) }, ...dataNode("custom", { chip: "MEM" }) },

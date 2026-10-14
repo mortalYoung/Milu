@@ -31,6 +31,7 @@ import {
 	type RetryScheduledEventData,
 	type RetryStartedEventData,
 	type RewindEventData,
+	type ScheduleRunEventData,
 	type ShellDoneEventData,
 	type ShellRunEventData,
 	type SkillDoneEventData,
@@ -81,7 +82,11 @@ export interface AssistantMeta {
 }
 
 export interface SessionScope {
-	appendUser(content: string, timestamp: number, meta?: { skill?: string; from?: string; peerKind?: "ask" | "reply"; requestId?: string; hop?: number }): Promise<void>;
+	appendUser(
+		content: string,
+		timestamp: number,
+		meta?: { skill?: string; from?: string; peerKind?: "ask" | "reply"; requestId?: string; hop?: number; scheduleId?: string; scheduleRunId?: string; scheduleTitle?: string },
+	): Promise<void>;
 	appendAssistant(meta: AssistantMeta, timestamp: number): Promise<void>;
 	appendSendMessage(content: string, details: Record<string, unknown>, timestamp: number): Promise<void>;
 	appendSystemPrompt(text: string, timestamp: number): Promise<void>;
@@ -111,6 +116,7 @@ export interface SessionScope {
 	appendShellDone(details: ShellDoneEventData, timestamp: number): Promise<void>;
 	appendTaskStart(details: TaskStartEventData, timestamp: number): Promise<void>;
 	appendTaskEnd(details: TaskEndEventData, timestamp: number): Promise<void>;
+	appendScheduleRun(details: ScheduleRunEventData, timestamp: number): Promise<void>;
 	appendRetryScheduled(details: RetryScheduledEventData, timestamp: number): Promise<void>;
 	appendRetryStarted(details: RetryStartedEventData, timestamp: number): Promise<void>;
 	appendCompactionSummary(text: string, timestamp: number): Promise<string>;
@@ -229,6 +235,9 @@ export function createSessionStore(): SessionStore {
 					...(meta?.peerKind ? { peerKind: meta.peerKind } : {}),
 					...(meta?.requestId ? { requestId: meta.requestId } : {}),
 					...(meta?.hop !== undefined ? { hop: meta.hop } : {}),
+					...(meta?.scheduleId ? { scheduleId: meta.scheduleId } : {}),
+					...(meta?.scheduleRunId ? { scheduleRunId: meta.scheduleRunId } : {}),
+					...(meta?.scheduleTitle ? { scheduleTitle: meta.scheduleTitle } : {}),
 				});
 			},
 			async appendAssistant(meta, timestamp) {
@@ -361,6 +370,9 @@ export function createSessionStore(): SessionStore {
 			},
 			async appendTaskEnd(details, timestamp) {
 				await appendCustom(dir, EVENTS.taskEnd, { ...details, timestamp });
+			},
+			async appendScheduleRun(details, timestamp) {
+				await appendCustom(dir, EVENTS.scheduleRun, { ...details, timestamp });
 			},
 			async appendRetryScheduled(details, timestamp) {
 				await appendCustom(dir, EVENTS.retryScheduled, { ...details, timestamp });

@@ -22,6 +22,7 @@ export interface ToolDeps {
 	mcp?: McpAccess;
 	peer?: PeerAccess;
 	tasks?: TaskAccess;
+	schedules?: ScheduleAccess;
 	lastFailedBash?: () => { command: string; turn: number; at: number }[];
 }
 
@@ -30,6 +31,22 @@ export interface TaskAccess {
 	read(id: string, options?: { lines?: number; before?: number }): Promise<TaskReadResult>;
 	subscribe(id: string, remindAfter?: number): Promise<TaskSubscribeResult | TaskFailure>;
 	stop(id: string, by: "model" | "user"): Promise<{ ok: boolean; error?: string }>;
+}
+
+export interface ScheduleSummary {
+	id: string;
+	title: string;
+	describe: string;
+	status: string;
+	nextRunAt: number | null;
+	runCount: number;
+	lastError: string | null;
+	prompt: string;
+}
+
+export interface ScheduleAccess {
+	list(): Promise<ScheduleSummary[]>;
+	create(input: { when: string; text: string; title?: string }): Promise<{ ok: true; schedule: ScheduleSummary } | { ok: false; error: string }>;
 }
 
 export interface McpToolSummary {
@@ -538,6 +555,71 @@ const taskSchema = Type.Object({
 
 type TaskDetails = { ok: boolean };
 
+const scheduleSchema = Type.Object({
+	op: Type.Union([Type.Literal("list"), Type.Literal("create")], {
+		description: 'What to do: "list" the schedules on this chat, or "create" a new one.',
+	}),
+	when: Type.Optional(
+		Type.String({
+			description:
+				'create: the clock, as a 5-field cron expression in local time — minute hour day-of-month month day-of-week. Examples: "30 10 * * *" (every day at 10:30), "*/15 * * * *" (every 15 minutes), "30 17 * * 5" (Fridays 17:30). A cron clock repeats: there is no one-shot form, and anything faster than every 15 minutes is refused.',
+		}),
+	),
+	text: Type.Optional(Type.String({ description: "create: what this chat should do when it fires, written as the message it will receive." })),
+	title: Type.Optional(Type.String({ description: "create: a short label a human will read in the schedule list. Defaults to the clock itself." })),
+});
+
+type ScheduleDetails = { ok: boolean };
+
+const clockOf = (at: number | null): string => {
+	if (at == null) return "not scheduled";
+	const date = new Date(at);
+	const pad = (value: number) => String(value).padStart(2, "0");
+	return `${date.getMonth() + 1}/${date.getDate()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+
+function scheduleLine(item: ScheduleSummary): string {
+	const head = `- ${item.id} · ${item.describe} · ${item.status} · next ${clockOf(item.nextRunAt)} · ${item.runCount} runs`;
+	const tail = [item.title, item.prompt.length > 120 ? `${item.prompt.slice(0, 120)}…` : item.prompt].filter(Boolean).join(" — ");
+	const error = item.lastError ? `\n  last error: ${item.lastError}` : "";
+	return `${head}\n  ${tail}${error}`;
+}
+
+function scheduleTool(deps: ToolDeps): AgentTool<typeof scheduleSchema, ScheduleDetails> {
+	return {
+		name: "schedule",
+		label: "Schedule",
+		description:
+			"Put work on a clock for this chat, or see what is already on it.\n" +
+			"- list: every schedule on this chat, with its next run and last result.\n" +
+			"- create: one new schedule. It runs as a message to this chat, in this workspace, with the permission mode in force at that moment.\n" +
+			"Milu only runs while it is open: a fire that comes due while the app is closed is missed, not queued up (a repeating one runs at most once on restart; a fixed-time one is skipped). Anything needing approval while nobody is watching is skipped, not held.\n" +
+			"Ask first when the user has not asked for this themselves.",
+		parameters: scheduleSchema,
+		async execute(_toolCallId, { op, when, text, title }) {
+			if (!deps.schedules) return { content: [{ type: "text", text: "Scheduling is not available in this session." }], details: { ok: false } };
+			if (op === "list") {
+				const items = await deps.schedules.list();
+				if (items.length === 0) return { content: [{ type: "text", text: "No schedules on this chat." }], details: { ok: true } };
+				return {
+					content: [{ type: "text", text: `${items.length} schedule${items.length === 1 ? "" : "s"} on this chat:\n${items.map(scheduleLine).join("\n")}` }],
+					details: { ok: true },
+				};
+			}
+			if (!when || !text) return { content: [{ type: "text", text: "create needs both `when` (a 5-field cron expression) and `text` (what to do)." }], details: { ok: false } };
+			const result = await deps.schedules.create({ when, text, ...(title ? { title } : {}) });
+			if (!result.ok) {
+				const hint = 'Accepted clocks: a 5-field cron expression, e.g. "30 10 * * *" · "*/15 * * * *" · "30 17 * * 5".';
+				return { content: [{ type: "text", text: `Could not create it: ${result.error}\n${hint}` }], details: { ok: false } };
+			}
+			return {
+				content: [{ type: "text", text: `Created ${result.schedule.id} · ${result.schedule.describe} · next ${clockOf(result.schedule.nextRunAt)}.` }],
+				details: { ok: true },
+			};
+		},
+	};
+}
+
 function taskTool(deps: ToolDeps): AgentTool<typeof taskSchema, TaskDetails> {
 	return {
 		name: "task",
@@ -591,6 +673,7 @@ export function createTools(deps: ToolDeps): AgentTool[] {
 		mcpCallTool(deps),
 		rmTool(deps),
 		taskTool(deps),
+		scheduleTool(deps),
 		peerTool(deps),
 	];
 }

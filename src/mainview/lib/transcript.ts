@@ -70,7 +70,10 @@ export function buildView(items: ViewItem[]): Entry[] {
 			const entry = makeReplyEntry({ text: item.text, time: item.time, from: item.from, ...(item.requestId ? { requestId: item.requestId } : {}) });
 			pushItem(entry, item.id);
 		} else {
-			const entry = item.kind === "user" ? makeUserEntry(item.text, item.time, item.from) : makeAgentEntry(item.text, item.time, item.files, item.to, agentExtras(item));
+			const entry =
+				item.kind === "user"
+					? makeUserEntry(item.text, item.time, item.from, item.schedule ? { ...item.schedule } : undefined)
+					: makeAgentEntry(item.text, item.time, item.files, item.to, agentExtras(item));
 			pushItem(entry, item.id);
 		}
 	}

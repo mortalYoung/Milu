@@ -11,7 +11,7 @@ import { Permission, policyFor } from "../permission";
 import type { SessionScope } from "../persist";
 import type { ContextChangedEventData } from "../persist/events";
 import type { SkillsService } from "../skills/types";
-import { createTools, type McpAccess, type PeerAccess, type TaskAccess } from "../tools";
+import { createTools, type McpAccess, type PeerAccess, type ScheduleAccess, type TaskAccess } from "../tools";
 import type { PartnerModel } from "./agent-config";
 import { convertToLlm, resolveModel, STREAM_FN } from "./agent-config";
 import { Context } from "./context";
@@ -35,8 +35,11 @@ export interface QueuedMessage {
 	content: string;
 	timestamp: number;
 	failed?: boolean;
-	source?: "user" | "task" | "peer";
+	source?: "user" | "task" | "peer" | "schedule";
 	taskId?: string;
+	scheduleId?: string;
+	scheduleRunId?: string;
+	scheduleTitle?: string;
 	peer?: string;
 	peerKind?: "ask" | "reply";
 	requestId?: string;
@@ -44,8 +47,11 @@ export interface QueuedMessage {
 }
 
 export interface ChatMeta {
-	source?: "user" | "task" | "peer";
+	source?: "user" | "task" | "peer" | "schedule";
 	taskId?: string;
+	scheduleId?: string;
+	scheduleRunId?: string;
+	scheduleTitle?: string;
 	peer?: string;
 	peerKind?: "ask" | "reply";
 	requestId?: string;
@@ -74,6 +80,8 @@ export interface AgentHandle {
 	chat: (text: string, meta?: ChatMeta) => Promise<ChatOutcome>;
 	waitForIdle: () => Promise<void>;
 	queued: () => QueuedMessage[];
+	/** What started the turn now running — a scheduled fire never has a human to approve for it. */
+	promptSource: () => { source?: QueuedMessage["source"]; scheduleId?: string; scheduleRunId?: string };
 	cancelQueued: (id: string) => boolean;
 	chatAndWait: (text: string, skill?: string) => Promise<{ ok: boolean; error?: string }>;
 	sendMessage: (text: string) => Promise<void>;
@@ -106,6 +114,7 @@ export interface AgentDeps {
 	skills?: SkillsService;
 	mcp?: McpAccess;
 	tasks?: TaskAccess;
+	schedules?: ScheduleAccess;
 	peer?: PeerAccess;
 	onContextOverflow?: () => Promise<boolean>;
 	onBeforeNextTurn?: (signal?: AbortSignal) => Promise<AgentMessage[] | null>;
@@ -252,6 +261,7 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		...(deps.readMemory ? { readMemory: deps.readMemory } : {}),
 		...(deps.mcp ? { mcp: deps.mcp } : {}),
 		...(deps.tasks ? { tasks: deps.tasks } : {}),
+		...(deps.schedules ? { schedules: deps.schedules } : {}),
 		...(deps.peer ? { peer: deps.peer } : {}),
 		lastFailedBash: () => failedBash.filter((failure) => failure.run === run).map(({ command, turn, at }) => ({ command, turn, at })),
 	});
@@ -320,11 +330,21 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			case "message_start": {
 				const claimed = claimQueued(event.message);
 				if (!claimed) break;
+				activeSource = claimed.source;
+				activeScheduleId = claimed.scheduleId;
+				activeScheduleRunId = claimed.scheduleRunId;
 				if (prompting === claimed) prompting = null;
 				if (claimed.source === "peer" && claimed.peerKind === "ask") bridge.onPeerAsk?.(claimed);
-				return persistUser(claimed.content, { timestamp: claimed.timestamp, from: claimed.peer, peerKind: claimed.peerKind, requestId: claimed.requestId, hop: claimed.hop }).then(
-					() => bridge.onQueueChange({ kind: "claimed", id: claimed.id }),
-				);
+				return persistUser(claimed.content, {
+					timestamp: claimed.timestamp,
+					from: claimed.peer,
+					peerKind: claimed.peerKind,
+					requestId: claimed.requestId,
+					hop: claimed.hop,
+					scheduleId: claimed.scheduleId,
+					scheduleRunId: claimed.scheduleRunId,
+					scheduleTitle: claimed.scheduleTitle,
+				}).then(() => bridge.onQueueChange({ kind: "claimed", id: claimed.id }));
 			}
 			case "message_update": {
 				const update = event.assistantMessageEvent;
@@ -444,7 +464,20 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 
 	agent.subscribe(handleEvent);
 
-	async function persistUser(text: string, meta?: { skill?: string; timestamp?: number; from?: string; peerKind?: "ask" | "reply"; requestId?: string; hop?: number }) {
+	async function persistUser(
+		text: string,
+		meta?: {
+			skill?: string;
+			timestamp?: number;
+			from?: string;
+			peerKind?: "ask" | "reply";
+			requestId?: string;
+			hop?: number;
+			scheduleId?: string;
+			scheduleRunId?: string;
+			scheduleTitle?: string;
+		},
+	) {
 		try {
 			await deps.session.appendUser(text, meta?.timestamp ?? Date.now(), {
 				...(meta?.skill ? { skill: meta.skill } : {}),
@@ -452,6 +485,9 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 				...(meta?.peerKind ? { peerKind: meta.peerKind } : {}),
 				...(meta?.requestId ? { requestId: meta.requestId } : {}),
 				...(meta?.hop !== undefined ? { hop: meta.hop } : {}),
+				...(meta?.scheduleId ? { scheduleId: meta.scheduleId } : {}),
+				...(meta?.scheduleRunId ? { scheduleRunId: meta.scheduleRunId } : {}),
+				...(meta?.scheduleTitle ? { scheduleTitle: meta.scheduleTitle } : {}),
 			});
 		} catch (error) {
 			console.error("session appendUser failed:", error);
@@ -491,6 +527,9 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			timestamp: Date.now(),
 			...(meta?.source ? { source: meta.source } : {}),
 			...(meta?.taskId ? { taskId: meta.taskId } : {}),
+			...(meta?.scheduleId ? { scheduleId: meta.scheduleId } : {}),
+			...(meta?.scheduleRunId ? { scheduleRunId: meta.scheduleRunId } : {}),
+			...(meta?.scheduleTitle ? { scheduleTitle: meta.scheduleTitle } : {}),
 			...(meta?.peer ? { peer: meta.peer } : {}),
 			...(meta?.peerKind ? { peerKind: meta.peerKind } : {}),
 			...(meta?.requestId ? { requestId: meta.requestId } : {}),
@@ -555,6 +594,9 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 	let wakeRequested = false;
 	let stopRequested = false;
 	let prompting: QueuedMessage | null = null;
+	let activeSource: QueuedMessage["source"];
+	let activeScheduleId: string | undefined;
+	let activeScheduleRunId: string | undefined;
 	const inbox: QueuedMessage[] = [];
 	let deferredAgentEnd: { message: AssistantMessage; messages: AgentMessage[]; run: number } | null = null;
 
@@ -663,6 +705,9 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 			if (ctx.running && !deferredAgentEnd) ctx.setRunning(false);
 			runSettling = false;
 			bridge.afterRun();
+			activeSource = undefined;
+			activeScheduleId = undefined;
+			activeScheduleRunId = undefined;
 			if (wakeRequested) {
 				wakeRequested = false;
 				wake();
@@ -794,6 +839,13 @@ export function createAgent(bridge: AgentBridge, deps: AgentDeps): AgentHandle {
 		},
 		queued() {
 			return inbox.map((item) => ({ ...item }));
+		},
+		promptSource() {
+			return {
+				...(activeSource ? { source: activeSource } : {}),
+				...(activeScheduleId ? { scheduleId: activeScheduleId } : {}),
+				...(activeScheduleRunId ? { scheduleRunId: activeScheduleRunId } : {}),
+			};
 		},
 		cancelQueued(id: string) {
 			const index = inbox.findIndex((item) => item.id === id);

@@ -11,6 +11,7 @@ import { ActivityHeatmap, HEATMAP_WEEKS } from "./ActivityHeatmap";
 import { AnimatedNumber } from "./AnimatedNumber";
 import { EditorPathButton } from "./EditorPathButton";
 import { MemorySection } from "./MemorySection";
+import { ScheduleSection } from "./ScheduleSection";
 import { Dialog, DialogContent, DialogTitle } from "./ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuGroupLabel, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
 import { Tip } from "./ui/tooltip";
@@ -231,6 +232,8 @@ export function PartnerDetailsDialog(props: {
 									</div>
 
 									<MemorySection partner={partner.name} />
+
+									<ScheduleSection partner={partner.name} sandbox={runtime ? sandboxLabel(runtime.sandbox_mode) : undefined} />
 								</div>
 
 								<div className="flex min-w-0 flex-col gap-3">

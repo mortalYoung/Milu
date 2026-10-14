@@ -42,6 +42,9 @@ export interface Settings {
 	rememberSession?: boolean;
 	memoryEnabled?: boolean;
 	memoryIdleMinutes?: number;
+	schedulesEnabled?: boolean;
+	schedulesMaxConcurrent?: number;
+	schedulesDailyCap?: number;
 	memoryMaxScenes?: number;
 	memoryPendingRounds?: number;
 	commands_path?: string;
@@ -79,6 +82,9 @@ const DEFAULT_SETTINGS: Settings = {
 	rememberSession: true,
 	memoryEnabled: true,
 	memoryIdleMinutes: 5,
+	schedulesEnabled: true,
+	schedulesMaxConcurrent: 3,
+	schedulesDailyCap: 200,
 	memoryMaxScenes: DEFAULT_MEMORY_MAX_SCENES,
 	memoryPendingRounds: DEFAULT_MEMORY_PENDING_ROUNDS,
 	delete: { strict: true },

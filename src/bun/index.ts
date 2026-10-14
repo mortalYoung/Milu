@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { watch } from "node:fs";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -11,7 +11,7 @@ import { ApplicationMenu, BrowserView, BrowserWindow, app as electrobunApp, Util
 import { BRAND } from "../shared/brand";
 import { mcpChangedText } from "../shared/events";
 import { originWindow, projectOrigin } from "../shared/origin";
-import type { AppRPCSchema, ChatPreviewKind, RailView } from "../shared/rpc";
+import type { AppRPCSchema, ChatPreviewKind, RailView, ScheduleItem } from "../shared/rpc";
 import { loadCustomCommands, mergeCommandDefinitions } from "./commands/custom";
 import { defaultCommands } from "./commands/defaults";
 import { createCommandRegistry } from "./commands/registry";
@@ -63,6 +63,23 @@ import {
 	scenePendingCount,
 	sceneViewsDir,
 } from "./core/scenes";
+import {
+	advanceNext,
+	checkAgentCreate,
+	createDefinitionId,
+	createScheduleClock,
+	type DueFire,
+	describeRule,
+	hasSchedules,
+	newDefinition,
+	parseCronWhen,
+	parseWhen,
+	readRuns,
+	ScheduleBusyError,
+	type ScheduleClock,
+	ScheduleConfigError,
+	type ScheduleDefinition,
+} from "./core/schedules";
 import { createTaskRegistry, DEFAULT_REMIND_AFTER_SEC, type TaskHistoryRecord } from "./core/tasks";
 import { aggregateUsage, lastUsage } from "./core/trajectory";
 import { deleteApiKey, getApiKey, loadCredentials, setApiKey } from "./lib/credentials";
@@ -110,7 +127,7 @@ import { scanSkillsRoot } from "./skills/filesystem";
 import { SKILL_NAME_RE } from "./skills/frontmatter";
 import { getSkill, listSkillCandidates, listSkills } from "./skills/registry";
 import type { SkillsService } from "./skills/types";
-import { type McpAccess, type McpServerSummary, type PeerAccess, runEscalatedBash, type TaskAccess } from "./tools";
+import { type McpAccess, type McpServerSummary, type PeerAccess, runEscalatedBash, type ScheduleSummary, type TaskAccess } from "./tools";
 
 await loadCredentials();
 const startupSettings = await loadSettings();
@@ -446,6 +463,7 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 			onPeerAsk: (item) => claimInboundAsk(profile.name, item),
 			onEnd: (error) => {
 				rejectPendingEscalations(profile.name, "run ended while awaiting approval");
+				settleScheduledRun(agent, profile.name, error);
 				rpc.send.agent_end({ error, partner: profile.name });
 				if (!looking(profile.name)) void notifyRunEnd(profile.name, dir, error);
 			},
@@ -467,6 +485,14 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 			mcp: mcpAccess,
 			peer: peerAccess(profile.name),
 			tasks: taskAccess(profile.name),
+			schedules: {
+				list: async () => (await scheduleClockOf(profile.name))?.clock.definitions().map(scheduleSummaryOf) ?? [],
+				create: async (input) => {
+					if (agent.promptSource().source === "schedule") return { ok: false, error: "a scheduled run cannot put more work on the clock" };
+					const result = await createSchedule(profile.name, { ...input, createdBy: "agent" });
+					return result.ok ? { ok: true, schedule: scheduleSummaryOf(result.definition) } : { ok: false, error: result.error };
+				},
+			},
 			onBeforeNextTurn: async (signal) => {
 				const target = await agents.get(profile.name);
 				if (!target) return null;
@@ -490,6 +516,13 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 			},
 			confirmEscalation: (request: EscalationRequest) =>
 				new Promise<EscalationDecision>((resolve) => {
+					if (agent.promptSource().source === "schedule") {
+						resolve({ approved: false, reason: "unattended run — nobody is here to approve" });
+						void scope
+							.appendEscalationRecord("escalation/decision", { escalationId: `unattended-${++sandboxConfirmSeq}`, approved: false, unattended: true }, Date.now())
+							.catch((error) => console.error("unattended escalation record failed:", error));
+						return;
+					}
 					const id = `sbx-${escalationNonce}-${++sandboxConfirmSeq}`;
 					pendingSandboxConfirms.set(id, { resolve, to: request.to, dir, partner: profile.name });
 
@@ -543,6 +576,7 @@ async function createPartnerAgent(profile: PartnerInput): Promise<PartnerAgent> 
 		await applyWorkspace(entry, null);
 	}
 	void ensureMemorySchedule(entry);
+	if (settings.schedulesEnabled !== false) startScheduleClock(profile.name, dir);
 	return entry;
 }
 
@@ -690,6 +724,182 @@ async function withBackgroundAbort<T>(partner: string, run: (signal: AbortSignal
 	}
 }
 
+// ——— scheduled tasks (definitions · clock · one gate per partner) ———
+
+const scheduleClocks = new Map<string, ScheduleClock>();
+/** Whoever holds the gate owns the chat's background work: a memory pass and a scheduled fire never overlap. */
+const partnerGates = new Map<string, "schedule" | "memory">();
+
+function claimPartnerGate(name: string, holder: "schedule" | "memory"): boolean {
+	const current = partnerGates.get(name);
+	if (current === holder) return true;
+	if (current) return false;
+	partnerGates.set(name, holder);
+	return true;
+}
+
+function releasePartnerGate(name: string, holder: "schedule" | "memory"): void {
+	if (partnerGates.get(name) === holder) partnerGates.delete(name);
+}
+
+function settleScheduledRun(agent: AgentHandle, name: string, error?: string): void {
+	const active = agent.promptSource();
+	if (active.source !== "schedule" || !active.scheduleId) return;
+	const clock = scheduleClocks.get(name);
+	const details = { ...(active.scheduleRunId ? { runId: active.scheduleRunId } : {}), ...(error ? { error } : {}) };
+	void clock?.settle(active.scheduleId, error ? "failed" : "done", details).catch((failure) => console.error("schedule settle failed:", failure));
+	if (!agent.queued().some((item) => item.source === "schedule")) releasePartnerGate(name, "schedule");
+}
+
+function startScheduleClock(name: string, dir: string): void {
+	if (scheduleClocks.has(name)) return;
+	const clock = createScheduleClock({
+		partnerDir: dir,
+		dispatch: (fire) => dispatchScheduleFire(name, fire),
+		onSettle: (record) => {
+			if (record.status !== "done" && record.status !== "failed") return;
+			void (async () => {
+				const entry = await agents.get(name);
+				if (!entry) return;
+				const definition = clock.definitions().find((item) => item.id === record.scheduleId);
+				if (!definition) return;
+				await entry.scope.appendScheduleRun(
+					{
+						runId: record.runId,
+						scheduleId: record.scheduleId,
+						scheduleTitle: definition.title,
+						scheduledAt: record.scheduledAt,
+						trigger: record.trigger,
+						status: record.status,
+						...(record.error ? { error: record.error } : {}),
+					},
+					Date.now(),
+				);
+			})().catch((failure) => console.error("schedule/run append failed:", failure));
+		},
+	});
+	scheduleClocks.set(name, clock);
+	void clock.start().catch((failure) => console.error("schedule clock start failed:", failure));
+}
+
+/** A fire has to reach a chat nobody is looking at: the partner is opened on demand. */
+async function startScheduleClocks(): Promise<void> {
+	try {
+		const settings = await loadSettings();
+		if (settings.schedulesEnabled === false) return;
+		for (const profile of await listPartners(settings)) {
+			const dir = getPartnerDir(settings, profile.name);
+			if (await hasSchedules(dir)) startScheduleClock(profile.name, dir);
+		}
+	} catch (error) {
+		console.error("schedule boot failed:", error);
+	}
+}
+
+async function createSchedule(
+	name: string,
+	input: { when: string; text: string; title?: string; createdBy: "user" | "agent" },
+): Promise<{ ok: true; definition: ScheduleDefinition; describe: string } | { ok: false; error: string }> {
+	if (!input.text.trim()) return { ok: false, error: "a scheduled task needs something to do" };
+	const found = await scheduleClockOf(name, { ensure: true });
+	if (!found) return { ok: false, error: "unknown partner" };
+	const now = Date.now();
+	const parsed = input.createdBy === "agent" ? parseCronWhen(input.when, now) : parseWhen(input.when, now);
+	if (parsed.error) return { ok: false, error: parsed.error };
+	if (input.createdBy === "agent") {
+		const refusal = checkAgentCreate(found.clock.definitions(), parsed.rule, now);
+		if (refusal) return { ok: false, error: refusal };
+	}
+	const definition = newDefinition({
+		id: createDefinitionId(),
+		title: input.title?.trim() || parsed.describe,
+		display: input.when.trim(),
+		schedule: parsed.rule,
+		payload: { kind: "prompt", text: input.text },
+		workspaceIdentity: found.workspaceIdentity,
+		createdBy: input.createdBy,
+		now,
+	});
+	await found.clock.update((items) => [...items, definition]);
+	rpc.send.schedule_update({ partner: name });
+	return { ok: true, definition, describe: parsed.describe };
+}
+
+function scheduleSummaryOf(definition: ScheduleDefinition): ScheduleSummary {
+	return {
+		id: definition.id,
+		title: definition.title,
+		describe: describeRule(definition.schedule),
+		status: definition.lifecycleStatus,
+		nextRunAt: definition.retryAt ?? definition.nextRunAt,
+		runCount: definition.runCount,
+		lastError: definition.lastError,
+		prompt: definition.payload.text,
+	};
+}
+
+function scheduleItemOf(definition: ScheduleDefinition): ScheduleItem {
+	return {
+		id: definition.id,
+		title: definition.title,
+		display: definition.display,
+		kind: definition.schedule.kind,
+		describe: describeRule(definition.schedule),
+		text: definition.payload.text,
+		nextRunAt: definition.nextRunAt,
+		retryAt: definition.retryAt,
+		status: definition.lifecycleStatus,
+		running: definition.running,
+		runCount: definition.runCount,
+		lastError: definition.lastError,
+		createdAt: definition.createdAt,
+	};
+}
+
+async function scheduleClockOf(name: string, options: { ensure?: boolean } = {}): Promise<{ clock: ScheduleClock; dir: string; workspaceIdentity: string | null } | null> {
+	const settings = await loadSettings();
+	const profile = (await listPartners(settings)).find((partner) => partner.name === name);
+	if (!profile) return null;
+	const dir = getPartnerDir(settings, name);
+	const entry = options.ensure ? await ensureAgent(profile) : await agents.get(name);
+	if (options.ensure || (await hasSchedules(dir))) startScheduleClock(name, dir);
+	const clock = scheduleClocks.get(name);
+	if (!clock) return null;
+	return { clock, dir, workspaceIdentity: entry?.agent.workspacePath ?? null };
+}
+
+async function dispatchScheduleFire(name: string, fire: DueFire): Promise<void> {
+	const definition = scheduleClocks
+		.get(name)
+		?.definitions()
+		.find((item) => item.id === fire.id);
+	if (!definition) throw new Error("schedule definition is gone");
+	if (!claimPartnerGate(name, "schedule")) throw new ScheduleBusyError("partner is busy with another background run");
+	try {
+		const profile = await findPartner(name);
+		if (!profile) throw new ScheduleConfigError("partner is gone");
+		const entry = await ensureAgent(profile);
+		if (definition.workspaceIdentity && definition.workspaceIdentity !== entry.agent.workspacePath)
+			throw new ScheduleConfigError("workspace changed since this schedule was created");
+		await scheduleClocks.get(name)?.noteDispatched(fire);
+		await entry.scope.appendScheduleRun(
+			{
+				runId: fire.runId,
+				scheduleId: definition.id,
+				scheduleTitle: definition.title,
+				scheduledAt: fire.scheduledAt,
+				trigger: fire.trigger,
+				status: "dispatched",
+			},
+			Date.now(),
+		);
+		await entry.agent.chat(definition.payload.text, { source: "schedule", scheduleId: definition.id, scheduleRunId: fire.runId, scheduleTitle: definition.title });
+	} catch (error) {
+		releasePartnerGate(name, "schedule");
+		throw error;
+	}
+}
+
 // ——— memory schedule (idle timer · round counter) ———
 const DEFAULT_MEMORY_IDLE_MINUTES = 5;
 
@@ -748,8 +958,16 @@ async function triggerMemoryRun(name: string, reason: "idle" | "threshold" | "st
 	try {
 		const entry = await agents.get(name);
 		if (!entry) return;
-		await withBackgroundAbort(name, (signal) => runMemoryOrganize(entry, signal));
-		await rearmMemoryIdleTimerIfPending(entry);
+		if (!claimPartnerGate(name, "memory")) {
+			await armMemoryIdleTimer(name);
+			return;
+		}
+		try {
+			await withBackgroundAbort(name, (signal) => runMemoryOrganize(entry, signal));
+			await rearmMemoryIdleTimerIfPending(entry);
+		} finally {
+			releasePartnerGate(name, "memory");
+		}
 	} catch (error) {
 		console.error(`memory ${reason} run failed:`, error);
 	}
@@ -1517,6 +1735,66 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				const profile = (await listPartners(settings)).find((p) => p.name === name);
 				if (!profile) return { overview: null };
 				return { overview: await buildMemoryOverview(session, getPartnerDir(settings, name)) };
+			},
+
+			schedule_list: async ({ name }) => {
+				const found = await scheduleClockOf(name);
+				if (!found) return { items: [], history: [] };
+				const history = await readRuns(found.dir);
+				return { items: found.clock.definitions().map(scheduleItemOf), history: history.slice(-50).reverse() };
+			},
+
+			schedule_create: async ({ name, when, text, title }) => {
+				const result = await createSchedule(name, { when, text, ...(title ? { title } : {}), createdBy: "user" });
+				return result.ok ? { ok: true, id: result.definition.id, describe: result.describe } : { ok: false, error: result.error };
+			},
+
+			schedule_update: async ({ name, id, patch }) => {
+				const found = await scheduleClockOf(name);
+				if (!found) return { ok: false, error: "unknown partner" };
+				const parsed = patch.when == null ? null : parseWhen(patch.when, Date.now());
+				if (parsed?.error) return { ok: false, error: parsed.error };
+				await found.clock.update((items) =>
+					items.map((item) => {
+						if (item.id !== id) return item;
+						const next: typeof item = {
+							...item,
+							...(patch.text != null && patch.text.trim() ? { payload: { kind: "prompt" as const, text: patch.text } } : {}),
+							...(patch.title != null && patch.title.trim() ? { title: patch.title.trim() } : {}),
+							...(parsed ? { schedule: parsed.rule, display: patch.when?.trim() ?? item.display } : {}),
+							...(patch.enabled != null
+								? { enabled: patch.enabled, lifecycleStatus: patch.enabled ? ("active" as const) : ("paused" as const), nextRunAt: null, retryAt: null, attempts: 0 }
+								: {}),
+						};
+						const resuming = patch.enabled === true || parsed != null;
+						return { ...next, nextRunAt: next.enabled && next.lifecycleStatus === "active" && resuming ? advanceNext(next.id, next.schedule, Date.now(), true) : next.nextRunAt };
+					}),
+				);
+				rpc.send.schedule_update({ partner: name });
+				return { ok: true, ...(parsed ? { describe: parsed.describe } : {}) };
+			},
+
+			schedule_run: async ({ name, id }) => {
+				const found = await scheduleClockOf(name);
+				if (!found) return { ok: false, error: "unknown partner" };
+				const now = Date.now();
+				const definition = found.clock.definitions().find((item) => item.id === id);
+				if (!definition) return { ok: false, error: "unknown schedule" };
+				if (partnerGates.has(name)) return { ok: false, error: "this chat is busy with another background run" };
+				try {
+					await dispatchScheduleFire(name, { kind: "fire", id, runId: `${id}:manual:${randomUUID().slice(0, 8)}`, scheduledAt: now, retry: 0, trigger: "manual" });
+					return { ok: true };
+				} catch (error) {
+					return { ok: false, error: error instanceof Error ? error.message : String(error) };
+				}
+			},
+
+			schedule_delete: async ({ name, id }) => {
+				const found = await scheduleClockOf(name);
+				if (!found) return { ok: false };
+				await found.clock.update((items) => items.filter((item) => item.id !== id));
+				rpc.send.schedule_update({ partner: name });
+				return { ok: true };
 			},
 
 			dashboard_overview: async ({ days }) => ({ overview: await buildDashboardOverview(session, days) }),
@@ -2403,6 +2681,9 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 						cancelMemoryIdleTimer(target);
 						agents.delete(target);
 						memorySchedules.delete(target);
+						scheduleClocks.get(target)?.stop();
+						scheduleClocks.delete(target);
+						partnerGates.delete(target);
 						for (const runs of runMaps) runs.delete(target);
 						session.evictRoot(dir);
 						if (viewPartner?.name === target) viewPartner = null;
@@ -2586,10 +2867,13 @@ mainWindow.on("move", rememberWindowFrame);
 
 electrobunApp.on("before-quit", () => {
 	taskRegistry.reapAll();
+	for (const clock of scheduleClocks.values()) clock.stop();
+	scheduleClocks.clear();
 	fileWatch.stop();
 	clearTimeout(frameTimer);
 	if (rememberSession) writeLastSession({ ...lastSession, frame: mainWindow.getFrame(), maximized: mainWindow.isMaximized() });
 });
+void startScheduleClocks();
 mainWindow.on("focus", () => {
 	appFocused = true;
 });
