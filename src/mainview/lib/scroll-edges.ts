@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { distanceToBottom } from "./scroll-anchor";
 
 /** Sub-pixel layout must not flicker an edge on and off. */
@@ -20,31 +20,32 @@ export interface ScrollEdges {
 export function useScrollEdges(deps: unknown[] = []): ScrollEdges {
 	const [element, setElement] = useState<HTMLElement | null>(null);
 	const [edges, setEdges] = useState({ above: false, below: false });
+	const measure = useRef<() => void>(() => {});
 
-	const measure = useCallback(() => {
+	useEffect(() => {
 		if (!element) return;
-		const next = {
-			above: element.scrollTop > EDGE_PX,
-			below: distanceToBottom(element.scrollHeight, element.scrollTop, element.clientHeight) > EDGE_PX,
+		const read = () => {
+			const next = {
+				above: element.scrollTop > EDGE_PX,
+				below: distanceToBottom(element.scrollHeight, element.scrollTop, element.clientHeight) > EDGE_PX,
+			};
+			setEdges((previous) => (previous.above === next.above && previous.below === next.below ? previous : next));
 		};
-		setEdges((previous) => (previous.above === next.above && previous.below === next.below ? previous : next));
+		measure.current = read;
+		read();
+		element.addEventListener("scroll", read, { passive: true });
+		const observer = new ResizeObserver(read);
+		observer.observe(element);
+		return () => {
+			measure.current = () => {};
+			element.removeEventListener("scroll", read);
+			observer.disconnect();
+		};
 	}, [element]);
 
 	useEffect(() => {
-		if (!element) return;
-		measure();
-		element.addEventListener("scroll", measure, { passive: true });
-		const observer = new ResizeObserver(measure);
-		observer.observe(element);
-		return () => {
-			element.removeEventListener("scroll", measure);
-			observer.disconnect();
-		};
-	}, [element, measure]);
-
-	useEffect(() => {
-		measure();
-	}, [measure, ...deps]);
+		measure.current();
+	}, deps);
 
 	return { ref: setElement, above: edges.above, below: edges.below };
 }

@@ -450,7 +450,7 @@ export function AppSidebar(props: {
 					</div>
 				)}
 
-				<div className={"conv-rows" + (listEdges.above ? " has-above" : "") + (listEdges.below ? " has-below" : "")} ref={listEdges.ref}>
+				<div className={"conv-rows edge-fade" + (listEdges.above ? " has-above" : "") + (listEdges.below ? " has-below" : "")} ref={listEdges.ref}>
 					{props.partners.length === 0 && props.loading
 						? Array.from({ length: SKELETON_ROWS }, (_, index) => (
 								<div className="conv-skeleton" key={index} aria-busy="true">

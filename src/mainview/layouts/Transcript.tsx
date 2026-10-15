@@ -19,6 +19,7 @@ import { domFindEngine, revealRange, useFindBar, useFindHandler } from "../lib/f
 import { For, Show } from "../lib/jsx";
 import { markdownFilesKey, paintMarkdown, renderMarkdown, renderMarkdownReady } from "../lib/markdown";
 import { rpc } from "../lib/rpc";
+import { useScrollEdges } from "../lib/scroll-edges";
 import { SURFACE } from "../lib/surfaces";
 import { foldSteps, itemKey, type StepGroup, stepKeyOf, stepSummary } from "../lib/transcript";
 import { cn } from "../lib/utils";
@@ -200,6 +201,59 @@ function useScrollFade<T extends HTMLElement>(active: boolean) {
 	return { ref, more };
 }
 
+/** Another chat's answer, landing in this transcript: the peer's words in the house serif, on their
+ *  own sheet of paper — the fill says where the letter starts and ends, so it draws no rule of its
+ *  own, and the arrival rides in the dateline (direction A, picked 2026-10-15). */
+function ReplyCard(props: { entry: Entry }) {
+	const { entry } = props;
+	const body = useScrollEdges([entry.text]);
+	const stamp = parseStamp(entry.time);
+	return (
+		<div className="msg-reply" id={"entry-" + entry.id} data-chat-anchor-key={itemKey(entry)}>
+			<div className="msg-reply-head">
+				<Tip label={[stamp?.date, stamp?.time].filter(Boolean).join(" ")}>
+					<span className="msg-reply-stamp">
+						{entry.reply?.from} · {formatHistoryTime(entry.time)}
+					</span>
+				</Tip>
+				<CopyMessage text={entry.text} />
+			</div>
+			<div className={"msg-reply-body read-clamp edge-fade" + (body.above ? " has-above" : "") + (body.below ? " has-below" : "")} ref={body.ref}>
+				<Markdown text={entry.text} class="md" />
+			</div>
+		</div>
+	);
+}
+
+/** Your own prompt can be a pasted log or a spec with no end, so the bubble keeps a readable height
+ *  and scrolls inside itself — with the same edge fades as every other scroller in the house. */
+function UserBubble(props: {
+	id: string;
+	anchor: string;
+	text: string;
+	editing: boolean;
+	flash: boolean;
+	onMouseDown: (event: React.MouseEvent<HTMLDivElement>) => void;
+	children: ReactNode;
+}) {
+	const edges = useScrollEdges([props.text]);
+	const above = !props.editing && edges.above;
+	const below = !props.editing && edges.below;
+	return (
+		<div
+			id={props.id}
+			data-chat-anchor-key={props.anchor}
+			ref={edges.ref}
+			className={
+				"msg-user read-clamp edge-fade" + (props.editing ? " editing" : "") + (props.flash ? " locate-flash" : "") + (above ? " has-above" : "") + (below ? " has-below" : "")
+			}
+			onMouseDown={props.onMouseDown}
+		>
+			{props.children}
+		</div>
+	);
+}
+
 /** One assistant step's footnotes: the calls it made and the thoughts behind them. A row is a single
  *  line until it is asked for: what it opens is a card, never part of the flow. Once the step is over
  *  the whole group folds into one summary line and unfolds on a click. */
@@ -321,7 +375,7 @@ function StepBlock(props: { group: StepGroup; working: boolean; live: boolean; o
 		</button>
 	);
 	return (
-		<div className={"msg-step" + (props.group.reply ? " has-reply" : "")} id={"entry-" + first.id} data-chat-anchor-key={itemKey(first)}>
+		<div className="msg-step" id={"entry-" + first.id} data-chat-anchor-key={itemKey(first)}>
 			{collapsible && !props.live ? summary : null}
 			{folded ? null : (
 				<div className="msg-step-scroll">
@@ -654,10 +708,12 @@ export function Transcript(props: {
 											{entry.schedule.error ? <span className="msg-origin-error">{entry.schedule.error}</span> : null}
 										</div>
 									) : null}
-									<div
-										className={"msg-user" + (isEditing ? " editing" : "") + (locateFlashId === entry.id ? " locate-flash" : "")}
+									<UserBubble
 										id={"entry-" + entry.id}
-										data-chat-anchor-key={key}
+										anchor={key}
+										text={entry.text}
+										editing={isEditing}
+										flash={locateFlashId === entry.id}
 										onMouseDown={(event) => {
 											if (!isEditing || event.target !== event.currentTarget) return;
 											event.preventDefault();
@@ -694,7 +750,7 @@ export function Transcript(props: {
 										) : (
 											entry.text
 										)}
-									</div>
+									</UserBubble>
 									<span className="sr-only">you</span>
 									<div className="msg-meta">
 										<span className="msg-at">{formatHistoryTime(entry.time)}</span>
@@ -716,17 +772,7 @@ export function Transcript(props: {
 								</div>
 							);
 						}
-						if (entry.kind === "reply") {
-							return (
-								<div className="msg-reply" data-chat-anchor-key={key}>
-									<div className="msg-reply-head">
-										<span>{entry.reply?.from} · reply</span>
-										<span className="msg-reply-time">{entry.time}</span>
-									</div>
-									<div className="msg-reply-body">{entry.text}</div>
-								</div>
-							);
-						}
+						if (entry.kind === "reply") return <ReplyCard entry={entry} />;
 						if (entry.kind === "sys") {
 							if (entry.error) {
 								return (

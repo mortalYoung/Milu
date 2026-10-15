@@ -55,6 +55,10 @@
 	--color-warning: light-dark(#d4a017, #e0b24a);
 	--color-surface-soft: light-dark(#f5f0e8, #1f1e1b);
 	--color-surface-card: light-dark(#efe9de, #2a2823);
+	/* 别处来的信 = 另一张纸（石板灰）。亮色面板 L* 90–98 全是暖奶油（canvas/soft/code-block/card/code-bg/cream-strong），
+	   暖色任何一档都会和 markdown 元素底色撞车，所以纸色改冷：亮 #dce0e2（ΔE 对 canvas 7.8 / 对 code 底 5.5–3.8），暗 #43484d。
+	   只调一个百分数就能加减浓淡，不许手写结果 hex。 */
+	--color-letter: light-dark(color-mix(in srgb, #8f9fb0 28%, var(--color-canvas)), color-mix(in srgb, #8f9fb0 36%, var(--color-canvas)));
 	--color-surface-cream-strong: light-dark(#e8e0d2, #2a2823);
 	/* 弹窗遮罩：中性灰洗（亮色）/ 熄灯（暗色）。不用纯黑，也不拿 canvas 当灰用 */
 	--color-scrim: light-dark(color-mix(in srgb, #141413 22%, transparent), color-mix(in srgb, #181715 78%, transparent));
@@ -170,6 +174,26 @@
 }
 
 @layer components {
+	/* ——— 可滚动容器共用：还有内容的那一侧渐隐。用 mask 而不是叠一层底色 —— 底色会随主题与 mac-plate 的染色变 ———— */
+	.edge-fade.has-below {
+		-webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent);
+		mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent);
+	}
+	.edge-fade.has-above {
+		-webkit-mask-image: linear-gradient(to top, #000 calc(100% - 22px), transparent);
+		mask-image: linear-gradient(to top, #000 calc(100% - 22px), transparent);
+	}
+	.edge-fade.has-above.has-below {
+		-webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%);
+		mask-image: linear-gradient(to bottom, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%);
+	}
+
+	/* 长正文的上限：贴进来的日志、对方的长回信都到这里为止，里面自己滚（十行 + 窗口高度）。 */
+	.read-clamp {
+		max-height: min(calc(10 * var(--leading-reading) * var(--text-reading)), 42vh);
+		overflow-y: auto;
+	}
+
 	/* ——— sidebar: windowbar / brand / toolbar / body / foot ——— */
 	.sidebar {
 		@apply relative flex h-full w-full flex-col bg-chrome;
@@ -435,19 +459,6 @@
 	}
 	.conv-rows {
 		@apply flex flex-col gap-[2px] flex-1 min-h-0 overflow-y-auto;
-	}
-	/* 还有内容的那一侧渐隐。用 mask 而不是叠一层底色：底色会随主题与 mac-plate 的染色变 */
-	.conv-rows.has-below {
-		-webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent);
-		mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent);
-	}
-	.conv-rows.has-above {
-		-webkit-mask-image: linear-gradient(to top, #000 calc(100% - 22px), transparent);
-		mask-image: linear-gradient(to top, #000 calc(100% - 22px), transparent);
-	}
-	.conv-rows.has-above.has-below {
-		-webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%);
-		mask-image: linear-gradient(to bottom, transparent 0, #000 22px, #000 calc(100% - 22px), transparent 100%);
 	}
 	.conv-skeleton {
 		@apply flex items-center gap-2.5 px-2 mr-3 py-[9px];
@@ -1515,7 +1526,7 @@
 			padding-left: 0;
 		}
 	}
-	/* 右侧气泡 = 你说的（位置就是标签，不写「you」）。*/
+	/* 右侧气泡 = 你说的（位置就是标签，不写「you」）。 */
 	.msg-user {
 		@apply bg-hover text-ink leading-reading whitespace-pre-wrap rounded-[6px] px-[13px] py-[9px];
 		font-family: var(--font-reading);
@@ -1564,6 +1575,8 @@
 	/* 编辑态：同一个气泡，换成受控 textarea。框和描边一律不画 —— 一个隐形的镜像字把包裹盒撐成正文的大小，textarea 绝对定位盖在它上面 */
 	.msg-user.editing {
 		cursor: text;
+		max-height: none;
+		overflow-y: visible;
 	}
 	.msg-user-edit-wrap {
 		@apply relative block;
@@ -1622,18 +1635,33 @@
 		color: var(--color-ink);
 	}
 
+	/* 另一个 chat 的回信：流里唯一有底色的一块 —— 另一张纸（方向 A，2026-10-15 选定）。
+	   底色向两侧各探出 12px、内边距同值，所以正文仍落在原来的竖轴上，不缩进。 */
 	.msg-reply {
-		@apply self-start mt-4 w-[560px] max-w-full border border-line rounded-[6px] bg-surface px-[18px] py-[12px];
+		@apply mt-6 rounded-[8px];
+		margin-left: -12px;
+		margin-right: -12px;
+		padding: 12px 12px 14px;
+		background: var(--color-letter);
 	}
 	.msg-reply-head {
-		@apply flex items-baseline gap-2 font-mono text-[10px] uppercase tracking-[0.12em] text-muted mb-1.5;
+		@apply flex items-center justify-between gap-3;
 	}
-	.msg-reply-time {
-		@apply ml-auto font-sans text-[10px] normal-case tracking-[0.05em];
+	.msg-reply-stamp {
+		@apply shrink-0 font-mono text-[10px] tabular-nums text-muted;
+	}
+	.msg-reply:hover .msg-copy,
+	.msg-reply:has(:focus-visible) .msg-copy {
+		opacity: 1;
 	}
 	.msg-reply-body {
-		@apply font-serif text-[16px] leading-[1.6] text-ink whitespace-pre-wrap;
-		overflow-wrap: anywhere;
+		@apply mt-2.5;
+	}
+	/* 别人的话用衬线读：房子里的 serif 只给「名字」和「标题」，这里给「另一个 chat 的嗓音」。 */
+	.msg-reply-body .md {
+		font-family: var(--font-serif);
+		font-size: 15.5px;
+		line-height: 1.72;
 	}
 	.msg-escalation {
 		@apply self-start mt-4 w-[560px] max-w-full border border-line rounded-[6px] bg-surface px-[18px] py-[10px] font-mono text-[12px] text-ink;
@@ -1867,10 +1895,6 @@
 	.msg-step {
 		@apply min-w-0;
 		margin-top: 12px;
-	}
-	.msg-step.has-reply {
-		@apply border-b border-line;
-		padding-bottom: 10px;
 	}
 	.msg-step-sum {
 		@apply flex cursor-pointer items-baseline gap-2 border-0 bg-transparent p-0 text-left font-mono text-[10px] text-ink-soft;

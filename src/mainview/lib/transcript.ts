@@ -96,8 +96,6 @@ function agentExtras(item: ViewItem): AgentEntryExtras {
 export interface StepGroup {
 	key: string;
 	rows: Entry[];
-	/** A reply follows, so the group draws the hairline that parts it from the words. */
-	reply?: boolean;
 }
 
 export const stepKeyOf = (entry: Entry): string | null => (entry.tool || entry.thinking || entry.say ? (entry.key ?? String(entry.id)).replace(/-\d{1,2}$/, "") : null);
@@ -114,7 +112,7 @@ export function foldSteps(items: Entry[]): ({ entry: Entry } | { step: StepGroup
 		if (rows.length === 0) return;
 		const group = rows;
 		rows = [];
-		out.push({ step: { key: key ?? idOf(group[0]!), rows: group, ...(key ? { reply: true } : {}) } });
+		out.push({ step: { key: key ?? idOf(group[0]!), rows: group } });
 	};
 	for (const entry of items) {
 		if (entry.tool || entry.thinking || entry.say) {
