@@ -1,0 +1,9 @@
+{
+	"$schema": "./node_modules/oxfmt/configuration_schema.json",
+	"printWidth": 180,
+	"useTabs": true,
+	"trailingComma": "all",
+	"sortImports": true,
+	"sortPackageJson": true,
+	"ignorePatterns": ["node_modules", "dist", "build", "artifacts", "bun.lock"]
+}

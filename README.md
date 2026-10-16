@@ -48,7 +48,8 @@ and a standalone server is Node too. Nothing reaches for a Bun-only API.
 ```bash
 bun install
 bun run typecheck       # tsc
-bun run format:check    # biome
+bun run lint            # oxlint
+bun run format:check    # oxfmt
 ```
 
 There is no test suite by design; behavior is verified by hand. See `CLAUDE.md` for the
