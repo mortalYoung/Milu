@@ -4,6 +4,9 @@
 		"module": "ESNext",
 		"moduleDetection": "force",
 		"moduleResolution": "bundler",
+		// No DOM, on purpose. `target: ESNext` defaults to lib.esnext.full, which drags DOM
+		// in and lets backend code touch it by accident. Browser packages opt in themselves.
+		"lib": ["ESNext"],
 		"allowImportingTsExtensions": true,
 		"verbatimModuleSyntax": true,
 		"noEmit": true,
