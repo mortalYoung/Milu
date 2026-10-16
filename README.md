@@ -3,7 +3,7 @@
 An agent harness with a server backend — one WebSocket protocol, two front ends: web and desktop.
 
 > **Status: rebuild in progress.** This branch is greenfield — nothing runs yet.
-> The previous implementation (303 commits, single package, Electrobun RPC) is kept in full at
+> The previous implementation (303 commits, single package, Electrobun) is kept in full at
 > tag `archive/v1` and branch `master`.
 
 ## What it is
@@ -15,16 +15,20 @@ no account, no server of ours, no telemetry, keys and data on disk.
 
 ```
 packages/protocol/    the wire — requests, responses, events. Zero runtime dependencies.
-packages/backend/     the harness: services + container. No Electrobun, no DOM, no sockets.
+packages/backend/     the harness: services + container. No Electron, no DOM, no sockets.
 packages/app/          the view — React, shared by web and desktop.
 apps/server/          Bun.serve — HTTP for the page, WebSocket for the protocol.
-apps/desktop/         Electrobun shell — a window around that same loopback server.
+apps/desktop/         Electron shell — a window around that same loopback server.
 apps/web/             Vite entry for the browser.
 ```
 
 The backend never learns how it is reached. It emits typed events; a transport adapter at the
-edge decides who hears about them. Desktop is not a special case: it loads
-`http://127.0.0.1:<port>/` and connects over `ws://`, exactly like the browser does.
+edge decides who hears about them. Desktop is not a special case: the shell boots the backend
+in-process, loads `http://127.0.0.1:<port>/` into a `BrowserWindow`, and connects over `ws://`
+— exactly like the browser does.
+
+The backend is runtime-neutral, so the same code serves both: Electron's main process is Node,
+and a standalone server is Node too. Nothing reaches for a Bun-only API.
 
 ## Principles
 
@@ -60,5 +64,5 @@ git checkout archive/v1 -- assets/ .agents/     # bring the icon set and the des
 ## Built on
 
 [pi](https://pi.dev) · [pi-agent-core](https://www.npmjs.com/package/@earendil-works/pi-agent-core) ·
-[pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai) · [Electrobun](https://electrobun.dev) ·
+[pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai) · [Electron](https://www.electronjs.org) ·
 [MCP](https://modelcontextprotocol.io) · [CodeMirror](https://codemirror.net/) · [Shiki](https://shiki.style/)

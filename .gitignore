@@ -8,8 +8,4 @@ artifacts/
 .env
 .env.local
 
-# Electrobun / Hutch devkit — apps/desktop only
-.hutch/
-.cottontail-tmp/
-
 .DS_Store

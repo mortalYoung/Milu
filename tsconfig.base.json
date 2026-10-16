@@ -17,7 +17,9 @@
 		"noUnusedParameters": true,
 		"noPropertyAccessFromIndexSignature": true,
 
-		// Bun runtime declarations. The backend, the server and the agents are all Bun.
-		"types": ["bun"]
+		// Runtime types belong to each package, never here. The same backend has to run under
+		// Electron's Node and under a standalone server, so a Bun-shaped type surface in the
+		// base would quietly let Bun-only APIs into code that must run on Node.
+		"types": []
 	}
 }

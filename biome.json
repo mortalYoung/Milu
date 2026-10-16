@@ -6,7 +6,7 @@
 		"useIgnoreFile": true
 	},
 	"files": {
-		"includes": ["**", "!build/**", "!dist/**", "!artifacts/**", "!.hutch/**", "!bun.lock", "!.env"]
+		"includes": ["**", "!build/**", "!dist/**", "!artifacts/**", "!bun.lock", "!.env"]
 	},
 	"formatter": {
 		"enabled": true,
