@@ -14,6 +14,7 @@ no account, no server of ours, no telemetry, keys and data on disk.
 ## Shape
 
 ```
+packages/di/          lifecycle vocabulary — Disposable, DisposableStore, Service.
 packages/protocol/    the wire — requests, responses, events. Zero runtime dependencies.
 packages/backend/     the harness: services + container. No Electron, no DOM, no sockets.
 packages/app/          the view — React, shared by web and desktop.

@@ -26,6 +26,7 @@ The rebuild exists to enforce these rules. Break one and the reason for the rebu
 | Package             | May depend on                                                 | Never                        |
 | ------------------- | ------------------------------------------------------------- | ---------------------------- |
 | `packages/protocol` | nothing                                                       | any runtime                  |
+| `packages/di`       | nothing                                                       | any runtime                  |
 | `packages/backend`  | `protocol`                                                    | Electron, DOM, Bun-only APIs |
 | `packages/app`      | `protocol`                                                    | `backend`, Node built-ins    |
 | `apps/server`       | `backend`, `protocol`                                         | Electron                     |
