@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+artifacts/
+.logs/
+*.tsbuildinfo
+
+.env
+.env.local
+
+# Electrobun / Hutch devkit — apps/desktop only
+.hutch/
+.cottontail-tmp/
+
+.DS_Store

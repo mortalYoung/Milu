@@ -1,61 +1,64 @@
-# Milu — rebuild
+# Milu
 
-Greenfield 重建分支。**没有历史**，一个 commit 起家。
+An agent harness with a server backend — one WebSocket protocol, two front ends: web and desktop.
 
-v1 完整保留在两处，随时可读：
+> **Status: rebuild in progress.** This branch is greenfield — nothing runs yet.
+> The previous implementation (303 commits, single package, Electrobun RPC) is kept in full at
+> tag `archive/v1` and branch `master`.
 
-- 分支 `master`（303 commits，已推到 origin）
-- tag `archive/v1`
+## What it is
 
-## 已定的四件事
+You pick a chat. It reads files, runs commands, and replies. Everything runs on your machine:
+no account, no server of ours, no telemetry, keys and data on disk.
 
-1. **单用户。** 不做多租户，不做认证体系。
-2. **一条传输：WebSocket。** 桌面端不保留 Electrobun RPC，web 与 desktop 同构。
-   RPC 语义保留（带 `id` 的 request/response 帧 + 无 `id` 的 event 帧），
-   但由自己的协议层实现，不用 `BrowserView.defineRPC` / `Electroview`。
-3. **桌面 = 连本机回环的 web 客户端。** 壳加载 `http://127.0.0.1:<port>/`，
-   视图连 `ws://127.0.0.1:<port>/ws`。Electrobun 只剩开窗口、装菜单、记 frame。
-   启动时生成随机 token 塞进窗口 URL，握手校验 —— 回环端口对本机其他进程是敞开的。
-4. **功能优先，不强制测试随行。** 人工验证。搬迁提交与行为改动提交尽量分开。
-
-## 目标形态
+## Shape
 
 ```
-packages/protocol/    wire + DTO，零运行时依赖
-packages/backend/     零 electrobun、零 window 概念
-  src/platform/       container, lifecycle(Disposable), event(Emitter/Event), log, config, storage
-  src/services/       一个关注点一个服务，singleton 于容器
-  src/features/       领域编排
-  src/sandbox/        backends/{seatbelt,docker}.ts   ← 接口照抄 v1 的 SandboxBackend
-packages/app/         共享视图层（React），web 与 desktop 共用
-apps/server/          Bun.serve：HTTP + WS，唯一进程入口
-apps/desktop/         Electrobun 壳 —— 唯一 import electrobun 的地方
-apps/web/             Vite 入口
+packages/protocol/    the wire — requests, responses, events. Zero runtime dependencies.
+packages/backend/     the harness: services + container. No Electrobun, no DOM, no sockets.
+packages/app/          the view — React, shared by web and desktop.
+apps/server/          Bun.serve — HTTP for the page, WebSocket for the protocol.
+apps/desktop/         Electrobun shell — a window around that same loopback server.
+apps/web/             Vite entry for the browser.
 ```
 
-## 从 v1 取东西
+The backend never learns how it is reached. It emits typed events; a transport adapter at the
+edge decides who hears about them. Desktop is not a special case: it loads
+`http://127.0.0.1:<port>/` and connects over `ws://`, exactly like the browser does.
+
+## Principles
+
+- **Less is more** — a minimal prompt, a simple interface, fewer tools.
+- **Local** — no account, no server, no telemetry; keys and data stay on disk.
+- **Everything as a log** — sessions are append-only, and every view is built from them:
+  transcript, dashboard, trajectory, replies, git diff, explorer.
+- **Permission is a ceiling** — the sandbox confines the agent, `rm` moves to the trash unless
+  force-deleted, and anything wider needs a human to say yes.
+- **Memory grows** — each chat keeps its own facts, issues and decisions, and over time they
+  organize into scenes, SOPs, and a persona that sounds like you.
+- **Keyboard first** — a palette to switch chats, open files, and grant a chat access to skills
+  and MCP servers.
+
+## Development
 
 ```bash
-git checkout archive/v1 -- <path>     # 取单个文件/目录
-
-# 常用：
-git checkout archive/v1 -- assets/             # 品牌：milu.png + icon.iconset + gen-icons.sh
-git checkout archive/v1 -- .agents/ skills-lock.json   # qiaomu-design 技能（全局无副本）
+bun install
+bun run typecheck       # tsc
+bun run format:check    # biome
 ```
 
-## 不该搬的形状
+There is no test suite by design; behavior is verified by hand. See `CLAUDE.md` for the
+architecture rules and the decisions that are already settled.
 
-- `src/bun/index.ts`（2957 行组合根）—— 要逃离的就是它。
-- 模块级可变单例。新容器里 singleton 是「容器内唯一」，不是 `export const`。
-- `viewPartner` / `appFocused` / `railView` 住在后端 —— 改成显式的 presence 契约。
-- `settingsCache ?? startupSettings` 双源。
+## Reading v1
 
-## 第一天就要回答的安全问题
-
-v1 的 `permission/manager.ts` 只在 darwin 上挂 seatbelt，其他平台后端链为空：
-
-```ts
-const defaultChain = platform === "darwin" ? [seatbeltBackend] : [];
+```bash
+git show archive/v1:src/bun/index.ts            # read the old composition root
+git checkout archive/v1 -- assets/ .agents/     # bring the icon set and the design skill forward
 ```
 
-服务器上这等于**没有沙箱**，权限层静默降级。服务端隔离后端优先于一切重构工作。
+## Built on
+
+[pi](https://pi.dev) · [pi-agent-core](https://www.npmjs.com/package/@earendil-works/pi-agent-core) ·
+[pi-ai](https://www.npmjs.com/package/@earendil-works/pi-ai) · [Electrobun](https://electrobun.dev) ·
+[MCP](https://modelcontextprotocol.io) · [CodeMirror](https://codemirror.net/) · [Shiki](https://shiki.style/)
