@@ -15,7 +15,7 @@ import {
 	makeSysEntry,
 	makeUserEntry,
 } from "./entries";
-import type { SessionData } from "./session";
+import type { PartnerItem, SessionData } from "./session";
 
 const WEEKDAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
@@ -151,28 +151,114 @@ export function itemKey(entry: Entry): string {
 	return entry.key ?? String(entry.id);
 }
 
+/** A prompt sitting at the head of the queue that the run log does not have yet — only the head gets
+ *  one; anything behind it belongs to the follow-up dock. */
+export interface Echo {
+	messageId: string;
+	text: string;
+	at: number;
+	abandoned?: boolean;
+}
+
 export interface TranscriptState {
 	items: Entry[];
+	pending: Record<string, Echo[]>;
 }
 
 export interface TranscriptController {
 	store: StoreApi<TranscriptState>;
 	recompute: () => void;
+	echo: (partner: string, messageId: string, text: string) => void;
+	drop: (partner: string, messageId: string) => void;
+	abandon: (partner: string) => void;
+}
+
+const ECHO_TTL_MS = 120_000;
+const ECHO_MAX = 4;
+
+const isOwnPrompt = (entry: Entry): boolean => entry.kind === "user" && !entry.from && !entry.schedule && !entry.echo;
+
+/** Only the tail of the list can be news, only your own prompts count, and the queue and the log keep
+ *  the same order — so the oldest echo goes with the oldest match, the words being a second check. */
+export function reconcileEchoes(pending: Record<string, Echo[]>, partner: string | null, previous: Entry[], items: Entry[]): Record<string, Echo[]> {
+	if (!partner) return pending;
+	const list = pending[partner];
+	if (!list || list.length === 0) return pending;
+	const last = previous.at(-1);
+	const from = last ? items.findIndex((entry) => itemKey(entry) === itemKey(last)) : -1;
+	const landed = (last && from >= 0 ? items.slice(from + 1) : items).filter(isOwnPrompt);
+	const rest = [...list];
+	for (const entry of landed) {
+		const index = rest.findIndex((echo) => echo.text.trim() === entry.text.trim());
+		if (index >= 0) rest.splice(index, 1);
+	}
+	for (let index = rest.length - 1; index >= 0; index -= 1) if (rest[index]!.abandoned) rest.splice(index, 1);
+	if (rest.length === list.length) return pending;
+	const next = { ...pending };
+	if (rest.length === 0) delete next[partner];
+	else next[partner] = rest;
+	return next;
 }
 
 export function createTranscript(session: StoreApi<SessionData>) {
-	const store = createStore<TranscriptState>()(() => ({ items: [] }));
+	const store = createStore<TranscriptState>()(() => ({ items: [], pending: {} }));
 
 	function recompute() {
-		const { origin } = session.getState();
+		const { origin, selected } = session.getState();
+		const previous = store.getState().items;
 		const items = buildView(projectView(origin.entries, { baseDir: origin.baseDir }));
-		store.setState({ items });
+		store.setState({ items, pending: reconcileEchoes(store.getState().pending, selected, previous, items) });
+	}
+
+	function patchPending(partner: string, next: (list: Echo[]) => Echo[] | null) {
+		store.setState((state) => {
+			const list = state.pending[partner];
+			if (!list) return state;
+			const updated = next(list);
+			if (updated === null) return state;
+			const pending = { ...state.pending };
+			if (updated.length === 0) delete pending[partner];
+			else pending[partner] = updated;
+			return { ...state, pending };
+		});
+	}
+
+	function drop(partner: string, messageId: string) {
+		patchPending(partner, (list) => (list.some((echo) => echo.messageId === messageId) ? list.filter((echo) => echo.messageId !== messageId) : null));
+	}
+
+	function echo(partner: string, messageId: string, text: string) {
+		store.setState((state) => {
+			const list = state.pending[partner] ?? [];
+			if (list.some((item) => item.messageId === messageId) || list.length >= ECHO_MAX) return state;
+			return { ...state, pending: { ...state.pending, [partner]: [...list, { messageId, text, at: Date.now() }] } };
+		});
+		setTimeout(() => drop(partner, messageId), ECHO_TTL_MS);
+	}
+
+	/** From here on only the log can keep an echo alive. */
+	function abandon(partner: string) {
+		patchPending(partner, (list) => list.map((item) => ({ ...item, abandoned: true })));
+	}
+
+	function prune(partners: PartnerItem[]) {
+		const keys = Object.keys(store.getState().pending);
+		if (keys.length === 0) return;
+		const alive = new Set(partners.map((partner) => partner.name));
+		const gone = keys.filter((key) => !alive.has(key));
+		if (gone.length === 0) return;
+		store.setState((state) => {
+			const pending = { ...state.pending };
+			for (const key of gone) delete pending[key];
+			return { ...state, pending };
+		});
 	}
 
 	session.subscribe((state, previous) => {
+		if (state.partners !== previous.partners) prune(state.partners);
 		if (state.origin.entries === previous.origin.entries && state.origin.baseDir === previous.origin.baseDir) return;
 		recompute();
 	});
 
-	return { store, recompute };
+	return { store, recompute, echo, drop, abandon };
 }

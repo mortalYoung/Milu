@@ -4,14 +4,17 @@ import { Composer } from "../components/Composer";
 import { FollowUpDock } from "../components/FollowUpDock";
 import { TaskLogDialog } from "../components/TaskLogDialog";
 import { useScroll } from "../lib/contexts/scroll-context";
-import { composer, scroll, session } from "../lib/controllers";
+import { composer, scroll, session, transcript } from "../lib/controllers";
 import { rpc } from "../lib/rpc";
 import { Transcript } from "./Transcript";
 
 function send(text: string) {
 	scroll.pin(true);
 	void rpc.request.chat({ text }).then((res) => {
-		if (res.accepted) composer.clear(session.store.getState().selected ?? "");
+		if (!res.accepted) return;
+		const partner = session.store.getState().selected;
+		composer.clear(partner ?? "");
+		if (partner && res.messageId && !res.queued) transcript.echo(partner, res.messageId, text);
 		void session.mutate.refreshHistory();
 	});
 }

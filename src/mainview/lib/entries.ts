@@ -56,6 +56,8 @@ export interface Entry {
 	tool?: { name: string; summary: string; status: "running" | "success" | "error"; args?: string; result?: string; isError?: boolean };
 	/** Said along the way, not the answer: a row in the timeline instead of a bubble. */
 	say?: true;
+
+	echo?: true;
 	/** The step's wall clock, off the entry's own timing — what the folded summary reports. */
 	stepMs?: number;
 
@@ -69,6 +71,10 @@ const fmtDateTime = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${
 
 export function makeUserEntry(text: string, time = Date.now(), from?: string, schedule?: ScheduleOriginInfo): Entry {
 	return { id: nextId++, kind: "user", text, time: fmtDateTime(new Date(time)), ...(from ? { from } : {}), ...(schedule ? { schedule } : {}) };
+}
+
+export function makeEchoEntry(echo: { text: string; messageId: string; at: number }): Entry {
+	return { ...makeUserEntry(echo.text, echo.at), key: `echo:${echo.messageId}`, echo: true };
 }
 
 export function makeReplyEntry(item: { text: string; time: number; from: string; requestId?: string }): Entry {

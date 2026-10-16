@@ -35,7 +35,7 @@ export const scroll = createScrollFollower({
 });
 export const skills = createSkills(rpc, session.store, toast);
 export const unread = createUnread(rpc, session.store);
-export const inbox = createInbox(rpc);
+export const inbox = createInbox(rpc, transcript);
 export const composer = createComposer(session.store);
 export const commands = createCommandDirectory(rpc, toast);
 export const metrics = createMetrics(rpc, session.store);

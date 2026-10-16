@@ -1,8 +1,9 @@
 import { createStore } from "zustand/vanilla";
 import type { QueuedMessageRpc } from "../../shared/rpc";
 import type { RPC } from "./rpc";
+import type { TranscriptController } from "./transcript";
 
-export function createInbox(rpc: RPC) {
+export function createInbox(rpc: RPC, transcript: TranscriptController) {
 	const store = createStore<{ queued: Record<string, QueuedMessageRpc[]> }>()(() => ({ queued: {} }));
 	let seq = 0;
 
@@ -19,8 +20,10 @@ export function createInbox(rpc: RPC) {
 			}
 			if (event.kind === "cleared") {
 				setList(event.partner, []);
+				transcript.abandon(event.partner);
 				return;
 			}
+			if (event.kind === "discarded") transcript.drop(event.partner, event.id);
 			setList(
 				event.partner,
 				list.filter((item) => item.id !== event.id),

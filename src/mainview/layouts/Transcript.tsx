@@ -14,17 +14,19 @@ import { useScroll } from "../lib/contexts/scroll-context";
 import { useSession } from "../lib/contexts/session-context";
 import { useSkills } from "../lib/contexts/skills-context";
 import { useTranscript } from "../lib/contexts/transcript-context";
-import { type Entry, type EscalationInfo, formatHistoryTime, parseStamp } from "../lib/entries";
+import { type Entry, type EscalationInfo, formatHistoryTime, makeEchoEntry, parseStamp } from "../lib/entries";
 import { domFindEngine, revealRange, useFindBar, useFindHandler } from "../lib/find";
 import { For, Show } from "../lib/jsx";
 import { markdownFilesKey, paintMarkdown, renderMarkdown, renderMarkdownReady } from "../lib/markdown";
 import { rpc } from "../lib/rpc";
 import { useScrollEdges } from "../lib/scroll-edges";
 import { SURFACE } from "../lib/surfaces";
-import { foldSteps, itemKey, type StepGroup, stepKeyOf, stepSummary } from "../lib/transcript";
+import { type Echo, foldSteps, itemKey, type StepGroup, stepKeyOf, stepSummary } from "../lib/transcript";
 import { cn } from "../lib/utils";
 
-const TRANSCRIPT_SKIP = [".load-earlier", ".md-copy", ".btw-cell", ".msg-rail"];
+const TRANSCRIPT_SKIP = [".load-earlier", ".md-copy", ".btw-cell", ".msg-rail", ".msg-block-user.is-echo"];
+
+const EMPTY_ECHOES: Echo[] = [];
 
 function hasTextSelection(): boolean {
 	const selection = window.getSelection();
@@ -405,8 +407,11 @@ export function Transcript(props: {
 	const skillDirectory = useSkills();
 	const scroll = useScroll();
 
-	const { items } = useStore(controller.store, (state) => state);
-	const display = foldSteps(items);
+	const { items, pending } = useStore(controller.store, (state) => state);
+	const echoes = pending[props.worker ?? ""] ?? EMPTY_ECHOES;
+	const echoEntries = useMemo(() => echoes.map(makeEchoEntry), [echoes]);
+	const display = foldSteps([...items, ...echoEntries]);
+	const tailKey = items.length > 0 ? itemKey(items[items.length - 1]!) : null;
 	const locateFlashId = useStore(scroll.store, (state) => state.locateFlashId);
 	const entries = useStore(session.store, (state) => state.origin.entries);
 	const hasMore = useStore(session.store, (state) => state.origin.hasMore);
@@ -619,7 +624,7 @@ export function Transcript(props: {
 				root={findRoot}
 				overlay={<AnimatePresence>{find.open ? <FloatFind {...find.props} hint={hasMore ? "only loaded messages are searched" : undefined} /> : null}</AnimatePresence>}
 			>
-				{items.length === 0 && !props.working && (
+				{items.length === 0 && echoes.length === 0 && !props.working && (
 					<div className="text-center pt-16">
 						{props.historyLoading ? (
 							<>
@@ -652,13 +657,13 @@ export function Transcript(props: {
 				</Show>
 
 				<For each={display} by={(row) => ("step" in row ? `${row.step.key}:step` : itemKey(row.entry))}>
-					{(row, index) => {
+					{(row) => {
 						if ("step" in row) {
 							return (
 								<StepBlock
 									group={row.step}
 									working={props.working}
-									live={props.working && index() === display.length - 1}
+									live={props.working && tailKey !== null && row.step.rows.some((entry) => itemKey(entry) === tailKey)}
 									open={openGroups.has(row.step.key)}
 									onToggle={() => toggleGroup(row.step.key)}
 									openRows={openRows}
@@ -696,7 +701,7 @@ export function Transcript(props: {
 						if (entry.kind === "user") {
 							const isEditing = editingUserKey === key;
 							return (
-								<div className="msg-block msg-block-user group" data-chat-anchor-key={key}>
+								<div className={"msg-block msg-block-user group" + (entry.echo ? " is-echo" : "")} data-chat-anchor-key={key}>
 									{entry.schedule ? (
 										<div className="msg-origin">
 											<span className="msg-origin-badge">scheduled</span>
@@ -753,12 +758,14 @@ export function Transcript(props: {
 									</UserBubble>
 									<span className="sr-only">you</span>
 									<div className="msg-meta">
+										{entry.echo ? <span className="msg-echo">pending</span> : null}
 										<span className="msg-at">{formatHistoryTime(entry.time)}</span>
 										{entry.from && <span className="msg-chip">from {entry.from}</span>}
 										{isEditing ? (
 											<span className="msg-user-edit-hint">{editSaving ? "resending…" : "enter save · esc or blur cancels"}</span>
 										) : (
 											key === editableUserKey &&
+											!entry.echo &&
 											!props.working && (
 												<Tip label="Edit message">
 													<button type="button" className="msg-user-edit-link" aria-label="Edit message" onClick={() => startEdit(key, entry.text)}>
