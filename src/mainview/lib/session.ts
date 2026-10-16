@@ -21,6 +21,7 @@ export interface PartnerItem {
 	/** What the workspace is: a linked worktree, a repo checkout, or a plain directory. */
 	workspaceKind?: "worktree" | "repo" | "dir" | null;
 	workspaceRepo?: string | null;
+	pinned?: boolean;
 	writing?: boolean;
 }
 
@@ -174,6 +175,10 @@ export function createSession(rpc: RPC) {
 			});
 	}
 
+	function patchPartner(name: string, patch: Partial<PartnerItem>) {
+		store.setState((state) => ({ partners: state.partners.map((partner) => (partner.name === name ? { ...partner, ...patch } : partner)) }));
+	}
+
 	return {
 		store,
 		historyLoading,
@@ -182,6 +187,7 @@ export function createSession(rpc: RPC) {
 			refreshHistory,
 			loadOlderHistory,
 			refreshPartners,
+			patchPartner,
 			select,
 			originRefresh: refresh,
 			originLoadMore: loadMore,

@@ -130,7 +130,7 @@ import {
 import { isBuiltinMcp } from "./mcp/builtin";
 import { loadMcpConfig, saveMcpConfig } from "./mcp/config";
 import { McpManager } from "./mcp/manager";
-import { copyPartner, createPartner, deletePartner, listPartners, PartnerError, type PartnerInput, promotePartner } from "./partners";
+import { copyPartner, createPartner, deletePartner, listPartners, PartnerError, type PartnerInput, promotePartner, setPartnerPinned } from "./partners";
 import type { EscalationDecision, EscalationRequest, SandboxMode } from "./permission";
 import { isSandboxMode, SandboxManager, validateWorkspace } from "./permission";
 import { createSessionStore, type SessionScope } from "./persist";
@@ -2760,6 +2760,17 @@ const rpc = BrowserView.defineRPC<AppRPCSchema>({
 				if (!profile) return { ok: false };
 				await persistPartnerReadAt(getPartnerDir(settings, name), readAt);
 				return { ok: true };
+			},
+			set_partner_pinned: async ({ name, pinned }) => {
+				try {
+					const settings = await loadSettings();
+					const profile = (await listPartners(settings)).find((p) => p.name === name);
+					if (!profile) return { ok: false, error: "no such chat" };
+					await setPartnerPinned(settings, name, pinned);
+					return { ok: true };
+				} catch (error) {
+					return { ok: false, error: error instanceof Error ? error.message : String(error) };
+				}
 			},
 		},
 		messages: {

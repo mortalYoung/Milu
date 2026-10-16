@@ -1081,6 +1081,9 @@ export type AppRPCSchema = __schema<{
 
 						workspaceRepo?: string | null;
 
+						/** Pinned chats sit above the rest of the list. */
+						pinned?: boolean;
+
 						readAt?: number;
 						writing: boolean;
 					}[];
@@ -1187,6 +1190,11 @@ export type AppRPCSchema = __schema<{
 			set_read_at: {
 				params: { name: string; readAt: number };
 				response: { ok: boolean };
+			};
+
+			set_partner_pinned: {
+				params: { name: string; pinned: boolean };
+				response: { ok: boolean; error?: string };
 			};
 		};
 		messages: {

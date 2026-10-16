@@ -90,9 +90,13 @@ export function previewFor(partner: PartnerItem): string {
  * workspace and persona are each fuzzy-scored; a name hit outranks everything, then the score,
  * then workspace, then persona, and the most recently active chat breaks the tie.
  */
+/** Pinned chats first, then recency — the one ordering rule the list and ⌘K share. */
+export const byPinThenRecency = (a: PartnerItem, b: PartnerItem) =>
+	Number(b.pinned === true) - Number(a.pinned === true) || activityAt(b) - activityAt(a) || a.name.localeCompare(b.name);
+
 export function filterPartners(partners: PartnerItem[], query: string): PartnerItem[] {
 	const q = query.trim();
-	if (!q) return [...partners].sort((a, b) => activityAt(b) - activityAt(a) || a.name.localeCompare(b.name));
+	if (!q) return [...partners].sort(byPinThenRecency);
 	const hits: { partner: PartnerItem; name: number | null; persona: number | null; workspace: number | null }[] = [];
 	for (const partner of partners) {
 		const name = fuzzyScore(q, partner.name);

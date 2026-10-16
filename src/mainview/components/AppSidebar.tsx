@@ -11,6 +11,8 @@ import {
 	Info,
 	MoreVertical,
 	PanelLeftClose,
+	Pin,
+	PinOff,
 	Search,
 	Settings,
 	SquarePen,
@@ -20,7 +22,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { useStore } from "zustand";
 import miluMark from "../../../assets/milu.png";
 import { registerSurfaceRoot } from "../lib/active-surface";
-import { activityAt, filterPartners, listTime, previewFor } from "../lib/chat-preview";
+import { activityAt, byPinThenRecency, filterPartners, listTime, previewFor } from "../lib/chat-preview";
 import { copyText } from "../lib/clipboard";
 import { formatWorkspacePath } from "../lib/composer-input";
 import { useAgentStatus } from "../lib/contexts/agent-status-context";
@@ -51,8 +53,6 @@ import { Kbd, KbdGroup } from "./ui/kbd";
 import { Tip, Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 export type { PartnerItem };
-
-const byRecency = (a: PartnerItem, b: PartnerItem) => activityAt(b) - activityAt(a);
 
 const SKELETON_ROWS = 5;
 
@@ -123,6 +123,7 @@ function ChatRow(props: {
 	onDuplicate: () => void;
 	onFork: () => void;
 	onPromote: () => void;
+	onTogglePin?: () => void;
 	onDelete: () => void;
 	onOpenPath: (path: string, editorId?: string, via?: "default" | "finder") => void;
 	openTargets: OpenTargets;
@@ -217,6 +218,12 @@ function ChatRow(props: {
 						<Info size={13} className="text-muted" />
 						<span>View details</span>
 					</DropdownMenuItem>
+					{!isFork && props.onTogglePin && (
+						<DropdownMenuItem className={MENU_ITEM_CLASS} onSelect={props.onTogglePin}>
+							{partner.pinned === true ? <PinOff size={13} className="text-muted" /> : <Pin size={13} className="text-muted" />}
+							<span>{partner.pinned === true ? "Unpin" : "Pin"}</span>
+						</DropdownMenuItem>
+					)}
 					{isFork && (
 						<DropdownMenuItem className={MENU_ITEM_CLASS} disabled={props.working} onSelect={() => props.onPromote()}>
 							<ArrowUpFromLine size={13} className="text-muted" />
@@ -274,6 +281,7 @@ export function AppSidebar(props: {
 	onDuplicate: (name: string) => void;
 	onFork: (name: string) => void;
 	onPromote: (name: string) => void;
+	onTogglePin: (name: string, pinned: boolean) => void;
 	onToggleList: () => void;
 	onOpenSettings: () => void;
 	onOpenPath: (path: string, editorId?: string, via?: "default" | "finder") => void;
@@ -336,7 +344,7 @@ export function AppSidebar(props: {
 		setExpanded((prev) => (prev.has(parent) ? prev : new Set(prev).add(parent)));
 	}, [props.selected, props.partners]);
 
-	const roots = useMemo(() => props.partners.filter((p) => !p.forkedFrom).sort(byRecency), [props.partners]);
+	const roots = useMemo(() => props.partners.filter((p) => !p.forkedFrom).sort(byPinThenRecency), [props.partners]);
 	const leavesByRoot = useMemo(() => {
 		const map = new Map<string, PartnerItem[]>();
 		for (const partner of props.partners) {
@@ -345,7 +353,7 @@ export function AppSidebar(props: {
 			list.push(partner);
 			map.set(partner.forkedFrom, list);
 		}
-		for (const list of map.values()) list.sort(byRecency);
+		for (const list of map.values()) list.sort(byPinThenRecency);
 		return map;
 	}, [props.partners]);
 
@@ -357,6 +365,8 @@ export function AppSidebar(props: {
 		if (!searching) return roots;
 		return roots.filter((root) => matched.has(root.name) || (leavesByRoot.get(root.name) ?? []).some((leaf) => matched.has(leaf.name)));
 	}, [roots, leavesByRoot, matched, searching]);
+	const pinnedRoots = useMemo(() => (searching ? [] : visibleRoots.filter((root) => root.pinned === true)), [visibleRoots, searching]);
+	const restRoots = useMemo(() => (searching ? visibleRoots : visibleRoots.filter((root) => root.pinned !== true)), [visibleRoots, searching]);
 
 	const toggle = (name: string) =>
 		setExpanded((prev) => {
@@ -365,6 +375,52 @@ export function AppSidebar(props: {
 			else next.add(name);
 			return next;
 		});
+
+	const renderRoot = (root: PartnerItem) => {
+		const leaves = leavesByRoot.get(root.name) ?? [];
+		const isExpanded = expanded.has(root.name) || (searching && leaves.some((leaf) => matched.has(leaf.name)));
+		return (
+			<Fragment key={root.name}>
+				<ChatRow
+					partner={root}
+					selected={props.selected === root.name}
+					working={workingFor(root.name)}
+					unread={props.unread(root.name)}
+					childCount={leaves.length}
+					expanded={isExpanded}
+					onSelect={() => props.onSelect(root.name)}
+					onToggle={() => toggle(root.name)}
+					onViewDetails={() => props.onViewDetails(root.name)}
+					onDuplicate={() => props.onDuplicate(root.name)}
+					onFork={() => props.onFork(root.name)}
+					onPromote={() => props.onPromote(root.name)}
+					onTogglePin={() => props.onTogglePin(root.name, root.pinned !== true)}
+					onDelete={() => setConfirmDelete(root.name)}
+					onOpenPath={props.onOpenPath}
+					openTargets={props.openTargets}
+				/>
+				{isExpanded &&
+					leaves.map((leaf) => (
+						<ChatRow
+							key={leaf.name}
+							partner={leaf}
+							selected={props.selected === leaf.name}
+							working={workingFor(leaf.name)}
+							unread={props.unread(leaf.name)}
+							leaf
+							onSelect={() => props.onSelect(leaf.name)}
+							onViewDetails={() => props.onViewDetails(leaf.name)}
+							onDuplicate={() => props.onDuplicate(leaf.name)}
+							onFork={() => props.onFork(leaf.name)}
+							onPromote={() => props.onPromote(leaf.name)}
+							onDelete={() => setConfirmDelete(leaf.name)}
+							onOpenPath={props.onOpenPath}
+							openTargets={props.openTargets}
+						/>
+					))}
+			</Fragment>
+		);
+	};
 
 	return (
 		<aside
@@ -451,60 +507,24 @@ export function AppSidebar(props: {
 				)}
 
 				<div className={"conv-rows edge-fade" + (listEdges.above ? " has-above" : "") + (listEdges.below ? " has-below" : "")} ref={listEdges.ref}>
-					{props.partners.length === 0 && props.loading
-						? Array.from({ length: SKELETON_ROWS }, (_, index) => (
-								<div className="conv-skeleton" key={index} aria-busy="true">
-									<span className="conv-skeleton-face" />
-									<span className="conv-skeleton-lines">
-										<span className="conv-skeleton-line" />
-										<span className="conv-skeleton-line preview" />
-									</span>
-								</div>
-							))
-						: visibleRoots.map((root) => {
-								const leaves = leavesByRoot.get(root.name) ?? [];
-								const isExpanded = expanded.has(root.name) || (searching && leaves.some((leaf) => matched.has(leaf.name)));
-								return (
-									<Fragment key={root.name}>
-										<ChatRow
-											partner={root}
-											selected={props.selected === root.name}
-											working={workingFor(root.name)}
-											unread={props.unread(root.name)}
-											childCount={leaves.length}
-											expanded={isExpanded}
-											onSelect={() => props.onSelect(root.name)}
-											onToggle={() => toggle(root.name)}
-											onViewDetails={() => props.onViewDetails(root.name)}
-											onDuplicate={() => props.onDuplicate(root.name)}
-											onFork={() => props.onFork(root.name)}
-											onPromote={() => props.onPromote(root.name)}
-											onDelete={() => setConfirmDelete(root.name)}
-											onOpenPath={props.onOpenPath}
-											openTargets={props.openTargets}
-										/>
-										{isExpanded &&
-											leaves.map((leaf) => (
-												<ChatRow
-													key={leaf.name}
-													partner={leaf}
-													selected={props.selected === leaf.name}
-													working={workingFor(leaf.name)}
-													unread={props.unread(leaf.name)}
-													leaf
-													onSelect={() => props.onSelect(leaf.name)}
-													onViewDetails={() => props.onViewDetails(leaf.name)}
-													onDuplicate={() => props.onDuplicate(leaf.name)}
-													onFork={() => props.onFork(leaf.name)}
-													onPromote={() => props.onPromote(leaf.name)}
-													onDelete={() => setConfirmDelete(leaf.name)}
-													onOpenPath={props.onOpenPath}
-													openTargets={props.openTargets}
-												/>
-											))}
-									</Fragment>
-								);
-							})}
+					{props.partners.length === 0 && props.loading ? (
+						Array.from({ length: SKELETON_ROWS }, (_, index) => (
+							<div className="conv-skeleton" key={index} aria-busy="true">
+								<span className="conv-skeleton-face" />
+								<span className="conv-skeleton-lines">
+									<span className="conv-skeleton-line" />
+									<span className="conv-skeleton-line preview" />
+								</span>
+							</div>
+						))
+					) : (
+						<>
+							{pinnedRoots.length > 0 && <div className="conv-section">Pinned</div>}
+							{pinnedRoots.map(renderRoot)}
+							{pinnedRoots.length > 0 && restRoots.length > 0 && <div className="conv-gap" aria-hidden="true" />}
+							{restRoots.map(renderRoot)}
+						</>
+					)}
 				</div>
 			</div>
 

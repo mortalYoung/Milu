@@ -460,6 +460,12 @@
 	.conv-rows {
 		@apply flex flex-col gap-[2px] flex-1 min-h-0 overflow-y-auto;
 	}
+	.conv-section {
+		@apply px-2 pt-4 pb-1.5 font-sans text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-soft;
+	}
+	.conv-gap {
+		@apply h-2.5 shrink-0;
+	}
 	.conv-skeleton {
 		@apply flex items-center gap-2.5 px-2 mr-3 py-[9px];
 	}

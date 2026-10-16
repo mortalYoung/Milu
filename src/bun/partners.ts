@@ -9,6 +9,7 @@ export interface PartnerProfile {
 	persona?: string;
 	createdAt: number;
 	forkedFrom?: string;
+	pinned?: boolean;
 }
 
 export interface PartnerInput {
@@ -123,6 +124,7 @@ export async function copyPartner(settings: Settings, input: { sourceName: strin
 	try {
 		await store.forkTo(sourceDir, targetDir);
 		const raw = JSON.parse(await readFile(join(targetDir, "profile.json"), "utf8")) as Record<string, unknown>;
+		delete raw["pinned"];
 		await writeFile(join(targetDir, "profile.json"), JSON.stringify({ ...raw, name: targetName, createdAt, ...(forkedFrom ? { forkedFrom } : {}) }, null, 2) + "\n", "utf8");
 	} catch (error) {
 		store.evictRoot(targetDir);
@@ -140,6 +142,17 @@ export async function promotePartner(settings: Settings, name: string): Promise<
 	const raw = JSON.parse(await readFile(join(dir, "profile.json"), "utf8")) as Record<string, unknown>;
 	if (!raw["forkedFrom"]) throw new PartnerError(`"${trimmed}" is already a root chat`);
 	delete raw["forkedFrom"];
+	await writeFile(join(dir, "profile.json"), JSON.stringify(raw, null, 2) + "\n", "utf8");
+	return raw as unknown as PartnerProfile;
+}
+
+export async function setPartnerPinned(settings: Settings, name: string, pinned: boolean): Promise<PartnerProfile> {
+	const trimmed = name.trim();
+	validateName(trimmed);
+	const dir = getPartnerDir(settings, trimmed);
+	const raw = JSON.parse(await readFile(join(dir, "profile.json"), "utf8")) as Record<string, unknown>;
+	if (pinned) raw["pinned"] = true;
+	else delete raw["pinned"];
 	await writeFile(join(dir, "profile.json"), JSON.stringify(raw, null, 2) + "\n", "utf8");
 	return raw as unknown as PartnerProfile;
 }

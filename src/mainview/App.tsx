@@ -114,6 +114,14 @@ async function onPromotePartner(name: string) {
 	await session.mutate.refreshPartners();
 }
 
+async function onTogglePin(name: string, pinned: boolean) {
+	session.mutate.patchPartner(name, { pinned });
+	const res = await rpc.request.set_partner_pinned({ name, pinned });
+	if (res.ok) return;
+	toast.push({ title: pinned ? "Pin failed" : "Unpin failed", body: res.error ?? "Unknown error" }, "error");
+	await session.mutate.refreshPartners();
+}
+
 function onOpenPath(path: string, editorId?: string, via?: "default" | "finder") {
 	void rpc.request.open_path({ path, editorId, via }).then((res) => {
 		if (!res.ok) toast.push({ title: "Couldn't open folder", body: res.error ?? "No supported editor found" }, "error");
@@ -495,6 +503,7 @@ function ChatView(props: {
 					onDuplicate={(name) => void runCopy("duplicate", name)}
 					onFork={(name) => void runCopy("fork", name)}
 					onPromote={(name) => void onPromotePartner(name)}
+					onTogglePin={(name, pinned) => void onTogglePin(name, pinned)}
 					onOpenPath={onOpenPath}
 					openTargets={props.openTargets}
 					onToggleList={shell.toggleList}
