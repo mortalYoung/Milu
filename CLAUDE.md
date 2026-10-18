@@ -7,7 +7,7 @@ Guidance for agents working in this repository — a design, not a rulebook. Dec
 - **Intent** — Understand the ask before acting: match its scope and spirit, not a literal reading. _Example: a "check the UI" request means analyze and report, not edit; a one-word "Fixed all" after a review means implement the agreed fixes._
 - **Simplicity** — Implement the simplest solution that satisfies the current need; delete outdated code outright — no compatibility layers, no migrations, no fallbacks. _Example: this repo is greenfield. There is no legacy data and no released version, so nothing needs to keep working; delete freely._
 - **Restraint** — Spend tool budget on what the task needs, not habits. _Example: don't run `format` or rebuild the view after every change — only when asked, or when a fresh check is required to verify. There is no test suite by design; `bun run typecheck`, `bun run lint` and `bun run format:check` are the gate, and the user verifies behavior._
-- **Accountability** — Own your changes: keep edits minimal and targeted, report what you changed and why, and surface decisions you made on your own rather than burying them.
+- **Accountability** — Own your changes: keep edits minimal and targeted, report what you changed and why, and surface decisions you made on your own rather than burying them. **Never commit unless the user asks in that message** — land the change in the working tree and report it; the user writes the history.
 - **Verification** — Confirm your work matches the ask before claiming done, and check claims against the code rather than memory. _Example: run `bun run typecheck` for TS changes; an assertion with no evidence is a guess._
 
 ## Architecture
