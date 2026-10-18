@@ -1,0 +1,19 @@
+{
+	"name": "@milu/server",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"start": "bun run src/main.ts",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@milu/backend": "workspace:*",
+		"@milu/protocol": "workspace:*",
+		"ws": "^8.18.0"
+	},
+	"devDependencies": {
+		"@types/node": "latest",
+		"@types/ws": "^8.5.12"
+	}
+}

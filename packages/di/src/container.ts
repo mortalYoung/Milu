@@ -41,6 +41,11 @@ export class Container implements Disposable {
 		return new Container(this);
 	}
 
+	/** The container owns it: disposed with the container, before the services it was built from. */
+	own(disposable: Disposable): void {
+		this._owned.add(disposable);
+	}
+
 	async initialize(): Promise<void> {
 		if (this._disposed) throw new Error("Container is disposed");
 		if (this._booted) throw new Error("Container is already initialized");

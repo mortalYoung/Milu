@@ -95,6 +95,10 @@ export class AgentLoopService implements Service {
 		this._agent.reset();
 	}
 
+	restore(messages: readonly AgentMessage[]): void {
+		this._agent.state.messages = [...messages];
+	}
+
 	dispose(): void {
 		this._disposables.dispose();
 	}
