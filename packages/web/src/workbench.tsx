@@ -30,6 +30,15 @@ export function Workbench(props: { host: Host }) {
 	const dockIds = layout.layout["dock"] ?? [];
 	const row = useRef<HTMLDivElement>(null);
 
+	const readout = (dragged: "list" | "dock", width: number): string => {
+		const laid = host.columns.layoutFor(dragged === "list" ? { list: width } : { dock: width });
+		const parts: number[] = [];
+		if (laid.list.mode === "flow") parts.push(laid.list.width);
+		parts.push(laid.workbench);
+		if (laid.dock.mode === "flow") parts.push(laid.dock.width);
+		return parts.map((value) => Math.round(value)).join(" / ");
+	};
+
 	useEffect(() => {
 		host.columns.setDockAvailable(dockIds.length > 0);
 	}, [host, dockIds.length]);
@@ -48,13 +57,31 @@ export function Workbench(props: { host: Host }) {
 			<Column host={host} slot="sidebar" width={columns.list.width} mode={columns.list.mode} />
 
 			{columns.list.mode === "flow" ? (
-				<Grip onDrag={(delta: number) => host.columns.setListWidth(columns.list.width + delta)} onReset={() => host.columns.resetListWidth()} />
+				<Grip
+					{...host.columns.gripLimits("list")}
+					width={() => host.columns.state.get().list.width}
+					side="left"
+					variant="list"
+					label="Resize the chat list"
+					readout={(width) => readout("list", width)}
+					onResize={(width) => host.columns.setListWidth(width)}
+					onReset={() => host.columns.resetListWidth()}
+				/>
 			) : null}
 
 			<Column host={host} slot="main" min={columns.workbench || undefined} onBackground={columns.list.mode === "overlay" ? () => host.columns.closeList() : undefined} />
 
 			{columns.dock.mode === "flow" ? (
-				<Grip onDrag={(delta: number) => host.columns.setDockWidth(columns.dock.width - delta)} onReset={() => host.columns.resetDockWidth()} />
+				<Grip
+					{...host.columns.gripLimits("dock")}
+					width={() => host.columns.state.get().dock.width}
+					side="right"
+					variant="dock"
+					label="Resize the dock"
+					readout={(width) => readout("dock", width)}
+					onResize={(width) => host.columns.setDockWidth(width)}
+					onReset={() => host.columns.resetDockWidth()}
+				/>
 			) : null}
 
 			{columns.dock.mode !== "closed" ? <Column host={host} slot="dock" width={columns.dock.width} mode={columns.dock.mode === "overlay" ? "overlay" : "flow"} /> : null}

@@ -127,8 +127,9 @@ export class ColumnsService implements Service {
 		this._apply();
 	}
 
-	resetListWidth(): void {
+	resetListWidth(): number {
 		this.setListWidth(LIST_DEFAULT);
+		return this._listWidth;
 	}
 
 	setDockWidth(width: number): void {
@@ -137,8 +138,35 @@ export class ColumnsService implements Service {
 		this._apply();
 	}
 
-	resetDockWidth(): void {
-		this.setDockWidth(DOCK_DEFAULT);
+	resetDockWidth(): number {
+		const laid = this.state.get();
+		this.setDockWidth(laid.workbench > 0 ? Math.round((laid.workbench + laid.dock.width) / 2) : DOCK_DEFAULT);
+		return this._dockWidth;
+	}
+
+	layoutFor(widths: { readonly list?: number; readonly dock?: number }): Columns {
+		return shellLayout({
+			row: this._row,
+			listWidth: widths.list ?? this._listWidth,
+			listOpen: this._listOpen,
+			listOverride: this._listOverride,
+			dockOpen: this._dockOpen,
+			dockWidth: widths.dock ?? this._dockWidth,
+		});
+	}
+
+	gripLimits(kind: "list" | "dock"): { readonly min: number; readonly max: number } {
+		const laid = this.state.get();
+		const listFlow = laid.list.mode === "flow" ? LIST_MIN + GRIP_WIDTH : 0;
+		const dockFlow = laid.dock.mode === "flow" ? DOCK_MIN + GRIP_WIDTH : 0;
+		const room = this._row - GRIP_WIDTH - WORKBENCH_MIN;
+
+		if (kind === "list") {
+			const max = Math.max(LIST_MIN, laid.list.width, this._row === 0 ? LIST_MAX : Math.min(LIST_MAX, room - dockFlow));
+			return { min: LIST_MIN, max };
+		}
+		const max = Math.max(DOCK_MIN, laid.dock.width, this._row === 0 ? laid.dock.width : room - listFlow);
+		return { min: DOCK_MIN, max };
 	}
 
 	dispose(): void {
