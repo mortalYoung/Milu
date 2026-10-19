@@ -32,6 +32,11 @@ const RULES: readonly Rule[] = [
 	},
 	{ pkg: "server", forbid: ["electron", /^@milu\/(client|web|bootstrap)$/], why: "the transport adapter knows the core and the wire, nothing else" },
 	{ pkg: "bootstrap", forbid: ["electron", /^@milu\/web$/], why: "the composition root composes libraries; shells import it, not the reverse" },
+	{
+		pkg: "extensions/pin",
+		forbid: ["electron", /^@milu\/(web|server)$/],
+		why: "an extension gets core capabilities and client types, nothing about a shell",
+	},
 ];
 
 const ROOT = join(new URL("..", import.meta.url).pathname, "packages");

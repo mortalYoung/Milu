@@ -1,10 +1,12 @@
 import { join } from "node:path";
 
 import { createServiceId, DisposableStore, Emitter, type Event, type Service } from "@milu/di";
-import type { SeqEntry, SessionRow } from "@milu/protocol";
+import type { ContributionItem, SeqEntry, SessionRow } from "@milu/protocol";
 
+import { SESSION_MENU_POINT, type SessionMenuItem } from "../extensions/types.ts";
 import { Session } from "../session/session.ts";
 import type { AgentLoopEvent } from "./agent-loop.ts";
+import type { ContributionService } from "./contributions.ts";
 import type { ExecutionService } from "./execution.ts";
 import type { ModelsService } from "./models.ts";
 import { expandHome, type SettingsService } from "./settings.ts";
@@ -40,6 +42,7 @@ export class SessionService implements Service {
 		private readonly _settingsService: SettingsService,
 		private readonly _modelsService: ModelsService,
 		private readonly _toolService: ToolService,
+		private readonly _contributionService: ContributionService,
 	) {
 		this.onEntry = this._entryEmitter.event;
 		this.onLoopEvent = this._loopEmitter.event;
@@ -53,10 +56,13 @@ export class SessionService implements Service {
 		return this._partnerRoot;
 	}
 
-	/** One row per session directory; a row costs the three small files plus its log's head. */
+	/** One row per session directory; a row costs the three small files, its log's head, and its menu. */
 	async list(): Promise<readonly SessionRow[]> {
 		const rows: SessionRow[] = [];
-		for (const name of await this._names()) rows.push(await this.get(name).row());
+		for (const name of await this._names()) {
+			const session = this.get(name);
+			rows.push({ ...(await session.row()), menu: await this._menuOf(session) });
+		}
 		return rows.sort((left, right) => (right.lastMessageAt ?? 0) - (left.lastMessageAt ?? 0) || left.name.localeCompare(right.name));
 	}
 
@@ -91,10 +97,6 @@ export class SessionService implements Service {
 		return this._sessions.get(name)?.running ?? false;
 	}
 
-	async pin(name: string, pinned: boolean): Promise<void> {
-		await (await this.ensure(name)).pin(pinned);
-	}
-
 	async markRead(name: string, readAt: number): Promise<void> {
 		await (await this.ensure(name)).markRead(readAt);
 	}
@@ -121,6 +123,17 @@ export class SessionService implements Service {
 		for (const session of this._sessions.values()) session.dispose();
 		this._sessions.clear();
 		this._relays.clear();
+	}
+
+	/** Extensions declared these; the core only resolves each title for the session it describes. */
+	private async _menuOf(session: Session): Promise<ContributionItem[]> {
+		const point = this._contributionService.get<SessionMenuItem>(SESSION_MENU_POINT);
+		const items: ContributionItem[] = [];
+		for (const item of point.all()) {
+			const title = typeof item.title === "function" ? await item.title(session) : item.title;
+			items.push({ id: item.id, title, action: item.action, ...(item.order === undefined ? {} : { order: item.order }) });
+		}
+		return items.sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.id.localeCompare(right.id));
 	}
 
 	private async _names(): Promise<string[]> {

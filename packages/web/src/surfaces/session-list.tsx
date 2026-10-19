@@ -3,7 +3,7 @@ import type { SessionRow } from "@milu/protocol";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { copyPath } from "../clipboard.ts";
-import { ChevronDownIcon, ChevronRightIcon, CopyIcon, FolderTreeIcon, MoreVerticalIcon, PanelLeftCloseIcon, PinIcon, PinOffIcon, SearchIcon } from "../components/icons.tsx";
+import { ChevronDownIcon, ChevronRightIcon, CopyIcon, FolderTreeIcon, MoreVerticalIcon, PanelLeftCloseIcon, SearchIcon } from "../components/icons.tsx";
 import { MiluWordmark } from "../components/MiluWordmark.tsx";
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, OpenMenu } from "../components/row-menu.tsx";
 import { useStore } from "../use-store.ts";
@@ -107,10 +107,11 @@ function Row(props: {
 					</button>
 				</MenuTrigger>
 				<MenuContent>
-					<MenuItem onSelect={() => void host.sessions.pin(session.name, session.pinned !== true)}>
-						{session.pinned ? <PinOffIcon size={13} /> : <PinIcon size={13} />}
-						<span>{session.pinned ? "Unpin" : "Pin"}</span>
-					</MenuItem>
+					{(session.menu ?? []).map((item) => (
+						<MenuItem key={item.id} onSelect={() => void host.actions.invoke(item.action, session.name)}>
+							<span>{item.title}</span>
+						</MenuItem>
+					))}
 					<MenuSeparator />
 					<MenuItem onSelect={() => void copyPath(session.path)}>
 						<CopyIcon size={13} />

@@ -14,6 +14,7 @@
 		"@milu/client": "workspace:*",
 		"@milu/core": "workspace:*",
 		"@milu/di": "workspace:*",
+		"@milu/extension-pin": "workspace:*",
 		"@milu/server": "workspace:*"
 	},
 	"devDependencies": {

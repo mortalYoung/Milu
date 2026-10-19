@@ -21,12 +21,6 @@ export class SessionListService implements Service {
 		return this.rows.get().find((row) => row.name === session);
 	}
 
-	/** Pinning moves the row above the rest, so the list is re-read rather than patched. */
-	async pin(session: string, pinned: boolean): Promise<void> {
-		await this._connection.request("pin", { session, pinned });
-		await this.refresh();
-	}
-
 	/** The row drops its unread dot the moment it is opened, and the core remembers why. */
 	async markRead(session: string, readAt: number): Promise<void> {
 		const row = this.get(session);

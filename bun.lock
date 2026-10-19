@@ -18,6 +18,7 @@
         "@milu/client": "workspace:*",
         "@milu/core": "workspace:*",
         "@milu/di": "workspace:*",
+        "@milu/extension-pin": "workspace:*",
         "@milu/server": "workspace:*",
       },
       "devDependencies": {
@@ -53,6 +54,15 @@
       "name": "@milu/di",
       "version": "0.0.0",
     },
+    "packages/extensions/pin": {
+      "name": "@milu/extension-pin",
+      "version": "0.0.0",
+      "dependencies": {
+        "@milu/client": "workspace:*",
+        "@milu/core": "workspace:*",
+        "@milu/protocol": "workspace:*",
+      },
+    },
     "packages/protocol": {
       "name": "@milu/protocol",
       "version": "0.0.0",
@@ -79,6 +89,7 @@
       "dependencies": {
         "@milu/bootstrap": "workspace:*",
         "@milu/client": "workspace:*",
+        "@milu/extension-pin": "workspace:*",
         "@milu/protocol": "workspace:*",
         "@radix-ui/react-dropdown-menu": "^2.2.1",
         "react": "19.3.0",
@@ -168,6 +179,8 @@
     "@milu/core": ["@milu/core@workspace:packages/core"],
 
     "@milu/di": ["@milu/di@workspace:packages/di"],
+
+    "@milu/extension-pin": ["@milu/extension-pin@workspace:packages/extensions/pin"],
 
     "@milu/protocol": ["@milu/protocol@workspace:packages/protocol"],
 

@@ -1,6 +1,7 @@
 import { createServiceId, DisposableStore, type Service } from "@milu/di";
 
-import type { Extension, ExtensionContext } from "../extensions/types.ts";
+import { SESSION_MENU_POINT, type Extension, type ExtensionContext, type SessionMenuItem } from "../extensions/types.ts";
+import type { ActionRegistry } from "./actions.ts";
 import type { ConfigService } from "./config.ts";
 import type { ContributionService } from "./contributions.ts";
 
@@ -20,12 +21,15 @@ export class ExtensionService implements Service {
 	constructor(
 		private readonly _contributionService: ContributionService,
 		private readonly _configService: ConfigService,
+		private readonly _actionRegistry: ActionRegistry,
 		deps: ExtensionDeps,
 	) {
 		this._pending = deps.extensions;
 	}
 
 	async initialize(): Promise<void> {
+		// The points this host offers. Declared before anyone contributes, read by whoever renders.
+		this._contributionService.declare<SessionMenuItem>(SESSION_MENU_POINT);
 		for (const extension of this._pending) await this.load(extension);
 	}
 
@@ -38,13 +42,17 @@ export class ExtensionService implements Service {
 		const context: ExtensionContext = {
 			id: extension.id,
 			disposables,
-			contributions: this._contributionService,
 			config: this._configService,
+			actions: this._actionRegistry,
 		};
 
 		this._loaded.push({ extension, disposables });
 		try {
-			await extension.activate(context);
+			for (const [point, values] of Object.entries(extension.contributions ?? {})) {
+				const target = this._contributionService.get<unknown>(point);
+				for (const value of values) disposables.add(target.contribute(value));
+			}
+			await extension.activate?.(context);
 		} catch (error) {
 			this.unload(extension.id);
 			throw new Error(`extension "${extension.id}" failed to activate: ${error instanceof Error ? error.message : String(error)}`);

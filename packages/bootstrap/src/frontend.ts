@@ -1,4 +1,6 @@
 import {
+	ActionsService,
+	ActionsServiceId,
 	Connection,
 	ConnectionId,
 	type Host,
@@ -44,6 +46,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 				...(deps.retryMs === undefined ? {} : { retryMs: deps.retryMs }),
 			}),
 	);
+	container.register(ActionsServiceId, (c) => new ActionsService(c.get(ConnectionId)));
 	container.register(SessionListServiceId, (c) => new SessionListService(c.get(ConnectionId)));
 	container.register(TranscriptServiceId, (c) => new TranscriptService(c.get(ConnectionId), c.get(SessionListServiceId)));
 	container.register(WorkbenchServiceId, () => new WorkbenchService());
@@ -52,6 +55,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	await container.initialize();
 
 	const connection = container.get(ConnectionId);
+	const actions = container.get(ActionsServiceId);
 	const sessions = container.get(SessionListServiceId);
 	const transcript = container.get(TranscriptServiceId);
 	const workbench = container.get(WorkbenchServiceId);
@@ -73,7 +77,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	};
 
 	return {
-		host: { connection, sessions, transcript, workbench, opener, surfaces, layoutState },
+		host: { connection, sessions, transcript, workbench, opener, actions, surfaces, layoutState },
 		start() {
 			if (started) return;
 			started = true;

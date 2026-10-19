@@ -222,6 +222,11 @@ export class Session {
 
 	// ——— edits ———
 
+	/** The profile as it is on disk — the one thing an action needs before it edits one field. */
+	async profile(): Promise<SessionProfile | null> {
+		return this._profileOf();
+	}
+
 	async pin(pinned: boolean): Promise<void> {
 		await writePinned(this.root, pinned);
 		this._profile = { ...(this._profile ?? { name: this.name, createdAt: Date.now() }), pinned };

@@ -35,6 +35,16 @@ export interface SessionRow {
 	readonly workspace?: string | null;
 	readonly workspaceKind?: "worktree" | "repo" | "dir" | null;
 	readonly workspaceRepo?: string | null;
+	/** The row menu as the core resolved it for this session — declared once, delivered with the row. */
+	readonly menu?: readonly ContributionItem[];
+}
+
+/** One entry an extension contributed, already resolved for the session it was asked about. */
+export interface ContributionItem {
+	readonly id: string;
+	readonly title: string;
+	readonly action: string;
+	readonly order?: number;
 }
 
 /** What the page can hold: declared in the core, rendered by whatever shell is connected. */
@@ -68,8 +78,7 @@ export interface Methods {
 	abort: { params: { session: string }; result: Record<string, never> };
 	sessions: { params: Record<string, never>; result: { sessions: SessionRow[] } };
 	markRead: { params: { session: string; readAt: number }; result: Record<string, never> };
-	/** Pinned sessions sit above the rest of the list; the flag lives in the partner's own profile. */
-	pin: { params: { session: string; pinned: boolean }; result: Record<string, never> };
+	invoke: { params: { action: string; session?: string }; result: { ok: boolean; error?: string } };
 	/** Which apps this machine actually has — the menu only offers what exists. */
 	editors: { params: Record<string, never>; result: { editors: readonly { id: string; name: string }[]; finder: boolean } };
 	openPath: { params: { path: string; editorId?: string; via?: "default" | "finder" }; result: { ok: boolean; error?: string } };
@@ -81,7 +90,7 @@ export type MethodName = keyof Methods;
 export type Params<K extends MethodName> = Methods[K]["params"];
 export type Result<K extends MethodName> = Methods[K]["result"];
 
-export const METHOD_NAMES: readonly MethodName[] = ["transcript", "prompt", "abort", "sessions", "markRead", "pin", "editors", "openPath", "layout", "layoutSet"];
+export const METHOD_NAMES: readonly MethodName[] = ["transcript", "prompt", "abort", "sessions", "markRead", "invoke", "editors", "openPath", "layout", "layoutSet"];
 
 export function isFrame(value: unknown): value is Frame {
 	return typeof value === "object" && value !== null && typeof (value as { kind?: unknown }).kind === "string";

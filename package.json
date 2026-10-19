@@ -4,7 +4,8 @@
 	"private": true,
 	"description": "An agent harness with a server backend — one WebSocket protocol for web and desktop",
 	"workspaces": [
-		"packages/*"
+		"packages/*",
+		"packages/extensions/*"
 	],
 	"type": "module",
 	"scripts": {

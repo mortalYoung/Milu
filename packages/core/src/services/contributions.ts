@@ -29,17 +29,25 @@ export class ContributionPoint<T> implements Disposable {
 }
 
 export class ContributionService implements Service {
-	private readonly _declared = new Set<string>();
+	private readonly _points = new Map<string, ContributionPoint<unknown>>();
 	private readonly _owned = new DisposableStore();
 
+	/** A point the host declared. Reading one and contributing to it never require meeting. */
+	get<T>(id: string): ContributionPoint<T> {
+		const found = this._points.get(id);
+		if (!found) throw new Error(`contribution point "${id}" was never declared`);
+		return found as ContributionPoint<T>;
+	}
+
 	declare<T>(id: string): ContributionPoint<T> {
-		if (this._declared.has(id)) throw new Error(`${id} is already declared`);
-		this._declared.add(id);
-		return this._owned.add(new ContributionPoint<T>(id));
+		if (this._points.has(id)) throw new Error(`${id} is already declared`);
+		const point = this._owned.add(new ContributionPoint<T>(id));
+		this._points.set(id, point as ContributionPoint<unknown>);
+		return point;
 	}
 
 	dispose(): void {
-		this._declared.clear();
+		this._points.clear();
 		this._owned.dispose();
 	}
 }

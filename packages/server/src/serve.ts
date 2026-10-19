@@ -94,9 +94,13 @@ export async function serve(options: ServeOptions): Promise<Server> {
 			await backend.sessions.markRead(params.session, params.readAt);
 			return {};
 		},
-		async pin(params) {
-			await backend.sessions.pin(params.session, params.pinned);
-			return {};
+		async invoke(params) {
+			try {
+				await backend.actions.run(params.action, params.session ? { session: await backend.sessions.get(params.session) } : {});
+				return { ok: true };
+			} catch (error) {
+				return { ok: false, error: error instanceof Error ? error.message : String(error) };
+			}
 		},
 		async editors() {
 			return openTargets();

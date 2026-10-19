@@ -2,6 +2,7 @@ import { createServiceId, type Service } from "@milu/di";
 import type { LayoutState } from "@milu/protocol";
 import type { ComponentType } from "react";
 
+import type { ActionsService } from "./actions.ts";
 import type { Connection } from "./connection.ts";
 import type { OpenerService } from "./opener.ts";
 import type { SessionListService } from "./sessions.ts";
@@ -26,6 +27,7 @@ export interface Host {
 	readonly transcript: TranscriptService;
 	readonly workbench: WorkbenchService;
 	readonly opener: OpenerService;
+	readonly actions: ActionsService;
 	readonly surfaces: SurfaceRegistry;
 	/** The core's answer, as it last arrived. State, not a service: this side never decides. */
 	readonly layoutState: Store<LayoutState>;
