@@ -1,4 +1,5 @@
 import { type DialogProps, formatWorkspacePath, listTime } from "@milu/client";
+import { Markdown } from "@milu/markdown/react";
 import { useState } from "react";
 
 import type { SessionDetails } from "../details.ts";
@@ -69,7 +70,7 @@ export function SessionDetailsDialog(props: DialogProps) {
 							{personaOpen ? (
 								<div className="ext-details-persona">
 									{details.persona?.trim() ? (
-										<p>{details.persona}</p>
+										<Markdown port={props.host.markdown} text={details.persona} />
 									) : (
 										<>
 											<p>No persona on file</p>

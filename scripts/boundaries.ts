@@ -22,6 +22,11 @@ const RULES: readonly Rule[] = [
 		why: "the browser side cannot reach the Node side",
 	},
 	{
+		pkg: "markdown",
+		forbid: [/^node:/, "electron", /^@milu\/(core|server|web|bootstrap|extensions)$/],
+		why: "a renderer runs in the window: client port types and its own libraries, nothing else",
+	},
+	{
 		pkg: "web",
 		forbid: [/^node:/, "electron", /^@milu\/(core|server)$/, /^@milu\/bootstrap$/],
 		why: "the browser side cannot reach the Node side (`@milu/bootstrap/frontend` is allowed)",

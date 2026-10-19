@@ -12,6 +12,28 @@ export interface SeqEntry {
 
 export type PreviewKind = "user" | "assistant" | "send_message" | "command" | "skill" | "shell";
 
+export const LOG_EVENTS = {
+	agentStart: "agent/start",
+	agentEnd: "agent/end",
+	turnStart: "turn/start",
+	turnEnd: "turn/end",
+	toolCall: "tool/call",
+	toolResult: "tool/result",
+	requestHeader: "request/header",
+	sendMessage: "send_message",
+	systemPrompt: "system_prompt",
+	timeGapReminder: "time_gap_reminder",
+	escalationRequest: "escalation/request",
+	escalationDecision: "escalation/decision",
+	compaction: "compaction",
+	modelChange: "model_change",
+	contextChanged: "context/changed",
+	instructionsChanged: "instructions/changed",
+	mcpChanged: "mcp/changed",
+	rewind: "rewind",
+	memoryContext: "memory/context",
+} as const;
+
 export interface SessionRow {
 	readonly name: string;
 	readonly path: string;

@@ -31,9 +31,8 @@ export async function collectDetails(session: Session): Promise<SessionDetails> 
 			continue;
 		}
 		if (entry.type !== "custom") continue;
-		const phase = (entry.data ?? {}) as { phase?: unknown };
-		if (entry.customType === "milu/tool" && phase.phase === "end") toolCalls += 1;
-		if (entry.customType === "milu/run" && phase.phase === "start") runs += 1;
+		if (entry.customType === "tool/result") toolCalls += 1;
+		if (entry.customType === "agent/start") runs += 1;
 	}
 
 	return {

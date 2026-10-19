@@ -9,6 +9,7 @@ import type { Connection } from "./connection.ts";
 import type { DialogService } from "./dialogs.ts";
 import type { HeaderService } from "./header.ts";
 import type { HotkeysService } from "./hotkeys.ts";
+import type { MarkdownPort } from "./markdown.ts";
 import type { PickerService } from "./picker.ts";
 import type { SessionListService } from "./sessions.ts";
 import type { Store } from "./store.ts";
@@ -35,6 +36,7 @@ export interface Host {
 	readonly header: HeaderService;
 	readonly composer: ComposerService;
 	readonly hotkeys: HotkeysService;
+	readonly markdown: MarkdownPort;
 	readonly widgets: WidgetRegistry;
 	readonly picker: PickerService;
 	readonly surfaces: SurfaceRegistry;

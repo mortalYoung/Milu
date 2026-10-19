@@ -1,9 +1,11 @@
 import { createFrontEnd } from "@milu/bootstrap/frontend";
-import { dialogs, widgets } from "@milu/extensions/web";
+import { dialogs, markdown as markdownPlugins, widgets } from "@milu/extensions/web";
+import { createMarkdown, DEFAULT_PLUGINS } from "@milu/markdown";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 
 import { copyPath } from "./clipboard.ts";
+import { installMarkdownClicks } from "./markdown-clicks.ts";
 import { SessionListSurface } from "./surfaces/session-list.tsx";
 import { TranscriptPaneSurface } from "./surfaces/transcript-pane.tsx";
 import { Workbench } from "./workbench.tsx";
@@ -13,6 +15,7 @@ import "./style.css";
 async function main(): Promise<void> {
 	const front = await createFrontEnd({
 		url: `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/ws`,
+		markdown: createMarkdown([...DEFAULT_PLUGINS, ...markdownPlugins]),
 		commands: { copy: (text) => copyPath(text) },
 		dialogs,
 		widgets,
@@ -25,6 +28,7 @@ async function main(): Promise<void> {
 	const root = document.getElementById("root");
 	if (!root) throw new Error("#root is missing from index.html");
 
+	installMarkdownClicks(front.host);
 	createRoot(root).render(createElement(Workbench, { host: front.host }));
 	front.start();
 }

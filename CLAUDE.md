@@ -29,6 +29,7 @@ The rebuild exists to enforce these rules. Break one and the reason for the rebu
 | `packages/di`        | nothing                                    | any runtime                                         |
 | `packages/core`      | `protocol`, `di`                           | Electron, DOM, sockets, Bun-only                    |
 | `packages/client`    | `protocol`, `di`                           | `core`, Node built-ins, DOM                         |
+| `packages/markdown`  | `client` (types), `markdown-it`, `shiki`   | `core`, Node built-ins, Electron                    |
 | `packages/server`    | `core`, `protocol`                         | Electron, DOM                                       |
 | `packages/web`       | `client`, `protocol`, `bootstrap/frontend` | `core`, `bootstrap` (the Node side), Node built-ins |
 | `packages/bootstrap` | `core`, `client`, `server`, Electron       | —                                                   |

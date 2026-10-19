@@ -1,22 +1,6 @@
-export const EVENTS = {
-	agentStart: "agent/start",
-	agentEnd: "agent/end",
-	turnStart: "turn/start",
-	turnEnd: "turn/end",
-	toolCall: "tool/call",
-	toolResult: "tool/result",
-	requestHeader: "request/header",
-	sendMessage: "send_message",
-	systemPrompt: "system_prompt",
-	timeGapReminder: "time_gap_reminder",
-	compaction: "compaction",
-	modelChange: "model_change",
-	contextChanged: "context/changed",
-	instructionsChanged: "instructions/changed",
-	mcpChanged: "mcp/changed",
-	rewind: "rewind",
-	memoryContext: "memory/context",
-} as const;
+import { LOG_EVENTS } from "@milu/protocol";
+
+export const EVENTS = LOG_EVENTS;
 
 function escapeXml(text: string): string {
 	return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

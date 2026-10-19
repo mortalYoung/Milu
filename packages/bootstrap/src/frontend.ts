@@ -21,6 +21,7 @@ import {
 	Connection,
 	ConnectionId,
 	type Host,
+	type MarkdownPort,
 	SessionListService,
 	SessionListServiceId,
 	TranscriptService,
@@ -44,6 +45,7 @@ export interface FrontEndDeps {
 	readonly widgets?: readonly WidgetComponent[];
 	readonly commands?: BrowserCommands;
 	readonly dialogs?: readonly DialogComponent[];
+	readonly markdown: MarkdownPort & Disposable;
 }
 
 export interface FrontEnd extends Disposable {
@@ -100,6 +102,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	const layoutState = new Store<LayoutState>({ surfaces: [], layout: {} });
 
 	const disposables = new DisposableStore();
+	disposables.add(deps.markdown);
 	let started = false;
 
 	const sync = async (): Promise<void> => {
@@ -113,7 +116,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	};
 
 	return {
-		host: { connection, sessions, transcript, workbench, columns, actions, dialogs, header, composer, hotkeys, widgets, picker, surfaces, layoutState },
+		host: { connection, sessions, transcript, workbench, columns, actions, dialogs, header, composer, hotkeys, widgets, picker, surfaces, markdown: deps.markdown, layoutState },
 		start() {
 			if (started) return;
 			started = true;

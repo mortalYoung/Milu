@@ -94,6 +94,32 @@ export function MoreVerticalIcon(props: { size?: number }) {
 	);
 }
 
+export function CheckIcon(props: { size?: number }) {
+	return (
+		<Icon {...props}>
+			<path d="M20 6 9 17l-5-5" />
+		</Icon>
+	);
+}
+
+export function ArrowDownIcon(props: { size?: number }) {
+	return (
+		<Icon {...props}>
+			<path d="M12 5v14" />
+			<path d="m19 12-7 7-7-7" />
+		</Icon>
+	);
+}
+
+export function CircleStopIcon(props: { size?: number }) {
+	return (
+		<Icon {...props}>
+			<circle cx="12" cy="12" r="10" />
+			<rect width="6" height="6" x="9" y="9" rx="1" />
+		</Icon>
+	);
+}
+
 export function CopyIcon(props: { size?: number }) {
 	return (
 		<Icon {...props}>
