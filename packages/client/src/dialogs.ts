@@ -7,6 +7,7 @@ import type { Host } from "./surfaces.ts";
 
 export interface DialogProps {
 	readonly host: Host;
+	readonly data: unknown;
 	readonly close: (value: unknown) => void;
 }
 

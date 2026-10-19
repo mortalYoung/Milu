@@ -123,7 +123,18 @@ export function PinOffIcon(props: { size?: number }) {
 	);
 }
 
+export function InfoIcon(props: { size?: number }) {
+	return (
+		<Icon {...props}>
+			<circle cx="12" cy="12" r="10" />
+			<path d="M12 16v-4" />
+			<path d="M12 8h.01" />
+		</Icon>
+	);
+}
+
 const NAMED: Record<string, (props: { size?: number }) => ReactNode> = {
+	info: InfoIcon,
 	folder: FolderIcon,
 	"square-pen": SquarePenIcon,
 	trash: TrashIcon,

@@ -4,6 +4,7 @@ import { basename, join } from "node:path";
 
 import type { Extension, SessionMenuItem } from "@milu/core";
 
+import { collectDetails } from "./details.ts";
 import { listInstalledEditors, openInCodeEditor, openInFinder } from "./openers.ts";
 
 function openTargets(action: string): SessionMenuItem[] {
@@ -36,6 +37,14 @@ export const actionsExtension: Extension = {
 	contributions: {
 		"session.header": [{ id: "create", title: "Create", icon: "square-pen", action: "create.session" }],
 		"session.menu": [
+			{
+				id: "details",
+				order: 0,
+				group: "view",
+				title: "View details",
+				icon: "info",
+				action: "details.session",
+			},
 			{
 				id: "pin",
 				order: 10,
@@ -106,6 +115,14 @@ export const actionsExtension: Extension = {
 				await writeFile(join(dir, "profile.json"), `${JSON.stringify(profile, null, 2)}\n`, "utf8");
 				if (values.workspace) await writeFile(join(dir, "workspace.json"), `${JSON.stringify({ path: values.workspace, kind: null, repo: null }, null, 2)}\n`, "utf8");
 				return { kind: "select", session: name };
+			},
+		});
+
+		context.actions.register({
+			id: "details.session",
+			run: async ({ session, dialog }) => {
+				if (!session) throw new Error("details.session needs a session");
+				await dialog?.({ kind: "custom", id: "session-details", title: session.name, data: await collectDetails(session) });
 			},
 		});
 

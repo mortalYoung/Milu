@@ -846,9 +846,19 @@ body.pane-dragging {
 }
 
 .conv-dialog.wide {
-	width: 600px;
+	width: max-content;
+	max-width: calc(100vw - 48px);
 	padding: 0;
 	overflow: hidden;
+}
+
+.conv-dialog-hidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
 }
 
 .conv-dialog-title {

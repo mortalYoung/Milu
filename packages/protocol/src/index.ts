@@ -39,7 +39,9 @@ export interface ConfirmCopy {
 	readonly danger?: boolean;
 }
 
-export type DialogDescriptor = { readonly kind: "confirm"; readonly copy: ConfirmCopy } | { readonly kind: "custom"; readonly id: string };
+export type DialogDescriptor =
+	| { readonly kind: "confirm"; readonly copy: ConfirmCopy }
+	| { readonly kind: "custom"; readonly id: string; readonly title?: string; readonly data?: unknown };
 
 export interface ContributionItem {
 	readonly id: string;

@@ -29,7 +29,14 @@ export function DialogHost(props: { host: Host }) {
 							</div>
 						</>
 					) : custom ? (
-						createElement(custom, { host, close: (value: unknown) => host.dialogs.resolve(value) })
+						<>
+							<Dialog.Title className="conv-dialog-hidden">{pending?.dialog.kind === "custom" ? (pending.dialog.title ?? pending.dialog.id) : ""}</Dialog.Title>
+							{createElement(custom, {
+								host,
+								data: pending?.dialog.kind === "custom" ? pending.dialog.data : undefined,
+								close: (value: unknown) => host.dialogs.resolve(value),
+							})}
+						</>
 					) : (
 						<Dialog.Title className="conv-dialog-title">No such dialog: {pending?.dialog.kind === "custom" ? pending.dialog.id : ""}</Dialog.Title>
 					)}

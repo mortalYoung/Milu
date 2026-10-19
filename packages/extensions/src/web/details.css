@@ -1,0 +1,265 @@
+.ext-details {
+	display: flex;
+	flex-direction: column;
+	width: 720px;
+	max-height: min(720px, 86vh);
+	font-family: var(--sans);
+	color: var(--ink);
+}
+
+.ext-details-head {
+	display: flex;
+	align-items: center;
+	flex: none;
+	gap: 12px;
+	padding: 16px 20px 12px;
+	border-bottom: 0.5px solid var(--line);
+}
+
+.ext-details-avatar {
+	display: grid;
+	place-items: center;
+	flex: none;
+	width: 40px;
+	height: 40px;
+	border-radius: var(--r6);
+	background: var(--ink);
+	color: var(--canvas);
+	font-size: 18px;
+	font-weight: 700;
+	line-height: 1;
+}
+
+.ext-details-ident {
+	min-width: 0;
+}
+
+.ext-details-ident h2 {
+	margin: 0;
+	font-size: 16px;
+	font-weight: 600;
+	line-height: 1.25;
+	color: var(--ink);
+}
+
+.ext-details-ident p {
+	margin: 2px 0 0;
+	overflow: hidden;
+	font-size: 12px;
+	color: var(--muted);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.ext-details-writing {
+	margin-left: auto;
+	padding: 4px 8px;
+	border: 0.5px solid var(--line);
+	border-radius: var(--r6);
+	background: var(--hover);
+	font-size: 10px;
+	font-weight: 500;
+	color: var(--ink);
+}
+
+.ext-details-body {
+	flex: 1;
+	min-height: 0;
+	padding: 10px 20px 20px;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}
+
+.ext-details-cards {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 10px;
+}
+
+.ext-details-card {
+	border: 0.5px solid var(--line);
+	border-radius: var(--r6);
+	background: var(--surface);
+}
+
+.ext-details-metric {
+	display: flex;
+	flex-direction: column;
+	padding: 10px 12px;
+}
+
+.ext-details-caption {
+	font-size: 12px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.1em;
+	color: var(--muted);
+}
+
+.ext-details-number {
+	margin-top: 4px;
+	font-family: var(--mono);
+	font-size: 18px;
+	line-height: 1.2;
+	color: var(--ink);
+}
+
+.ext-details-hint {
+	margin-top: 2px;
+	font-family: var(--mono);
+	font-size: 10px;
+	color: var(--muted);
+}
+
+.ext-details-grid {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 240px;
+	gap: 10px;
+	margin-top: 10px;
+}
+
+.ext-details-column {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	min-width: 0;
+}
+
+.ext-details-head-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 10px 12px;
+	border: 0;
+	border-radius: var(--r6);
+	background: transparent;
+	color: var(--muted);
+	text-align: left;
+	cursor: pointer;
+}
+
+.ext-details-head-row:hover {
+	background: var(--hover);
+}
+
+.ext-details-summary {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	font-size: 12px;
+	color: var(--muted);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.ext-details-head-row svg {
+	flex: none;
+}
+
+.ext-details-persona {
+	padding: 0 12px 12px;
+}
+
+.ext-details-persona p {
+	margin: 0;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	font-size: 13px;
+	line-height: 1.65;
+	color: var(--ink);
+}
+
+.ext-details-prose {
+	margin-top: 4px;
+	line-height: 1.6;
+	color: var(--muted);
+}
+
+.ext-details-prose code {
+	font-family: var(--mono);
+	font-size: 12px;
+}
+
+.ext-details-pad {
+	padding: 10px 12px;
+}
+
+.ext-details-facts {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	gap: 6px 12px;
+	margin: 8px 0 0;
+	font-size: 12px;
+}
+
+.ext-details-facts dt {
+	color: var(--muted);
+}
+
+.ext-details-facts dd {
+	margin: 0;
+	overflow: hidden;
+	font-family: var(--mono);
+	font-size: 12px;
+	color: var(--ink);
+	text-align: right;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.ext-details-foot {
+	display: flex;
+	align-items: center;
+	flex: none;
+	gap: 8px;
+	padding: 12px 20px;
+	border-top: 0.5px solid var(--line);
+}
+
+.ext-details-spacer {
+	flex: 1;
+}
+
+.ext-details-kbd kbd {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 20px;
+	height: 20px;
+	padding: 0 4px;
+	border-radius: 4px;
+	background: var(--hover);
+	font-family: var(--sans);
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--muted);
+}
+
+.ext-details-close {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	height: 36px;
+	padding: 0 12px;
+	border: 0;
+	border-radius: var(--r8);
+	background: var(--ink);
+	color: var(--canvas);
+	font-family: var(--sans);
+	font-size: 12px;
+	font-weight: 500;
+	white-space: nowrap;
+	cursor: pointer;
+	transition:
+		background-color 160ms var(--ease-out),
+		transform 160ms var(--ease-out);
+}
+
+.ext-details-close:hover {
+	background: color-mix(in srgb, var(--ink) 90%, transparent);
+}
+
+.ext-details-close:active {
+	transform: scale(0.97);
+}

@@ -1,6 +1,7 @@
 .ext-create {
 	display: flex;
 	flex-direction: column;
+	width: 600px;
 	font-family: var(--sans);
 }
 
