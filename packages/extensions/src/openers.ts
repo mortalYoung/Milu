@@ -3,25 +3,16 @@ import { accessSync, constants, existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 
-export interface EditorInfo {
-	id: string;
-	name: string;
-	cli?: string;
-	app?: string;
+export interface Editor {
+	readonly id: string;
+	readonly name: string;
+	readonly cli?: string;
+	readonly app?: string;
 }
 
-export interface EditorTarget {
-	id: string;
-	name: string;
-}
+export type OpenOutcome = { ok: true; via: string } | { ok: false; reason: "missing-path" | "no-editor" | "editor-missing" | "open-failed" };
 
-export interface OpenTargets {
-	editors: EditorTarget[];
-	finder: boolean;
-}
-
-/** The editors v1 knew about; anything not installed is simply not offered. */
-const EDITORS: EditorInfo[] = [
+const EDITORS: Editor[] = [
 	{ id: "code", name: "VS Code", cli: "code", app: "Visual Studio Code" },
 	{ id: "cursor", name: "Cursor", cli: "cursor", app: "Cursor" },
 	{ id: "zed", name: "Zed", cli: "zed", app: "Zed" },
@@ -29,9 +20,6 @@ const EDITORS: EditorInfo[] = [
 	{ id: "subl", name: "Sublime Text", cli: "subl", app: "Sublime Text" },
 ];
 
-export const FOLDER_BROWSER_AVAILABLE = process.platform === "darwin";
-
-/** No Bun.which: the core has to run under any Node, so PATH is walked by hand. */
 function which(command: string): string | null {
 	for (const dir of (process.env["PATH"] ?? "").split(delimiter)) {
 		if (!dir) continue;
@@ -46,7 +34,7 @@ function which(command: string): string | null {
 	return null;
 }
 
-export function listInstalledEditors(): EditorInfo[] {
+export function listInstalledEditors(): Editor[] {
 	return EDITORS.filter((editor) => {
 		if (editor.cli && which(editor.cli)) return true;
 		if (!editor.app) return false;
@@ -58,17 +46,12 @@ export function listInstalledEditors(): EditorInfo[] {
 	});
 }
 
-export function openTargets(): OpenTargets {
-	return { editors: listInstalledEditors().map(({ id, name }) => ({ id, name })), finder: FOLDER_BROWSER_AVAILABLE };
-}
-
 function expandTilde(path: string): string {
 	if (path === "~") return homedir();
 	if (path.startsWith("~/") || path.startsWith("~\\")) return join(homedir(), path.slice(2));
 	return path;
 }
 
-/** These buttons always open a folder: a file target falls back to its parent directory. */
 function folderPath(path: string): string {
 	try {
 		return statSync(path).isDirectory() ? path : dirname(path);
@@ -90,19 +73,12 @@ function run(argv: string[]): Promise<boolean> {
 	});
 }
 
-export type OpenOutcome = { ok: true; via: string } | { ok: false; reason: "missing-path" | "no-editor" | "editor-missing" | "open-failed" };
-
 export async function openInFinder(path: string): Promise<OpenOutcome> {
 	const real = expandTilde(path);
 	if (!existsSync(real)) return { ok: false, reason: "missing-path" };
 	return (await run(["/usr/bin/open", "-a", "Finder", folderPath(real)])) ? { ok: true, via: "Finder" } : { ok: false, reason: "open-failed" };
 }
 
-/**
- * One attempt must never cancel the next: a GUI-launched app has a bare PATH, so an editor found
- * through its bundle is not runnable by its CLI name — and that failure used to swallow the
- * `open -a` fallback that would have worked.
- */
 export async function openInCodeEditor(path: string, editorId?: string): Promise<OpenOutcome> {
 	const real = expandTilde(path);
 	if (!existsSync(real)) return { ok: false, reason: "missing-path" };
@@ -116,8 +92,4 @@ export async function openInCodeEditor(path: string, editorId?: string): Promise
 	if (pick?.app && (await run(["/usr/bin/open", "-a", pick.app, target]))) return { ok: true, via: `${pick.name} app` };
 	if (!editorId && (await run(["/usr/bin/open", target]))) return { ok: true, via: "default opener" };
 	return { ok: false, reason: pick ? "open-failed" : "no-editor" };
-}
-
-export function editorNames(): string {
-	return EDITORS.map((editor) => editor.name).join(" · ");
 }

@@ -5,15 +5,12 @@ import type { SeqEntry } from "@milu/protocol";
 
 import type { ExecutionService } from "../services/execution.ts";
 
-/** pi's durable store rejects `undefined` anywhere in a payload; the round trip is its own shape. */
 function stripUndefined<T>(value: T): T {
 	if (value === undefined) return value;
 	return JSON.parse(JSON.stringify(value)) as T;
 }
 
-/** One session's log file: append-only, written in order, readable by seq. */
 export class SessionLog {
-	/** Fires for every entry that reached the disk, in write order. */
 	readonly onEntry: Event<SeqEntry>;
 
 	private _session: Session<JsonlSessionMetadata> | null = null;
@@ -47,7 +44,6 @@ export class SessionLog {
 		return this._enqueue(() => this._sessionOrThrow().appendCustomEntry(type, data === undefined ? undefined : stripUndefined(data)));
 	}
 
-	/** Writes are queued; a caller that cares (shutdown, a probe) waits here. */
 	async flush(): Promise<void> {
 		await this._queue;
 	}
@@ -71,7 +67,6 @@ export class SessionLog {
 	}
 
 	dispose(): void {
-		// Pending writes keep draining against the session; flush() is how a caller waits for them.
 		this._emitter.dispose();
 	}
 

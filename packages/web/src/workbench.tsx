@@ -3,7 +3,6 @@ import { useEffect } from "react";
 
 import { useStore } from "./use-store.ts";
 
-/** The working surface: the slots the core asked for, in the order it asked for them, and nothing else. */
 export function Workbench(props: { host: Host }) {
 	const { host } = props;
 

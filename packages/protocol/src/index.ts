@@ -10,13 +10,8 @@ export interface SeqEntry {
 	readonly entry: Entry;
 }
 
-/** What kind of thing ended a session's log — it decides the preview's prefix in the row. */
 export type PreviewKind = "user" | "assistant" | "send_message" | "command" | "skill" | "shell";
 
-/**
- * One session = one partner directory. The field names mirror what v1 writes into the partner's own
- * files (`profile.json`, `read.json`, `workspace.json`), so both versions read one shape.
- */
 export interface SessionRow {
 	readonly name: string;
 	readonly path: string;
@@ -27,7 +22,6 @@ export interface SessionRow {
 	readonly forkedFrom?: string;
 	readonly pinned?: boolean;
 	readonly readAt?: number;
-	/** This session's own run state — sessions run independently. */
 	readonly running: boolean;
 	readonly lastMessage?: string;
 	readonly lastMessageAt?: number;
@@ -35,26 +29,36 @@ export interface SessionRow {
 	readonly workspace?: string | null;
 	readonly workspaceKind?: "worktree" | "repo" | "dir" | null;
 	readonly workspaceRepo?: string | null;
-	/** The row menu as the core resolved it for this session — declared once, delivered with the row. */
 	readonly menu?: readonly ContributionItem[];
 }
 
-/** One entry an extension contributed, already resolved for the session it was asked about. */
+export interface ConfirmCopy {
+	readonly title: string;
+	readonly description?: string;
+	readonly confirmLabel?: string;
+}
+
 export interface ContributionItem {
 	readonly id: string;
 	readonly title: string;
-	readonly action: string;
+	readonly icon?: string;
 	readonly order?: number;
+	readonly group?: string;
+	readonly danger?: boolean;
+	readonly confirm?: ConfirmCopy;
+	readonly action?: string;
+	readonly args?: unknown;
+	readonly items?: readonly ContributionItem[];
 }
 
-/** What the page can hold: declared in the core, rendered by whatever shell is connected. */
+export type BrowserCommand = { readonly kind: "copy"; readonly text: string };
+
 export interface SurfaceDeclaration {
 	readonly id: string;
 	readonly slot: string;
 	readonly order?: number;
 }
 
-/** slot → surface ids, in the order the shell renders them. */
 export type Layout = Readonly<Record<string, readonly string[]>>;
 
 export interface LayoutState {
@@ -64,7 +68,6 @@ export interface LayoutState {
 
 export type LiveEvent = { readonly type: "status"; readonly session: string; readonly running: boolean; readonly error?: string } | ({ readonly type: "layout" } & LayoutState);
 
-/** `seq` is per session, so every entry frame names the session it belongs to. */
 export type Frame =
 	| { kind: "req"; id: number; method: string; params: unknown }
 	| { kind: "res"; id: number; ok: true; result: unknown }
@@ -78,10 +81,7 @@ export interface Methods {
 	abort: { params: { session: string }; result: Record<string, never> };
 	sessions: { params: Record<string, never>; result: { sessions: SessionRow[] } };
 	markRead: { params: { session: string; readAt: number }; result: Record<string, never> };
-	invoke: { params: { action: string; session?: string }; result: { ok: boolean; error?: string } };
-	/** Which apps this machine actually has — the menu only offers what exists. */
-	editors: { params: Record<string, never>; result: { editors: readonly { id: string; name: string }[]; finder: boolean } };
-	openPath: { params: { path: string; editorId?: string; via?: "default" | "finder" }; result: { ok: boolean; error?: string } };
+	invoke: { params: { action: string; session?: string; args?: unknown }; result: { ok: boolean; error?: string; command?: BrowserCommand } };
 	layout: { params: Record<string, never>; result: LayoutState };
 	layoutSet: { params: { layout: Layout }; result: LayoutState };
 }
@@ -90,7 +90,7 @@ export type MethodName = keyof Methods;
 export type Params<K extends MethodName> = Methods[K]["params"];
 export type Result<K extends MethodName> = Methods[K]["result"];
 
-export const METHOD_NAMES: readonly MethodName[] = ["transcript", "prompt", "abort", "sessions", "markRead", "invoke", "editors", "openPath", "layout", "layoutSet"];
+export const METHOD_NAMES: readonly MethodName[] = ["transcript", "prompt", "abort", "sessions", "markRead", "invoke", "layout", "layoutSet"];
 
 export function isFrame(value: unknown): value is Frame {
 	return typeof value === "object" && value !== null && typeof (value as { kind?: unknown }).kind === "string";

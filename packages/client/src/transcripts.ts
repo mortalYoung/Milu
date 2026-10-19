@@ -6,7 +6,6 @@ import type { SessionListService } from "./sessions.ts";
 import { Store } from "./store.ts";
 
 export interface TranscriptState {
-	/** The session on screen; empty until the first row arrives. */
 	readonly selected: string;
 	readonly logs: Readonly<Record<string, readonly SeqEntry[]>>;
 	readonly running: Readonly<Record<string, boolean>>;
@@ -17,7 +16,6 @@ export interface TranscriptState {
 const EMPTY: TranscriptState = { selected: "", logs: {}, running: {}, errors: {}, drafts: {} };
 const NO_ENTRIES: readonly SeqEntry[] = [];
 
-/** What each session is doing and what has been said in it — one entry per session, never merged. */
 export class TranscriptService implements Service {
 	readonly state = new Store<TranscriptState>(EMPTY);
 	readonly linked = new Store(false);
@@ -37,7 +35,6 @@ export class TranscriptService implements Service {
 		return this.state.get().logs[session] ?? NO_ENTRIES;
 	}
 
-	/** Live status wins; the row's own flag covers sessions this client never saw run. */
 	running(session: string): boolean {
 		return this.state.get().running[session] ?? this._sessions.get(session)?.running ?? false;
 	}
@@ -50,7 +47,6 @@ export class TranscriptService implements Service {
 		return this.state.get().drafts[session] ?? "";
 	}
 
-	/** Switch sessions: mark the old one read, load the new one once. Never blocks on a run. */
 	async select(session: string): Promise<void> {
 		this.state.update((current) => ({ ...current, selected: session }));
 
@@ -100,13 +96,11 @@ export class TranscriptService implements Service {
 		this.state.update((current) => ({ ...current, drafts: { ...current.drafts, [session]: draft } }));
 	}
 
-	/** A dropped link forgets nothing but the loaded set: the transcript is replayed on reconnect. */
 	setLinked(up: boolean): void {
 		this.linked.set(up);
 		if (!up) this._loaded.clear();
 	}
 
-	/** Picks the first session when nothing is selected — the boot choice until restore exists. */
 	async chooseFirst(rows: readonly SessionRow[]): Promise<void> {
 		if (this.selected()) return;
 		const first = rows[0];

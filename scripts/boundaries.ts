@@ -1,11 +1,6 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 
-/**
- * The package table in CLAUDE.md, as a check. TypeScript and Vite both shrug when a browser
- * package imports the Node side — Vite only warns and externalizes it — so the boundary needs
- * something that actually fails.
- */
 interface Rule {
 	readonly pkg: string;
 	readonly forbid: readonly (string | RegExp)[];
@@ -33,7 +28,7 @@ const RULES: readonly Rule[] = [
 	{ pkg: "server", forbid: ["electron", /^@milu\/(client|web|bootstrap)$/], why: "the transport adapter knows the core and the wire, nothing else" },
 	{ pkg: "bootstrap", forbid: ["electron", /^@milu\/web$/], why: "the composition root composes libraries; shells import it, not the reverse" },
 	{
-		pkg: "extensions/pin",
+		pkg: "extensions",
 		forbid: ["electron", /^@milu\/(web|server)$/],
 		why: "an extension gets core capabilities and client types, nothing about a shell",
 	},

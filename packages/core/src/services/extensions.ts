@@ -28,7 +28,6 @@ export class ExtensionService implements Service {
 	}
 
 	async initialize(): Promise<void> {
-		// The points this host offers. Declared before anyone contributes, read by whoever renders.
 		this._contributionService.declare<SessionMenuItem>(SESSION_MENU_POINT);
 		for (const extension of this._pending) await this.load(extension);
 	}

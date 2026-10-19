@@ -1,11 +1,10 @@
 import {
 	ActionsService,
 	ActionsServiceId,
+	type BrowserCommands,
 	Connection,
 	ConnectionId,
 	type Host,
-	OpenerService,
-	OpenerServiceId,
 	SessionListService,
 	SessionListServiceId,
 	TranscriptService,
@@ -25,8 +24,8 @@ export interface FrontEndDeps {
 	readonly url: string;
 	readonly createSocket?: SocketFactory;
 	readonly retryMs?: number;
-	/** The code this bundle brought; the core decides which of it is on the page. */
 	readonly components?: readonly SurfaceComponent[];
+	readonly commands?: BrowserCommands;
 }
 
 export interface FrontEnd extends Disposable {
@@ -34,7 +33,6 @@ export interface FrontEnd extends Disposable {
 	start(): void;
 }
 
-/** The view layer, assembled: services in a container, surfaces registered, nothing rendered yet. */
 export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	const container = new Container();
 	container.register(
@@ -46,11 +44,10 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 				...(deps.retryMs === undefined ? {} : { retryMs: deps.retryMs }),
 			}),
 	);
-	container.register(ActionsServiceId, (c) => new ActionsService(c.get(ConnectionId)));
+	container.register(ActionsServiceId, (c) => new ActionsService(c.get(ConnectionId), deps.commands ?? {}));
 	container.register(SessionListServiceId, (c) => new SessionListService(c.get(ConnectionId)));
 	container.register(TranscriptServiceId, (c) => new TranscriptService(c.get(ConnectionId), c.get(SessionListServiceId)));
 	container.register(WorkbenchServiceId, () => new WorkbenchService());
-	container.register(OpenerServiceId, (c) => new OpenerService(c.get(ConnectionId)));
 	container.register(SurfaceRegistryId, () => new SurfaceRegistry(deps.components ?? []));
 	await container.initialize();
 
@@ -59,17 +56,14 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	const sessions = container.get(SessionListServiceId);
 	const transcript = container.get(TranscriptServiceId);
 	const workbench = container.get(WorkbenchServiceId);
-	const opener = container.get(OpenerServiceId);
 	const surfaces = container.get(SurfaceRegistryId);
 	const layoutState = new Store<LayoutState>({ surfaces: [], layout: {} });
 
 	const disposables = new DisposableStore();
 	let started = false;
 
-	/** After every (re)connect: what the page holds, then rows, then whatever was on screen. */
 	const sync = async (): Promise<void> => {
 		layoutState.set(await connection.request("layout", {}));
-		await opener.load();
 		await sessions.refresh();
 		const current = transcript.selected();
 		if (current) await transcript.select(current);
@@ -77,7 +71,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	};
 
 	return {
-		host: { connection, sessions, transcript, workbench, opener, actions, surfaces, layoutState },
+		host: { connection, sessions, transcript, workbench, actions, surfaces, layoutState },
 		start() {
 			if (started) return;
 			started = true;

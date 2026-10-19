@@ -1,13 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 
-/**
- * Both ends in one terminal: the core on 8787, Vite on 5173 with `/ws` proxied to it. Either one
- * dying takes the other down — a half-running dev stack only produces confusing ECONNREFUSED.
- *
- * Each child is spawned detached so it leads its own process group: `bun run <script>` wraps the
- * real command, and killing the wrapper alone leaves the server orphaned and still holding :8787.
- */
 const CHILDREN = [
 	{ tag: "server", script: "server" },
 	{ tag: "web", script: "dev:web" },
@@ -57,7 +50,6 @@ for (const { tag, script } of CHILDREN) {
 		running.delete(tag);
 		if (!stopping) {
 			console.error(`${"dev".padEnd(6)} │ ${tag} exited (${error ?? code}) — stopping the rest`);
-			// A half-stack is a failure even when the child left politely.
 			process.exitCode = code && code !== 0 ? code : 1;
 			stop();
 			return;

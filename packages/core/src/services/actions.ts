@@ -1,21 +1,20 @@
 import { createServiceId, type Disposable, type Service } from "@milu/di";
+import type { BrowserCommand } from "@milu/protocol";
 
 import type { Session } from "../session/session.ts";
+import type { SessionService } from "./sessions.ts";
 
 export interface ActionContext {
-	/** Present when the action was invoked from a session — a row's menu, or a shortcut. */
 	readonly session?: Session;
+	readonly args?: unknown;
+	readonly sessions?: SessionService;
 }
 
 export interface Action {
 	readonly id: string;
-	readonly run: (context: ActionContext) => void | Promise<void>;
+	readonly run: (context: ActionContext) => void | BrowserCommand | Promise<void | BrowserCommand>;
 }
 
-/**
- * The only way an extension can *do* something. The wire protocol is a closed set of methods, so
- * a command from an extension arrives as one action id rather than a method of its own.
- */
 export class ActionRegistry implements Service {
 	private readonly _actions = new Map<string, Action>();
 
@@ -29,10 +28,10 @@ export class ActionRegistry implements Service {
 		};
 	}
 
-	async run(id: string, context: ActionContext): Promise<void> {
+	async run(id: string, context: ActionContext): Promise<BrowserCommand | undefined> {
 		const action = this._actions.get(id);
 		if (!action) throw new Error(`no action "${id}"`);
-		await action.run(context);
+		return (await action.run(context)) ?? undefined;
 	}
 
 	dispose(): void {

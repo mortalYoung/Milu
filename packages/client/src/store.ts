@@ -1,6 +1,5 @@
 import { Emitter, type Event } from "@milu/di";
 
-/** One value, one owner, and whoever renders it subscribes — the only channel a surface has to state. */
 export class Store<T> {
 	private _value: T;
 	private readonly _emitter = new Emitter<T>();

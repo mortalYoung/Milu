@@ -32,7 +32,6 @@ export class ContributionService implements Service {
 	private readonly _points = new Map<string, ContributionPoint<unknown>>();
 	private readonly _owned = new DisposableStore();
 
-	/** A point the host declared. Reading one and contributing to it never require meeting. */
 	get<T>(id: string): ContributionPoint<T> {
 		const found = this._points.get(id);
 		if (!found) throw new Error(`contribution point "${id}" was never declared`);

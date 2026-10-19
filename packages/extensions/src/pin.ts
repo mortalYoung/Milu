@@ -1,6 +1,5 @@
 import type { Extension } from "@milu/core";
 
-/** The pinned flag belongs to the session (v1 writes it into `profile.json`); the command lives here. */
 export const pinExtension: Extension = {
 	id: "pin",
 	apiVersion: 1,
@@ -10,8 +9,10 @@ export const pinExtension: Extension = {
 			{
 				id: "pin",
 				order: 10,
+				group: "state",
 				action: "pin.toggle",
 				title: async (session) => ((await session.profile())?.pinned ? "Unpin" : "Pin"),
+				icon: async (session) => ((await session.profile())?.pinned ? "pin-off" : "pin"),
 			},
 		],
 	},

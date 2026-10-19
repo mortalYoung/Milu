@@ -1,14 +1,26 @@
 import { createServiceId, type Service } from "@milu/di";
+import type { BrowserCommand } from "@milu/protocol";
 
 import type { Connection } from "./connection.ts";
 
-/** The one way to run a contributed command: an action id, and the session it is about. */
-export class ActionsService implements Service {
-	constructor(private readonly _connection: Connection) {}
+export type BrowserCommands = {
+	readonly [K in BrowserCommand["kind"]]?: (command: Extract<BrowserCommand, { kind: K }>) => void | Promise<void>;
+};
 
-	async invoke(action: string, session?: string): Promise<void> {
-		const result = await this._connection.request("invoke", { action, ...(session ? { session } : {}) });
+export class ActionsService implements Service {
+	constructor(
+		private readonly _connection: Connection,
+		private readonly _commands: BrowserCommands,
+	) {}
+
+	async invoke(action: string, session?: string, args?: unknown): Promise<void> {
+		const result = await this._connection.request("invoke", { action, ...(session ? { session } : {}), ...(args === undefined ? {} : { args }) });
 		if (!result.ok) throw new Error(result.error ?? `action "${action}" failed`);
+
+		const command = result.command;
+		if (!command) return;
+		const run = this._commands[command.kind] as ((command: BrowserCommand) => void | Promise<void>) | undefined;
+		await run?.(command);
 	}
 
 	dispose(): void {}

@@ -26,36 +26,20 @@ export type { SessionProfile, WorkspaceFacts } from "./session/files.ts";
 export { SettingsService, SettingsServiceId, type Settings } from "./services/settings.ts";
 export { ToolService, ToolServiceId } from "./services/tools.ts";
 export { LocalExecutionEnv } from "./execution/local-env.ts";
-export {
-	editorNames,
-	FOLDER_BROWSER_AVAILABLE,
-	listInstalledEditors,
-	openInCodeEditor,
-	openInFinder,
-	openTargets,
-	type EditorInfo,
-	type EditorTarget,
-	type OpenOutcome,
-	type OpenTargets,
-} from "./system/openers.ts";
 
 export interface BackendConfig {
 	root: string;
 	workspace: string;
 }
 
-/** What a shell gets from the core: the services, and one way to stop them. */
 export interface Backend extends Disposable {
 	readonly sessions: SessionService;
 	readonly models: ModelsService;
 	readonly config: ConfigService;
 	readonly contributions: ContributionService;
-	/** Every command an extension offers — the protocol's one open door. */
 	readonly actions: ActionRegistry;
 	readonly tools: ToolService;
 	readonly settings: SettingsService;
-	/** What the page can hold, and where each piece sits. */
 	readonly layout: LayoutService;
-	/** Graceful shutdown: stops accepting work, drains pending writes, then disposes. */
 	close(): Promise<void>;
 }

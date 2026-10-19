@@ -711,6 +711,77 @@ body {
 	}
 }
 
+.conv-dialog-overlay {
+	position: fixed;
+	inset: 0;
+	z-index: 60;
+	background: color-mix(in srgb, var(--ink) 22%, transparent);
+}
+
+.conv-dialog {
+	position: fixed;
+	top: 50%;
+	left: 50%;
+	z-index: 61;
+	width: 320px;
+	transform: translate(-50%, -50%);
+	padding: 18px;
+	border: 0.5px solid var(--line-strong);
+	border-radius: var(--r12);
+	background: var(--surface);
+	box-shadow: 0 16px 48px color-mix(in srgb, var(--ink) 18%, transparent);
+	outline: none;
+}
+
+.conv-dialog-title {
+	margin: 0;
+	font-family: var(--serif);
+	font-size: 16px;
+	font-weight: 600;
+	color: var(--ink);
+}
+
+.conv-dialog-description {
+	margin: 8px 0 0;
+	font-size: 13px;
+	line-height: 1.6;
+	color: var(--muted);
+}
+
+.conv-dialog-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-top: 18px;
+}
+
+.conv-dialog-button {
+	height: 30px;
+	padding: 0 12px;
+	border: 0.5px solid var(--line-strong);
+	border-radius: var(--r6);
+	background: transparent;
+	color: var(--ink);
+	font-family: var(--sans);
+	font-size: 13px;
+	cursor: pointer;
+}
+
+.conv-dialog-button:hover {
+	background: var(--hover);
+}
+
+.conv-dialog-button.danger {
+	border-color: transparent;
+	background: var(--signal);
+	color: var(--canvas);
+}
+
+.conv-dialog-button.danger:hover {
+	background: var(--signal);
+	opacity: 0.9;
+}
+
 /* ——— the pane ——— */
 
 .chat-area {

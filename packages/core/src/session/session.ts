@@ -9,7 +9,6 @@ import type { ToolService } from "../services/tools.ts";
 import { profileOf, readAtOf, tildify, type SessionProfile, workspaceOf, type WorkspaceFacts, writePinned, writeReadAt } from "./files.ts";
 import { SessionLog } from "./log.ts";
 
-/** What v1 wrote into a session's log when something other than a message happened. */
 const SEND_MESSAGE = "send_message";
 const COMMAND_RUN = "command/run";
 const SKILL_RUN = "skill/run";
@@ -33,7 +32,6 @@ function stampOf(entry: Entry, data: { timestamp?: unknown }): number {
 	return typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0);
 }
 
-/** The last thing a user would call "the last message": a message, or a command/skill/shell run. */
 function lastVisible(entries: readonly Entry[]): LastVisible | null {
 	let last: LastVisible | null = null;
 	for (const entry of entries) {
@@ -68,11 +66,6 @@ export interface SessionDeps {
 	readonly toolService: ToolService;
 }
 
-/**
- * One session: its own profile, read watermark and workspace files, its own log, and — only once
- * it is actually opened — its own agent loop. Nothing here is shared with another
- * session, and nothing outlives `close()`.
- */
 export class Session {
 	readonly name: string;
 	readonly root: string;
@@ -146,7 +139,6 @@ export class Session {
 
 	// ——— the run ———
 
-	/** The loop, built on first use and kept until `close()`. */
 	async open(): Promise<AgentLoopService> {
 		if (this._loop) return this._loop;
 		await this._log.open();
@@ -162,7 +154,6 @@ export class Session {
 		return loop;
 	}
 
-	/** Resolving the model is what fails first when a key is missing — and only for this session. */
 	async run(text: string): Promise<void> {
 		const loop = await this.open();
 		loop.setModel(this._deps.modelsService.resolve());
@@ -175,7 +166,6 @@ export class Session {
 		this._loop?.abort();
 	}
 
-	/** The loop's output is this session's log: nothing else needs to know it happened. */
 	private _record(loop: AgentLoopService): { dispose(): void } {
 		const started = new Map<string, number>();
 		const record = (type: string, data: Record<string, unknown>) => void this._log.record(type, data);
@@ -222,7 +212,10 @@ export class Session {
 
 	// ——— edits ———
 
-	/** The profile as it is on disk — the one thing an action needs before it edits one field. */
+	async workspace(): Promise<WorkspaceFacts | null> {
+		return this._workspaceOf();
+	}
+
 	async profile(): Promise<SessionProfile | null> {
 		return this._profileOf();
 	}
@@ -239,7 +232,6 @@ export class Session {
 
 	// ——— lifecycle ———
 
-	/** Dispose first so no extension keeps writing, then drain what was already queued. */
 	async close(): Promise<void> {
 		this._disposables.dispose();
 		await this._log.flush();

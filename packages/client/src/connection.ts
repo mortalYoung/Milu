@@ -7,7 +7,6 @@ export interface SocketEvent {
 	readonly data?: unknown;
 }
 
-/** The slice of `WebSocket` this needs, so the socket can be injected in a test or another shell. */
 export interface SocketLike {
 	readonly readyState: number;
 	send(data: string): void;
@@ -25,7 +24,6 @@ export interface ConnectionDeps {
 
 const defaultSocket: SocketFactory = (url) => new WebSocket(url) as unknown as SocketLike;
 
-/** The wire, and nothing above it: frames in, typed events out, requests with a promise. */
 export class Connection implements Service {
 	readonly onEntry: Event<{ session: string; entry: SeqEntry }>;
 	readonly onLive: Event<LiveEvent>;
@@ -109,7 +107,6 @@ export class Connection implements Service {
 		this._socket = null;
 	}
 
-	/** Opens a session and replays its log; the core dedupes anything already sent live. */
 	async load(session: string): Promise<void> {
 		const result = await this.request("transcript", { session, since: 0 });
 		for (const entry of result.entries) this._emitter.fire({ session, entry });

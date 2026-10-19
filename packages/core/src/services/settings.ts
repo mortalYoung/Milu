@@ -8,7 +8,6 @@ import type { ConfigService } from "./config.ts";
 
 export type ThemeMode = "system" | "light" | "dark";
 export type ToastPlacement = "topcenter" | "topright" | "bottomcenter" | "bottomright";
-/** Belongs with the permission facility once it exists; settings is only its first reader. */
 export type SandboxMode = "read-only" | "workspace-write" | "danger-full-access";
 
 export interface CustomModel {
@@ -26,7 +25,6 @@ export interface CustomProvider {
 	defaultMaxTokens?: number;
 }
 
-/** The settings file is shared with v1, which reads these seven keys in snake_case — the names are the format. */
 export interface Settings {
 	partner_profile_path: string;
 	detect_instructions_file: string;

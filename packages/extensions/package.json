@@ -1,15 +1,18 @@
 {
-	"name": "@milu/extension-pin",
+	"name": "@milu/extensions",
 	"version": "0.0.0",
 	"private": true,
 	"type": "module",
 	"exports": {
-		".": "./src/main.ts"
+		".": "./src/index.ts"
 	},
 	"scripts": {
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
 		"@milu/core": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/node": "latest"
 	}
 }

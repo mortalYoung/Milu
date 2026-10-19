@@ -27,7 +27,6 @@ import { Container } from "@milu/di";
 import { EXTENSIONS } from "./extensions.ts";
 import { BUILT_IN_SURFACES } from "./surfaces.ts";
 
-/** The core, assembled. Construction order is dependency order; dispose runs it backwards. */
 export async function createBackend(config: BackendConfig): Promise<Backend> {
 	const container = new Container();
 
@@ -60,7 +59,6 @@ export async function createBackend(config: BackendConfig): Promise<Backend> {
 		layout: container.get(LayoutServiceId),
 		dispose: () => container.dispose(),
 		async close() {
-			// Dispose first so no session keeps writing, then drain every log.
 			container.dispose();
 			await sessions.shutdown();
 		},

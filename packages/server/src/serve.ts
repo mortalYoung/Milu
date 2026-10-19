@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
 import { extname, join, normalize } from "node:path";
 
-import { editorNames, type Backend, openInCodeEditor, openInFinder, openTargets } from "@milu/core";
+import type { Backend } from "@milu/core";
 import type { Frame, LiveEvent, MethodName, Methods, SeqEntry } from "@milu/protocol";
 import { WebSocketServer, type WebSocket } from "ws";
 
@@ -29,7 +29,6 @@ export interface Server {
 	close(): Promise<void>;
 }
 
-/** The transport adapter: one HTTP origin for the page, one WebSocket for the protocol. */
 export async function serve(options: ServeOptions): Promise<Server> {
 	const { backend, configRoot, workspace, webDir } = options;
 
@@ -65,7 +64,6 @@ export async function serve(options: ServeOptions): Promise<Server> {
 		for (const socket of sockets.clients) send(socket, { kind: "live", event });
 	}
 
-	// One handler per method, keyed by the protocol's method map — a missing one is a type error.
 	const handlers = {
 		async transcript(params) {
 			const session = await backend.sessions.get(params.session);
@@ -96,27 +94,15 @@ export async function serve(options: ServeOptions): Promise<Server> {
 		},
 		async invoke(params) {
 			try {
-				await backend.actions.run(params.action, params.session ? { session: await backend.sessions.get(params.session) } : {});
-				return { ok: true };
+				const command = await backend.actions.run(params.action, {
+					sessions: backend.sessions,
+					...(params.session ? { session: backend.sessions.get(params.session) } : {}),
+					...(params.args === undefined ? {} : { args: params.args }),
+				});
+				return { ok: true, ...(command ? { command } : {}) };
 			} catch (error) {
 				return { ok: false, error: error instanceof Error ? error.message : String(error) };
 			}
-		},
-		async editors() {
-			return openTargets();
-		},
-		async openPath(params) {
-			const opened = params.via === "finder" ? await openInFinder(params.path) : await openInCodeEditor(params.path, params.editorId);
-			if (opened.ok) return { ok: true };
-			const error =
-				opened.reason === "missing-path"
-					? `${params.path} is gone`
-					: opened.reason === "editor-missing"
-						? `${params.editorId} is not installed`
-						: opened.reason === "no-editor"
-							? `no code editor found (${editorNames()})`
-							: `no editor would take ${params.path} — nor did the default app`;
-			return { ok: false, error };
 		},
 		async layout() {
 			return backend.layout.state();
@@ -126,7 +112,6 @@ export async function serve(options: ServeOptions): Promise<Server> {
 		},
 	} satisfies { [K in MethodName]: (params: Methods[K]["params"]) => Promise<Methods[K]["result"]> };
 
-	// A cursor per socket per chat: `seq` is only comparable inside one chat's log.
 	const cursors = new WeakMap<WebSocket, Map<string, number>>();
 
 	function cursorOf(socket: WebSocket): Map<string, number> {
@@ -188,7 +173,6 @@ export async function serve(options: ServeOptions): Promise<Server> {
 				try {
 					const result = await (method as (params: unknown) => Promise<unknown>)(frame.params);
 					if (frame.method === "transcript") {
-						// The replay is the client's new starting point for this chat; live frames continue from there.
 						const session = (frame.params as Methods["transcript"]["params"]).session;
 						cursorOf(socket).set(session, (result as Methods["transcript"]["result"]).cursor);
 					}

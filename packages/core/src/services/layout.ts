@@ -7,7 +7,6 @@ import type { Layout, LayoutState, SurfaceDeclaration } from "@milu/protocol";
 import type { ConfigService } from "./config.ts";
 
 export interface LayoutServiceDeps {
-	/** What this app puts on the page, before anything else declares more. */
 	readonly surfaces: readonly SurfaceDeclaration[];
 }
 
@@ -17,11 +16,6 @@ function ordered(surfaces: readonly SurfaceDeclaration[]): SurfaceDeclaration[] 
 	return [...surfaces].sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.id.localeCompare(right.id));
 }
 
-/**
- * Where each declared surface sits, and the one owner of that answer. Declarations come from the
- * core and its extensions; the arrangement is data, so it lives on disk and survives a restart.
- * A shell asks for this state and renders it — it never decides what exists.
- */
 export class LayoutService implements Service {
 	readonly onChange: Event<LayoutState>;
 
@@ -49,7 +43,6 @@ export class LayoutService implements Service {
 		return { surfaces: ordered([...this._declared.values()]), layout: this._layout };
 	}
 
-	/** An extension adding a surface: it lands in its slot, at the end of what is already there. */
 	declare(surface: SurfaceDeclaration): { dispose(): void } {
 		if (this._declared.has(surface.id)) throw new Error(`surface "${surface.id}" is already declared`);
 		this._declared.set(surface.id, surface);
@@ -66,7 +59,6 @@ export class LayoutService implements Service {
 		};
 	}
 
-	/** Rearranging what is already declared. Anything unknown is dropped on the next merge. */
 	async setLayout(layout: Layout): Promise<LayoutState> {
 		const known = new Set(this._declared.keys());
 		const next: Record<string, readonly string[]> = {};
@@ -84,10 +76,6 @@ export class LayoutService implements Service {
 		this._emitter.dispose();
 	}
 
-	/**
-	 * Saved order for surfaces that still exist, in their declared order at the end of the slot —
-	 * so adding a surface in code always shows up, and a stale id never renders a hole.
-	 */
 	private _merge(saved: Layout): Layout {
 		const next: Record<string, string[]> = {};
 		const placed = new Set<string>();

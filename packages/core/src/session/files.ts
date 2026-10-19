@@ -6,7 +6,6 @@ export const PROFILE_FILE = "profile.json";
 export const READ_FILE = "read.json";
 export const WORKSPACE_FILE = "workspace.json";
 
-/** The session's own profile file — v1 writes it, so both versions read one shape. */
 export interface SessionProfile {
 	name: string;
 	persona?: string;
@@ -36,7 +35,6 @@ async function writeJson(file: string, value: unknown): Promise<void> {
 	await rename(tmp, file);
 }
 
-/** Display paths are tildified the way v1 sends them; opening a path expands them again. */
 export function tildify(path: string): string {
 	const home = homedir();
 	return path.startsWith(home) ? `~${path.slice(home.length)}` : path;
@@ -51,7 +49,6 @@ export async function readAtOf(dir: string): Promise<number | undefined> {
 	return typeof data?.readAt === "number" ? data.readAt : undefined;
 }
 
-/** Pinning is a profile edit: read the file, change one flag, write it back whole. */
 export async function writePinned(dir: string, pinned: boolean): Promise<void> {
 	const profile = (await profileOf(dir)) ?? { name: basename(dir), createdAt: Date.now() };
 	await writeJson(join(dir, PROFILE_FILE), { ...profile, pinned });

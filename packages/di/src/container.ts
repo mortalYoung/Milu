@@ -41,7 +41,6 @@ export class Container implements Disposable {
 		return new Container(this);
 	}
 
-	/** The container owns it: disposed with the container, before the services it was built from. */
 	own(disposable: Disposable): void {
 		this._owned.add(disposable);
 	}

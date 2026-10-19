@@ -3,7 +3,8 @@ import { join } from "node:path";
 import { createServiceId, DisposableStore, Emitter, type Event, type Service } from "@milu/di";
 import type { ContributionItem, SeqEntry, SessionRow } from "@milu/protocol";
 
-import { SESSION_MENU_POINT, type SessionMenuItem } from "../extensions/types.ts";
+import { SESSION_MENU_POINT, type SessionMenuItem, type SessionValue } from "../extensions/types.ts";
+import { profileOf } from "../session/files.ts";
 import { Session } from "../session/session.ts";
 import type { AgentLoopEvent } from "./agent-loop.ts";
 import type { ContributionService } from "./contributions.ts";
@@ -22,11 +23,6 @@ export interface SessionLoopEvent {
 	readonly event: AgentLoopEvent;
 }
 
-/**
- * Every session on disk, and the values this process holds for them. A session is created lazily
- * and cheaply — its log and its loop only come up when something opens it — so `list()` can
- * describe seventeen sessions without running any of them.
- */
 export class SessionService implements Service {
 	readonly onEntry: Event<SessionEntry>;
 	readonly onLoopEvent: Event<SessionLoopEvent>;
@@ -56,7 +52,6 @@ export class SessionService implements Service {
 		return this._partnerRoot;
 	}
 
-	/** One row per session directory; a row costs the three small files, its log's head, and its menu. */
 	async list(): Promise<readonly SessionRow[]> {
 		const rows: SessionRow[] = [];
 		for (const name of await this._names()) {
@@ -66,7 +61,6 @@ export class SessionService implements Service {
 		return rows.sort((left, right) => (right.lastMessageAt ?? 0) - (left.lastMessageAt ?? 0) || left.name.localeCompare(right.name));
 	}
 
-	/** The session's value: no loop, no log until something opens it. */
 	get(name: string): Session {
 		const existing = this._sessions.get(name);
 		if (existing) return existing;
@@ -87,10 +81,18 @@ export class SessionService implements Service {
 		return session;
 	}
 
-	/** Same as `get`, but a name that is not on disk is an error rather than a session. */
 	async ensure(name: string): Promise<Session> {
 		if (!(await this._names()).includes(name)) throw new Error(`no session named "${name}"`);
 		return this.get(name);
+	}
+
+	async forksOf(name: string): Promise<string[]> {
+		const forks: string[] = [];
+		for (const each of await this._names()) {
+			const profile = await profileOf(join(this._partnerRoot, each));
+			if (profile?.forkedFrom === name) forks.push(each);
+		}
+		return forks;
 	}
 
 	running(name: string): boolean {
@@ -101,12 +103,10 @@ export class SessionService implements Service {
 		await (await this.ensure(name)).markRead(readAt);
 	}
 
-	/** Every session disposes first, then drains — the second half of a graceful shutdown. */
 	async shutdown(): Promise<void> {
 		for (const session of this._sessions.values()) await session.close();
 	}
 
-	/** Closing a session disposes it first, keeps its files, and forgets its value. */
 	async close(name: string): Promise<void> {
 		const session = this._sessions.get(name);
 		if (!session) return;
@@ -125,15 +125,46 @@ export class SessionService implements Service {
 		this._relays.clear();
 	}
 
-	/** Extensions declared these; the core only resolves each title for the session it describes. */
 	private async _menuOf(session: Session): Promise<ContributionItem[]> {
 		const point = this._contributionService.get<SessionMenuItem>(SESSION_MENU_POINT);
-		const items: ContributionItem[] = [];
+		const resolved: ContributionItem[] = [];
 		for (const item of point.all()) {
-			const title = typeof item.title === "function" ? await item.title(session) : item.title;
-			items.push({ id: item.id, title, action: item.action, ...(item.order === undefined ? {} : { order: item.order }) });
+			const one = await this._resolveItem(item, session);
+			if (one) resolved.push(one);
 		}
-		return items.sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.id.localeCompare(right.id));
+		return resolved.sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.id.localeCompare(right.id));
+	}
+
+	private async _resolveItem(item: SessionMenuItem, session: Session): Promise<ContributionItem | null> {
+		const resolve = async <T>(value: SessionValue<T> | undefined): Promise<T | null | undefined> =>
+			typeof value === "function" ? await (value as (session: Session) => T | null | Promise<T | null>)(session) : value;
+
+		const title = await resolve(item.title);
+		if (title === null || title === undefined) return null;
+		const icon = await resolve(item.icon);
+		const confirm = await resolve(item.confirm);
+		const base = {
+			id: item.id,
+			title,
+			...(typeof icon === "string" ? { icon } : {}),
+			...(item.order === undefined ? {} : { order: item.order }),
+			...(item.group === undefined ? {} : { group: item.group }),
+			...(item.danger ? { danger: true } : {}),
+			...(confirm && typeof confirm === "object" ? { confirm } : {}),
+		};
+
+		if ("items" in item) {
+			const children = (await resolve(item.items)) ?? [];
+			const resolved: ContributionItem[] = [];
+			for (const child of children) {
+				const one = await this._resolveItem(child, session);
+				if (one) resolved.push(one);
+			}
+			if (resolved.length === 0) return null;
+			return { ...base, items: resolved };
+		}
+
+		return { ...base, action: item.action, ...(item.args === undefined ? {} : { args: item.args }) };
 	}
 
 	private async _names(): Promise<string[]> {

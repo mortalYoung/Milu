@@ -1,6 +1,5 @@
-export { ActionsService, ActionsServiceId } from "./actions.ts";
+export { ActionsService, ActionsServiceId, type BrowserCommands } from "./actions.ts";
 export { Connection, ConnectionId, type SocketFactory, type SocketLike } from "./connection.ts";
-export { OpenerService, OpenerServiceId, type OpenTargets } from "./opener.ts";
 export { SessionListService, SessionListServiceId } from "./sessions.ts";
 export { Store } from "./store.ts";
 export { SurfaceRegistry, SurfaceRegistryId, type Host, type SurfaceComponent, type SurfaceProps } from "./surfaces.ts";

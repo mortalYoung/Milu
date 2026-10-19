@@ -10,7 +10,6 @@ const CONFIG_ROOT = process.env["MILU_CONFIG"] ?? join(homedir(), ".config", "mi
 const WORKSPACE = process.env["MILU_WORKSPACE"] ?? process.cwd();
 const WEB_DIR = process.env["MILU_WEB_DIR"] ?? fileURLToPath(new URL("../../web/dist/", import.meta.url));
 
-/** The web end, end to end: core, transport, and the built page on one loopback origin. */
 const backend = await createBackend({ root: CONFIG_ROOT, workspace: WORKSPACE });
 const server = await serve({ backend, configRoot: CONFIG_ROOT, workspace: WORKSPACE, webDir: WEB_DIR });
 

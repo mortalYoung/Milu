@@ -1,11 +1,11 @@
 import { activityAt, byPinThenRecency, filterSessions, type Host, listTime, previewFor, type SurfaceProps, workspaceLabel } from "@milu/client";
-import type { SessionRow } from "@milu/protocol";
+import type { ContributionItem, SessionRow } from "@milu/protocol";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { copyPath } from "../clipboard.ts";
-import { ChevronDownIcon, ChevronRightIcon, CopyIcon, FolderTreeIcon, MoreVerticalIcon, PanelLeftCloseIcon, SearchIcon } from "../components/icons.tsx";
+import { ConfirmDialog } from "../components/confirm-dialog.tsx";
+import { ChevronDownIcon, ChevronRightIcon, FolderTreeIcon, MoreVerticalIcon, PanelLeftCloseIcon, SearchIcon } from "../components/icons.tsx";
 import { MiluWordmark } from "../components/MiluWordmark.tsx";
-import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, OpenMenu } from "../components/row-menu.tsx";
+import { Menu, MenuContent, MenuItems, MenuTrigger } from "../components/row-menu.tsx";
 import { useStore } from "../use-store.ts";
 
 const SKELETON_ROWS = 5;
@@ -21,9 +21,9 @@ function Row(props: {
 	expanded?: boolean;
 	onSelect: () => void;
 	onToggle?: () => void;
+	onRun: (item: ContributionItem) => void;
 }) {
-	const { host, session } = props;
-	const targets = useStore(host.opener.targets);
+	const { session } = props;
 	const [menuOpen, setMenuOpen] = useState(false);
 	const menuClosedAt = useRef(0);
 
@@ -34,7 +34,6 @@ function Row(props: {
 			tabIndex={0}
 			aria-current={props.selected ? "true" : undefined}
 			onClick={() => {
-				// A click that dismissed the menu must not also pick the row it was pointing at.
 				if (Date.now() - menuClosedAt.current < 200) return;
 				props.onSelect();
 			}}
@@ -107,25 +106,7 @@ function Row(props: {
 					</button>
 				</MenuTrigger>
 				<MenuContent>
-					{(session.menu ?? []).map((item) => (
-						<MenuItem key={item.id} onSelect={() => void host.actions.invoke(item.action, session.name)}>
-							<span>{item.title}</span>
-						</MenuItem>
-					))}
-					<MenuSeparator />
-					<MenuItem onSelect={() => void copyPath(session.path)}>
-						<CopyIcon size={13} />
-						<span>Copy directory path</span>
-					</MenuItem>
-					{session.workspace ? (
-						<MenuItem onSelect={() => void copyPath(session.workspace ?? "")}>
-							<CopyIcon size={13} />
-							<span>Copy workspace path</span>
-						</MenuItem>
-					) : null}
-					<MenuSeparator />
-					<OpenMenu label="Open workspace" path={session.workspace ?? null} targets={targets} onOpen={(target) => void host.opener.open(session.workspace ?? "", target)} />
-					<OpenMenu label="Open storage" path={session.storage} targets={targets} onOpen={(target) => void host.opener.open(session.storage, target)} />
+					<MenuItems items={session.menu ?? []} onRun={props.onRun} />
 				</MenuContent>
 			</Menu>
 		</div>
@@ -142,11 +123,30 @@ export function SessionListSurface(props: SurfaceProps) {
 
 	const [query, setQuery] = useState("");
 	const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+	const [pending, setPending] = useState<{ item: ContributionItem; session: string } | null>(null);
 	const [edges, setEdges] = useState({ above: false, below: false });
 	const searchRef = useRef<HTMLInputElement>(null);
 	const rowsRef = useRef<HTMLDivElement>(null);
 
 	const selected = state.selected;
+
+	const start = (item: ContributionItem, session: string): void => {
+		if (!item.action) return;
+		if (item.confirm) {
+			setPending({ item, session });
+			return;
+		}
+		void run(item, session);
+	};
+
+	const run = async (item: ContributionItem, session: string): Promise<void> => {
+		if (!item.action) return;
+		await host.actions.invoke(item.action, session, item.args);
+		await host.sessions.refresh();
+		if (host.transcript.selected() !== session || host.sessions.get(session)) return;
+		const next = host.sessions.rows.get()[0];
+		if (next) await host.transcript.select(next.name);
+	};
 	const closeSearch = () => {
 		host.workbench.setSearch(false);
 		setQuery("");
@@ -176,7 +176,7 @@ export function SessionListSurface(props: SurfaceProps) {
 		};
 	}, [rows, query, expanded, listOpen, arrived]);
 
-	const roots = useMemo(() => rows.filter((session) => !session.forkedFrom).sort(byPinThenRecency), [rows]);
+	const roots = useMemo(() => rows.filter((session) => !session.forkedFrom || !rows.some((each) => each.name === session.forkedFrom)).sort(byPinThenRecency), [rows]);
 	const leavesByRoot = useMemo(() => {
 		const map = new Map<string, SessionRow[]>();
 		for (const session of rows) {
@@ -223,6 +223,7 @@ export function SessionListSurface(props: SurfaceProps) {
 					expanded={isExpanded}
 					onSelect={() => void host.transcript.select(root.name)}
 					onToggle={() => toggle(root.name)}
+					onRun={(item) => start(item, root.name)}
 				/>
 				{isExpanded
 					? leaves.map((leaf) => (
@@ -235,6 +236,7 @@ export function SessionListSurface(props: SurfaceProps) {
 								unread={(leaf.lastMessageAt ?? 0) > (leaf.readAt ?? 0)}
 								leaf
 								onSelect={() => void host.transcript.select(leaf.name)}
+								onRun={(item) => start(item, leaf.name)}
 							/>
 						))
 					: null}
@@ -324,6 +326,17 @@ export function SessionListSurface(props: SurfaceProps) {
 					)}
 				</div>
 			</div>
+
+			<ConfirmDialog
+				copy={pending?.item.confirm ?? null}
+				danger={pending?.item.danger}
+				onCancel={() => setPending(null)}
+				onConfirm={() => {
+					const next = pending;
+					setPending(null);
+					if (next) void run(next.item, next.session);
+				}}
+			/>
 		</aside>
 	);
 }
