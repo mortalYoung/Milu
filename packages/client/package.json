@@ -1,0 +1,19 @@
+{
+	"name": "@milu/client",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@milu/di": "workspace:*",
+		"@milu/protocol": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/react": "19.3.0"
+	}
+}

@@ -14,8 +14,8 @@ Guidance for agents working in this repository — a design, not a rulebook. Dec
 
 The rebuild exists to enforce these rules. Break one and the reason for the rebuild is gone.
 
-- **The backend does not know how it is reached.** `packages/backend` never imports Electron, never opens a socket, never touches `DOM`. It emits typed events and returns values; a transport adapter at the edge decides who hears about it. No `rpc.send.*` anywhere inside the domain.
-- **The backend is runtime-neutral.** The same code runs under Electron's Node (in-process, for the desktop) and under a standalone server (for the browser). So no Bun-only API — `Bun.serve`, `Bun.file`, `bun:sqlite` — and no Bun-shaped types. v1 already satisfies this: it imports only `node:*`, and `pi-agent-core` declares `node >=22`. Keep it that way.
+- **The core does not know how it is reached.** `packages/core` never imports Electron, never opens a socket, never touches `DOM`. It emits typed events and returns values; a transport adapter at the edge decides who hears about it. No `rpc.send.*` anywhere inside the domain.
+- **The core is runtime-neutral.** The same code runs under Electron's Node (in-process, for the desktop) and under a standalone server (for the browser). So no Bun-only API — `Bun.serve`, `Bun.file`, `bun:sqlite` — and no Bun-shaped types. v1 already satisfies this: it imports only `node:*`, and `pi-agent-core` declares `node >=22`. Keep it that way.
 - **A singleton is unique to its container, never to the module.** `export const foo = new Foo()` is the v1 mistake wearing a better name — same implicit ordering, same untestable coupling, and it _looks_ clean, so nobody revisits it. The container is the only global.
 - **State has one owner and an explicit lifecycle.** One service owns each piece of mutable state, and it says out loud how it starts and how it stops (`create → initialize → dispose`). Watchers, timers, `AbortController`s and child processes are all disposed by their owner. v1 leaked every one of these.
 - **Only state earns a service.** A pure function is a function. Wrapping `fuzzy`, `trajectory`, `token-meter` in a class adds a layer and buys nothing.
@@ -23,19 +23,21 @@ The rebuild exists to enforce these rules. Break one and the reason for the rebu
 
 ## Packages
 
-| Package             | May depend on                                                 | Never                        |
-| ------------------- | ------------------------------------------------------------- | ---------------------------- |
-| `packages/protocol` | nothing                                                       | any runtime                  |
-| `packages/di`       | nothing                                                       | any runtime                  |
-| `packages/backend`  | `protocol`                                                    | Electron, DOM, Bun-only APIs |
-| `packages/app`      | `protocol`                                                    | `backend`, Node built-ins    |
-| `apps/server`       | `backend`, `protocol`                                         | Electron                     |
-| `apps/desktop`      | `backend` (its start entry only), `app`, `protocol`, Electron | backend internals            |
-| `apps/web`          | `app`, `protocol`                                             | `backend`, Electron          |
+| Package              | May depend on                              | Never                                               |
+| -------------------- | ------------------------------------------ | --------------------------------------------------- |
+| `packages/protocol`  | nothing                                    | any runtime                                         |
+| `packages/di`        | nothing                                    | any runtime                                         |
+| `packages/core`      | `protocol`, `di`                           | Electron, DOM, sockets, Bun-only                    |
+| `packages/client`    | `protocol`, `di`                           | `core`, Node built-ins, DOM                         |
+| `packages/server`    | `core`, `protocol`                         | Electron, DOM                                       |
+| `packages/web`       | `client`, `protocol`, `bootstrap/frontend` | `core`, `bootstrap` (the Node side), Node built-ins |
+| `packages/bootstrap` | `core`, `client`, `server`, Electron       | —                                                   |
 
-`apps/desktop` is the only place allowed to import Electron. Make the boundary a build error, not a convention.
+`packages/bootstrap` is the only place that assembles: `createBackend` for the Node ends, `createFrontEnd` for the browser, `bootstrap-web.ts` for the web end. Everything else exports, nothing else composes.
 
-Booting the backend in-process is what makes the desktop cheap: Electron's main process _is_ Node, so `apps/desktop` starts the same server `apps/server` would, on a loopback port, and the renderer connects to it like any browser. Splitting it into a child process later is a process-boundary change, not a code change — that is the point of runtime neutrality.
+`packages/desktop` (not yet built) is the only place allowed to import Electron. Make the boundary a build error, not a convention.
+
+Booting the core in-process is what makes the desktop cheap: Electron's main process _is_ Node, so the desktop shell starts the same server `bootstrap-web.ts` would, on a loopback port, and the renderer connects to it like any browser. Splitting it into a child process later is a process-boundary change, not a code change — that is the point of runtime neutrality.
 
 ## Settled decisions
 

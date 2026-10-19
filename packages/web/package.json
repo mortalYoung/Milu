@@ -9,6 +9,8 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
+		"@milu/bootstrap": "workspace:*",
+		"@milu/client": "workspace:*",
 		"@milu/protocol": "workspace:*",
 		"react": "19.3.0",
 		"react-dom": "19.3.0"

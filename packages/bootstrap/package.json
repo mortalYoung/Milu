@@ -1,0 +1,22 @@
+{
+	"name": "@milu/bootstrap",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/backend.ts",
+		"./frontend": "./src/frontend.ts"
+	},
+	"scripts": {
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@milu/client": "workspace:*",
+		"@milu/core": "workspace:*",
+		"@milu/di": "workspace:*",
+		"@milu/server": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/node": "latest"
+	}
+}

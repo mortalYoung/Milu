@@ -4,19 +4,21 @@
 	"private": true,
 	"description": "An agent harness with a server backend — one WebSocket protocol for web and desktop",
 	"workspaces": [
-		"packages/*",
-		"apps/*"
+		"packages/*"
 	],
 	"type": "module",
 	"scripts": {
-		"typecheck": "bun run --filter '*' typecheck",
-		"lint": "oxlint",
-		"lint:fix": "oxlint --fix",
+		"boundaries": "bun scripts/boundaries.ts",
+		"check": "bun run typecheck && bun run lint && bun run format:check && bun run boundaries",
+		"dev": "bun scripts/dev.ts",
+		"dev:web": "bun run --filter '@milu/web' dev",
 		"format": "oxfmt",
 		"format:check": "oxfmt --check",
-		"web:build": "bun run --filter '@milu/web' build",
-		"server": "bun run apps/server/src/main.ts",
-		"dev:web": "bun run --filter '@milu/web' dev"
+		"lint": "oxlint",
+		"lint:fix": "oxlint --fix",
+		"server": "bun run packages/bootstrap/src/bootstrap-web.ts",
+		"typecheck": "bun run --filter '*' typecheck",
+		"web:build": "bun run --filter '@milu/web' build"
 	},
 	"devDependencies": {
 		"@types/bun": "latest",
