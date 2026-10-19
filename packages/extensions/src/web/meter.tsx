@@ -7,6 +7,13 @@ import "./widgets.css";
 
 const RADIUS = 5.5;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+const MIN_SEGMENT_PCT = 3;
+
+const ROWS = [
+	{ key: "systemTokens", label: "system", color: "meter-system" },
+	{ key: "toolsTokens", label: "tools", color: "meter-tools" },
+	{ key: "messageTokens", label: "messages", color: "meter-messages" },
+] as const;
 
 const formatTokens = (value: number): string => {
 	if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}m`;
@@ -32,8 +39,25 @@ export function MeterWidget(props: WidgetProps) {
 	if (!data) return null;
 
 	const percent = data.percent;
-	const reading = `context ${percent}% · ${formatTokens(data.used)} / ${formatTokens(data.window)}`;
+	const usedTokens = data.projectedTokens ?? data.used;
+	const reading = `context ${percent}% · ${formatTokens(usedTokens)} / ${formatTokens(data.window)}`;
 	const level = percent > 90 ? "meter-danger" : percent > 60 ? "meter-warn" : "meter-ok";
+
+	const breakdown = data.breakdown;
+	const segments = (() => {
+		if (!breakdown) return [{ key: "total", color: "", width: percent }];
+		const total = breakdown.systemTokens + breakdown.toolsTokens + breakdown.messageTokens;
+		if (total === 0) return [{ key: "total", color: "", width: percent }];
+		const raw = ROWS.map((row) => ({ key: row.key as string, color: row.color as string, width: (percent * breakdown[row.key]) / total })).filter((segment) => segment.width > 0);
+		if (raw.length <= 1) return raw;
+		const raised = raw.map((segment) => ({ ...segment, width: Math.max(segment.width, MIN_SEGMENT_PCT) }));
+		const sum = raised.reduce((acc, segment) => acc + segment.width, 0);
+		if (sum > 100) {
+			const scale = 100 / sum;
+			return raised.map((segment) => ({ ...segment, width: segment.width * scale }));
+		}
+		return raised;
+	})();
 
 	return (
 		<span className="context-meter" ref={root}>
@@ -48,21 +72,25 @@ export function MeterWidget(props: WidgetProps) {
 				<div className="context-meter-panel" role="dialog" aria-label="Context Usage">
 					<div className="meter-headline">
 						<span className="meter-title">
-							~{formatTokens(data.used)} / {formatTokens(data.window)}
+							~{formatTokens(usedTokens)} / {formatTokens(data.window)}
 						</span>
 						<span className="meter-percent">{percent}%</span>
 					</div>
 					<div className="meter-bar">
-						<span className="meter-segment meter-messages" style={{ width: `${percent}%` }} />
+						{segments.map((segment) => (
+							<span key={segment.key} className={`meter-segment ${segment.color}`} style={{ width: `${segment.width}%` }} />
+						))}
 					</div>
 					<ul className="meter-rows">
-						<li className="meter-row">
-							<span className="meter-row-label">
-								<span className="meter-swatch meter-messages" />
-								context
-							</span>
-							<span className="meter-row-value">~{formatTokens(data.used)}</span>
-						</li>
+						{ROWS.map((row) => (
+							<li className="meter-row" key={row.key}>
+								<span className="meter-row-label">
+									<span className={`meter-swatch ${row.color}`} />
+									{row.label}
+								</span>
+								<span className="meter-row-value">~{formatTokens(breakdown?.[row.key] ?? 0)}</span>
+							</li>
+						))}
 					</ul>
 				</div>
 			) : null}

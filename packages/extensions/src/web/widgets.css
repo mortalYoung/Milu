@@ -234,6 +234,14 @@
 	border-radius: 999px;
 }
 
+.meter-segment.meter-system {
+	background: var(--signal);
+}
+
+.meter-segment.meter-tools {
+	background: color-mix(in srgb, var(--ink) 55%, transparent);
+}
+
 .meter-segment.meter-messages {
 	background: color-mix(in srgb, var(--ink) 28%, transparent);
 }
@@ -267,6 +275,14 @@
 	width: 8px;
 	height: 8px;
 	border-radius: 4px;
+}
+
+.meter-swatch.meter-system {
+	background: var(--ink);
+}
+
+.meter-swatch.meter-tools {
+	background: color-mix(in srgb, var(--ink) 55%, transparent);
 }
 
 .meter-swatch.meter-messages {

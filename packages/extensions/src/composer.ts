@@ -15,8 +15,10 @@ export interface ModelWidgetData {
 
 export interface MeterWidgetData {
 	readonly used: number;
+	readonly projectedTokens?: number;
 	readonly window: number;
 	readonly percent: number;
+	readonly breakdown: { readonly systemTokens: number; readonly toolsTokens: number; readonly messageTokens: number } | null;
 }
 
 let services: { readonly models: ModelsService; readonly settings: SettingsService } | null = null;

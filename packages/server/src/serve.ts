@@ -10,6 +10,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { pickDirectory } from "./pick-directory.ts";
 
 const PORT = 8787;
+const ORIGIN_CONVERSATIONS = 6;
 
 const CONTENT_TYPES: Record<string, string> = {
 	".html": "text/html; charset=utf-8",
@@ -92,8 +93,13 @@ export async function serve(options: ServeOptions): Promise<Server> {
 	const handlers = {
 		async transcript(params) {
 			const session = await backend.sessions.ensure(params.session);
-			const entries = await session.entries(params.since ?? 0);
-			return { entries, cursor: entries.at(-1)?.seq ?? 0 };
+			const window = await session.window({
+				...(params.mode ? { mode: params.mode } : {}),
+				...(params.cursor ? { cursor: params.cursor } : {}),
+				conversations: params.conversations ?? ORIGIN_CONVERSATIONS,
+			});
+			const entries = await session.seqsOf(window.entries);
+			return { entries, total: window.total, hasMore: window.hasMore, reset: window.reset };
 		},
 		async prompt(params) {
 			const session = await backend.sessions.ensure(params.session);
@@ -234,10 +240,6 @@ export async function serve(options: ServeOptions): Promise<Server> {
 				}
 				try {
 					const result = await (method as (params: unknown, socket: WebSocket) => Promise<unknown>)(frame.params, socket);
-					if (frame.method === "transcript") {
-						const session = (frame.params as Methods["transcript"]["params"]).session;
-						cursorOf(socket).set(session, (result as Methods["transcript"]["result"]).cursor);
-					}
 					send(socket, { kind: "res", id: frame.id, ok: true, result });
 				} catch (error) {
 					fail(socket, frame.id, "handler_failed", error instanceof Error ? error.message : String(error));

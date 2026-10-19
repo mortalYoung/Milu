@@ -113,7 +113,10 @@ export type Frame =
 	| { kind: "live"; event: LiveEvent };
 
 export interface Methods {
-	transcript: { params: { session: string; since?: number }; result: { entries: SeqEntry[]; cursor: number } };
+	transcript: {
+		params: { session: string; mode?: "older" | "newer"; cursor?: string; conversations?: number };
+		result: { entries: SeqEntry[]; total: number; hasMore: boolean; reset: boolean };
+	};
 	prompt: { params: { session: string; text: string }; result: { accepted: boolean } };
 	abort: { params: { session: string }; result: Record<string, never> };
 	composer: { params: { session: string }; result: ComposerLayout };

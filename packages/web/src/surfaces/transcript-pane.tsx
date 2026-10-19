@@ -45,6 +45,17 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 		scroll.current?.scrollTo({ top: scroll.current.scrollHeight });
 	}, [entries]);
 
+	const hasMore = state.hasMore[selected] ?? false;
+	const loadingOlder = state.loadingOlder[selected] ?? false;
+	const loadOlder = () => {
+		const element = scroll.current;
+		const before = element?.scrollHeight ?? 0;
+		void host.transcript.loadOlder(selected).then(() => {
+			if (!element) return;
+			element.scrollTop += element.scrollHeight - before;
+		});
+	};
+
 	const rows = entries.flatMap((entry) => {
 		const message = blockText(entry.entry);
 		if (message) return message.text.trim() ? [{ key: `m${entry.seq}`, kind: message.role, text: message.text }] : [];
@@ -60,6 +71,13 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 			<div className="chat-body">
 				<div className="chat-column">
 					<div className="transcript" ref={scroll}>
+						{hasMore ? (
+							<div className="load-earlier-wrap">
+								<button type="button" className="load-earlier" onClick={loadOlder} disabled={loadingOlder}>
+									{loadingOlder ? "loading…" : "↑ load earlier"}
+								</button>
+							</div>
+						) : null}
 						{rows.length === 0 ? <p className="empty">Send something.</p> : null}
 						{rows.map((row) => (
 							<div key={row.key} className={`row ${row.kind}`}>

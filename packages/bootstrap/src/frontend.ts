@@ -135,7 +135,10 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 						return;
 					}
 					transcript.setStatus(event.session, event.running, event.error);
-					if (!event.running) void sessions.refresh();
+					if (!event.running) {
+						void sessions.refresh();
+						if (event.session === transcript.selected()) void composer.load(event.session);
+					}
 				}),
 			);
 			connection.open();

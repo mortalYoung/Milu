@@ -8,12 +8,14 @@ import { Store } from "./store.ts";
 export interface TranscriptState {
 	readonly selected: string;
 	readonly logs: Readonly<Record<string, readonly SeqEntry[]>>;
+	readonly hasMore: Readonly<Record<string, boolean>>;
+	readonly loadingOlder: Readonly<Record<string, boolean>>;
 	readonly running: Readonly<Record<string, boolean>>;
 	readonly errors: Readonly<Record<string, string>>;
 	readonly drafts: Readonly<Record<string, string>>;
 }
 
-const EMPTY: TranscriptState = { selected: "", logs: {}, running: {}, errors: {}, drafts: {} };
+const EMPTY: TranscriptState = { selected: "", logs: {}, hasMore: {}, loadingOlder: {}, running: {}, errors: {}, drafts: {} };
 const NO_ENTRIES: readonly SeqEntry[] = [];
 
 export class TranscriptService implements Service {
@@ -57,9 +59,39 @@ export class TranscriptService implements Service {
 		if (this._loaded.has(session)) return;
 		this._loaded.add(session);
 		try {
-			await this._connection.load(session);
+			const window = await this._connection.load(session);
+			this.state.update((current) => ({
+				...current,
+				logs: { ...current.logs, [session]: window.entries },
+				hasMore: { ...current.hasMore, [session]: window.hasMore },
+			}));
 		} catch (error) {
 			this.setError(session, error instanceof Error ? error.message : String(error));
+		}
+	}
+
+	async loadOlder(session: string): Promise<void> {
+		const current = this.state.get();
+		if (!current.hasMore[session] || current.loadingOlder[session]) return;
+		const oldest = current.logs[session]?.[0]?.entry.id;
+		if (!oldest) return;
+		this.state.update((state) => ({ ...state, loadingOlder: { ...state.loadingOlder, [session]: true } }));
+		try {
+			const window = await this._connection.load(session, { mode: "older", cursor: oldest });
+			this.state.update((state) => {
+				const existing = state.logs[session] ?? NO_ENTRIES;
+				const known = new Set(existing.map((entry) => entry.seq));
+				const prepended = window.entries.filter((entry) => !known.has(entry.seq));
+				return {
+					...state,
+					logs: { ...state.logs, [session]: window.reset ? window.entries : [...prepended, ...existing] },
+					hasMore: { ...state.hasMore, [session]: window.hasMore },
+				};
+			});
+		} catch (error) {
+			this.setError(session, error instanceof Error ? error.message : String(error));
+		} finally {
+			this.state.update((state) => ({ ...state, loadingOlder: { ...state.loadingOlder, [session]: false } }));
 		}
 	}
 

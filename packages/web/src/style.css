@@ -1085,6 +1085,35 @@ body.pane-dragging {
 	padding: 22px 12px 4px;
 }
 
+.load-earlier-wrap {
+	display: flex;
+	justify-content: center;
+	padding: 12px 0 4px;
+}
+
+.load-earlier {
+	padding: 4px 12px;
+	border: 0.5px solid var(--line);
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--surface) 80%, transparent);
+	font-family: var(--mono);
+	font-size: 10px;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--ink-soft);
+	cursor: pointer;
+	transition: background-color 120ms var(--ease-out);
+}
+
+.load-earlier:hover {
+	background: var(--hover);
+}
+
+.load-earlier:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+
 .empty {
 	margin: 0;
 	color: var(--muted);

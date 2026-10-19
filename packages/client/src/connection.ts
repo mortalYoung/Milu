@@ -107,9 +107,8 @@ export class Connection implements Service {
 		this._socket = null;
 	}
 
-	async load(session: string): Promise<void> {
-		const result = await this.request("transcript", { session, since: 0 });
-		for (const entry of result.entries) this._emitter.fire({ session, entry });
+	async load(session: string, options: { mode?: "older" | "newer"; cursor?: string } = {}): Promise<Result<"transcript">> {
+		return this.request("transcript", { session, ...options });
 	}
 
 	request<K extends MethodName>(method: K, params: Methods[K]["params"]): Promise<Result<K>> {

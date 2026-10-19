@@ -1,9 +1,11 @@
-import type { AgentMessage, JsonlSessionMetadata } from "@earendil-works/pi-agent-core";
+import type { AgentMessage, Entry, JsonlSessionMetadata } from "@earendil-works/pi-agent-core";
 import { JsonlSessionRepo, type Session } from "@earendil-works/pi-agent-core";
 import { Emitter, type Event } from "@milu/di";
 import type { SeqEntry } from "@milu/protocol";
 
 import type { ExecutionService } from "../services/execution.ts";
+import { originWindow, projectOrigin, type OriginWindow } from "./origin.ts";
+import { projectSlice } from "./slice.ts";
 
 function stripUndefined<T>(value: T): T {
 	if (value === undefined) return value;
@@ -57,13 +59,22 @@ export class SessionLog {
 			.map((entry) => ({ seq: entry.seq, entry }));
 	}
 
-	async transcript(): Promise<AgentMessage[]> {
+	async rawEntries(): Promise<Entry[]> {
 		await this.open();
-		const entries = await this._sessionOrThrow().findEntries();
-		return entries
-			.filter((entry) => entry.type === "message")
-			.sort((left, right) => left.seq - right.seq)
-			.map((entry) => (entry as Extract<typeof entry, { type: "message" }>).message);
+		const listed = await this._sessionOrThrow().findEntries();
+		return [...listed].sort((left, right) => left.seq - right.seq);
+	}
+
+	async origin(): Promise<Entry[]> {
+		return projectOrigin(await this.rawEntries());
+	}
+
+	async transcript(): Promise<AgentMessage[]> {
+		return projectSlice(await this.origin());
+	}
+
+	async window(options: { mode?: "older" | "newer"; cursor?: string; conversations: number }): Promise<OriginWindow> {
+		return originWindow(await this.origin(), options);
 	}
 
 	dispose(): void {
