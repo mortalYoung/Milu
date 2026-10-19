@@ -110,6 +110,12 @@ export async function serve(options: ServeOptions): Promise<Server> {
 			backend.sessions.get(params.session).abort();
 			return {};
 		},
+		async hotkeys() {
+			return { bindings: backend.actions.bindings() };
+		},
+		async composer(params) {
+			return backend.sessions.composer(await backend.sessions.ensure(params.session));
+		},
 		async sessions() {
 			return { sessions: [...(await backend.sessions.list())] };
 		},

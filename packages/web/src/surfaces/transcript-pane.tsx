@@ -3,7 +3,7 @@ import type { SeqEntry } from "@milu/protocol";
 import { useEffect, useRef } from "react";
 
 import { ChatBar } from "../components/chat-bar.tsx";
-import { ArrowUpIcon } from "../components/icons.tsx";
+import { Composer } from "../components/composer.tsx";
 import { useStore } from "../use-store.ts";
 
 type Entry = SeqEntry["entry"];
@@ -35,22 +35,15 @@ function toolLine(entry: Entry): string | null {
 export function TranscriptPaneSurface(props: SurfaceProps) {
 	const { host } = props;
 	const state = useStore(host.transcript.state);
-	const linked = useStore(host.transcript.linked);
 
 	const selected = state.selected;
 	const entries = state.logs[selected] ?? NO_ENTRIES;
 	const error = state.errors[selected] ?? "";
-	const draft = state.drafts[selected] ?? "";
 
 	const scroll = useRef<HTMLDivElement>(null);
 	useEffect(() => {
 		scroll.current?.scrollTo({ top: scroll.current.scrollHeight });
 	}, [entries]);
-
-	const send = () => {
-		if (!draft.trim()) return;
-		void host.transcript.send(draft);
-	};
 
 	const rows = entries.flatMap((entry) => {
 		const message = blockText(entry.entry);
@@ -77,31 +70,7 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 					</div>
 
 					<div className="composer-slot">
-						<div className="composer-row">
-							<div className="composer-box">
-								<div className="composer-input-layer">
-									<textarea
-										value={draft}
-										onChange={(event) => host.transcript.setDraft(selected, event.target.value)}
-										onKeyDown={(event) => {
-											if (event.key === "Enter" && !event.shiftKey) {
-												event.preventDefault();
-												send();
-											}
-										}}
-										rows={1}
-										placeholder="Type a message…"
-									/>
-								</div>
-								<div className="composer-actions">
-									<div className="composer-actions-right">
-										<button type="button" className="composer-send" aria-label="Send" title="Send" onClick={send} disabled={!linked || !draft.trim() || !selected}>
-											<ArrowUpIcon size={15} />
-										</button>
-									</div>
-								</div>
-							</div>
-						</div>
+						<Composer host={host} />
 					</div>
 				</div>
 			</div>

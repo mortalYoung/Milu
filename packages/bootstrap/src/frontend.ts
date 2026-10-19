@@ -7,10 +7,17 @@ import {
 	DialogServiceId,
 	HeaderService,
 	HeaderServiceId,
+	HotkeysService,
+	HotkeysServiceId,
 	PickerService,
 	PickerServiceId,
 	ColumnsService,
 	ColumnsServiceId,
+	ComposerService,
+	ComposerServiceId,
+	type WidgetComponent,
+	WidgetRegistry,
+	WidgetRegistryId,
 	Connection,
 	ConnectionId,
 	type Host,
@@ -34,6 +41,7 @@ export interface FrontEndDeps {
 	readonly createSocket?: SocketFactory;
 	readonly retryMs?: number;
 	readonly components?: readonly SurfaceComponent[];
+	readonly widgets?: readonly WidgetComponent[];
 	readonly commands?: BrowserCommands;
 	readonly dialogs?: readonly DialogComponent[];
 }
@@ -55,7 +63,15 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 			}),
 	);
 	container.register(DialogServiceId, () => new DialogService(deps.dialogs ?? []));
-	container.register(ActionsServiceId, (c) => new ActionsService(c.get(ConnectionId), deps.commands ?? {}));
+	container.register(
+		ActionsServiceId,
+		(c) =>
+			new ActionsService(c.get(ConnectionId), {
+				...deps.commands,
+				select: (session) => c.get(TranscriptServiceId).select(session),
+				shell: (on) => (on === "toggle" ? c.get(ComposerServiceId).toggleShell() : c.get(ComposerServiceId).setShell(on)),
+			}),
+	);
 	container.register(HeaderServiceId, (c) => new HeaderService(c.get(ConnectionId)));
 	container.register(PickerServiceId, (c) => new PickerService(c.get(ConnectionId)));
 	container.register(SessionListServiceId, (c) => new SessionListService(c.get(ConnectionId)));
@@ -63,6 +79,9 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	container.register(ColumnsServiceId, () => new ColumnsService());
 	container.register(WorkbenchServiceId, () => new WorkbenchService());
 	container.register(SurfaceRegistryId, () => new SurfaceRegistry(deps.components ?? []));
+	container.register(WidgetRegistryId, () => new WidgetRegistry(deps.widgets ?? []));
+	container.register(HotkeysServiceId, (c) => new HotkeysService(c.get(ConnectionId)));
+	container.register(ComposerServiceId, (c) => new ComposerService(c.get(ConnectionId), c.get(ActionsServiceId), c.get(HotkeysServiceId)));
 	await container.initialize();
 
 	const connection = container.get(ConnectionId);
@@ -75,6 +94,9 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	const columns = container.get(ColumnsServiceId);
 	const workbench = container.get(WorkbenchServiceId);
 	const surfaces = container.get(SurfaceRegistryId);
+	const composer = container.get(ComposerServiceId);
+	const hotkeys = container.get(HotkeysServiceId);
+	const widgets = container.get(WidgetRegistryId);
 	const layoutState = new Store<LayoutState>({ surfaces: [], layout: {} });
 
 	const disposables = new DisposableStore();
@@ -84,13 +106,14 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 		layoutState.set(await connection.request("layout", {}));
 		await sessions.refresh();
 		await header.load();
+		await hotkeys.load();
 		const current = transcript.selected();
 		if (current) await transcript.select(current);
 		else await transcript.chooseFirst(sessions.rows.get());
 	};
 
 	return {
-		host: { connection, sessions, transcript, workbench, columns, actions, dialogs, header, picker, surfaces, layoutState },
+		host: { connection, sessions, transcript, workbench, columns, actions, dialogs, header, composer, hotkeys, widgets, picker, surfaces, layoutState },
 		start() {
 			if (started) return;
 			started = true;

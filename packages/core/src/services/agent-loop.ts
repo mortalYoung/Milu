@@ -1,6 +1,6 @@
 import type { AgentEvent, AgentMessage } from "@earendil-works/pi-agent-core";
 import { Agent } from "@earendil-works/pi-agent-core";
-import type { Api, Model, ThinkingLevel } from "@earendil-works/pi-ai";
+import type { Api, Model, ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { DisposableStore, createServiceId, Emitter, type Event, type Service } from "@milu/di";
 
 import type { ModelsService } from "./models.ts";
@@ -83,11 +83,30 @@ export class AgentLoopService implements Service {
 		this._agent.state.systemPrompt = prompt;
 	}
 
+	modelContextWindow(): number | null {
+		return this._agent.state.model?.contextWindow ?? null;
+	}
+
+	usage(): { input: number; output: number; cacheRead: number; cacheWrite: number; total: number } | null {
+		const messages = this._agent.state.messages;
+		for (let index = messages.length - 1; index >= 0; index -= 1) {
+			const message = messages[index];
+			if (!message || message.role !== "assistant") continue;
+			const usage = message.usage;
+			return { input: usage.input, output: usage.output, cacheRead: usage.cacheRead, cacheWrite: usage.cacheWrite, total: usage.totalTokens };
+		}
+		return null;
+	}
+
 	setModel(model: Model<Api>): void {
 		this._agent.state.model = model;
 	}
 
-	setThinkingLevel(level: ThinkingLevel): void {
+	thinkingLevel(): ModelThinkingLevel {
+		return this._agent.state.thinkingLevel;
+	}
+
+	setThinkingLevel(level: ModelThinkingLevel): void {
 		this._agent.state.thinkingLevel = level;
 	}
 

@@ -76,6 +76,12 @@ export class TranscriptService implements Service {
 		}
 	}
 
+	async abort(): Promise<void> {
+		const session = this.selected();
+		if (!session) return;
+		await this._connection.request("abort", { session });
+	}
+
 	append(session: string, entry: SeqEntry): void {
 		this.state.update((current) => {
 			const existing = current.logs[session] ?? NO_ENTRIES;

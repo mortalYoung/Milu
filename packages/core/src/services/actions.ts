@@ -14,7 +14,15 @@ export interface ActionContext {
 
 export interface Action {
 	readonly id: string;
+	readonly scope?: string | readonly string[];
+	readonly hotkey?: string;
 	readonly run: (context: ActionContext) => void | BrowserCommand | Promise<void | BrowserCommand>;
+}
+
+export interface ActionBinding {
+	readonly id: string;
+	readonly hotkey: string;
+	readonly scopes: readonly string[];
 }
 
 export class ActionService implements Service {
@@ -22,12 +30,22 @@ export class ActionService implements Service {
 
 	register(action: Action): Disposable {
 		if (this._actions.has(action.id)) throw new Error(`action "${action.id}" is already registered`);
+		if (action.hotkey !== undefined && action.scope === undefined) throw new Error(`action "${action.id}" binds "${action.hotkey}" without a scope`);
 		this._actions.set(action.id, action);
 		return {
 			dispose: () => {
 				this._actions.delete(action.id);
 			},
 		};
+	}
+
+	bindings(): readonly ActionBinding[] {
+		const bound: ActionBinding[] = [];
+		for (const action of this._actions.values()) {
+			if (action.hotkey === undefined || action.scope === undefined) continue;
+			bound.push({ id: action.id, hotkey: action.hotkey, scopes: typeof action.scope === "string" ? [action.scope] : [...action.scope] });
+		}
+		return bound.sort((left, right) => left.id.localeCompare(right.id));
 	}
 
 	async run(id: string, context: ActionContext): Promise<BrowserCommand | undefined> {

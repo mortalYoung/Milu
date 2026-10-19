@@ -1,4 +1,5 @@
 import type { AgentMessage, Entry } from "@earendil-works/pi-agent-core";
+import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { DisposableStore, Emitter, type Event } from "@milu/di";
 import type { PreviewKind, SeqEntry, SessionRow } from "@milu/protocol";
 
@@ -6,8 +7,10 @@ import { AgentLoopService, type AgentLoopEvent } from "../services/agent-loop.ts
 import type { ExecutionService } from "../services/execution.ts";
 import type { ModelsService } from "../services/models.ts";
 import type { ToolService } from "../services/tools.ts";
-import { profileOf, readAtOf, tildify, type SessionProfile, workspaceOf, type WorkspaceFacts, writePinned, writeReadAt } from "./files.ts";
+import { modelOf, profileOf, readAtOf, type SessionModel, tildify, type SessionProfile, workspaceOf, type WorkspaceFacts, writeModel, writePinned, writeReadAt } from "./files.ts";
 import { SessionLog } from "./log.ts";
+
+const DEFAULT_THINKING_LEVEL = "high";
 
 const SEND_MESSAGE = "send_message";
 const COMMAND_RUN = "command/run";
@@ -84,6 +87,7 @@ export class Session {
 	private _profile: SessionProfile | null | undefined;
 	private _readAt: number | undefined;
 	private _workspace: WorkspaceFacts | null | undefined;
+	private _model: SessionModel | null | undefined;
 
 	constructor(deps: SessionDeps) {
 		this._deps = deps;
@@ -144,6 +148,7 @@ export class Session {
 		await this._log.open();
 
 		const loop = new AgentLoopService(this._deps.modelsService, this._deps.toolService);
+		this._applyModel(loop, await this._modelOf());
 		this._loop = loop;
 		this._disposables.add(loop);
 		this._disposables.add(loop.events((event) => this._loopEmitter.fire(event)));
@@ -156,7 +161,7 @@ export class Session {
 
 	async run(text: string): Promise<void> {
 		const loop = await this.open();
-		loop.setModel(this._deps.modelsService.resolve());
+		this._applyModel(loop, await this._modelOf());
 		void loop.run(text).catch((error: unknown) => {
 			console.error(`session ${this.name}: run failed:`, error);
 		});
@@ -225,6 +230,29 @@ export class Session {
 		this._profile = { ...(this._profile ?? { name: this.name, createdAt: Date.now() }), pinned };
 	}
 
+	async model(): Promise<SessionModel | null> {
+		return this._modelOf();
+	}
+
+	thinkingLevel(): string {
+		return this._loop?.thinkingLevel() ?? this._model?.thinkingLevel ?? DEFAULT_THINKING_LEVEL;
+	}
+
+	async setModel(model: SessionModel): Promise<void> {
+		await writeModel(this.root, model);
+		this._model = model;
+		if (this._loop) this._applyModel(this._loop, model);
+	}
+
+	contextUsage(): { used: number; window: number; percent: number } | null {
+		const usage = this._loop?.usage();
+		if (!usage) return null;
+		const window = this._loop?.modelContextWindow();
+		if (!window) return null;
+		const used = usage.total;
+		return { used, window, percent: Math.min(100, Math.round((used / window) * 100)) };
+	}
+
 	async markRead(readAt: number): Promise<void> {
 		await writeReadAt(this.root, readAt);
 		this._readAt = readAt;
@@ -242,6 +270,20 @@ export class Session {
 	}
 
 	// ——— the files behind the row ———
+
+	private async _modelOf(): Promise<SessionModel | null> {
+		if (this._model === undefined) this._model = await modelOf(this.root);
+		return this._model;
+	}
+
+	private _applyModel(loop: AgentLoopService, model: SessionModel | null): void {
+		try {
+			loop.setModel(this._deps.modelsService.resolve(model ?? undefined));
+			loop.setThinkingLevel((model?.thinkingLevel ?? DEFAULT_THINKING_LEVEL) as ModelThinkingLevel);
+		} catch {
+			return;
+		}
+	}
 
 	private async _profileOf(): Promise<SessionProfile | null> {
 		if (this._profile === undefined) this._profile = await profileOf(this.root);

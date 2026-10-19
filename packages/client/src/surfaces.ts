@@ -4,9 +4,11 @@ import type { ComponentType } from "react";
 
 import type { ActionsService } from "./actions.ts";
 import type { ColumnsService } from "./columns.ts";
+import type { ComposerService, WidgetRegistry } from "./composer.ts";
 import type { Connection } from "./connection.ts";
 import type { DialogService } from "./dialogs.ts";
 import type { HeaderService } from "./header.ts";
+import type { HotkeysService } from "./hotkeys.ts";
 import type { PickerService } from "./picker.ts";
 import type { SessionListService } from "./sessions.ts";
 import type { Store } from "./store.ts";
@@ -31,6 +33,9 @@ export interface Host {
 	readonly dialogs: DialogService;
 	readonly columns: ColumnsService;
 	readonly header: HeaderService;
+	readonly composer: ComposerService;
+	readonly hotkeys: HotkeysService;
+	readonly widgets: WidgetRegistry;
 	readonly picker: PickerService;
 	readonly surfaces: SurfaceRegistry;
 	readonly layoutState: Store<LayoutState>;

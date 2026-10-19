@@ -32,13 +32,19 @@ export async function createBackend(config: BackendConfig): Promise<Backend> {
 
 	container.register(ConfigServiceId, () => new ConfigService({ root: config.root, workspace: config.workspace }));
 	container.register(ContributionServiceId, () => new ContributionService());
-	container.register(ModelsServiceId, (c) => new ModelsService(c.get(ConfigServiceId)));
+	container.register(ModelsServiceId, (c) => new ModelsService(c.get(ConfigServiceId), c.get(SettingsServiceId)));
 	container.register(ExecutionServiceId, () => new ExecutionService());
 	container.register(SettingsServiceId, (c) => new SettingsService(c.get(ConfigServiceId)));
 	container.register(LayoutServiceId, (c) => new LayoutService(c.get(ConfigServiceId), { surfaces: BUILT_IN_SURFACES }));
 	container.register(ToolServiceId, (c) => new ToolService(c.get(ConfigServiceId), c.get(ExecutionServiceId)));
 	container.register(ActionServiceId, () => new ActionService());
-	container.register(ExtensionServiceId, (c) => new ExtensionService(c.get(ContributionServiceId), c.get(ConfigServiceId), c.get(ActionServiceId), { extensions: EXTENSIONS }));
+	container.register(
+		ExtensionServiceId,
+		(c) =>
+			new ExtensionService(c.get(ContributionServiceId), c.get(ConfigServiceId), c.get(ActionServiceId), c.get(ModelsServiceId), c.get(SettingsServiceId), {
+				extensions: EXTENSIONS,
+			}),
+	);
 	container.register(
 		SessionServiceId,
 		(c) => new SessionService(c.get(ExecutionServiceId), c.get(SettingsServiceId), c.get(ModelsServiceId), c.get(ToolServiceId), c.get(ContributionServiceId)),

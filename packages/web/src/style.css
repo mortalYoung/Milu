@@ -1114,54 +1114,80 @@ body.pane-dragging {
 	color: var(--signal);
 }
 
-/* ——— the composer: a card on the same axis as the reading column ——— */
+/* ——— the composer: a card on the reading axis, its controls contributed ——— */
 
 .composer-slot {
 	flex: none;
 	padding: 0 12px 12px;
 }
 
+.composer {
+	position: relative;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	min-height: 60px;
+}
+
 .composer-row {
+	position: relative;
 	display: flex;
 	flex-direction: column;
 	gap: 4px;
+	width: 100%;
+	min-width: 0;
+	max-width: calc(var(--transcript-measure) + 32px);
 }
 
 .composer-box {
+	width: 100%;
+	min-width: 0;
 	border: 0.5px solid var(--line);
 	border-radius: var(--r12);
 	background: var(--surface);
 	box-shadow: 0 2px 8px color-mix(in srgb, var(--ink) 7%, transparent);
 }
 
+.composer-box.shell {
+	border-color: var(--ink);
+}
+
 .composer-input-layer {
 	display: flex;
 	align-items: center;
-	padding: 0 14px;
+	padding: 0 16px;
 }
 
-.composer-box textarea {
-	width: 100%;
-	min-height: 44px;
-	max-height: 160px;
-	resize: none;
-	padding: 11px 0 8px;
-	border: 0;
+.composer-input {
+	flex: 1;
+	min-width: 0;
+	max-height: 120px;
+	padding: 12px 0;
+	border: none;
 	background: transparent;
-	color: var(--ink);
-	font: inherit;
 	outline: none;
+	resize: none;
+	overflow-y: auto;
+	font-family: var(--sans);
+	font-size: 14px;
+	line-height: 20px;
+	color: var(--ink);
 }
 
-.composer-box textarea::placeholder {
+.composer-input::placeholder {
 	color: var(--muted);
+}
+
+.composer-box.shell .composer-input {
+	padding-left: 4px;
+	font-family: var(--mono);
 }
 
 .composer-actions {
 	display: flex;
 	align-items: center;
 	gap: 4px;
-	padding: 0 8px 8px;
+	padding: 2px 6px 8px;
 }
 
 .composer-actions-right {
@@ -1171,9 +1197,37 @@ body.pane-dragging {
 	margin-left: auto;
 }
 
+.composer-icon-btn {
+	display: grid;
+	place-items: center;
+	flex: none;
+	width: 26px;
+	height: 26px;
+	padding: 0;
+	border: 0;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--muted-soft);
+	cursor: pointer;
+	transition:
+		background-color 120ms var(--ease-out),
+		color 120ms var(--ease-out);
+}
+
+.composer-icon-btn:hover {
+	background: var(--hover);
+	color: var(--ink);
+}
+
+.composer-icon-btn.on {
+	background: var(--selected);
+	color: var(--ink);
+}
+
 .composer-send {
 	display: grid;
 	place-items: center;
+	flex: none;
 	width: 26px;
 	height: 26px;
 	padding: 0;
@@ -1182,10 +1236,54 @@ body.pane-dragging {
 	background: var(--ink);
 	color: var(--canvas);
 	cursor: pointer;
-	transition: opacity 120ms var(--ease-out);
+	transition: background-color 120ms var(--ease-out);
 }
 
-.composer-send:disabled {
-	opacity: 0.3;
-	cursor: default;
+.composer-send:hover {
+	background: color-mix(in srgb, var(--ink) 90%, transparent);
+}
+
+.composer-send.composer-stop {
+	border: 1px solid color-mix(in srgb, var(--ink) 40%, transparent);
+	background: transparent;
+	color: var(--ink);
+}
+
+.composer-send.composer-stop:hover {
+	background: var(--hover);
+}
+
+.composer-tip {
+	font-family: var(--sans);
+	font-size: 10px;
+	color: var(--muted);
+}
+
+.composer-tip-row {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 12px;
+}
+
+.composer-tip-item {
+	display: inline-flex;
+	align-items: center;
+	gap: 5px;
+}
+
+.composer-kbd {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 20px;
+	height: 20px;
+	padding: 0 4px;
+	border-radius: 4px;
+	background: var(--hover);
+	font-family: var(--sans);
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--muted);
+	user-select: none;
 }

@@ -1,5 +1,5 @@
 import { createFrontEnd } from "@milu/bootstrap/frontend";
-import { dialogs } from "@milu/extensions/web";
+import { dialogs, widgets } from "@milu/extensions/web";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -15,6 +15,7 @@ async function main(): Promise<void> {
 		url: `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/ws`,
 		commands: { copy: (text) => copyPath(text) },
 		dialogs,
+		widgets,
 		components: [
 			{ id: "milu.session-list", component: SessionListSurface },
 			{ id: "milu.transcript", component: TranscriptPaneSurface },

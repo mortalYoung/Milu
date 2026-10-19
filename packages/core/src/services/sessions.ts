@@ -1,9 +1,18 @@
 import { join } from "node:path";
 
 import { createServiceId, DisposableStore, Emitter, type Event, type Service } from "@milu/di";
-import type { ContributionItem, SeqEntry, SessionRow } from "@milu/protocol";
+import type { ComposerTip, ComposerWidget, ContributionItem, SeqEntry, SessionRow } from "@milu/protocol";
 
-import { SESSION_MENU_POINT, type SessionMenuItem, type SessionValue } from "../extensions/types.ts";
+import {
+	COMPOSER_LEFT_POINT,
+	COMPOSER_RIGHT_POINT,
+	COMPOSER_TIPS_POINT,
+	type ComposerTipItem,
+	type ComposerWidgetItem,
+	SESSION_MENU_POINT,
+	type SessionMenuItem,
+	type SessionValue,
+} from "../extensions/types.ts";
 import { profileOf } from "../session/files.ts";
 import { Session } from "../session/session.ts";
 import type { AgentLoopEvent } from "./agent-loop.ts";
@@ -127,6 +136,34 @@ export class SessionService implements Service {
 		for (const session of this._sessions.values()) session.dispose();
 		this._sessions.clear();
 		this._relays.clear();
+	}
+
+	async composer(session: Session): Promise<{ left: ComposerWidget[]; right: ComposerWidget[]; tips: ComposerTip[] }> {
+		return {
+			left: await this._widgetsOf(COMPOSER_LEFT_POINT, session),
+			right: await this._widgetsOf(COMPOSER_RIGHT_POINT, session),
+			tips: this._contributionService
+				.get<ComposerTipItem>(COMPOSER_TIPS_POINT)
+				.all()
+				.map((tip) => ({
+					id: tip.id,
+					label: tip.label,
+					...(tip.keys === undefined ? {} : { keys: tip.keys }),
+					...(tip.when === undefined ? {} : { when: tip.when }),
+					...(tip.order === undefined ? {} : { order: tip.order }),
+				}))
+				.sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.id.localeCompare(right.id)),
+		};
+	}
+
+	private async _widgetsOf(point: string, session: Session): Promise<ComposerWidget[]> {
+		const resolved: ComposerWidget[] = [];
+		for (const item of this._contributionService.get<ComposerWidgetItem>(point).all()) {
+			const data = typeof item.data === "function" ? await (item.data as (session: Session) => unknown)(session) : item.data;
+			if (data === null) continue;
+			resolved.push({ id: item.id, widget: item.widget, ...(data === undefined ? {} : { data }), ...(item.order === undefined ? {} : { order: item.order }) });
+		}
+		return resolved.sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.id.localeCompare(right.id));
 	}
 
 	private async _menuOf(session: Session): Promise<ContributionItem[]> {

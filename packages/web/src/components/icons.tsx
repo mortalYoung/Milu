@@ -175,6 +175,14 @@ export function PlusIcon(props: { size?: number }) {
 	);
 }
 
+export function SquareIcon(props: { size?: number }) {
+	return (
+		<Icon {...props}>
+			<rect width="14" height="14" x="5" y="5" rx="1.5" />
+		</Icon>
+	);
+}
+
 export function ArrowUpIcon(props: { size?: number }) {
 	return (
 		<Icon {...props}>

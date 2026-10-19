@@ -1,9 +1,23 @@
 import { createServiceId, DisposableStore, type Service } from "@milu/di";
 
-import { SESSION_HEADER_POINT, SESSION_MENU_POINT, type Extension, type ExtensionContext, type SessionHeaderItem, type SessionMenuItem } from "../extensions/types.ts";
+import {
+	COMPOSER_LEFT_POINT,
+	COMPOSER_RIGHT_POINT,
+	COMPOSER_TIPS_POINT,
+	type ComposerTipItem,
+	type ComposerWidgetItem,
+	type Extension,
+	type ExtensionContext,
+	SESSION_HEADER_POINT,
+	SESSION_MENU_POINT,
+	type SessionHeaderItem,
+	type SessionMenuItem,
+} from "../extensions/types.ts";
 import type { ActionService } from "./actions.ts";
 import type { ConfigService } from "./config.ts";
 import type { ContributionService } from "./contributions.ts";
+import type { ModelsService } from "./models.ts";
+import type { SettingsService } from "./settings.ts";
 
 export interface ExtensionDeps {
 	extensions: readonly Extension[];
@@ -22,6 +36,8 @@ export class ExtensionService implements Service {
 		private readonly _contributionService: ContributionService,
 		private readonly _configService: ConfigService,
 		private readonly _actionService: ActionService,
+		private readonly _modelsService: ModelsService,
+		private readonly _settingsService: SettingsService,
 		deps: ExtensionDeps,
 	) {
 		this._pending = deps.extensions;
@@ -30,6 +46,9 @@ export class ExtensionService implements Service {
 	async initialize(): Promise<void> {
 		this._contributionService.declare<SessionMenuItem>(SESSION_MENU_POINT);
 		this._contributionService.declare<SessionHeaderItem>(SESSION_HEADER_POINT);
+		this._contributionService.declare<ComposerWidgetItem>(COMPOSER_LEFT_POINT);
+		this._contributionService.declare<ComposerWidgetItem>(COMPOSER_RIGHT_POINT);
+		this._contributionService.declare<ComposerTipItem>(COMPOSER_TIPS_POINT);
 		for (const extension of this._pending) await this.load(extension);
 	}
 
@@ -44,6 +63,8 @@ export class ExtensionService implements Service {
 			disposables,
 			config: this._configService,
 			actions: this._actionService,
+			models: this._modelsService,
+			settings: this._settingsService,
 		};
 
 		this._loaded.push({ extension, disposables });

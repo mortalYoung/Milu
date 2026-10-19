@@ -1,5 +1,7 @@
 export { ActionsService, ActionsServiceId, type BrowserCommands } from "./actions.ts";
 export { ColumnsService, ColumnsServiceId, GRIP_WIDTH, type Columns, type DockMode, type ListMode } from "./columns.ts";
+export { type ComposerKey, HotkeysService, HotkeysServiceId } from "./hotkeys.ts";
+export { ComposerService, ComposerServiceId, type ComposerKeyState, WidgetRegistry, WidgetRegistryId, type WidgetComponent, type WidgetProps } from "./composer.ts";
 export { DialogService, DialogServiceId, type DialogComponent, type DialogProps, type PendingDialog } from "./dialogs.ts";
 export { Connection, ConnectionId, type SocketFactory, type SocketLike } from "./connection.ts";
 export { HeaderService, HeaderServiceId } from "./header.ts";

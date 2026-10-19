@@ -55,7 +55,37 @@ export interface ContributionItem {
 	readonly items?: readonly ContributionItem[];
 }
 
-export type BrowserCommand = { readonly kind: "copy"; readonly text: string } | { readonly kind: "select"; readonly session: string };
+export interface ActionBinding {
+	readonly id: string;
+	readonly hotkey: string;
+	readonly scopes: readonly string[];
+}
+
+export interface ComposerWidget {
+	readonly id: string;
+	readonly widget: string;
+	readonly data?: unknown;
+	readonly order?: number;
+}
+
+export interface ComposerTip {
+	readonly id: string;
+	readonly label: string;
+	readonly keys?: readonly string[];
+	readonly when?: "chat" | "shell";
+	readonly order?: number;
+}
+
+export interface ComposerLayout {
+	readonly left: readonly ComposerWidget[];
+	readonly right: readonly ComposerWidget[];
+	readonly tips: readonly ComposerTip[];
+}
+
+export type BrowserCommand =
+	| { readonly kind: "copy"; readonly text: string }
+	| { readonly kind: "select"; readonly session: string }
+	| { readonly kind: "shell"; readonly on: boolean | "toggle" };
 
 export interface SurfaceDeclaration {
 	readonly id: string;
@@ -86,6 +116,8 @@ export interface Methods {
 	transcript: { params: { session: string; since?: number }; result: { entries: SeqEntry[]; cursor: number } };
 	prompt: { params: { session: string; text: string }; result: { accepted: boolean } };
 	abort: { params: { session: string }; result: Record<string, never> };
+	composer: { params: { session: string }; result: ComposerLayout };
+	hotkeys: { params: Record<string, never>; result: { bindings: readonly ActionBinding[] } };
 	sessions: { params: Record<string, never>; result: { sessions: SessionRow[] } };
 	markRead: { params: { session: string; readAt: number }; result: Record<string, never> };
 	invoke: { params: { action: string; session?: string; args?: unknown }; result: { ok: boolean; error?: string; command?: BrowserCommand } };
@@ -104,6 +136,8 @@ export const METHOD_NAMES: readonly MethodName[] = [
 	"transcript",
 	"prompt",
 	"abort",
+	"composer",
+	"hotkeys",
 	"sessions",
 	"markRead",
 	"invoke",

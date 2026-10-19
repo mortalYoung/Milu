@@ -16,13 +16,27 @@ export { ConfigService, ConfigServiceId } from "./services/config.ts";
 export { ContributionPoint, ContributionService, ContributionServiceId } from "./services/contributions.ts";
 export { ExecutionService, ExecutionServiceId } from "./services/execution.ts";
 export { ExtensionService, ExtensionServiceId } from "./services/extensions.ts";
-export { EXTENSION_API_VERSION, SESSION_MENU_POINT, type Extension, type ExtensionContext, type SessionMenuItem } from "./extensions/types.ts";
+export {
+	COMPOSER_LEFT_POINT,
+	COMPOSER_RIGHT_POINT,
+	COMPOSER_TIPS_POINT,
+	EXTENSION_API_VERSION,
+	SESSION_HEADER_POINT,
+	SESSION_MENU_POINT,
+	type ComposerTipItem,
+	type ComposerWidgetItem,
+	type Extension,
+	type ExtensionContext,
+	type SessionHeaderItem,
+	type SessionMenuItem,
+	type SessionValue,
+} from "./extensions/types.ts";
 export { LayoutService, LayoutServiceId, type LayoutServiceDeps } from "./services/layout.ts";
 export { ModelsService, ModelsServiceId, type ModelRef } from "./services/models.ts";
 export { SessionService, SessionServiceId, type SessionEntry, type SessionLoopEvent } from "./services/sessions.ts";
 export { Session, type SessionDeps } from "./session/session.ts";
 export { SessionLog } from "./session/log.ts";
-export type { SessionProfile, WorkspaceFacts } from "./session/files.ts";
+export type { SessionModel, SessionProfile, WorkspaceFacts } from "./session/files.ts";
 export { SettingsService, SettingsServiceId, type Settings } from "./services/settings.ts";
 export { ToolService, ToolServiceId } from "./services/tools.ts";
 export { LocalExecutionEnv } from "./execution/local-env.ts";
