@@ -6,8 +6,24 @@ import type { PreviewKind, SeqEntry, SessionRow } from "@milu/protocol";
 import { AgentLoopService, type AgentLoopEvent } from "../services/agent-loop.ts";
 import type { ExecutionService } from "../services/execution.ts";
 import type { ModelsService } from "../services/models.ts";
+import type { PromptService } from "../services/prompt.ts";
 import type { ToolService } from "../services/tools.ts";
-import { modelOf, profileOf, readAtOf, type SessionModel, tildify, type SessionProfile, workspaceOf, type WorkspaceFacts, writeModel, writePinned, writeReadAt } from "./files.ts";
+import { EVENTS } from "./events.ts";
+import {
+	modelOf,
+	promptChangedSinceLastPersist,
+	profileOf,
+	readAtOf,
+	recordPrompt,
+	type SessionModel,
+	tildify,
+	type SessionProfile,
+	workspaceOf,
+	type WorkspaceFacts,
+	writeModel,
+	writePinned,
+	writeReadAt,
+} from "./files.ts";
 import { SessionLog } from "./log.ts";
 import type { OriginWindow } from "./origin.ts";
 import { projectSlice } from "./slice.ts";
@@ -70,6 +86,7 @@ export interface SessionDeps {
 	readonly executionService: ExecutionService;
 	readonly modelsService: ModelsService;
 	readonly toolService: ToolService;
+	readonly promptService: PromptService;
 }
 
 export class Session {
@@ -92,6 +109,7 @@ export class Session {
 	private _workspace: WorkspaceFacts | null | undefined;
 	private _model: SessionModel | null | undefined;
 	private _usedTokens: number | null | undefined;
+	private _prompt = "";
 
 	constructor(deps: SessionDeps) {
 		this._deps = deps;
@@ -162,6 +180,7 @@ export class Session {
 
 		const loop = new AgentLoopService(this._deps.modelsService, this._deps.toolService);
 		this._applyModel(loop, await this._modelOf());
+		await this._applyPrompt(loop);
 		this._loop = loop;
 		this._disposables.add(loop);
 		this._disposables.add(loop.events((event) => this._loopEmitter.fire(event)));
@@ -185,49 +204,52 @@ export class Session {
 	}
 
 	private _record(loop: AgentLoopService): { dispose(): void } {
-		const started = new Map<string, number>();
 		const record = (type: string, data: Record<string, unknown>) => void this._log.record(type, data);
 		return loop.events((event) => {
-			const progress = { run: event.run, turn: event.turn };
+			const timestamp = Date.now();
 			switch (event.type) {
 				case "message_update":
 					return;
-				case "message_end":
-					if (event.message.role === "assistant" && event.message.usage) {
-						const usage = event.message.usage;
+				case "message_end": {
+					const message = event.message;
+					if (message.role === "assistant" && message.usage) {
+						const usage = message.usage;
 						this._usedTokens = usage.input + usage.cacheRead + usage.cacheWrite;
 					}
-					void this._log.append(event.message);
-					return;
-				case "run_start":
-					record("milu/run", { ...progress, phase: "start", at: Date.now() });
-					return;
-				case "run_end":
-					record("milu/run", { ...progress, phase: "end", at: Date.now(), ...(event.error ? { error: event.error } : {}) });
-					return;
-				case "turn_start":
-					record("milu/turn", { ...progress, phase: "start", at: Date.now() });
-					return;
-				case "turn_end":
-					record("milu/turn", { ...progress, phase: "end", at: Date.now() });
-					return;
-				case "tool_start":
-					started.set(event.toolCallId, Date.now());
-					record("milu/tool", { ...progress, phase: "start", id: event.toolCallId, name: event.toolName });
-					return;
-				case "tool_end": {
-					const at = started.get(event.toolCallId);
-					started.delete(event.toolCallId);
-					record("milu/tool", {
-						...progress,
-						phase: "end",
-						id: event.toolCallId,
-						name: event.toolName,
-						isError: event.isError,
-						...(at === undefined ? {} : { ms: Date.now() - at }),
-					});
+					if (message.role === "toolResult") {
+						record(EVENTS.toolResult, {
+							toolCallId: message.toolCallId,
+							toolName: message.toolName,
+							content: message.content,
+							...(message.details === undefined ? {} : { details: message.details }),
+							...(message.usage === undefined ? {} : { usage: message.usage }),
+							isError: message.isError === true,
+							...(Array.isArray(message.addedToolNames) ? { addedToolNames: message.addedToolNames } : {}),
+							timestamp,
+						});
+						return;
+					}
+					void this._log.append(message);
 					return;
 				}
+				case "run_start":
+					record(EVENTS.agentStart, { run: event.run, timestamp });
+					return;
+				case "run_end":
+					record(EVENTS.agentEnd, { run: event.run, reason: event.error ? "error" : "completed", ...(event.error ? { error: event.error } : {}), timestamp });
+					return;
+				case "turn_start":
+					record(EVENTS.turnStart, { run: event.run, turn: event.turn, timestamp });
+					record(EVENTS.requestHeader, this._requestHeader());
+					return;
+				case "turn_end":
+					record(EVENTS.turnEnd, { run: event.run, turn: event.turn, timestamp });
+					return;
+				case "tool_start":
+					record(EVENTS.toolCall, { callId: event.toolCallId, name: event.toolName, args: event.args, run: event.run, turn: event.turn, timestamp });
+					return;
+				case "tool_end":
+					return;
 			}
 		});
 	}
@@ -273,7 +295,8 @@ export class Session {
 
 		const messages = await this._log.transcript();
 		const tools = this._deps.toolService.tools();
-		const breakdown = priceMessages("", tools, messages);
+		const prompt = this.systemPrompt();
+		const breakdown = priceMessages(prompt, tools, messages);
 		const used = await this._contextTokens();
 		if (used === null) return { used: 0, window, percent: 0, breakdown };
 
@@ -295,7 +318,7 @@ export class Session {
 			break;
 		}
 		if (sampleAt < 0) return null;
-		return priceMessages("", tools, projectSlice(origin.slice(0, sampleAt + 1)));
+		return priceMessages(this.systemPrompt(), tools, projectSlice(origin.slice(0, sampleAt + 1)));
 	}
 
 	async markRead(readAt: number): Promise<void> {
@@ -342,6 +365,24 @@ export class Session {
 	private async _modelOf(): Promise<SessionModel | null> {
 		if (this._model === undefined) this._model = await modelOf(this.root);
 		return this._model;
+	}
+
+	systemPrompt(): string {
+		return this._loop?.systemPrompt() ?? this._prompt;
+	}
+
+	private async _applyPrompt(loop: AgentLoopService): Promise<void> {
+		const prompt = await this._deps.promptService.compose(this);
+		this._prompt = prompt;
+		loop.setSystemPrompt(prompt);
+		if (!(await promptChangedSinceLastPersist(this.root, prompt))) return;
+		await this._log.record(EVENTS.systemPrompt, { text: prompt, timestamp: Date.now() });
+		await recordPrompt(this.root, prompt);
+	}
+
+	private _requestHeader(): Record<string, unknown> {
+		const tools = this._deps.toolService.tools().map((tool) => ({ name: tool.name, description: tool.description, parameters: tool.parameters }));
+		return { systemPrompt: this.systemPrompt(), toolNames: tools.map((tool) => tool.name), tools, timestamp: Date.now() };
 	}
 
 	private _applyModel(loop: AgentLoopService, model: SessionModel | null): void {

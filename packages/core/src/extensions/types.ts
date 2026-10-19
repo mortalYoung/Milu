@@ -11,6 +11,7 @@ export const SESSION_HEADER_POINT = "session.header";
 export const COMPOSER_LEFT_POINT = "composer.left";
 export const COMPOSER_RIGHT_POINT = "composer.right";
 export const COMPOSER_TIPS_POINT = "composer.tips";
+export const SYSTEM_PROMPT_POINT = "system.prompt";
 
 export type SessionValue<T> = T | ((session: Session) => T | null | Promise<T | null>);
 
@@ -40,6 +41,12 @@ export interface ComposerWidgetItem {
 	readonly data?: SessionValue<unknown>;
 }
 
+export interface PromptSection {
+	readonly id: string;
+	readonly order: number;
+	readonly text: SessionValue<string>;
+}
+
 export interface ComposerTipItem {
 	readonly id: string;
 	readonly order?: number;
@@ -54,6 +61,7 @@ export interface ExtensionContributions {
 	readonly "composer.left"?: readonly ComposerWidgetItem[];
 	readonly "composer.right"?: readonly ComposerWidgetItem[];
 	readonly "composer.tips"?: readonly ComposerTipItem[];
+	readonly "system.prompt"?: readonly PromptSection[];
 }
 
 export interface ExtensionContext {

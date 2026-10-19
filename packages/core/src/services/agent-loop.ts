@@ -16,7 +16,7 @@ export type AgentLoopEvent =
 	| ({ type: "turn_start" } & AgentLoopProgress)
 	| ({ type: "message_update"; message: AgentMessage } & AgentLoopProgress)
 	| ({ type: "message_end"; message: AgentMessage } & AgentLoopProgress)
-	| ({ type: "tool_start"; toolCallId: string; toolName: string } & AgentLoopProgress)
+	| ({ type: "tool_start"; toolCallId: string; toolName: string; args: unknown } & AgentLoopProgress)
 	| ({ type: "tool_end"; toolCallId: string; toolName: string; isError: boolean } & AgentLoopProgress)
 	| ({ type: "turn_end" } & AgentLoopProgress)
 	| ({ type: "run_end"; error?: string } & AgentLoopProgress);
@@ -77,6 +77,10 @@ export class AgentLoopService implements Service {
 
 	waitForIdle(): Promise<void> {
 		return this._agent.waitForIdle();
+	}
+
+	systemPrompt(): string {
+		return this._agent.state.systemPrompt;
 	}
 
 	setSystemPrompt(prompt: string): void {
@@ -143,7 +147,7 @@ export class AgentLoopService implements Service {
 				this._emitter.fire({ type: "message_end", ...progress, message: event.message });
 				return;
 			case "tool_execution_start":
-				this._emitter.fire({ type: "tool_start", ...progress, toolCallId: event.toolCallId, toolName: event.toolName });
+				this._emitter.fire({ type: "tool_start", ...progress, toolCallId: event.toolCallId, toolName: event.toolName, args: event.args });
 				return;
 			case "tool_execution_end":
 				this._emitter.fire({ type: "tool_end", ...progress, toolCallId: event.toolCallId, toolName: event.toolName, isError: event.isError });

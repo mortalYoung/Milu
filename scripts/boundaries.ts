@@ -13,7 +13,7 @@ const RULES: readonly Rule[] = [
 	{ pkg: "di", forbid: [/^node:/, "electron"], why: "the lifecycle vocabulary has no runtime" },
 	{
 		pkg: "core",
-		forbid: [/^node:(?!fs|os|path|url|child_process)/, "electron", /^@milu\/(client|web|server|bootstrap)$/],
+		forbid: [/^node:(?!fs|os|path|url|child_process|crypto)/, "electron", /^@milu\/(client|web|server|bootstrap)$/],
 		why: "the core is reached through events, never through a shell",
 	},
 	{

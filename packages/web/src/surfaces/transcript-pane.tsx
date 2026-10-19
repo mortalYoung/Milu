@@ -25,11 +25,12 @@ function blockText(entry: Entry): { role: string; text: string } | null {
 	return { role: message.role, text: textOf(message.content) };
 }
 
-function toolLine(entry: Entry): string | null {
-	if (entry.type !== "custom" || entry.customType !== "milu/tool") return null;
-	const data = (entry.data ?? {}) as { phase?: string; name?: string; isError?: boolean; ms?: number };
-	if (data.phase !== "end") return null;
-	return `${data.name ?? "?"}${data.ms === undefined ? "" : `  ${data.ms}ms`}${data.isError ? "  ✕" : ""}`;
+function toolLine(entry: Entry, startedAt: ReadonlyMap<string, number>): string | null {
+	if (entry.type !== "custom" || entry.customType !== "tool/result") return null;
+	const data = (entry.data ?? {}) as { toolCallId?: string; toolName?: string; isError?: boolean; timestamp?: number };
+	const at = typeof data.toolCallId === "string" ? startedAt.get(data.toolCallId) : undefined;
+	const ms = at === undefined || data.timestamp === undefined ? undefined : Math.max(0, data.timestamp - at);
+	return `${data.toolName ?? "?"}${ms === undefined ? "" : `  ${ms}ms`}${data.isError ? "  ✕" : ""}`;
 }
 
 export function TranscriptPaneSurface(props: SurfaceProps) {
@@ -56,10 +57,17 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 		});
 	};
 
+	const startedAt = new Map<string, number>();
+	for (const { entry } of entries) {
+		if (entry.type !== "custom" || entry.customType !== "tool/call") continue;
+		const data = (entry.data ?? {}) as { callId?: string; timestamp?: number };
+		if (typeof data.callId === "string" && typeof data.timestamp === "number") startedAt.set(data.callId, data.timestamp);
+	}
+
 	const rows = entries.flatMap((entry) => {
 		const message = blockText(entry.entry);
 		if (message) return message.text.trim() ? [{ key: `m${entry.seq}`, kind: message.role, text: message.text }] : [];
-		const tool = toolLine(entry.entry);
+		const tool = toolLine(entry.entry, startedAt);
 		if (tool) return [{ key: `t${entry.seq}`, kind: "tool", text: tool }];
 		return [];
 	});

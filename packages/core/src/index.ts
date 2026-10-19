@@ -23,16 +23,19 @@ export {
 	EXTENSION_API_VERSION,
 	SESSION_HEADER_POINT,
 	SESSION_MENU_POINT,
+	SYSTEM_PROMPT_POINT,
 	type ComposerTipItem,
 	type ComposerWidgetItem,
 	type Extension,
 	type ExtensionContext,
+	type PromptSection,
 	type SessionHeaderItem,
 	type SessionMenuItem,
 	type SessionValue,
 } from "./extensions/types.ts";
 export { LayoutService, LayoutServiceId, type LayoutServiceDeps } from "./services/layout.ts";
 export { ModelsService, ModelsServiceId, type ModelRef } from "./services/models.ts";
+export { PromptService, PromptServiceId } from "./services/prompt.ts";
 export { SessionService, SessionServiceId, type SessionEntry, type SessionLoopEvent } from "./services/sessions.ts";
 export { Session, type SessionDeps } from "./session/session.ts";
 export { SessionLog } from "./session/log.ts";

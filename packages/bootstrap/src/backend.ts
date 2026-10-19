@@ -13,6 +13,8 @@ import {
 	LayoutServiceId,
 	ModelsService,
 	ModelsServiceId,
+	PromptService,
+	PromptServiceId,
 	ExtensionService,
 	ExtensionServiceId,
 	SessionService,
@@ -37,6 +39,7 @@ export async function createBackend(config: BackendConfig): Promise<Backend> {
 	container.register(SettingsServiceId, (c) => new SettingsService(c.get(ConfigServiceId)));
 	container.register(LayoutServiceId, (c) => new LayoutService(c.get(ConfigServiceId), { surfaces: BUILT_IN_SURFACES }));
 	container.register(ToolServiceId, (c) => new ToolService(c.get(ConfigServiceId), c.get(ExecutionServiceId)));
+	container.register(PromptServiceId, (c) => new PromptService(c.get(ContributionServiceId)));
 	container.register(ActionServiceId, () => new ActionService());
 	container.register(
 		ExtensionServiceId,
@@ -47,7 +50,8 @@ export async function createBackend(config: BackendConfig): Promise<Backend> {
 	);
 	container.register(
 		SessionServiceId,
-		(c) => new SessionService(c.get(ExecutionServiceId), c.get(SettingsServiceId), c.get(ModelsServiceId), c.get(ToolServiceId), c.get(ContributionServiceId)),
+		(c) =>
+			new SessionService(c.get(ExecutionServiceId), c.get(SettingsServiceId), c.get(ModelsServiceId), c.get(ToolServiceId), c.get(ContributionServiceId), c.get(PromptServiceId)),
 	);
 
 	await container.initialize();

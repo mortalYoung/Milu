@@ -3,6 +3,7 @@ export const EVENTS = {
 	agentEnd: "agent/end",
 	turnStart: "turn/start",
 	turnEnd: "turn/end",
+	toolCall: "tool/call",
 	toolResult: "tool/result",
 	requestHeader: "request/header",
 	sendMessage: "send_message",

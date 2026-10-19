@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -6,6 +7,22 @@ export const PROFILE_FILE = "profile.json";
 export const READ_FILE = "read.json";
 export const WORKSPACE_FILE = "workspace.json";
 export const MODEL_FILE = "model.json";
+export const LAST_PROMPT_FILE = "last-prompt.json";
+
+const promptHash = (prompt: string) => createHash("sha256").update(prompt).digest("hex");
+
+export async function promptChangedSinceLastPersist(dir: string, prompt: string): Promise<boolean> {
+	try {
+		const saved = JSON.parse(await readFile(join(dir, LAST_PROMPT_FILE), "utf8")) as { hash?: unknown };
+		return saved.hash !== promptHash(prompt);
+	} catch {
+		return true;
+	}
+}
+
+export async function recordPrompt(dir: string, prompt: string): Promise<void> {
+	await writeFile(join(dir, LAST_PROMPT_FILE), JSON.stringify({ hash: promptHash(prompt) }, null, 2), "utf8");
+}
 
 export interface SessionProfile {
 	name: string;
