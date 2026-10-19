@@ -93,6 +93,15 @@ body {
 	min-width: 0;
 }
 
+/* 核心声明了一个 surface，但这个 bundle 里没有对应的代码：留个能看见的空位，不要静默消失 */
+.surface-missing {
+	flex: 1;
+	min-width: 0;
+	margin: 8px;
+	border: 1px dashed var(--line);
+	border-radius: var(--r6);
+}
+
 .sidebar {
 	display: flex;
 	position: relative;
@@ -413,6 +422,90 @@ body {
 	background: var(--surface);
 	color: var(--ink);
 	border: 1px solid var(--line);
+}
+
+/* 悬停才显形的省略号；菜单是手写的平铺版本，子菜单到位时整体换掉 */
+.conv-ellipsis {
+	position: absolute;
+	top: 50%;
+	right: 6px;
+	display: grid;
+	place-items: center;
+	width: 24px;
+	height: 24px;
+	border: 0;
+	border-radius: 4px;
+	background: color-mix(in srgb, var(--chrome) 80%, transparent);
+	color: var(--muted);
+	cursor: pointer;
+	opacity: 0;
+	transform: translateY(-50%);
+	transition: opacity 120ms var(--ease-out);
+}
+
+.conv-item:hover .conv-ellipsis,
+.conv-ellipsis:focus-visible,
+.conv-ellipsis[data-state="open"] {
+	opacity: 1;
+}
+
+.conv-ellipsis:hover {
+	background: var(--surface);
+	color: var(--ink);
+}
+
+.conv-menu {
+	position: fixed;
+	z-index: 50;
+	min-width: 176px;
+	padding: 4px;
+	border: 0.5px solid var(--line-strong);
+	border-radius: var(--r8);
+	background: var(--surface);
+	box-shadow: 0 8px 24px color-mix(in srgb, var(--ink) 12%, transparent);
+	outline: none;
+}
+
+.conv-menu-item {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	padding: 4px 8px;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--ink);
+	font-family: var(--sans);
+	font-size: 14px;
+	text-align: left;
+	cursor: pointer;
+	transition: background-color 120ms var(--ease-out);
+}
+
+.conv-menu-item:hover,
+.conv-menu-item[data-highlighted],
+.conv-menu-item[data-state="open"] {
+	background: color-mix(in srgb, var(--ink) 10%, transparent);
+}
+
+.conv-menu-item[data-highlighted] {
+	outline: none;
+}
+
+.conv-menu-separator {
+	height: 1px;
+	margin: 4px 0;
+	background: var(--line);
+}
+
+.conv-menu-item svg {
+	flex: none;
+	color: var(--muted);
+}
+
+.conv-menu-item.danger {
+	color: var(--signal);
 }
 
 .conv-name-wrap {

@@ -1,15 +1,18 @@
-import { activityAt, byPinThenRecency, filterChats, listTime, previewFor, type SurfaceProps, workspaceLabel } from "@milu/client";
-import type { ChatRow } from "@milu/protocol";
+import { activityAt, byPinThenRecency, filterSessions, type Host, listTime, previewFor, type SurfaceProps, workspaceLabel } from "@milu/client";
+import type { SessionRow } from "@milu/protocol";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { ChevronDownIcon, ChevronRightIcon, FolderTreeIcon, PanelLeftCloseIcon, SearchIcon } from "../components/icons.tsx";
+import { copyPath } from "../clipboard.ts";
+import { ChevronDownIcon, ChevronRightIcon, CopyIcon, FolderTreeIcon, MoreVerticalIcon, PanelLeftCloseIcon, PinIcon, PinOffIcon, SearchIcon } from "../components/icons.tsx";
 import { MiluWordmark } from "../components/MiluWordmark.tsx";
+import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, OpenMenu } from "../components/row-menu.tsx";
 import { useStore } from "../use-store.ts";
 
 const SKELETON_ROWS = 5;
 
 function Row(props: {
-	chat: ChatRow;
+	host: Host;
+	session: SessionRow;
 	selected: boolean;
 	writing: boolean;
 	unread: boolean;
@@ -19,14 +22,26 @@ function Row(props: {
 	onSelect: () => void;
 	onToggle?: () => void;
 }) {
-	const { chat } = props;
+	const { host, session } = props;
+	const targets = useStore(host.opener.targets);
+	const [menuOpen, setMenuOpen] = useState(false);
+	const menuClosedAt = useRef(0);
+
 	return (
 		<div
 			className={`conv-item${props.selected ? " selected" : ""}${props.leaf ? " ml-5" : ""}`}
 			role="button"
 			tabIndex={0}
 			aria-current={props.selected ? "true" : undefined}
-			onClick={props.onSelect}
+			onClick={() => {
+				// A click that dismissed the menu must not also pick the row it was pointing at.
+				if (Date.now() - menuClosedAt.current < 200) return;
+				props.onSelect();
+			}}
+			onContextMenu={(event) => {
+				event.preventDefault();
+				setMenuOpen(true);
+			}}
 			onKeyDown={(event) => {
 				if (event.key !== "Enter" && event.key !== " ") return;
 				event.preventDefault();
@@ -34,18 +49,18 @@ function Row(props: {
 			}}
 		>
 			<span className={`conv-avatar ${props.selected ? "avatar-ink" : "avatar-paper"}`}>
-				<span className="avatar-initial">{chat.name.charAt(0)}</span>
+				<span className="avatar-initial">{session.name.charAt(0)}</span>
 			</span>
 			<span className="conv-main">
 				<span className="conv-name-row">
 					<span className="conv-name-wrap">
-						<span className="conv-name">{chat.name}</span>
+						<span className="conv-name">{session.name}</span>
 						{props.childCount ? (
 							<button
 								type="button"
 								className="conv-fork-count"
 								aria-expanded={props.expanded}
-								aria-label={`${props.expanded ? "Collapse" : "Expand"} ${props.childCount} fork${props.childCount === 1 ? "" : "s"} of ${chat.name}`}
+								aria-label={`${props.expanded ? "Collapse" : "Expand"} ${props.childCount} fork${props.childCount === 1 ? "" : "s"} of ${session.name}`}
 								onClick={(event) => {
 									event.stopPropagation();
 									props.onToggle?.();
@@ -56,7 +71,7 @@ function Row(props: {
 							</button>
 						) : null}
 					</span>
-					<span className="conv-time">{activityAt(chat) ? listTime(activityAt(chat)) : ""}</span>
+					<span className="conv-time">{activityAt(session) ? listTime(activityAt(session)) : ""}</span>
 				</span>
 				<span className="conv-preview">
 					<span className="conv-preview-main">
@@ -67,29 +82,62 @@ function Row(props: {
 								<span className="work-dot" />
 							</span>
 						) : (
-							previewFor(chat) || "—"
+							previewFor(session) || "—"
 						)}
 					</span>
 					{props.unread ? <span className="conv-unread-dot" title="new messages" /> : null}
 				</span>
-				{chat.workspace ? (
-					<span className="conv-ws" title={chat.workspace}>
-						{chat.workspaceKind === "worktree" ? <FolderTreeIcon size={10} /> : null}
-						<span className="truncate">{workspaceLabel(chat)}</span>
+				{session.workspace ? (
+					<span className="conv-ws" title={session.workspace}>
+						{session.workspaceKind === "worktree" ? <FolderTreeIcon size={10} /> : null}
+						<span className="truncate">{workspaceLabel(session)}</span>
 					</span>
 				) : null}
 			</span>
+			<Menu
+				open={menuOpen}
+				onOpenChange={(open) => {
+					if (!open) menuClosedAt.current = Date.now();
+					setMenuOpen(open);
+				}}
+			>
+				<MenuTrigger asChild>
+					<button type="button" className="conv-ellipsis" aria-label={`More actions for ${session.name}`} onClick={(event) => event.stopPropagation()}>
+						<MoreVerticalIcon size={14} />
+					</button>
+				</MenuTrigger>
+				<MenuContent>
+					<MenuItem onSelect={() => void host.sessions.pin(session.name, session.pinned !== true)}>
+						{session.pinned ? <PinOffIcon size={13} /> : <PinIcon size={13} />}
+						<span>{session.pinned ? "Unpin" : "Pin"}</span>
+					</MenuItem>
+					<MenuSeparator />
+					<MenuItem onSelect={() => void copyPath(session.path)}>
+						<CopyIcon size={13} />
+						<span>Copy directory path</span>
+					</MenuItem>
+					{session.workspace ? (
+						<MenuItem onSelect={() => void copyPath(session.workspace ?? "")}>
+							<CopyIcon size={13} />
+							<span>Copy workspace path</span>
+						</MenuItem>
+					) : null}
+					<MenuSeparator />
+					<OpenMenu label="Open workspace" path={session.workspace ?? null} targets={targets} onOpen={(target) => void host.opener.open(session.workspace ?? "", target)} />
+					<OpenMenu label="Open storage" path={session.storage} targets={targets} onOpen={(target) => void host.opener.open(session.storage, target)} />
+				</MenuContent>
+			</Menu>
 		</div>
 	);
 }
 
-export function ChatListSurface(props: SurfaceProps) {
+export function SessionListSurface(props: SurfaceProps) {
 	const { host } = props;
-	const rows = useStore(host.chats.rows);
-	const arrived = useStore(host.chats.arrived);
-	const state = useStore(host.sessions.state);
-	const listOpen = useStore(host.shell.listOpen);
-	const searchOpen = useStore(host.shell.searchOpen);
+	const rows = useStore(host.sessions.rows);
+	const arrived = useStore(host.sessions.arrived);
+	const state = useStore(host.transcript.state);
+	const listOpen = useStore(host.workbench.listOpen);
+	const searchOpen = useStore(host.workbench.searchOpen);
 
 	const [query, setQuery] = useState("");
 	const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
@@ -99,7 +147,7 @@ export function ChatListSurface(props: SurfaceProps) {
 
 	const selected = state.selected;
 	const closeSearch = () => {
-		host.shell.setSearch(false);
+		host.workbench.setSearch(false);
 		setQuery("");
 	};
 
@@ -127,27 +175,27 @@ export function ChatListSurface(props: SurfaceProps) {
 		};
 	}, [rows, query, expanded, listOpen, arrived]);
 
-	const roots = useMemo(() => rows.filter((chat) => !chat.forkedFrom).sort(byPinThenRecency), [rows]);
+	const roots = useMemo(() => rows.filter((session) => !session.forkedFrom).sort(byPinThenRecency), [rows]);
 	const leavesByRoot = useMemo(() => {
-		const map = new Map<string, ChatRow[]>();
-		for (const chat of rows) {
-			if (!chat.forkedFrom) continue;
-			const list = map.get(chat.forkedFrom) ?? [];
-			list.push(chat);
-			map.set(chat.forkedFrom, list);
+		const map = new Map<string, SessionRow[]>();
+		for (const session of rows) {
+			if (!session.forkedFrom) continue;
+			const list = map.get(session.forkedFrom) ?? [];
+			list.push(session);
+			map.set(session.forkedFrom, list);
 		}
 		for (const list of map.values()) list.sort(byPinThenRecency);
 		return map;
 	}, [rows]);
 
 	const searching = query.trim() !== "";
-	const matched = useMemo(() => new Set(filterChats(rows, query).map((chat) => chat.name)), [rows, query]);
+	const matched = useMemo(() => new Set(filterSessions(rows, query).map((session) => session.name)), [rows, query]);
 	const visibleRoots = useMemo(() => {
 		if (!searching) return roots;
 		return roots.filter((root) => matched.has(root.name) || (leavesByRoot.get(root.name) ?? []).some((leaf) => matched.has(leaf.name)));
 	}, [roots, leavesByRoot, matched, searching]);
 
-	const selectedParent = rows.find((chat) => chat.name === selected)?.forkedFrom;
+	const selectedParent = rows.find((session) => session.name === selected)?.forkedFrom;
 	const pinnedRoots = searching ? [] : visibleRoots.filter((root) => root.pinned === true);
 	const restRoots = searching ? visibleRoots : visibleRoots.filter((root) => root.pinned !== true);
 
@@ -159,31 +207,33 @@ export function ChatListSurface(props: SurfaceProps) {
 			return next;
 		});
 
-	const renderRoot = (root: ChatRow) => {
+	const renderRoot = (root: SessionRow) => {
 		const leaves = leavesByRoot.get(root.name) ?? [];
 		const isExpanded = root.name === selectedParent || expanded.has(root.name) || (searching && leaves.some((leaf) => matched.has(leaf.name)));
 		return (
 			<div key={root.name}>
 				<Row
-					chat={root}
+					host={host}
+					session={root}
 					selected={selected === root.name}
-					writing={host.sessions.running(root.name)}
+					writing={host.transcript.running(root.name)}
 					unread={(root.lastMessageAt ?? 0) > (root.readAt ?? 0)}
 					childCount={leaves.length}
 					expanded={isExpanded}
-					onSelect={() => void host.sessions.select(root.name)}
+					onSelect={() => void host.transcript.select(root.name)}
 					onToggle={() => toggle(root.name)}
 				/>
 				{isExpanded
 					? leaves.map((leaf) => (
 							<Row
 								key={leaf.name}
-								chat={leaf}
+								host={host}
+								session={leaf}
 								selected={selected === leaf.name}
-								writing={host.sessions.running(leaf.name)}
+								writing={host.transcript.running(leaf.name)}
 								unread={(leaf.lastMessageAt ?? 0) > (leaf.readAt ?? 0)}
 								leaf
-								onSelect={() => void host.sessions.select(leaf.name)}
+								onSelect={() => void host.transcript.select(leaf.name)}
 							/>
 						))
 					: null}
@@ -199,9 +249,9 @@ export function ChatListSurface(props: SurfaceProps) {
 						type="button"
 						className="conv-icon-btn"
 						aria-expanded={searchOpen}
-						aria-label={searchOpen ? "Close search" : "Search chats"}
-						title="Search chats (⌘F)"
-						onClick={() => (searchOpen ? closeSearch() : host.shell.setSearch(true))}
+						aria-label={searchOpen ? "Close search" : "Search sessions"}
+						title="Search sessions (⌘F)"
+						onClick={() => (searchOpen ? closeSearch() : host.workbench.setSearch(true))}
 					>
 						<SearchIcon />
 					</button>
@@ -210,14 +260,14 @@ export function ChatListSurface(props: SurfaceProps) {
 							ref={searchRef}
 							className="conv-list-input"
 							type="text"
-							placeholder="Search chats"
-							aria-label="Search chats"
+							placeholder="Search sessions"
+							aria-label="Search sessions"
 							spellCheck={false}
 							tabIndex={searchOpen ? 0 : -1}
 							aria-hidden={searchOpen ? undefined : true}
 							value={query}
 							onChange={(event) => setQuery(event.currentTarget.value)}
-							onBlur={() => query === "" && host.shell.setSearch(false)}
+							onBlur={() => query === "" && host.workbench.setSearch(false)}
 							onKeyDown={(event) => {
 								if (event.nativeEvent.isComposing) return;
 								if (event.key !== "Escape") return;
@@ -228,7 +278,7 @@ export function ChatListSurface(props: SurfaceProps) {
 						/>
 					</span>
 				</div>
-				<button type="button" className="sidebar-toggle" aria-label="Hide chat list" title="Hide chat list (⌘B)" onClick={() => host.shell.setList(false)}>
+				<button type="button" className="sidebar-toggle" aria-label="Hide session list" title="Hide session list (⌘B)" onClick={() => host.workbench.setList(false)}>
 					<PanelLeftCloseIcon size={16} />
 				</button>
 			</div>
@@ -239,11 +289,11 @@ export function ChatListSurface(props: SurfaceProps) {
 			</div>
 
 			<div className="sidebar-body">
-				{arrived && rows.length === 0 ? <div className="conv-empty">no chats yet</div> : null}
+				{arrived && rows.length === 0 ? <div className="conv-empty">no sessions yet</div> : null}
 
 				{searching && rows.length > 0 && visibleRoots.length === 0 ? (
 					<div className="conv-no-match">
-						<p className="conv-no-match-title">No chats match</p>
+						<p className="conv-no-match-title">No sessions match</p>
 						<p className="conv-no-match-hint">
 							<button type="button" onClick={() => setQuery("")}>
 								clear the filter

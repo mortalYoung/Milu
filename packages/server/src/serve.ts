@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
 import { extname, join, normalize } from "node:path";
 
-import type { Backend } from "@milu/core";
+import { editorNames, type Backend, openInCodeEditor, openInFinder, openTargets } from "@milu/core";
 import type { Frame, LiveEvent, MethodName, Methods, SeqEntry } from "@milu/protocol";
 import { WebSocketServer, type WebSocket } from "ws";
 
@@ -68,37 +68,57 @@ export async function serve(options: ServeOptions): Promise<Server> {
 	// One handler per method, keyed by the protocol's method map — a missing one is a type error.
 	const handlers = {
 		async transcript(params) {
-			const scope = await backend.chats.ensure(params.chat);
-			const entries = await scope.sessions.entries(params.since ?? 0);
+			const session = await backend.sessions.get(params.session);
+			const entries = await session.entries(params.since ?? 0);
 			return { entries, cursor: entries.at(-1)?.seq ?? 0 };
 		},
 		async prompt(params) {
-			const scope = await backend.chats.ensure(params.chat);
+			const session = await backend.sessions.get(params.session);
 			try {
-				scope.loop.setModel(backend.models.resolve());
+				await session.run(params.text);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
-				live({ type: "status", chat: params.chat, running: false, error: message });
+				live({ type: "status", session: params.session, running: false, error: message });
 				return { accepted: false };
 			}
-			void scope.loop
-				.run(params.text)
-				.then((outcome) => {
-					if (outcome.error) live({ type: "status", chat: params.chat, running: false, error: outcome.error });
-				})
-				.catch((error: unknown) => live({ type: "status", chat: params.chat, running: false, error: error instanceof Error ? error.message : String(error) }));
 			return { accepted: true };
 		},
 		async abort(params) {
-			backend.chats.get(params.chat)?.loop.abort();
+			backend.sessions.get(params.session).abort();
 			return {};
 		},
-		async chats() {
-			return { chats: [...(await backend.chats.list())] };
+		async sessions() {
+			return { sessions: [...(await backend.sessions.list())] };
 		},
 		async markRead(params) {
-			await backend.chats.markRead(params.chat, params.readAt);
+			await backend.sessions.markRead(params.session, params.readAt);
 			return {};
+		},
+		async pin(params) {
+			await backend.sessions.pin(params.session, params.pinned);
+			return {};
+		},
+		async editors() {
+			return openTargets();
+		},
+		async openPath(params) {
+			const opened = params.via === "finder" ? await openInFinder(params.path) : await openInCodeEditor(params.path, params.editorId);
+			if (opened.ok) return { ok: true };
+			const error =
+				opened.reason === "missing-path"
+					? `${params.path} is gone`
+					: opened.reason === "editor-missing"
+						? `${params.editorId} is not installed`
+						: opened.reason === "no-editor"
+							? `no code editor found (${editorNames()})`
+							: `no editor would take ${params.path} — nor did the default app`;
+			return { ok: false, error };
+		},
+		async layout() {
+			return backend.layout.state();
+		},
+		async layoutSet(params) {
+			return backend.layout.setLayout(params.layout);
 		},
 	} satisfies { [K in MethodName]: (params: Methods[K]["params"]) => Promise<Methods[K]["result"]> };
 
@@ -113,22 +133,26 @@ export async function serve(options: ServeOptions): Promise<Server> {
 		return created;
 	}
 
-	function forward(socket: WebSocket, chat: string, entry: SeqEntry): void {
+	function forward(socket: WebSocket, session: string, entry: SeqEntry): void {
 		const seen = cursorOf(socket);
-		const last = seen.get(chat) ?? 0;
+		const last = seen.get(session) ?? 0;
 		if (entry.seq <= last) return;
-		seen.set(chat, entry.seq);
-		send(socket, { kind: "entry", chat, seq: entry.seq, entry: entry.entry });
+		seen.set(session, entry.seq);
+		send(socket, { kind: "entry", session, seq: entry.seq, entry: entry.entry });
 	}
 
-	const unsubscribeEntry = backend.chats.onEntry(({ chat, entry }) => {
-		for (const socket of sockets.clients) forward(socket, chat, entry);
+	const unsubscribeEntry = backend.sessions.onEntry(({ session, entry }) => {
+		for (const socket of sockets.clients) forward(socket, session, entry);
 	});
 
-	const unsubscribeLoop = backend.chats.onLoopEvent(({ chat, event }) => {
+	const unsubscribeLayout = backend.layout.onChange((state) => {
+		live({ type: "layout", ...state });
+	});
+
+	const unsubscribeLoop = backend.sessions.onLoopEvent(({ session, event }) => {
 		if (event.type === "message_update") return;
-		if (event.type === "run_start") live({ type: "status", chat, running: true });
-		if (event.type === "run_end") live({ type: "status", chat, running: false, ...(event.error ? { error: event.error } : {}) });
+		if (event.type === "run_start") live({ type: "status", session, running: true });
+		if (event.type === "run_end") live({ type: "status", session, running: false, ...(event.error ? { error: event.error } : {}) });
 	});
 
 	http.on("upgrade", (request, socket, head) => {
@@ -161,8 +185,8 @@ export async function serve(options: ServeOptions): Promise<Server> {
 					const result = await (method as (params: unknown) => Promise<unknown>)(frame.params);
 					if (frame.method === "transcript") {
 						// The replay is the client's new starting point for this chat; live frames continue from there.
-						const chat = (frame.params as Methods["transcript"]["params"]).chat;
-						cursorOf(socket).set(chat, (result as Methods["transcript"]["result"]).cursor);
+						const session = (frame.params as Methods["transcript"]["params"]).session;
+						cursorOf(socket).set(session, (result as Methods["transcript"]["result"]).cursor);
 					}
 					send(socket, { kind: "res", id: frame.id, ok: true, result });
 				} catch (error) {
@@ -184,11 +208,11 @@ export async function serve(options: ServeOptions): Promise<Server> {
 		http.listen(PORT, "127.0.0.1", () => {
 			console.log(`MILU_URL=http://127.0.0.1:${PORT}/`);
 			console.log(`config=${configRoot} workspace=${workspace} web=${webDir}`);
-			console.log(`partners=${backend.chats.partnerRoot}`);
-			void backend.chats
+			console.log(`partners=${backend.sessions.partnerRoot}`);
+			void backend.sessions
 				.list()
-				.then((rows) => console.log(`chats=${rows.length}`))
-				.catch((error: unknown) => console.warn(`chats: ${error instanceof Error ? error.message : String(error)}`));
+				.then((rows) => console.log(`sessions=${rows.length}`))
+				.catch((error: unknown) => console.warn(`sessions: ${error instanceof Error ? error.message : String(error)}`));
 			resolve();
 		});
 	});
@@ -196,6 +220,7 @@ export async function serve(options: ServeOptions): Promise<Server> {
 	return {
 		async close() {
 			unsubscribeEntry.dispose();
+			unsubscribeLayout.dispose();
 			unsubscribeLoop.dispose();
 			sockets.close();
 			http.close();

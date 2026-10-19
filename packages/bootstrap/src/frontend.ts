@@ -1,28 +1,30 @@
 import {
-	ChatsService,
-	ChatsServiceId,
 	Connection,
 	ConnectionId,
 	type Host,
-	LayoutService,
-	LayoutServiceId,
-	SessionsService,
-	SessionsServiceId,
-	ShellService,
-	ShellServiceId,
+	OpenerService,
+	OpenerServiceId,
+	SessionListService,
+	SessionListServiceId,
+	TranscriptService,
+	TranscriptServiceId,
+	WorkbenchService,
+	WorkbenchServiceId,
 	type SocketFactory,
-	type Surface,
+	Store,
+	type SurfaceComponent,
 	SurfaceRegistry,
 	SurfaceRegistryId,
 } from "@milu/client";
 import { Container, DisposableStore, type Disposable } from "@milu/di";
+import type { LayoutState } from "@milu/protocol";
 
 export interface FrontEndDeps {
 	readonly url: string;
 	readonly createSocket?: SocketFactory;
 	readonly retryMs?: number;
-	/** Everything that can be placed on the page — the core's surfaces and any extension's alike. */
-	readonly surfaces?: readonly Surface[];
+	/** The code this bundle brought; the core decides which of it is on the page. */
+	readonly components?: readonly SurfaceComponent[];
 }
 
 export interface FrontEnd extends Disposable {
@@ -42,53 +44,61 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 				...(deps.retryMs === undefined ? {} : { retryMs: deps.retryMs }),
 			}),
 	);
-	container.register(ChatsServiceId, (c) => new ChatsService(c.get(ConnectionId)));
-	container.register(SessionsServiceId, (c) => new SessionsService(c.get(ConnectionId), c.get(ChatsServiceId)));
-	container.register(ShellServiceId, () => new ShellService());
-	container.register(SurfaceRegistryId, () => new SurfaceRegistry(deps.surfaces ?? []));
-	container.register(LayoutServiceId, (c) => new LayoutService(c.get(SurfaceRegistryId)));
+	container.register(SessionListServiceId, (c) => new SessionListService(c.get(ConnectionId)));
+	container.register(TranscriptServiceId, (c) => new TranscriptService(c.get(ConnectionId), c.get(SessionListServiceId)));
+	container.register(WorkbenchServiceId, () => new WorkbenchService());
+	container.register(OpenerServiceId, (c) => new OpenerService(c.get(ConnectionId)));
+	container.register(SurfaceRegistryId, () => new SurfaceRegistry(deps.components ?? []));
 	await container.initialize();
 
 	const connection = container.get(ConnectionId);
-	const chats = container.get(ChatsServiceId);
-	const sessions = container.get(SessionsServiceId);
-	const shell = container.get(ShellServiceId);
+	const sessions = container.get(SessionListServiceId);
+	const transcript = container.get(TranscriptServiceId);
+	const workbench = container.get(WorkbenchServiceId);
+	const opener = container.get(OpenerServiceId);
 	const surfaces = container.get(SurfaceRegistryId);
-	const layout = container.get(LayoutServiceId);
+	const layoutState = new Store<LayoutState>({ surfaces: [], layout: {} });
 
 	const disposables = new DisposableStore();
 	let started = false;
 
-	/** After every (re)connect: rows first, then whatever was on screen. */
+	/** After every (re)connect: what the page holds, then rows, then whatever was on screen. */
 	const sync = async (): Promise<void> => {
-		await chats.refresh();
-		const current = sessions.selected();
-		if (current) await sessions.select(current);
-		else await sessions.chooseFirst(chats.rows.get());
+		layoutState.set(await connection.request("layout", {}));
+		await opener.load();
+		await sessions.refresh();
+		const current = transcript.selected();
+		if (current) await transcript.select(current);
+		else await transcript.chooseFirst(sessions.rows.get());
 	};
 
 	return {
-		host: { connection, chats, sessions, shell, surfaces, layout },
+		host: { connection, sessions, transcript, workbench, opener, surfaces, layoutState },
 		start() {
 			if (started) return;
 			started = true;
 			disposables.add(
 				connection.onLink((up) => {
-					sessions.setLinked(up);
+					transcript.setLinked(up);
 					if (up) void sync();
 				}),
 			);
-			disposables.add(connection.onEntry(({ chat, entry }) => sessions.append(chat, entry)));
+			disposables.add(connection.onEntry(({ session, entry }) => transcript.append(session, entry)));
 			disposables.add(
 				connection.onLive((event) => {
-					sessions.setStatus(event.chat, event.running, event.error);
-					if (!event.running) void chats.refresh();
+					if (event.type === "layout") {
+						layoutState.set(event);
+						return;
+					}
+					transcript.setStatus(event.session, event.running, event.error);
+					if (!event.running) void sessions.refresh();
 				}),
 			);
 			connection.open();
 		},
 		dispose() {
 			disposables.dispose();
+			layoutState.dispose();
 			container.dispose();
 		},
 	};

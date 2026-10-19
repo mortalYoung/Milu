@@ -1,4 +1,4 @@
-import type { ChatRow } from "@milu/protocol";
+import type { SessionRow } from "@milu/protocol";
 
 /** Case-insensitive subsequence match with a light score: consecutive runs, segment starts and short haystacks win. */
 const BOUNDARY = /[/\-_. ]/;
@@ -54,40 +54,41 @@ export function oneLine(text: string): string {
 	return text.replace(/\s+/g, " ").trim();
 }
 
-/** A row's time: the last message, else when the current session began, else the profile's birthday. */
-export function activityAt(chat: ChatRow): number {
-	return chat.lastMessageAt ?? chat.startedAt ?? chat.createdAt;
+/** A row's time: the last message, else when the current log began, else the profile's birthday. */
+export function activityAt(row: SessionRow): number {
+	return row.lastMessageAt ?? row.startedAt ?? row.createdAt;
 }
 
 /** The row's preview, with the prefix that tells you who said it. */
-export function previewFor(chat: ChatRow): string {
-	if (chat.lastMessage) {
-		const text = oneLine(chat.lastMessage);
-		if (chat.lastMessageKind === "user") return `You: ${text}`;
-		if (chat.lastMessageKind === "command") return `/${text}`;
-		if (chat.lastMessageKind === "skill") return `/skill:${text}`;
-		if (chat.lastMessageKind === "shell") return `$ ${text}`;
+export function previewFor(row: SessionRow): string {
+	if (row.lastMessage) {
+		const text = oneLine(row.lastMessage);
+		if (row.lastMessageKind === "user") return `You: ${text}`;
+		if (row.lastMessageKind === "command") return `/${text}`;
+		if (row.lastMessageKind === "skill") return `/skill:${text}`;
+		if (row.lastMessageKind === "shell") return `$ ${text}`;
 		return text;
 	}
-	return chat.persona?.split("\n").find((line) => line.trim()) ?? "";
+	return row.persona?.split("\n").find((line) => line.trim()) ?? "";
 }
 
-/** Pinned chats first, then recency — the one ordering rule the list and the palette share. */
-export const byPinThenRecency = (a: ChatRow, b: ChatRow) => Number(b.pinned === true) - Number(a.pinned === true) || activityAt(b) - activityAt(a) || a.name.localeCompare(b.name);
+/** Pinned sessions first, then recency — the one ordering rule the list and the palette share. */
+export const byPinThenRecency = (a: SessionRow, b: SessionRow) =>
+	Number(b.pinned === true) - Number(a.pinned === true) || activityAt(b) - activityAt(a) || a.name.localeCompare(b.name);
 
 /**
  * The one chat matcher: name, workspace and persona are each fuzzy-scored; a name hit outranks
  * everything, then the score, then workspace, then persona, and the most recently active breaks ties.
  */
-export function filterChats(chats: readonly ChatRow[], query: string): ChatRow[] {
+export function filterSessions(rows: readonly SessionRow[], query: string): SessionRow[] {
 	const q = query.trim();
-	if (!q) return [...chats].sort(byPinThenRecency);
-	const hits: { chat: ChatRow; name: number | null; persona: number | null; workspace: number | null }[] = [];
-	for (const chat of chats) {
-		const name = fuzzyScore(q, chat.name);
-		const persona = chat.persona ? fuzzyScore(q, chat.persona) : null;
-		const workspace = chat.workspace ? fuzzyScore(q, chat.workspace) : null;
-		if (name !== null || persona !== null || workspace !== null) hits.push({ chat, name, persona, workspace });
+	if (!q) return [...rows].sort(byPinThenRecency);
+	const hits: { row: SessionRow; name: number | null; persona: number | null; workspace: number | null }[] = [];
+	for (const row of rows) {
+		const name = fuzzyScore(q, row.name);
+		const persona = row.persona ? fuzzyScore(q, row.persona) : null;
+		const workspace = row.workspace ? fuzzyScore(q, row.workspace) : null;
+		if (name !== null || persona !== null || workspace !== null) hits.push({ row, name, persona, workspace });
 	}
 	hits.sort(
 		(a, b) =>
@@ -95,15 +96,15 @@ export function filterChats(chats: readonly ChatRow[], query: string): ChatRow[]
 			(b.name ?? 0) - (a.name ?? 0) ||
 			(b.workspace ?? 0) - (a.workspace ?? 0) ||
 			(b.persona ?? 0) - (a.persona ?? 0) ||
-			activityAt(b.chat) - activityAt(a.chat),
+			activityAt(b.row) - activityAt(a.row),
 	);
-	return hits.map(({ chat }) => chat);
+	return hits.map(({ row }) => row);
 }
 
 /** A row's workspace label: the repo's name (a linked worktree says so with its icon), or the path. */
-export function workspaceLabel(chat: ChatRow): string {
-	if (chat.workspace && (chat.workspaceKind === "worktree" || chat.workspaceKind === "repo") && chat.workspaceRepo) return chat.workspaceRepo;
-	return formatWorkspacePath(chat.workspace ?? "", 30);
+export function workspaceLabel(row: SessionRow): string {
+	if (row.workspace && (row.workspaceKind === "worktree" || row.workspaceKind === "repo") && row.workspaceRepo) return row.workspaceRepo;
+	return formatWorkspacePath(row.workspace ?? "", 30);
 }
 
 export function formatWorkspacePath(path: string, max = 48): string {

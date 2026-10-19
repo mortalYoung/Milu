@@ -1,5 +1,5 @@
 import { DisposableStore, createServiceId, Emitter, type Event, type Service } from "@milu/di";
-import type { ChatRow, LiveEvent, MethodName, Methods, Result, SeqEntry } from "@milu/protocol";
+import type { LiveEvent, MethodName, Methods, Result, SeqEntry } from "@milu/protocol";
 
 const OPEN = 1;
 
@@ -27,12 +27,12 @@ const defaultSocket: SocketFactory = (url) => new WebSocket(url) as unknown as S
 
 /** The wire, and nothing above it: frames in, typed events out, requests with a promise. */
 export class Connection implements Service {
-	readonly onEntry: Event<{ chat: string; entry: SeqEntry }>;
+	readonly onEntry: Event<{ session: string; entry: SeqEntry }>;
 	readonly onLive: Event<LiveEvent>;
 	readonly onLink: Event<boolean>;
 
 	private readonly _deps: ConnectionDeps;
-	private readonly _emitter = new Emitter<{ chat: string; entry: SeqEntry }>();
+	private readonly _emitter = new Emitter<{ session: string; entry: SeqEntry }>();
 	private readonly _live = new Emitter<LiveEvent>();
 	private readonly _link = new Emitter<boolean>();
 	private readonly _pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
@@ -71,7 +71,7 @@ export class Connection implements Service {
 				return;
 			}
 			if (frame.kind === "entry") {
-				this._emitter.fire({ chat: frame["chat"] as string, entry: { seq: frame["seq"] as number, entry: frame["entry"] as SeqEntry["entry"] } });
+				this._emitter.fire({ session: frame["session"] as string, entry: { seq: frame["seq"] as number, entry: frame["entry"] as SeqEntry["entry"] } });
 				return;
 			}
 			if (frame.kind === "live") {
@@ -109,10 +109,10 @@ export class Connection implements Service {
 		this._socket = null;
 	}
 
-	/** Opens a chat and replays its log; the server dedupes anything already sent live. */
-	async load(chat: string): Promise<void> {
-		const result = await this.request("transcript", { chat, since: 0 });
-		for (const entry of result.entries) this._emitter.fire({ chat, entry });
+	/** Opens a session and replays its log; the core dedupes anything already sent live. */
+	async load(session: string): Promise<void> {
+		const result = await this.request("transcript", { session, since: 0 });
+		for (const entry of result.entries) this._emitter.fire({ session, entry });
 	}
 
 	request<K extends MethodName>(method: K, params: Methods[K]["params"]): Promise<Result<K>> {
@@ -132,5 +132,3 @@ export class Connection implements Service {
 }
 
 export const ConnectionId = createServiceId<Connection>("Connection");
-
-export type { ChatRow };

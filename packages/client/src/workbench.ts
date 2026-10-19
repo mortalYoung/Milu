@@ -2,8 +2,8 @@ import { createServiceId, type Service } from "@milu/di";
 
 import { Store } from "./store.ts";
 
-/** The frame around the surfaces: what is open, and which of them the keyboard is talking to. */
-export class ShellService implements Service {
+/** The workbench's own switches: which panes are open, where the keyboard is aimed. */
+export class WorkbenchService implements Service {
 	readonly listOpen = new Store(true);
 	readonly searchOpen = new Store(false);
 
@@ -25,4 +25,4 @@ export class ShellService implements Service {
 	}
 }
 
-export const ShellServiceId = createServiceId<ShellService>("ShellService");
+export const WorkbenchServiceId = createServiceId<WorkbenchService>("WorkbenchService");

@@ -1,10 +1,8 @@
 import { createServiceId, DisposableStore, type Service } from "@milu/di";
 
 import type { Extension, ExtensionContext } from "../extensions/types.ts";
-import type { AgentLoopService } from "./agent-loop.ts";
 import type { ConfigService } from "./config.ts";
 import type { ContributionService } from "./contributions.ts";
-import type { SessionService } from "./sessions.ts";
 
 export interface ExtensionDeps {
 	extensions: readonly Extension[];
@@ -20,9 +18,7 @@ export class ExtensionService implements Service {
 	private readonly _loaded: Loaded[] = [];
 
 	constructor(
-		private readonly _agentLoopService: AgentLoopService,
 		private readonly _contributionService: ContributionService,
-		private readonly _sessionService: SessionService,
 		private readonly _configService: ConfigService,
 		deps: ExtensionDeps,
 	) {
@@ -43,8 +39,6 @@ export class ExtensionService implements Service {
 			id: extension.id,
 			disposables,
 			contributions: this._contributionService,
-			loop: this._agentLoopService,
-			sessions: this._sessionService,
 			config: this._configService,
 		};
 

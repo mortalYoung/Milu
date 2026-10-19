@@ -1,9 +1,13 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
-/** The partner's own profile file — v1 writes it, so both versions read one shape. */
-export interface PartnerProfile {
+export const PROFILE_FILE = "profile.json";
+export const READ_FILE = "read.json";
+export const WORKSPACE_FILE = "workspace.json";
+
+/** The session's own profile file — v1 writes it, so both versions read one shape. */
+export interface SessionProfile {
 	name: string;
 	persona?: string;
 	createdAt: number;
@@ -11,15 +15,11 @@ export interface PartnerProfile {
 	pinned?: boolean;
 }
 
-export interface PartnerWorkspace {
+export interface WorkspaceFacts {
 	path: string;
 	kind: "worktree" | "repo" | "dir" | null;
 	repo: string | null;
 }
-
-const PROFILE_FILE = "profile.json";
-const READ_FILE = "read.json";
-const WORKSPACE_FILE = "workspace.json";
 
 async function readJson<T>(file: string): Promise<T | null> {
 	try {
@@ -36,14 +36,14 @@ async function writeJson(file: string, value: unknown): Promise<void> {
 	await rename(tmp, file);
 }
 
-/** Display paths are tildified the way v1 sends them; `open_path` expands them again. */
+/** Display paths are tildified the way v1 sends them; opening a path expands them again. */
 export function tildify(path: string): string {
 	const home = homedir();
 	return path.startsWith(home) ? `~${path.slice(home.length)}` : path;
 }
 
-export function profileOf(dir: string): Promise<PartnerProfile | null> {
-	return readJson<PartnerProfile>(join(dir, PROFILE_FILE));
+export function profileOf(dir: string): Promise<SessionProfile | null> {
+	return readJson<SessionProfile>(join(dir, PROFILE_FILE));
 }
 
 export async function readAtOf(dir: string): Promise<number | undefined> {
@@ -51,11 +51,17 @@ export async function readAtOf(dir: string): Promise<number | undefined> {
 	return typeof data?.readAt === "number" ? data.readAt : undefined;
 }
 
+/** Pinning is a profile edit: read the file, change one flag, write it back whole. */
+export async function writePinned(dir: string, pinned: boolean): Promise<void> {
+	const profile = (await profileOf(dir)) ?? { name: basename(dir), createdAt: Date.now() };
+	await writeJson(join(dir, PROFILE_FILE), { ...profile, pinned });
+}
+
 export function writeReadAt(dir: string, readAt: number): Promise<void> {
 	return writeJson(join(dir, READ_FILE), { readAt });
 }
 
-export async function workspaceOf(dir: string): Promise<PartnerWorkspace | null> {
+export async function workspaceOf(dir: string): Promise<WorkspaceFacts | null> {
 	const data = await readJson<{ path?: unknown; kind?: unknown; repo?: unknown }>(join(dir, WORKSPACE_FILE));
 	if (typeof data?.path !== "string" || !data.path) return null;
 	const kind = data.kind === "worktree" || data.kind === "repo" || data.kind === "dir" ? data.kind : null;

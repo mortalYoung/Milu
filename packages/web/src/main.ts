@@ -2,9 +2,9 @@ import { createFrontEnd } from "@milu/bootstrap/frontend";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 
-import { Shell } from "./shell.tsx";
-import { ChatListSurface } from "./surfaces/chat-list.tsx";
-import { ChatPaneSurface } from "./surfaces/chat-pane.tsx";
+import { SessionListSurface } from "./surfaces/session-list.tsx";
+import { TranscriptPaneSurface } from "./surfaces/transcript-pane.tsx";
+import { Workbench } from "./workbench.tsx";
 
 import "./style.css";
 
@@ -12,16 +12,16 @@ import "./style.css";
 async function main(): Promise<void> {
 	const front = await createFrontEnd({
 		url: `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/ws`,
-		surfaces: [
-			{ id: "milu.chat-list", slot: "sidebar", order: 10, component: ChatListSurface },
-			{ id: "milu.chat-pane", slot: "main", order: 10, component: ChatPaneSurface },
+		components: [
+			{ id: "milu.session-list", component: SessionListSurface },
+			{ id: "milu.transcript", component: TranscriptPaneSurface },
 		],
 	});
 
 	const root = document.getElementById("root");
 	if (!root) throw new Error("#root is missing from index.html");
 
-	createRoot(root).render(createElement(Shell, { host: front.host }));
+	createRoot(root).render(createElement(Workbench, { host: front.host }));
 	front.start();
 }
 

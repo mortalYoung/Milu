@@ -1,103 +1,132 @@
-import type { AgentMessage, JsonlSessionMetadata } from "@earendil-works/pi-agent-core";
-import { JsonlSessionRepo, type Session } from "@earendil-works/pi-agent-core";
-import { createServiceId, Emitter, type Event, type Service } from "@milu/di";
-import type { SeqEntry } from "@milu/protocol";
+import { join } from "node:path";
 
+import { createServiceId, DisposableStore, Emitter, type Event, type Service } from "@milu/di";
+import type { SeqEntry, SessionRow } from "@milu/protocol";
+
+import { Session } from "../session/session.ts";
+import type { AgentLoopEvent } from "./agent-loop.ts";
 import type { ExecutionService } from "./execution.ts";
+import type { ModelsService } from "./models.ts";
+import { expandHome, type SettingsService } from "./settings.ts";
+import type { ToolService } from "./tools.ts";
 
-/** The identity of one chat: its name in the partner root, and the directory it lives in. */
-export interface ChatContext {
-	readonly name: string;
-	readonly root: string;
+export interface SessionEntry {
+	readonly session: string;
+	readonly entry: SeqEntry;
 }
 
-/** pi's durable store rejects `undefined` anywhere in a payload; the round trip is its own shape. */
-function stripUndefined<T>(value: T): T {
-	if (value === undefined) return value;
-	return JSON.parse(JSON.stringify(value)) as T;
+export interface SessionLoopEvent {
+	readonly session: string;
+	readonly event: AgentLoopEvent;
 }
 
-/** One chat's session log — the only state this service owns is the chat it was built for. */
+/**
+ * Every session on disk, and the values this process holds for them. A session is created lazily
+ * and cheaply — its log and its loop only come up when something opens it — so `list()` can
+ * describe seventeen sessions without running any of them.
+ */
 export class SessionService implements Service {
-	/** Fires for every entry that reached the disk, in write order. */
-	readonly onEntry: Event<SeqEntry>;
+	readonly onEntry: Event<SessionEntry>;
+	readonly onLoopEvent: Event<SessionLoopEvent>;
 
-	private _session: Session<JsonlSessionMetadata> | null = null;
-	private _queue: Promise<void> = Promise.resolve();
-	private readonly _emitter = new Emitter<SeqEntry>();
+	private _partnerRoot = "";
+	private readonly _sessions = new Map<string, Session>();
+	private readonly _relays = new Map<string, DisposableStore>();
+	private readonly _entryEmitter = new Emitter<SessionEntry>();
+	private readonly _loopEmitter = new Emitter<SessionLoopEvent>();
 
 	constructor(
 		private readonly _executionService: ExecutionService,
-		readonly chat: ChatContext,
+		private readonly _settingsService: SettingsService,
+		private readonly _modelsService: ModelsService,
+		private readonly _toolService: ToolService,
 	) {
-		this.onEntry = this._emitter.event;
+		this.onEntry = this._entryEmitter.event;
+		this.onLoopEvent = this._loopEmitter.event;
 	}
 
 	async initialize(): Promise<void> {
-		const repo = this._repo();
-		const latest = (await repo.list({ cwd: this.chat.root }))[0];
-		this._session = latest ? await repo.open(latest) : await repo.create({ cwd: this.chat.root });
+		this._partnerRoot = expandHome(this._settingsService.get().partner_profile_path);
 	}
 
-	append(message: AgentMessage): Promise<string | undefined> {
-		return this._enqueue(() => this._sessionOrThrow().appendMessage(stripUndefined(message)));
+	get partnerRoot(): string {
+		return this._partnerRoot;
 	}
 
-	record(type: string, data?: unknown): Promise<string | undefined> {
-		return this._enqueue(() => this._sessionOrThrow().appendCustomEntry(type, data === undefined ? undefined : stripUndefined(data)));
+	/** One row per session directory; a row costs the three small files plus its log's head. */
+	async list(): Promise<readonly SessionRow[]> {
+		const rows: SessionRow[] = [];
+		for (const name of await this._names()) rows.push(await this.get(name).row());
+		return rows.sort((left, right) => (right.lastMessageAt ?? 0) - (left.lastMessageAt ?? 0) || left.name.localeCompare(right.name));
 	}
 
-	/** Writes are queued; a caller that cares (shutdown, a probe) waits here. */
-	async flush(): Promise<void> {
-		await this._queue;
+	/** The session's value: no loop, no log until something opens it. */
+	get(name: string): Session {
+		const existing = this._sessions.get(name);
+		if (existing) return existing;
+
+		const session = new Session({
+			name,
+			root: join(this._partnerRoot, name),
+			executionService: this._executionService,
+			modelsService: this._modelsService,
+			toolService: this._toolService,
+		});
+		this._sessions.set(name, session);
+
+		const relays = new DisposableStore();
+		relays.add(session.onEntry((entry) => this._entryEmitter.fire({ session: name, entry })));
+		relays.add(session.onLoopEvent((event) => this._loopEmitter.fire({ session: name, event })));
+		this._relays.set(name, relays);
+		return session;
 	}
 
-	async entries(since = 0): Promise<SeqEntry[]> {
-		const listed = await this._sessionOrThrow().findEntries();
-		return listed
-			.filter((entry) => entry.seq > since)
-			.sort((left, right) => left.seq - right.seq)
-			.map((entry) => ({ seq: entry.seq, entry }));
+	/** Same as `get`, but a name that is not on disk is an error rather than a session. */
+	async ensure(name: string): Promise<Session> {
+		if (!(await this._names()).includes(name)) throw new Error(`no session named "${name}"`);
+		return this.get(name);
 	}
 
-	async transcript(): Promise<AgentMessage[]> {
-		const entries = await this._sessionOrThrow().findEntries();
-		return entries
-			.filter((entry) => entry.type === "message")
-			.sort((left, right) => left.seq - right.seq)
-			.map((entry) => (entry as Extract<typeof entry, { type: "message" }>).message);
+	running(name: string): boolean {
+		return this._sessions.get(name)?.running ?? false;
+	}
+
+	async pin(name: string, pinned: boolean): Promise<void> {
+		await (await this.ensure(name)).pin(pinned);
+	}
+
+	async markRead(name: string, readAt: number): Promise<void> {
+		await (await this.ensure(name)).markRead(readAt);
+	}
+
+	/** Every session disposes first, then drains — the second half of a graceful shutdown. */
+	async shutdown(): Promise<void> {
+		for (const session of this._sessions.values()) await session.close();
+	}
+
+	/** Closing a session disposes it first, keeps its files, and forgets its value. */
+	async close(name: string): Promise<void> {
+		const session = this._sessions.get(name);
+		if (!session) return;
+		this._sessions.delete(name);
+		this._relays.get(name)?.dispose();
+		this._relays.delete(name);
+		await session.close();
 	}
 
 	dispose(): void {
-		// Pending writes keep draining against the session; flush() is how a caller waits for them.
-		this._emitter.dispose();
+		this._entryEmitter.dispose();
+		this._loopEmitter.dispose();
+		for (const relays of this._relays.values()) relays.dispose();
+		for (const session of this._sessions.values()) session.dispose();
+		this._sessions.clear();
+		this._relays.clear();
 	}
 
-	private _repo(): JsonlSessionRepo {
-		return new JsonlSessionRepo({ fs: this._executionService.env(this.chat.root), sessionsRoot: this.chat.root });
-	}
-
-	private _enqueue(run: () => Promise<string>): Promise<string | undefined> {
-		const result = this._queue
-			.then(run)
-			.then(async (id) => {
-				const entry = await this._sessionOrThrow()
-					.getEntry(id)
-					.catch(() => undefined);
-				if (entry) this._emitter.fire({ seq: entry.seq, entry });
-				return id;
-			})
-			.catch((error: unknown) => {
-				console.error(`session ${this.chat.name}: write failed:`, error);
-				return undefined;
-			});
-		this._queue = result.then(() => undefined);
-		return result;
-	}
-
-	private _sessionOrThrow(): Session<JsonlSessionMetadata> {
-		if (!this._session) throw new Error(`session for "${this.chat.name}" is not initialized`);
-		return this._session;
+	private async _names(): Promise<string[]> {
+		const listed = await this._executionService.env(this._partnerRoot).listDir(".");
+		if (!listed.ok) return [];
+		return listed.value.filter((entry) => entry.kind === "directory").map((entry) => entry.name);
 	}
 }
 

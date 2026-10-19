@@ -31,15 +31,15 @@ function toolLine(entry: Entry): string | null {
 	return `${data.name ?? "?"}${data.ms === undefined ? "" : `  ${data.ms}ms`}${data.isError ? "  ✕" : ""}`;
 }
 
-export function ChatPaneSurface(props: SurfaceProps) {
+export function TranscriptPaneSurface(props: SurfaceProps) {
 	const { host } = props;
-	const state = useStore(host.sessions.state);
-	const linked = useStore(host.sessions.linked);
-	const listOpen = useStore(host.shell.listOpen);
+	const state = useStore(host.transcript.state);
+	const linked = useStore(host.transcript.linked);
+	const listOpen = useStore(host.workbench.listOpen);
 
 	const selected = state.selected;
 	const entries = state.logs[selected] ?? NO_ENTRIES;
-	const running = host.sessions.running(selected);
+	const running = host.transcript.running(selected);
 	const error = state.errors[selected] ?? "";
 	const draft = state.drafts[selected] ?? "";
 
@@ -50,7 +50,7 @@ export function ChatPaneSurface(props: SurfaceProps) {
 
 	const send = () => {
 		if (!draft.trim()) return;
-		void host.sessions.send(draft);
+		void host.transcript.send(draft);
 	};
 
 	const rows = entries.map((entry) => {
@@ -66,12 +66,12 @@ export function ChatPaneSurface(props: SurfaceProps) {
 			<header className="chat-bar">
 				<span className="chat-bar-left">
 					{listOpen ? null : (
-						<button type="button" className="conv-icon-btn" aria-label="Show chat list" title="Show chat list (⌘B)" onClick={() => host.shell.setList(true)}>
+						<button type="button" className="conv-icon-btn" aria-label="Show session list" title="Show session list (⌘B)" onClick={() => host.workbench.setList(true)}>
 							<PanelLeftIcon size={16} />
 						</button>
 					)}
 					<span className="mono muted">
-						{selected || "no chat"} · {entries.length ? `seq ${entries[entries.length - 1]?.seq}` : "empty"}
+						{selected || "no session"} · {entries.length ? `seq ${entries[entries.length - 1]?.seq}` : "empty"}
 					</span>
 				</span>
 				<span className={`dot${running ? " hot" : ""}${linked ? "" : " off"}`} />
@@ -96,7 +96,7 @@ export function ChatPaneSurface(props: SurfaceProps) {
 					<div className="composer">
 						<textarea
 							value={draft}
-							onChange={(event) => host.sessions.setDraft(selected, event.target.value)}
+							onChange={(event) => host.transcript.setDraft(selected, event.target.value)}
 							onKeyDown={(event) => {
 								if (event.key === "Enter" && !event.shiftKey) {
 									event.preventDefault();
