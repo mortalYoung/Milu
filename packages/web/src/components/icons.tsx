@@ -47,6 +47,16 @@ export function PanelLeftIcon(props: { size?: number }) {
 	);
 }
 
+export function PanelLeftOpenIcon(props: { size?: number }) {
+	return (
+		<Icon {...props}>
+			<rect width="18" height="18" x="3" y="3" rx="2" />
+			<path d="M9 3v18" />
+			<path d="m14 9 3 3-3 3" />
+		</Icon>
+	);
+}
+
 export function ChevronRightIcon(props: { size?: number }) {
 	return (
 		<Icon {...props}>
@@ -115,6 +125,7 @@ export function PinOffIcon(props: { size?: number }) {
 
 const NAMED: Record<string, (props: { size?: number }) => ReactNode> = {
 	folder: FolderIcon,
+	"square-pen": SquarePenIcon,
 	trash: TrashIcon,
 	pin: PinIcon,
 	"pin-off": PinOffIcon,
@@ -140,6 +151,33 @@ export function TrashIcon(props: { size?: number }) {
 			<path d="M3 6h18" />
 			<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
 			<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+		</Icon>
+	);
+}
+
+export function PlusIcon(props: { size?: number }) {
+	return (
+		<Icon {...props}>
+			<path d="M12 5v14" />
+			<path d="M5 12h14" />
+		</Icon>
+	);
+}
+
+export function ArrowUpIcon(props: { size?: number }) {
+	return (
+		<Icon {...props}>
+			<path d="m5 12 7-7 7 7" />
+			<path d="M12 19V5" />
+		</Icon>
+	);
+}
+
+export function SquarePenIcon(props: { size?: number }) {
+	return (
+		<Icon {...props}>
+			<path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+			<path d="M18.375 2.625a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4Z" />
 		</Icon>
 	);
 }

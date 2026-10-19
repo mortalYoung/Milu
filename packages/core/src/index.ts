@@ -1,6 +1,6 @@
 import type { Disposable } from "@milu/di";
 
-import type { ActionRegistry } from "./services/actions.ts";
+import type { ActionService } from "./services/actions.ts";
 import type { ConfigService } from "./services/config.ts";
 import type { ContributionService } from "./services/contributions.ts";
 import type { LayoutService } from "./services/layout.ts";
@@ -11,7 +11,7 @@ import type { ToolService } from "./services/tools.ts";
 
 export type { AgentLoopEvent, AgentLoopRun, AgentLoopService } from "./services/agent-loop.ts";
 export { AgentLoopServiceId } from "./services/agent-loop.ts";
-export { ActionRegistry, ActionRegistryId, type Action, type ActionContext } from "./services/actions.ts";
+export { ActionService, ActionServiceId, type Action, type ActionContext } from "./services/actions.ts";
 export { ConfigService, ConfigServiceId } from "./services/config.ts";
 export { ContributionPoint, ContributionService, ContributionServiceId } from "./services/contributions.ts";
 export { ExecutionService, ExecutionServiceId } from "./services/execution.ts";
@@ -37,7 +37,7 @@ export interface Backend extends Disposable {
 	readonly models: ModelsService;
 	readonly config: ConfigService;
 	readonly contributions: ContributionService;
-	readonly actions: ActionRegistry;
+	readonly actions: ActionService;
 	readonly tools: ToolService;
 	readonly settings: SettingsService;
 	readonly layout: LayoutService;

@@ -2,8 +2,7 @@ import { activityAt, byPinThenRecency, filterSessions, type Host, listTime, prev
 import type { ContributionItem, SessionRow } from "@milu/protocol";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { ConfirmDialog } from "../components/confirm-dialog.tsx";
-import { ChevronDownIcon, ChevronRightIcon, FolderTreeIcon, MoreVerticalIcon, PanelLeftCloseIcon, SearchIcon } from "../components/icons.tsx";
+import { ChevronDownIcon, ChevronRightIcon, FolderTreeIcon, IconByName, MoreVerticalIcon, PanelLeftCloseIcon, SearchIcon } from "../components/icons.tsx";
 import { MiluWordmark } from "../components/MiluWordmark.tsx";
 import { Menu, MenuContent, MenuItems, MenuTrigger } from "../components/row-menu.tsx";
 import { useStore } from "../use-store.ts";
@@ -118,12 +117,11 @@ export function SessionListSurface(props: SurfaceProps) {
 	const rows = useStore(host.sessions.rows);
 	const arrived = useStore(host.sessions.arrived);
 	const state = useStore(host.transcript.state);
-	const listOpen = useStore(host.workbench.listOpen);
 	const searchOpen = useStore(host.workbench.searchOpen);
+	const headerItems = useStore(host.header.items);
 
 	const [query, setQuery] = useState("");
 	const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
-	const [pending, setPending] = useState<{ item: ContributionItem; session: string } | null>(null);
 	const [edges, setEdges] = useState({ above: false, below: false });
 	const searchRef = useRef<HTMLInputElement>(null);
 	const rowsRef = useRef<HTMLDivElement>(null);
@@ -131,12 +129,7 @@ export function SessionListSurface(props: SurfaceProps) {
 	const selected = state.selected;
 
 	const start = (item: ContributionItem, session: string): void => {
-		if (!item.action) return;
-		if (item.confirm) {
-			setPending({ item, session });
-			return;
-		}
-		void run(item, session);
+		if (item.action) void run(item, session);
 	};
 
 	const run = async (item: ContributionItem, session: string): Promise<void> => {
@@ -174,7 +167,7 @@ export function SessionListSurface(props: SurfaceProps) {
 			element.removeEventListener("scroll", measure);
 			observer.disconnect();
 		};
-	}, [rows, query, expanded, listOpen, arrived]);
+	}, [rows, query, expanded, arrived]);
 
 	const roots = useMemo(() => rows.filter((session) => !session.forkedFrom || !rows.some((each) => each.name === session.forkedFrom)).sort(byPinThenRecency), [rows]);
 	const leavesByRoot = useMemo(() => {
@@ -245,7 +238,7 @@ export function SessionListSurface(props: SurfaceProps) {
 	};
 
 	return (
-		<aside className={`sidebar${listOpen ? "" : " collapsed"}`} tabIndex={-1}>
+		<div className="session-list">
 			<div className="sidebar-windowbar">
 				<div className={`conv-search${searchOpen ? " open" : ""}`}>
 					<button
@@ -281,7 +274,12 @@ export function SessionListSurface(props: SurfaceProps) {
 						/>
 					</span>
 				</div>
-				<button type="button" className="sidebar-toggle" aria-label="Hide session list" title="Hide session list (⌘B)" onClick={() => host.workbench.setList(false)}>
+				{headerItems.map((item) => (
+					<button key={item.id} type="button" className="conv-icon-btn" aria-label={item.title} title={item.title} onClick={() => void host.actions.invoke(item.action ?? "")}>
+						<IconByName name={item.icon} size={14} />
+					</button>
+				))}
+				<button type="button" className="sidebar-toggle" aria-label="Hide session list" title="Hide session list (⌘B)" onClick={() => host.columns.closeList()}>
 					<PanelLeftCloseIcon size={16} />
 				</button>
 			</div>
@@ -326,17 +324,6 @@ export function SessionListSurface(props: SurfaceProps) {
 					)}
 				</div>
 			</div>
-
-			<ConfirmDialog
-				copy={pending?.item.confirm ?? null}
-				danger={pending?.item.danger}
-				onCancel={() => setPending(null)}
-				onConfirm={() => {
-					const next = pending;
-					setPending(null);
-					if (next) void run(next.item, next.session);
-				}}
-			/>
-		</aside>
+		</div>
 	);
 }

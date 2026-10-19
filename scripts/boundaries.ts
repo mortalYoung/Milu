@@ -3,6 +3,7 @@ import { join, relative } from "node:path";
 
 interface Rule {
 	readonly pkg: string;
+	readonly dir?: string;
 	readonly forbid: readonly (string | RegExp)[];
 	readonly why: string;
 }
@@ -32,6 +33,12 @@ const RULES: readonly Rule[] = [
 		forbid: ["electron", /^@milu\/(web|server)$/],
 		why: "an extension gets core capabilities and client types, nothing about a shell",
 	},
+	{
+		pkg: "extensions",
+		dir: "extensions/src/web",
+		forbid: [/^node:/, "electron", /^@milu\/(core|server|di)$/],
+		why: "an extension's web half renders in the window: client types only, no server code",
+	},
 ];
 
 const ROOT = join(new URL("..", import.meta.url).pathname, "packages");
@@ -54,7 +61,7 @@ async function sources(dir: string): Promise<string[]> {
 const violations: string[] = [];
 
 for (const rule of RULES) {
-	const dir = join(ROOT, rule.pkg, "src");
+	const dir = join(ROOT, rule.dir ?? join(rule.pkg, "src"));
 	for (const file of await sources(dir)) {
 		const text = await readFile(file, "utf8");
 		for (const match of text.matchAll(SPECIFIER)) {

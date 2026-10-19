@@ -4,15 +4,19 @@
 	"private": true,
 	"type": "module",
 	"exports": {
-		".": "./src/index.ts"
+		".": "./src/index.ts",
+		"./web": "./src/web/index.tsx"
 	},
 	"scripts": {
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@milu/core": "workspace:*"
+		"@milu/client": "workspace:*",
+		"@milu/core": "workspace:*",
+		"react": "19.3.0"
 	},
 	"devDependencies": {
-		"@types/node": "latest"
+		"@types/node": "latest",
+		"@types/react": "19.3.0"
 	}
 }

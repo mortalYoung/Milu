@@ -1,0 +1,220 @@
+.ext-create {
+	display: flex;
+	flex-direction: column;
+	font-family: var(--sans);
+}
+
+.ext-create-head {
+	padding: 16px 20px;
+	border-bottom: 0.5px solid var(--line);
+}
+
+.ext-create-head h2 {
+	margin: 0;
+	font-family: var(--serif);
+	font-size: 18px;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+	color: var(--ink);
+}
+
+.ext-create-head p {
+	margin: 4px 0 0;
+	font-size: 12px;
+	color: var(--muted);
+}
+
+.ext-create-body {
+	display: grid;
+	grid-template-columns: 120px minmax(0, 1fr);
+	gap: 14px;
+	padding: 16px 20px;
+}
+
+.ext-create-side {
+	padding-right: 14px;
+	border-right: 0.5px solid var(--line);
+}
+
+.ext-create-avatar {
+	display: grid;
+	place-items: center;
+	width: 44px;
+	height: 44px;
+	border-radius: 999px;
+	background: var(--hover);
+	font-family: var(--serif);
+	font-size: 18px;
+	font-weight: 600;
+	line-height: 1;
+	color: var(--ink);
+}
+
+.ext-create-preview {
+	margin: 8px 0 0;
+	overflow: hidden;
+	font-size: 14px;
+	font-weight: 500;
+	color: var(--ink);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.ext-create-preview.empty {
+	color: var(--muted);
+}
+
+.ext-create-fields {
+	display: grid;
+	min-width: 0;
+	align-content: start;
+	gap: 12px;
+}
+
+.ext-create-field {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.ext-create-field label {
+	font-size: 12px;
+	font-weight: 500;
+	letter-spacing: 0.6px;
+	line-height: 1;
+	text-transform: uppercase;
+	color: var(--muted);
+}
+
+.ext-create-hint {
+	margin-left: 6px;
+	font-family: var(--mono);
+	font-size: 10px;
+	font-weight: 400;
+	letter-spacing: normal;
+	text-transform: none;
+	color: var(--muted);
+}
+
+.ext-create-field input,
+.ext-create-field textarea {
+	width: 100%;
+	height: 40px;
+	padding: 8px 12px;
+	border: 1px solid var(--line);
+	border-radius: var(--r6);
+	background: var(--surface);
+	color: var(--ink);
+	font-family: var(--sans);
+	font-size: 14px;
+	outline: none;
+	transition: border-color 120ms var(--ease-out);
+}
+
+.ext-create-field textarea {
+	height: auto;
+	min-height: 0;
+	resize: none;
+}
+
+.ext-create-field input::placeholder,
+.ext-create-field textarea::placeholder {
+	color: var(--muted);
+}
+
+.ext-create-field input:focus-visible,
+.ext-create-field textarea:focus-visible {
+	border-color: var(--ink);
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--ink) 20%, transparent);
+}
+
+.ext-create-field input.pickable {
+	cursor: pointer;
+	user-select: none;
+}
+
+.ext-create-field input[data-invalid="true"] {
+	border-color: var(--signal);
+}
+
+.ext-create-error {
+	margin: 2px 0 0;
+	font-size: 12px;
+	color: var(--signal);
+}
+
+.ext-create-foot {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 14px 20px;
+	border-top: 0.5px solid var(--line);
+}
+
+.ext-create-spacer {
+	flex: 1;
+}
+
+.ext-create-kbd {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.ext-create-kbd kbd {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 20px;
+	height: 20px;
+	padding: 0 4px;
+	border-radius: 4px;
+	background: var(--hover);
+	font-family: var(--sans);
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--muted);
+}
+
+.ext-create-ghost,
+.ext-create-primary {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	height: 36px;
+	padding: 0 12px;
+	border-radius: var(--r8);
+	font-family: var(--sans);
+	font-size: 12px;
+	font-weight: 500;
+	white-space: nowrap;
+	cursor: pointer;
+	transition:
+		background-color 160ms var(--ease-out),
+		transform 160ms var(--ease-out);
+}
+
+.ext-create-ghost:active,
+.ext-create-primary:active {
+	transform: scale(0.97);
+}
+
+.ext-create-ghost {
+	border: 0;
+	background: transparent;
+	color: var(--ink);
+}
+
+.ext-create-ghost:hover {
+	background: var(--hover);
+}
+
+.ext-create-primary {
+	border: 0;
+	background: var(--ink);
+	color: var(--canvas);
+}
+
+.ext-create-primary:hover {
+	background: color-mix(in srgb, var(--ink) 90%, transparent);
+}

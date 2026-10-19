@@ -3,7 +3,11 @@ import type { LayoutState } from "@milu/protocol";
 import type { ComponentType } from "react";
 
 import type { ActionsService } from "./actions.ts";
+import type { ColumnsService } from "./columns.ts";
 import type { Connection } from "./connection.ts";
+import type { DialogService } from "./dialogs.ts";
+import type { HeaderService } from "./header.ts";
+import type { PickerService } from "./picker.ts";
 import type { SessionListService } from "./sessions.ts";
 import type { Store } from "./store.ts";
 import type { TranscriptService } from "./transcripts.ts";
@@ -24,6 +28,10 @@ export interface Host {
 	readonly transcript: TranscriptService;
 	readonly workbench: WorkbenchService;
 	readonly actions: ActionsService;
+	readonly dialogs: DialogService;
+	readonly columns: ColumnsService;
+	readonly header: HeaderService;
+	readonly picker: PickerService;
 	readonly surfaces: SurfaceRegistry;
 	readonly layoutState: Store<LayoutState>;
 }

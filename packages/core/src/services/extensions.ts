@@ -1,7 +1,7 @@
 import { createServiceId, DisposableStore, type Service } from "@milu/di";
 
-import { SESSION_MENU_POINT, type Extension, type ExtensionContext, type SessionMenuItem } from "../extensions/types.ts";
-import type { ActionRegistry } from "./actions.ts";
+import { SESSION_HEADER_POINT, SESSION_MENU_POINT, type Extension, type ExtensionContext, type SessionHeaderItem, type SessionMenuItem } from "../extensions/types.ts";
+import type { ActionService } from "./actions.ts";
 import type { ConfigService } from "./config.ts";
 import type { ContributionService } from "./contributions.ts";
 
@@ -21,7 +21,7 @@ export class ExtensionService implements Service {
 	constructor(
 		private readonly _contributionService: ContributionService,
 		private readonly _configService: ConfigService,
-		private readonly _actionRegistry: ActionRegistry,
+		private readonly _actionService: ActionService,
 		deps: ExtensionDeps,
 	) {
 		this._pending = deps.extensions;
@@ -29,6 +29,7 @@ export class ExtensionService implements Service {
 
 	async initialize(): Promise<void> {
 		this._contributionService.declare<SessionMenuItem>(SESSION_MENU_POINT);
+		this._contributionService.declare<SessionHeaderItem>(SESSION_HEADER_POINT);
 		for (const extension of this._pending) await this.load(extension);
 	}
 
@@ -42,7 +43,7 @@ export class ExtensionService implements Service {
 			id: extension.id,
 			disposables,
 			config: this._configService,
-			actions: this._actionRegistry,
+			actions: this._actionService,
 		};
 
 		this._loaded.push({ extension, disposables });

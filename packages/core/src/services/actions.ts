@@ -1,5 +1,5 @@
 import { createServiceId, type Disposable, type Service } from "@milu/di";
-import type { BrowserCommand } from "@milu/protocol";
+import type { BrowserCommand, ConfirmCopy, DialogDescriptor } from "@milu/protocol";
 
 import type { Session } from "../session/session.ts";
 import type { SessionService } from "./sessions.ts";
@@ -8,6 +8,8 @@ export interface ActionContext {
 	readonly session?: Session;
 	readonly args?: unknown;
 	readonly sessions?: SessionService;
+	readonly dialog?: (dialog: DialogDescriptor) => Promise<unknown>;
+	readonly confirm?: (copy: ConfirmCopy) => Promise<boolean>;
 }
 
 export interface Action {
@@ -15,7 +17,7 @@ export interface Action {
 	readonly run: (context: ActionContext) => void | BrowserCommand | Promise<void | BrowserCommand>;
 }
 
-export class ActionRegistry implements Service {
+export class ActionService implements Service {
 	private readonly _actions = new Map<string, Action>();
 
 	register(action: Action): Disposable {
@@ -39,4 +41,4 @@ export class ActionRegistry implements Service {
 	}
 }
 
-export const ActionRegistryId = createServiceId<ActionRegistry>("ActionRegistry");
+export const ActionServiceId = createServiceId<ActionService>("ActionService");

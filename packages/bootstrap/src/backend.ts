@@ -1,8 +1,8 @@
 import {
 	type Backend,
 	type BackendConfig,
-	ActionRegistry,
-	ActionRegistryId,
+	ActionService,
+	ActionServiceId,
 	ConfigService,
 	ConfigServiceId,
 	ContributionService,
@@ -37,8 +37,8 @@ export async function createBackend(config: BackendConfig): Promise<Backend> {
 	container.register(SettingsServiceId, (c) => new SettingsService(c.get(ConfigServiceId)));
 	container.register(LayoutServiceId, (c) => new LayoutService(c.get(ConfigServiceId), { surfaces: BUILT_IN_SURFACES }));
 	container.register(ToolServiceId, (c) => new ToolService(c.get(ConfigServiceId), c.get(ExecutionServiceId)));
-	container.register(ActionRegistryId, () => new ActionRegistry());
-	container.register(ExtensionServiceId, (c) => new ExtensionService(c.get(ContributionServiceId), c.get(ConfigServiceId), c.get(ActionRegistryId), { extensions: EXTENSIONS }));
+	container.register(ActionServiceId, () => new ActionService());
+	container.register(ExtensionServiceId, (c) => new ExtensionService(c.get(ContributionServiceId), c.get(ConfigServiceId), c.get(ActionServiceId), { extensions: EXTENSIONS }));
 	container.register(
 		SessionServiceId,
 		(c) => new SessionService(c.get(ExecutionServiceId), c.get(SettingsServiceId), c.get(ModelsServiceId), c.get(ToolServiceId), c.get(ContributionServiceId)),
@@ -53,7 +53,7 @@ export async function createBackend(config: BackendConfig): Promise<Backend> {
 		models: container.get(ModelsServiceId),
 		config: container.get(ConfigServiceId),
 		contributions: container.get(ContributionServiceId),
-		actions: container.get(ActionRegistryId),
+		actions: container.get(ActionServiceId),
 		tools: container.get(ToolServiceId),
 		settings: container.get(SettingsServiceId),
 		layout: container.get(LayoutServiceId),

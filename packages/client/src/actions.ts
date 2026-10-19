@@ -1,11 +1,11 @@
 import { createServiceId, type Service } from "@milu/di";
-import type { BrowserCommand } from "@milu/protocol";
 
 import type { Connection } from "./connection.ts";
 
-export type BrowserCommands = {
-	readonly [K in BrowserCommand["kind"]]?: (command: Extract<BrowserCommand, { kind: K }>) => void | Promise<void>;
-};
+export interface BrowserCommands {
+	readonly copy?: (text: string) => void | Promise<void>;
+	readonly select?: (session: string) => void | Promise<void>;
+}
 
 export class ActionsService implements Service {
 	constructor(
@@ -19,8 +19,13 @@ export class ActionsService implements Service {
 
 		const command = result.command;
 		if (!command) return;
-		const run = this._commands[command.kind] as ((command: BrowserCommand) => void | Promise<void>) | undefined;
-		await run?.(command);
+
+		if (command.kind === "select") {
+			await this._commands.select?.(command.session);
+			return;
+		}
+
+		await this._commands.copy?.(command.text);
 	}
 
 	dispose(): void {}

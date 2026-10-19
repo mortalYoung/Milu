@@ -1,10 +1,13 @@
+import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
 import { extname, join, normalize } from "node:path";
 
 import type { Backend } from "@milu/core";
-import type { Frame, LiveEvent, MethodName, Methods, SeqEntry } from "@milu/protocol";
+import type { DialogDescriptor, Frame, LiveEvent, MethodName, Methods, SeqEntry } from "@milu/protocol";
 import { WebSocketServer, type WebSocket } from "ws";
+
+import { pickDirectory } from "./pick-directory.ts";
 
 const PORT = 8787;
 
@@ -60,18 +63,40 @@ export async function serve(options: ServeOptions): Promise<Server> {
 		send(socket, { kind: "res", id, ok: false, error: { code, message } });
 	}
 
+	const DIALOG_TIMEOUT_MS = 5 * 60_000;
+	const askings = new Map<string, { socket: WebSocket; settle: (value: unknown) => void }>();
+
+	function dialogFor(socket: WebSocket) {
+		return (dialog: DialogDescriptor): Promise<unknown> =>
+			new Promise((settle) => {
+				const id = randomUUID();
+				const timer = setTimeout(() => {
+					askings.delete(id);
+					settle(null);
+				}, DIALOG_TIMEOUT_MS);
+				askings.set(id, {
+					socket,
+					settle: (value) => {
+						clearTimeout(timer);
+						settle(value);
+					},
+				});
+				send(socket, { kind: "live", event: { type: "dialog", id, dialog } });
+			});
+	}
+
 	function live(event: LiveEvent): void {
 		for (const socket of sockets.clients) send(socket, { kind: "live", event });
 	}
 
 	const handlers = {
 		async transcript(params) {
-			const session = await backend.sessions.get(params.session);
+			const session = await backend.sessions.ensure(params.session);
 			const entries = await session.entries(params.since ?? 0);
 			return { entries, cursor: entries.at(-1)?.seq ?? 0 };
 		},
 		async prompt(params) {
-			const session = await backend.sessions.get(params.session);
+			const session = await backend.sessions.ensure(params.session);
 			try {
 				await session.run(params.text);
 			} catch (error) {
@@ -92,11 +117,13 @@ export async function serve(options: ServeOptions): Promise<Server> {
 			await backend.sessions.markRead(params.session, params.readAt);
 			return {};
 		},
-		async invoke(params) {
+		async invoke(params, socket) {
 			try {
 				const command = await backend.actions.run(params.action, {
+					dialog: dialogFor(socket),
+					confirm: async (copy) => (await dialogFor(socket)({ kind: "confirm", copy })) === true,
 					sessions: backend.sessions,
-					...(params.session ? { session: backend.sessions.get(params.session) } : {}),
+					...(params.session ? { session: await backend.sessions.ensure(params.session) } : {}),
 					...(params.args === undefined ? {} : { args: params.args }),
 				});
 				return { ok: true, ...(command ? { command } : {}) };
@@ -104,13 +131,35 @@ export async function serve(options: ServeOptions): Promise<Server> {
 				return { ok: false, error: error instanceof Error ? error.message : String(error) };
 			}
 		},
+		async answer(params) {
+			const asking = askings.get(params.id);
+			if (!asking) return {};
+			askings.delete(params.id);
+			asking.settle(params.value);
+			return {};
+		},
+		async contributions(params) {
+			const point = backend.contributions.get<{ id: string; title: string; icon?: string; order?: number; action: string }>(params.point);
+			const items = point.all().map((item) => ({
+				id: item.id,
+				title: item.title,
+				...(item.icon ? { icon: item.icon } : {}),
+				action: item.action,
+				...(item.order === undefined ? {} : { order: item.order }),
+			}));
+			return { items: items.sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.id.localeCompare(right.id)) };
+		},
+		async pickDirectory(params) {
+			const path = await pickDirectory(params.startingFolder);
+			return path === undefined ? {} : { path };
+		},
 		async layout() {
 			return backend.layout.state();
 		},
 		async layoutSet(params) {
 			return backend.layout.setLayout(params.layout);
 		},
-	} satisfies { [K in MethodName]: (params: Methods[K]["params"]) => Promise<Methods[K]["result"]> };
+	} satisfies { [K in MethodName]: (params: Methods[K]["params"], socket: WebSocket) => Promise<Methods[K]["result"]> };
 
 	const cursors = new WeakMap<WebSocket, Map<string, number>>();
 
@@ -156,6 +205,13 @@ export async function serve(options: ServeOptions): Promise<Server> {
 
 	sockets.on("connection", (socket) => {
 		cursorOf(socket);
+		socket.on("close", () => {
+			for (const [id, asking] of askings) {
+				if (asking.socket !== socket) continue;
+				askings.delete(id);
+				asking.settle(null);
+			}
+		});
 		socket.on("message", (data) => {
 			void (async () => {
 				let frame: Frame;
@@ -171,7 +227,7 @@ export async function serve(options: ServeOptions): Promise<Server> {
 					return;
 				}
 				try {
-					const result = await (method as (params: unknown) => Promise<unknown>)(frame.params);
+					const result = await (method as (params: unknown, socket: WebSocket) => Promise<unknown>)(frame.params, socket);
 					if (frame.method === "transcript") {
 						const session = (frame.params as Methods["transcript"]["params"]).session;
 						cursorOf(socket).set(session, (result as Methods["transcript"]["result"]).cursor);
@@ -207,6 +263,10 @@ export async function serve(options: ServeOptions): Promise<Server> {
 
 	return {
 		async close() {
+			for (const [id, asking] of askings) {
+				askings.delete(id);
+				asking.settle(null);
+			}
 			unsubscribeEntry.dispose();
 			unsubscribeLayout.dispose();
 			unsubscribeLoop.dispose();

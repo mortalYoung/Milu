@@ -36,7 +36,10 @@ export interface ConfirmCopy {
 	readonly title: string;
 	readonly description?: string;
 	readonly confirmLabel?: string;
+	readonly danger?: boolean;
 }
+
+export type DialogDescriptor = { readonly kind: "confirm"; readonly copy: ConfirmCopy } | { readonly kind: "custom"; readonly id: string };
 
 export interface ContributionItem {
 	readonly id: string;
@@ -45,13 +48,12 @@ export interface ContributionItem {
 	readonly order?: number;
 	readonly group?: string;
 	readonly danger?: boolean;
-	readonly confirm?: ConfirmCopy;
 	readonly action?: string;
 	readonly args?: unknown;
 	readonly items?: readonly ContributionItem[];
 }
 
-export type BrowserCommand = { readonly kind: "copy"; readonly text: string };
+export type BrowserCommand = { readonly kind: "copy"; readonly text: string } | { readonly kind: "select"; readonly session: string };
 
 export interface SurfaceDeclaration {
 	readonly id: string;
@@ -66,7 +68,10 @@ export interface LayoutState {
 	readonly layout: Layout;
 }
 
-export type LiveEvent = { readonly type: "status"; readonly session: string; readonly running: boolean; readonly error?: string } | ({ readonly type: "layout" } & LayoutState);
+export type LiveEvent =
+	| { readonly type: "status"; readonly session: string; readonly running: boolean; readonly error?: string }
+	| ({ readonly type: "layout" } & LayoutState)
+	| { readonly type: "dialog"; readonly id: string; readonly dialog: DialogDescriptor };
 
 export type Frame =
 	| { kind: "req"; id: number; method: string; params: unknown }
@@ -82,6 +87,9 @@ export interface Methods {
 	sessions: { params: Record<string, never>; result: { sessions: SessionRow[] } };
 	markRead: { params: { session: string; readAt: number }; result: Record<string, never> };
 	invoke: { params: { action: string; session?: string; args?: unknown }; result: { ok: boolean; error?: string; command?: BrowserCommand } };
+	answer: { params: { id: string; value: unknown }; result: Record<string, never> };
+	contributions: { params: { point: string }; result: { items: readonly ContributionItem[] } };
+	pickDirectory: { params: { startingFolder?: string }; result: { path?: string } };
 	layout: { params: Record<string, never>; result: LayoutState };
 	layoutSet: { params: { layout: Layout }; result: LayoutState };
 }
@@ -90,7 +98,19 @@ export type MethodName = keyof Methods;
 export type Params<K extends MethodName> = Methods[K]["params"];
 export type Result<K extends MethodName> = Methods[K]["result"];
 
-export const METHOD_NAMES: readonly MethodName[] = ["transcript", "prompt", "abort", "sessions", "markRead", "invoke", "layout", "layoutSet"];
+export const METHOD_NAMES: readonly MethodName[] = [
+	"transcript",
+	"prompt",
+	"abort",
+	"sessions",
+	"markRead",
+	"invoke",
+	"answer",
+	"contributions",
+	"pickDirectory",
+	"layout",
+	"layoutSet",
+];
 
 export function isFrame(value: unknown): value is Frame {
 	return typeof value === "object" && value !== null && typeof (value as { kind?: unknown }).kind === "string";

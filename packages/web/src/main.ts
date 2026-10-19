@@ -1,4 +1,5 @@
 import { createFrontEnd } from "@milu/bootstrap/frontend";
+import { dialogs } from "@milu/extensions/web";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -12,7 +13,8 @@ import "./style.css";
 async function main(): Promise<void> {
 	const front = await createFrontEnd({
 		url: `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/ws`,
-		commands: { copy: (command) => copyPath(command.text) },
+		commands: { copy: (text) => copyPath(text) },
+		dialogs,
 		components: [
 			{ id: "milu.session-list", component: SessionListSurface },
 			{ id: "milu.transcript", component: TranscriptPaneSurface },

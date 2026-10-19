@@ -2,7 +2,8 @@ import { type SurfaceProps } from "@milu/client";
 import type { SeqEntry } from "@milu/protocol";
 import { useEffect, useRef } from "react";
 
-import { PanelLeftIcon } from "../components/icons.tsx";
+import { ChatBar } from "../components/chat-bar.tsx";
+import { ArrowUpIcon } from "../components/icons.tsx";
 import { useStore } from "../use-store.ts";
 
 type Entry = SeqEntry["entry"];
@@ -35,11 +36,9 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 	const { host } = props;
 	const state = useStore(host.transcript.state);
 	const linked = useStore(host.transcript.linked);
-	const listOpen = useStore(host.workbench.listOpen);
 
 	const selected = state.selected;
 	const entries = state.logs[selected] ?? NO_ENTRIES;
-	const running = host.transcript.running(selected);
 	const error = state.errors[selected] ?? "";
 	const draft = state.drafts[selected] ?? "";
 
@@ -53,65 +52,59 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 		void host.transcript.send(draft);
 	};
 
-	const rows = entries.map((entry) => {
+	const rows = entries.flatMap((entry) => {
 		const message = blockText(entry.entry);
-		if (message) return { key: `m${entry.seq}`, kind: message.role, text: message.text };
+		if (message) return message.text.trim() ? [{ key: `m${entry.seq}`, kind: message.role, text: message.text }] : [];
 		const tool = toolLine(entry.entry);
-		if (tool) return { key: `t${entry.seq}`, kind: "tool", text: tool };
-		return null;
+		if (tool) return [{ key: `t${entry.seq}`, kind: "tool", text: tool }];
+		return [];
 	});
 
 	return (
-		<main className="chat-area">
-			<header className="chat-bar">
-				<span className="chat-bar-left">
-					{listOpen ? null : (
-						<button type="button" className="conv-icon-btn" aria-label="Show session list" title="Show session list (⌘B)" onClick={() => host.workbench.setList(true)}>
-							<PanelLeftIcon size={16} />
-						</button>
-					)}
-					<span className="mono muted">
-						{selected || "no session"} · {entries.length ? `seq ${entries[entries.length - 1]?.seq}` : "empty"}
-					</span>
-				</span>
-				<span className={`dot${running ? " hot" : ""}${linked ? "" : " off"}`} />
-			</header>
+		<div className="transcript-pane">
+			<ChatBar host={host} />
 
 			<div className="chat-body">
-				<div className="transcript" ref={scroll}>
-					<div className="chat-column">
-						{rows.every((row) => row === null) ? <p className="empty">Send something.</p> : null}
-						{rows.map((row) =>
-							row ? (
-								<div key={row.key} className={`row ${row.kind}`}>
-									{row.kind === "tool" ? <span className="mono tool-line">{row.text}</span> : <p>{row.text}</p>}
-								</div>
-							) : null,
-						)}
+				<div className="chat-column">
+					<div className="transcript" ref={scroll}>
+						{rows.length === 0 ? <p className="empty">Send something.</p> : null}
+						{rows.map((row) => (
+							<div key={row.key} className={`row ${row.kind}`}>
+								{row.kind === "tool" ? <span className="mono tool-line">{row.text}</span> : <p>{row.text}</p>}
+							</div>
+						))}
 						{error ? <div className="row error mono">{error}</div> : null}
 					</div>
-				</div>
 
-				<div className="composer-slot">
-					<div className="composer">
-						<textarea
-							value={draft}
-							onChange={(event) => host.transcript.setDraft(selected, event.target.value)}
-							onKeyDown={(event) => {
-								if (event.key === "Enter" && !event.shiftKey) {
-									event.preventDefault();
-									send();
-								}
-							}}
-							rows={2}
-							placeholder="Message Milu…"
-						/>
-						<button type="button" onClick={send} disabled={!linked || !draft.trim() || !selected}>
-							Send
-						</button>
+					<div className="composer-slot">
+						<div className="composer-row">
+							<div className="composer-box">
+								<div className="composer-input-layer">
+									<textarea
+										value={draft}
+										onChange={(event) => host.transcript.setDraft(selected, event.target.value)}
+										onKeyDown={(event) => {
+											if (event.key === "Enter" && !event.shiftKey) {
+												event.preventDefault();
+												send();
+											}
+										}}
+										rows={1}
+										placeholder="Type a message…"
+									/>
+								</div>
+								<div className="composer-actions">
+									<div className="composer-actions-right">
+										<button type="button" className="composer-send" aria-label="Send" title="Send" onClick={send} disabled={!linked || !draft.trim() || !selected}>
+											<ArrowUpIcon size={15} />
+										</button>
+									</div>
+								</div>
+							</div>
+						</div>
 					</div>
 				</div>
 			</div>
-		</main>
+		</div>
 	);
 }

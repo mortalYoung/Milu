@@ -86,6 +86,10 @@ export class SessionService implements Service {
 		return this.get(name);
 	}
 
+	async names(): Promise<string[]> {
+		return this._names();
+	}
+
 	async forksOf(name: string): Promise<string[]> {
 		const forks: string[] = [];
 		for (const each of await this._names()) {
@@ -142,7 +146,6 @@ export class SessionService implements Service {
 		const title = await resolve(item.title);
 		if (title === null || title === undefined) return null;
 		const icon = await resolve(item.icon);
-		const confirm = await resolve(item.confirm);
 		const base = {
 			id: item.id,
 			title,
@@ -150,7 +153,6 @@ export class SessionService implements Service {
 			...(item.order === undefined ? {} : { order: item.order }),
 			...(item.group === undefined ? {} : { group: item.group }),
 			...(item.danger ? { danger: true } : {}),
-			...(confirm && typeof confirm === "object" ? { confirm } : {}),
 		};
 
 		if ("items" in item) {
