@@ -1,22 +1,21 @@
-import { createServiceId, formatHistoryTime, projectView, replyRows, type Service, type SlotComponent, Store, type SurfaceProps } from "@milu/client";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useStore } from "zustand";
+import { createStore } from "zustand/vanilla";
 
-import { useStore } from "../web/use-store.ts";
+import { createServiceId, formatHistoryTime, projectView, replyRows, type Service, type SlotComponent, type SurfaceProps } from "../host/index.ts";
 
 import "./replies.css";
 
 const NO_ENTRIES: readonly never[] = [];
 
 export class RepliesService implements Service {
-	readonly open = new Store(false);
+	readonly store = createStore<{ open: boolean }>()(() => ({ open: false }));
 
 	toggle(): void {
-		this.open.set(!this.open.get());
+		this.store.setState((state) => ({ ...state, open: !state.open }), true);
 	}
 
-	dispose(): void {
-		this.open.dispose();
-	}
+	dispose(): void {}
 }
 
 export const RepliesServiceId = createServiceId<RepliesService>("replies.state");
@@ -28,7 +27,7 @@ function label(text: string): string {
 
 function RepliesButton(props: SurfaceProps) {
 	const service = props.host.get(RepliesServiceId);
-	const open = useStore(service.open);
+	const open = useStore(service.store, (state) => state.open);
 	const wording = open ? "Hide replies" : "Show replies";
 	return (
 		<button type="button" className={open ? "replies-bar is-on" : "replies-bar"} aria-label={wording} aria-pressed={open} title={wording} onClick={() => service.toggle()}>
@@ -47,10 +46,9 @@ function RepliesButton(props: SurfaceProps) {
 function RepliesPane(props: SurfaceProps) {
 	const { host } = props;
 	const service = host.get(RepliesServiceId);
-	const open = useStore(service.open);
-	const selected = useStore(host.selection.selected);
-	const state = useStore(host.transcript.state);
-	const entries = state.logs[selected] ?? NO_ENTRIES;
+	const open = useStore(service.store, (state) => state.open);
+	const selected = useStore(host.selection.store, (state) => state.selected);
+	const entries = useStore(host.transcript.store, (state) => state.logs[selected] ?? NO_ENTRIES);
 
 	const rows = useMemo(() => replyRows(projectView(entries.map((seq) => seq.entry))), [entries]);
 	const [active, setActive] = useState<string | null>(null);

@@ -1,8 +1,8 @@
 # Milu
 
-An agent harness with a server backend — one WebSocket protocol, two front ends: web and desktop.
+An agent harness with a local core — one IPC protocol, one desktop shell.
 
-> **Status: rebuild in progress.** This branch is greenfield — nothing runs yet.
+> **Status: rebuild in progress.** The desktop shell runs; the web end is deferred.
 > The previous implementation (303 commits, single package, Electrobun) is kept in full at
 > tag `archive/v1` and branch `master`.
 
@@ -15,26 +15,23 @@ no account, no server of ours, no telemetry, keys and data on disk.
 
 ```
 packages/di/          lifecycle vocabulary — Disposable, DisposableStore, Service.
-packages/protocol/    the wire — requests, responses, events. Zero runtime dependencies.
+packages/protocol/    the wire — methods, results, events. Zero runtime dependencies.
 packages/core/        the harness: services, extensions, no container wiring. No DOM, no sockets.
-packages/client/      the browser side — connection, per-chat state, surface registry. No React.
-packages/server/      the transport adapter — HTTP for the page, WebSocket for the protocol.
-packages/web/         the React surfaces and the browser entry (Vite).
-packages/bootstrap/   the composition roots — createBackend, createFrontEnd, bootstrap-web.ts.
-packages/desktop/     Electron shell — a window around that same loopback server.
+packages/extensions/  everything but core — host runtime, markdown, actions, dialogs, widgets, slots.
+packages/bootstrap/   the composition roots — createBackend, createFrontEnd.
+packages/desktop/     Electron shell — main runs the core and the IPC edge; the renderer is the app.
 ```
 
-One entry per end. `bun run server` executes `packages/bootstrap/src/bootstrap-web.ts`, which
-builds the core, starts the transport, and serves the built page; the browser entry calls
-`createFrontEnd` and mounts the shell. Desktop will do the same with the in-process core.
+`bun run dev` builds the main/preload bundle, starts Vite, and opens Electron against it.
+`bun run build` produces `desktop/renderer/dist` and `desktop/dist-electron`; `bun run start`
+loads the built renderer from `milu://app/index.html`.
 
-The core never learns how it is reached. It emits typed events; a transport adapter at the
-edge decides who hears about them. Desktop is not a special case: the shell boots the backend
-in-process, loads `http://127.0.0.1:<port>/` into a `BrowserWindow`, and connects over `ws://`
-— exactly like the browser does.
+The core never learns how it is reached. It emits typed events; the desktop's IPC edge decides
+who hears about them. The renderer only knows the `Transport` port — a web end would be another
+implementation of that port, not another app.
 
-The core is runtime-neutral, so the same code serves both: Electron's main process is Node,
-and a standalone server is Node too. Nothing reaches for a Bun-only API.
+The core is runtime-neutral: Electron's main process is Node, and nothing in `core` reaches for
+Electron, DOM or a Bun-only API.
 
 ## Principles
 
@@ -53,8 +50,9 @@ and a standalone server is Node too. Nothing reaches for a Bun-only API.
 
 ```bash
 bun install
-bun run dev             # the core on :8787 and Vite on :5173, in one terminal
-bun run web:build       # the page the core serves in production
+bun run dev             # Vite + Electron, main/preload bundled first
+bun run build           # renderer/dist and dist-electron
+bun run start           # Electron against the built renderer
 bun run check           # tsc + oxlint + oxfmt + the package boundaries
 ```
 

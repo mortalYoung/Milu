@@ -1,18 +1,14 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { createInterface } from "node:readline";
 
-const CHILDREN = [
-	{ tag: "server", script: "server" },
-	{ tag: "web", script: "dev:web" },
-] as const;
-
+const RENDERER_URL = "http://127.0.0.1:5173/";
 const running = new Map<string, ChildProcess>();
 let stopping = false;
 
 function pump(tag: string, child: ChildProcess): void {
 	for (const stream of [child.stdout, child.stderr]) {
 		if (!stream) continue;
-		createInterface({ input: stream }).on("line", (line) => console.log(`${tag.padEnd(6)} │ ${line}`));
+		createInterface({ input: stream }).on("line", (line) => console.log(`${tag.padEnd(8)} │ ${line}`));
 	}
 }
 
@@ -29,7 +25,7 @@ function stop(): void {
 	if (stopping) return;
 	stopping = true;
 	for (const [tag, child] of running) {
-		console.log(`${"dev".padEnd(6)} ┴ stopping ${tag}`);
+		console.log(`${"dev".padEnd(8)} ┴ stopping ${tag}`);
 		signal(child, "SIGTERM");
 	}
 	setTimeout(() => {
@@ -41,19 +37,39 @@ function stop(): void {
 process.on("SIGINT", stop);
 process.on("SIGTERM", stop);
 
-for (const { tag, script } of CHILDREN) {
-	const child = spawn("bun", ["run", script], { stdio: ["ignore", "pipe", "pipe"], detached: true });
+function start(tag: string, args: string[], env: NodeJS.ProcessEnv = process.env): void {
+	const child = spawn("bun", args, { stdio: ["ignore", "pipe", "pipe"], env, detached: true });
 	running.set(tag, child);
 	pump(tag, child);
 
-	child.on("exit", (code, error) => {
+	child.on("exit", (code) => {
 		running.delete(tag);
-		if (!stopping) {
-			console.error(`${"dev".padEnd(6)} │ ${tag} exited (${error ?? code}) — stopping the rest`);
-			process.exitCode = code && code !== 0 ? code : 1;
-			stop();
+		if (stopping) {
+			if (running.size === 0) process.exit(process.exitCode ?? 0);
 			return;
 		}
-		if (running.size === 0) process.exit(process.exitCode ?? 0);
+		console.error(`${tag.padEnd(8)} │ exited (${code ?? "signal"}) — stopping the rest`);
+		process.exitCode = code ?? 0;
+		stop();
 	});
 }
+
+async function waitFor(url: string): Promise<void> {
+	for (let at = 0; at < 150; at += 1) {
+		try {
+			const response = await fetch(url);
+			if (response.ok) return;
+		} catch {
+			// vite is still starting
+		}
+		await new Promise((resolve) => setTimeout(resolve, 200));
+	}
+	throw new Error(`renderer did not start at ${url}`);
+}
+
+const build = spawnSync("bun", ["run", "--filter", "@milu/desktop", "build:main"], { stdio: "inherit" });
+if (build.status !== 0) process.exit(build.status ?? 1);
+
+start("vite", ["run", "--filter", "@milu/desktop", "dev:renderer"]);
+await waitFor(RENDERER_URL);
+start("electron", ["run", "--filter", "@milu/desktop", "start"], { ...process.env, MILU_DEV_URL: RENDERER_URL });

@@ -1,8 +1,7 @@
-import type { DialogComponent, FrontEndService, SlotComponent, WidgetComponent } from "@milu/client";
-import type { MarkdownPlugin } from "@milu/markdown";
-
 import { CreateSessionDialog } from "../create/create.tsx";
 import { SessionDetailsDialog } from "../details/details.tsx";
+import type { DialogComponent, FrontEndService, SlotComponent, WidgetComponent } from "../host/index.ts";
+import type { MarkdownPlugin } from "../markdown/index.ts";
 import { MeterWidget } from "../meter/meter.tsx";
 import { ModelsWidget } from "../models/models.tsx";
 import { slots as repliesSlots, services as repliesServices } from "../replies/replies.tsx";

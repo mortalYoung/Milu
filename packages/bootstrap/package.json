@@ -11,11 +11,9 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@milu/client": "workspace:*",
 		"@milu/core": "workspace:*",
 		"@milu/di": "workspace:*",
-		"@milu/extensions": "workspace:*",
-		"@milu/server": "workspace:*"
+		"@milu/extensions": "workspace:*"
 	},
 	"devDependencies": {
 		"@types/node": "latest"

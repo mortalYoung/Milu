@@ -6,11 +6,12 @@ import type { Layout, LayoutState, SurfaceDeclaration } from "@milu/protocol";
 
 import type { ConfigService } from "./config.ts";
 
-export interface LayoutServiceDeps {
-	readonly surfaces: readonly SurfaceDeclaration[];
-}
-
 const FILE = "ui.json";
+
+const SURFACES: readonly SurfaceDeclaration[] = [
+	{ id: "milu.session-list", slot: "sidebar", order: 10 },
+	{ id: "milu.transcript", slot: "main", order: 10 },
+];
 
 function ordered(surfaces: readonly SurfaceDeclaration[]): SurfaceDeclaration[] {
 	return [...surfaces].sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.id.localeCompare(right.id));
@@ -24,13 +25,10 @@ export class LayoutService implements Service {
 	private readonly _declared = new Map<string, SurfaceDeclaration>();
 	private _layout: Layout = {};
 
-	constructor(
-		private readonly _configService: ConfigService,
-		deps: LayoutServiceDeps,
-	) {
+	constructor(private readonly _configService: ConfigService) {
 		this._file = join(this._configService.root, FILE);
 		this.onChange = this._emitter.event;
-		for (const surface of deps.surfaces) this._declared.set(surface.id, surface);
+		for (const surface of SURFACES) this._declared.set(surface.id, surface);
 	}
 
 	async initialize(): Promise<void> {

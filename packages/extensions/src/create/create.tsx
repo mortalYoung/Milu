@@ -1,5 +1,6 @@
-import type { DialogProps } from "@milu/client";
 import { useState } from "react";
+
+import type { DialogProps } from "../host/index.ts";
 
 import "./create.css";
 
@@ -12,7 +13,7 @@ export function CreateSessionDialog(props: DialogProps) {
 	const [error, setError] = useState<string | null>(null);
 
 	const typed = name.trim();
-	const taken = props.host.sessions.rows.get().map((row) => row.name.toLowerCase());
+	const taken = props.host.sessions.store.getState().rows.map((row) => row.name.toLowerCase());
 	const dirty = name !== "" || persona !== "" || workspace !== "";
 
 	const choose = async (): Promise<void> => {

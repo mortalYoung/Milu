@@ -1,6 +1,6 @@
-import type { WidgetProps } from "@milu/client";
 import { useEffect, useRef, useState } from "react";
 
+import type { WidgetProps } from "../host/index.ts";
 import type { MeterWidgetData } from "./meter.ts";
 
 import "./meter.css";

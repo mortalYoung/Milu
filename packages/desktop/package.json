@@ -1,0 +1,34 @@
+{
+	"name": "@milu/desktop",
+	"version": "0.0.0",
+	"private": true,
+	"main": "dist-electron/main.js",
+	"scripts": {
+		"dev:renderer": "vite",
+		"build:renderer": "vite build",
+		"build:main": "bun build src/main.ts src/preload.ts --outdir dist-electron --target node --format cjs --external electron",
+		"build": "bun run build:main && bun run build:renderer",
+		"start": "bun scripts/start.ts",
+		"typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p renderer/tsconfig.json"
+	},
+	"dependencies": {
+		"@milu/bootstrap": "workspace:*",
+		"@milu/core": "workspace:*",
+		"@milu/extensions": "workspace:*",
+		"@milu/protocol": "workspace:*",
+		"@radix-ui/react-dialog": "^1.3.1",
+		"@radix-ui/react-dropdown-menu": "^2.2.1",
+		"react": "19.3.0",
+		"react-dom": "19.3.0",
+		"zustand": "5.0.15"
+	},
+	"devDependencies": {
+		"@types/node": "latest",
+		"@types/react": "19.3.0",
+		"@types/react-dom": "19.3.0",
+		"@vitejs/plugin-react": "6.1.1",
+		"electron": "44.9.1",
+		"vite": "^8.2.1"
+	},
+	"productName": "Milu"
+}

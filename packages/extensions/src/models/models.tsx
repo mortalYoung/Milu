@@ -1,7 +1,7 @@
-import type { WidgetProps } from "@milu/client";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useState } from "react";
 
+import type { WidgetProps } from "../host/index.ts";
 import type { ModelWidgetData } from "./models.ts";
 
 import "./models.css";
@@ -15,7 +15,7 @@ export function ModelsWidget(props: WidgetProps) {
 	const { host } = props;
 
 	const choose = async (args: unknown): Promise<void> => {
-		const session = host.selection.selected.get();
+		const session = host.selection.store.getState().selected;
 		setMenuOpen(false);
 		await host.actions.invoke(args && typeof args === "object" && "level" in args ? "model.effort" : "model.set", session, args);
 		await host.sessions.refresh();

@@ -41,7 +41,7 @@ export {
 	type SlotItem,
 	type WelcomeItem,
 } from "./extensions/types.ts";
-export { LayoutService, LayoutServiceId, type LayoutServiceDeps } from "./services/layout.ts";
+export { LayoutService, LayoutServiceId } from "./services/layout.ts";
 export { ModelsService, ModelsServiceId, type ModelRef } from "./services/models.ts";
 export { PromptService, PromptServiceId } from "./services/prompt.ts";
 export { SelectionService, SelectionServiceId } from "./services/selection.ts";

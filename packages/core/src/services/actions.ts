@@ -9,13 +9,13 @@ export interface ActionContext {
 	readonly args?: unknown;
 	readonly sessions?: SessionService;
 	readonly dialog?: (dialog: DialogDescriptor) => Promise<unknown>;
-	readonly confirm?: (copy: ConfirmCopy) => Promise<boolean>;
 }
 
 export interface Action {
 	readonly id: string;
 	readonly scope?: string | readonly string[];
 	readonly hotkey?: Hotkey;
+	readonly confirm?: (context: ActionContext) => ConfirmCopy | null | Promise<ConfirmCopy | null>;
 	readonly run: (context: ActionContext) => void | BrowserCommand | Promise<void | BrowserCommand>;
 }
 
@@ -48,14 +48,22 @@ export class ActionService implements Service {
 		return bound.sort((left, right) => left.id.localeCompare(right.id));
 	}
 
+	async confirm(id: string, context: ActionContext): Promise<ConfirmCopy | null> {
+		return (await this._action(id).confirm?.(context)) ?? null;
+	}
+
 	async run(id: string, context: ActionContext): Promise<BrowserCommand | undefined> {
-		const action = this._actions.get(id);
-		if (!action) throw new Error(`no action "${id}"`);
-		return (await action.run(context)) ?? undefined;
+		return (await this._action(id).run(context)) ?? undefined;
 	}
 
 	dispose(): void {
 		this._actions.clear();
+	}
+
+	private _action(id: string): Action {
+		const action = this._actions.get(id);
+		if (!action) throw new Error(`no action "${id}"`);
+		return action;
 	}
 }
 

@@ -9,41 +9,49 @@ interface Rule {
 	readonly why: string;
 }
 
-const WINDOW_HALF = [/^node:/, "electron", /^@milu\/(core|server|di)$/];
-const WINDOW_WHY = "an extension's web half renders in the window: client types only, no server code";
+const WINDOW_HALF = [/^node:/, "electron", /^@milu\/(core|desktop|di)$/];
+const WINDOW_WHY = "a window module renders in the renderer: host types only, no server or core code";
 
 const RULES: readonly Rule[] = [
-	{ pkg: "protocol", forbid: [/^node:/, "electron"], why: "the wire is frames and method maps — no runtime" },
+	{ pkg: "protocol", forbid: [/^node:/, "electron"], why: "the wire is method maps and events — no runtime" },
 	{ pkg: "di", forbid: [/^node:/, "electron"], why: "the lifecycle vocabulary has no runtime" },
 	{
 		pkg: "core",
-		forbid: [/^node:(?!fs|os|path|url|child_process|crypto)/, "electron", /^@milu\/(client|web|server|bootstrap)$/],
+		forbid: [/^node:(?!fs|os|path|url|child_process|crypto)/, "electron", /^@milu\/(extensions|desktop|bootstrap)$/],
 		why: "the core is reached through events, never through a shell",
 	},
-	{
-		pkg: "client",
-		forbid: [/^node:/, "electron", /^@milu\/(core|server)$/, /^@milu\/bootstrap$/],
-		why: "the browser side cannot reach the Node side",
-	},
-	{
-		pkg: "markdown",
-		forbid: [/^node:/, "electron", /^@milu\/(core|server|web|bootstrap|extensions)$/],
-		why: "a renderer runs in the window: client port types and its own libraries, nothing else",
-	},
-	{
-		pkg: "web",
-		forbid: [/^node:/, "electron", /^@milu\/(core|server)$/, /^@milu\/bootstrap$/],
-		why: "the browser side cannot reach the Node side (`@milu/bootstrap/frontend` is allowed)",
-	},
-	{ pkg: "server", forbid: ["electron", /^@milu\/(client|web|bootstrap)$/], why: "the transport adapter knows the core and the wire, nothing else" },
-	{ pkg: "bootstrap", forbid: ["electron", /^@milu\/web$/], why: "the composition root composes libraries; shells import it, not the reverse" },
+	{ pkg: "bootstrap", forbid: ["electron", /^@milu\/desktop$/], why: "the composition root composes libraries; shells import it, not the reverse" },
 	{
 		pkg: "extensions",
-		forbid: ["electron", /^@milu\/(web|server)$/],
-		why: "an extension gets core capabilities and client types, nothing about a shell",
+		forbid: ["electron", /^@milu\/(desktop|bootstrap)$/],
+		why: "an extension gets core capabilities and host types, nothing about a shell",
+	},
+	{
+		pkg: "extensions",
+		dir: "extensions/src/host",
+		forbid: [/^node:/, "electron", /^@milu\/(core|desktop|bootstrap)$/],
+		why: "the window runtime cannot reach the Node side or the core",
+	},
+	{
+		pkg: "extensions",
+		dir: "extensions/src/markdown",
+		forbid: [/^node:/, "electron", /^@milu\/(core|desktop|bootstrap)$/],
+		why: "a renderer runs in the window: its own libraries, nothing about a shell",
 	},
 	{ pkg: "extensions", dir: "extensions/src/web", forbid: WINDOW_HALF, why: WINDOW_WHY },
 	{ pkg: "extensions", dir: "extensions/src", match: /\.tsx$/, forbid: WINDOW_HALF, why: WINDOW_WHY },
+	{
+		pkg: "desktop",
+		dir: "desktop/src",
+		forbid: [/^@milu\/(extensions|desktop)$/, /^@milu\/bootstrap\/frontend$/],
+		why: "the main process runs the core and the IPC edge; browser code stays in the renderer",
+	},
+	{
+		pkg: "desktop",
+		dir: "desktop/renderer",
+		forbid: [/^node:/, "electron", /^@milu\/(core|desktop)$/, /^@milu\/bootstrap$/, /^@milu\/extensions$/],
+		why: "the renderer is a browser: host services and contributions, never the core, the shell, or node",
+	},
 ];
 
 const ROOT = join(new URL("..", import.meta.url).pathname, "packages");
@@ -80,7 +88,7 @@ for (const rule of RULES) {
 }
 
 if (violations.length === 0) {
-	console.log(`boundaries: ${RULES.length} packages, no violations`);
+	console.log(`boundaries: ${RULES.length} rules, no violations`);
 } else {
 	for (const violation of violations) console.error(violation);
 	console.error(`\nboundaries: ${violations.length} violation(s)`);

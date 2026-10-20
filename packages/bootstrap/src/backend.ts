@@ -30,7 +30,6 @@ import {
 import { Container } from "@milu/di";
 
 import { EXTENSIONS } from "./extensions.ts";
-import { BUILT_IN_SURFACES } from "./surfaces.ts";
 
 export async function createBackend(config: BackendConfig): Promise<Backend> {
 	const container = new Container();
@@ -40,7 +39,7 @@ export async function createBackend(config: BackendConfig): Promise<Backend> {
 	container.register(ModelsServiceId, (c) => new ModelsService(c.get(ConfigServiceId), c.get(SettingsServiceId)));
 	container.register(ExecutionServiceId, () => new ExecutionService());
 	container.register(SettingsServiceId, (c) => new SettingsService(c.get(ConfigServiceId)));
-	container.register(LayoutServiceId, (c) => new LayoutService(c.get(ConfigServiceId), { surfaces: BUILT_IN_SURFACES }));
+	container.register(LayoutServiceId, (c) => new LayoutService(c.get(ConfigServiceId)));
 	container.register(ToolServiceId, (c) => new ToolService(c.get(ConfigServiceId), c.get(ExecutionServiceId)));
 	container.register(PromptServiceId, (c) => new PromptService(c.get(ContributionServiceId)));
 	container.register(ActionServiceId, () => new ActionService());

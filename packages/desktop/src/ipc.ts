@@ -1,0 +1,265 @@
+import { randomUUID } from "node:crypto";
+
+import { type Backend, SESSION_HEADER_POINT, type SlotItem, WELCOME_ITEMS_POINT, type WelcomeItem } from "@milu/core";
+import { type ContributionItem, type DialogDescriptor, type LiveEvent, type MethodName, type Params, type Result, SLOT_POINTS, type Snapshot } from "@milu/protocol";
+import { BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent, type OpenDialogOptions, type WebContents } from "electron";
+
+const DIALOG_TIMEOUT_MS = 5 * 60_000;
+
+interface ServerEvent {
+	readonly type: "entry" | "live";
+	readonly session?: string;
+	readonly entry?: unknown;
+	readonly event?: LiveEvent;
+}
+
+type Handlers = { [K in MethodName]: (params: Params<K>, sender: WebContents) => Promise<Result<K>> };
+
+function reason(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
+export class IpcServer {
+	private readonly _windows = new Set<WebContents>();
+	private readonly _askings = new Map<string, { settle: (value: unknown) => void }>();
+	private readonly _cleanup: (() => void)[] = [];
+	private readonly _handlers: Handlers;
+	private _started = false;
+
+	constructor(private readonly _backend: Backend) {
+		this._handlers = {
+			transcript: (params) => this._transcript(params),
+			prompt: (params) => this._prompt(params),
+			abort: () => this._abort(),
+			hotkeys: () => this._hotkeys(),
+			composer: (params) => this._composer(params),
+			sessions: () => this._sessions(),
+			select: (params) => this._select(params),
+			invoke: (params, sender) => this._invoke(params, sender),
+			answer: (params) => this._answer(params),
+			slots: (params) => this._slots(params),
+			welcome: () => this._welcome(),
+			contributions: (params) => this._contributions(params),
+			pickDirectory: (params, sender) => this._pickDirectory(params, sender),
+			layout: () => this._layout(),
+			layoutSet: (params) => this._layoutSet(params),
+		};
+	}
+
+	start(): void {
+		if (this._started) return;
+		this._started = true;
+		ipcMain.handle("milu:connect", this._connect);
+		ipcMain.handle("milu:request", this._request);
+
+		const subscriptions = [
+			this._backend.sessions.onEntry(({ session, entry }) => this._broadcast({ type: "entry", session, entry })),
+			this._backend.layout.onChange((state) => this._broadcast({ type: "live", event: { type: "layout", ...state } })),
+			this._backend.sessions.onLoopEvent(({ session, event }) => {
+				if (event.type === "message_update") return;
+				if (event.type === "run_start") this._broadcast({ type: "live", event: { type: "status", session, running: true } });
+				if (event.type === "run_end") {
+					this._broadcast({ type: "live", event: { type: "status", session, running: false, ...(event.error ? { error: event.error } : {}) } });
+				}
+			}),
+			this._backend.selection.onChange((selected) => this._broadcast({ type: "live", event: { type: "selection", selected } })),
+		];
+		for (const subscription of subscriptions) this._cleanup.push(() => subscription.dispose());
+	}
+
+	stop(): void {
+		if (!this._started) return;
+		this._started = false;
+		ipcMain.removeHandler("milu:connect");
+		ipcMain.removeHandler("milu:request");
+		for (const cleanup of this._cleanup.splice(0)) cleanup();
+		for (const asking of this._askings.values()) asking.settle(null);
+		this._askings.clear();
+		this._windows.clear();
+	}
+
+	private readonly _connect = async (event: IpcMainInvokeEvent): Promise<Snapshot> => {
+		const sender = event.sender;
+		const snapshot = await this._snapshot();
+		if (!this._windows.has(sender)) {
+			this._windows.add(sender);
+			sender.once("destroyed", () => this._windows.delete(sender));
+		}
+		return snapshot;
+	};
+
+	private readonly _request = async (event: IpcMainInvokeEvent, method: string, params: unknown) => {
+		const handler = this._handlers[method as MethodName];
+		if (!handler) return { ok: false, error: { code: "unknown_method", message: `no method "${method}"` } };
+		try {
+			const result = await (handler as (params: unknown, sender: WebContents) => Promise<unknown>)(params, event.sender);
+			return { ok: true, result };
+		} catch (error) {
+			return { ok: false, error: { code: "handler_failed", message: reason(error) } };
+		}
+	};
+
+	private _send(sender: WebContents, message: ServerEvent): void {
+		if (sender.isDestroyed()) return;
+		sender.send("milu:event", message);
+	}
+
+	private _broadcast(message: ServerEvent): void {
+		for (const sender of this._windows) this._send(sender, message);
+	}
+
+	private _dialogFor(sender: WebContents) {
+		return (dialog: DialogDescriptor): Promise<unknown> =>
+			new Promise((settle) => {
+				const id = randomUUID();
+				const timer = setTimeout(() => this._settle(id, null), DIALOG_TIMEOUT_MS);
+				this._askings.set(id, {
+					settle: (value) => {
+						clearTimeout(timer);
+						settle(value);
+					},
+				});
+				sender.once("destroyed", () => this._settle(id, null));
+				this._send(sender, { type: "live", event: { type: "dialog", id, dialog } });
+			});
+	}
+
+	private _settle(id: string, value: unknown): void {
+		const asking = this._askings.get(id);
+		if (!asking) return;
+		this._askings.delete(id);
+		asking.settle(value);
+	}
+
+	private _ordered<T extends { readonly id: string; readonly order?: number }>(point: string): readonly T[] {
+		return [...this._backend.contributions.get<T>(point).all()].sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.id.localeCompare(right.id));
+	}
+
+	private async _snapshot(): Promise<Snapshot> {
+		const sessions = [...(await this._backend.sessions.list())];
+		await this._backend.selection.reconcile(sessions.map((row) => row.name));
+		return {
+			layout: this._backend.layout.state(),
+			sessions,
+			selected: this._backend.selection.selected,
+			header: this._ordered<ContributionItem>(SESSION_HEADER_POINT),
+			hotkeys: this._backend.actions.bindings(),
+			welcome: this._ordered<WelcomeItem>(WELCOME_ITEMS_POINT),
+			slots: {
+				[SLOT_POINTS.chatBar]: this._ordered<SlotItem>(SLOT_POINTS.chatBar),
+				[SLOT_POINTS.chatPanes]: this._ordered<SlotItem>(SLOT_POINTS.chatPanes),
+			},
+		};
+	}
+
+	private async _transcript(params: Params<"transcript">): Promise<Result<"transcript">> {
+		const session = await this._backend.sessions.ensure(params.session);
+		const window = await session.window({
+			...(params.mode ? { mode: params.mode } : {}),
+			...(params.cursor ? { cursor: params.cursor } : {}),
+			conversations: params.conversations ?? 6,
+		});
+		const entries = await session.seqsOf(window.entries);
+		return { entries, total: window.total, hasMore: window.hasMore, reset: window.reset };
+	}
+
+	private async _prompt(params: Params<"prompt">): Promise<Result<"prompt">> {
+		const name = this._backend.selection.selected;
+		if (!name) throw new Error("no session is selected");
+		const session = await this._backend.sessions.ensure(name);
+		try {
+			await session.run(params.text);
+		} catch (error) {
+			this._broadcast({ type: "live", event: { type: "status", session: name, running: false, error: reason(error) } });
+			return { accepted: false };
+		}
+		return { accepted: true };
+	}
+
+	private async _abort(): Promise<Result<"abort">> {
+		const name = this._backend.selection.selected;
+		if (name) this._backend.sessions.get(name).abort();
+		return {};
+	}
+
+	private async _hotkeys(): Promise<Result<"hotkeys">> {
+		return { bindings: this._backend.actions.bindings() };
+	}
+
+	private async _composer(params: Params<"composer">): Promise<Result<"composer">> {
+		return this._backend.sessions.composer(await this._backend.sessions.ensure(params.session));
+	}
+
+	private async _sessions(): Promise<Result<"sessions">> {
+		const sessions = [...(await this._backend.sessions.list())];
+		await this._backend.selection.reconcile(sessions.map((row) => row.name));
+		return { sessions, selected: this._backend.selection.selected };
+	}
+
+	private async _select(params: Params<"select">): Promise<Result<"select">> {
+		return { selected: await this._backend.selection.select(params.session) };
+	}
+
+	private async _invoke(params: Params<"invoke">, sender: WebContents): Promise<Result<"invoke">> {
+		try {
+			const context = {
+				dialog: this._dialogFor(sender),
+				sessions: this._backend.sessions,
+				...(params.session ? { session: await this._backend.sessions.ensure(params.session) } : {}),
+				...(params.args === undefined ? {} : { args: params.args }),
+			};
+			if (!params.confirmed) {
+				const confirm = await this._backend.actions.confirm(params.action, context);
+				if (confirm) return { ok: true, confirm };
+			}
+			const command = await this._backend.actions.run(params.action, context);
+			return { ok: true, ...(command ? { command } : {}) };
+		} catch (error) {
+			return { ok: false, error: reason(error) };
+		}
+	}
+
+	private async _answer(params: Params<"answer">): Promise<Result<"answer">> {
+		this._settle(params.id, params.value);
+		return {};
+	}
+
+	private async _slots(params: Params<"slots">): Promise<Result<"slots">> {
+		return { items: this._ordered<SlotItem>(params.point) };
+	}
+
+	private async _welcome(): Promise<Result<"welcome">> {
+		return { items: this._ordered<WelcomeItem>(WELCOME_ITEMS_POINT) };
+	}
+
+	private async _contributions(params: Params<"contributions">): Promise<Result<"contributions">> {
+		const point = this._backend.contributions.get<ContributionItem>(params.point);
+		const items = point.all().map((item) => ({
+			id: item.id,
+			title: item.title,
+			...(item.icon ? { icon: item.icon } : {}),
+			...(item.action ? { action: item.action } : {}),
+			...(item.order === undefined ? {} : { order: item.order }),
+		}));
+		return { items: items.sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.id.localeCompare(right.id)) };
+	}
+
+	private async _pickDirectory(params: Params<"pickDirectory">, sender: WebContents): Promise<Result<"pickDirectory">> {
+		const window = BrowserWindow.fromWebContents(sender);
+		const options: OpenDialogOptions = {
+			properties: ["openDirectory"],
+			...(params.startingFolder ? { defaultPath: params.startingFolder } : {}),
+		};
+		const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
+		const path = result.filePaths[0];
+		return result.canceled || path === undefined ? {} : { path };
+	}
+
+	private async _layout(): Promise<Result<"layout">> {
+		return this._backend.layout.state();
+	}
+
+	private async _layoutSet(params: Params<"layoutSet">): Promise<Result<"layoutSet">> {
+		return this._backend.layout.setLayout(params.layout);
+	}
+}

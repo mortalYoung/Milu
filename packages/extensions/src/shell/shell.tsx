@@ -1,10 +1,10 @@
-import type { WidgetProps } from "@milu/client";
+import { useStore } from "zustand";
 
-import { useStore } from "../web/use-store.ts";
+import type { WidgetProps } from "../host/index.ts";
 
 export function ShellWidget(props: WidgetProps) {
 	const { host } = props;
-	const shellMode = useStore(host.composer.shellMode);
+	const shellMode = useStore(host.composer.store, (state) => state.shellMode);
 
 	return (
 		<button

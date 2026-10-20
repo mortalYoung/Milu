@@ -15,7 +15,7 @@ Guidance for agents working in this repository — a design, not a rulebook. Dec
 The rebuild exists to enforce these rules. Break one and the reason for the rebuild is gone.
 
 - **The core does not know how it is reached.** `packages/core` never imports Electron, never opens a socket, never touches `DOM`. It emits typed events and returns values; a transport adapter at the edge decides who hears about it. No `rpc.send.*` anywhere inside the domain.
-- **The core is runtime-neutral.** The same code runs under Electron's Node (in-process, for the desktop) and under a standalone server (for the browser). So no Bun-only API — `Bun.serve`, `Bun.file`, `bun:sqlite` — and no Bun-shaped types. v1 already satisfies this: it imports only `node:*`, and `pi-agent-core` declares `node >=22`. Keep it that way.
+- **The core is runtime-neutral.** It runs in Electron's main process today, and could move to a utility process or another shell tomorrow without changing a line. So no Electron, DOM or Bun-only API — `Bun.serve`, `Bun.file`, `bun:sqlite` — and no Bun-shaped types. v1 already satisfies this: it imports only `node:*`, and `pi-agent-core` declares `node >=22`. Keep it that way.
 - **A singleton is unique to its container, never to the module.** `export const foo = new Foo()` is the v1 mistake wearing a better name — same implicit ordering, same untestable coupling, and it _looks_ clean, so nobody revisits it. The container is the only global.
 - **State has one owner and an explicit lifecycle.** One service owns each piece of mutable state, and it says out loud how it starts and how it stops (`create → initialize → dispose`). Watchers, timers, `AbortController`s and child processes are all disposed by their owner. v1 leaked every one of these.
 - **Only state earns a service.** A pure function is a function. Wrapping `fuzzy`, `trajectory`, `token-meter` in a class adds a layer and buys nothing.
@@ -24,30 +24,28 @@ The rebuild exists to enforce these rules. Break one and the reason for the rebu
 
 ## Packages
 
-| Package              | May depend on                              | Never                                               |
-| -------------------- | ------------------------------------------ | --------------------------------------------------- |
-| `packages/protocol`  | nothing                                    | any runtime                                         |
-| `packages/di`        | nothing                                    | any runtime                                         |
-| `packages/core`      | `protocol`, `di`                           | Electron, DOM, sockets, Bun-only                    |
-| `packages/client`    | `protocol`, `di`                           | `core`, Node built-ins, DOM                         |
-| `packages/markdown`  | `client` (types), `markdown-it`, `shiki`   | `core`, Node built-ins, Electron                    |
-| `packages/server`    | `core`, `protocol`                         | Electron, DOM                                       |
-| `packages/web`       | `client`, `protocol`, `bootstrap/frontend` | `core`, `bootstrap` (the Node side), Node built-ins |
-| `packages/bootstrap` | `core`, `client`, `server`, Electron       | —                                                   |
+| Package               | May depend on                                           | Never                                    |
+| --------------------- | ------------------------------------------------------- | ---------------------------------------- |
+| `packages/protocol`   | nothing                                                 | any runtime                              |
+| `packages/di`         | nothing                                                 | any runtime                              |
+| `packages/core`       | `protocol`, `di`                                        | Electron, DOM, sockets, Bun-only         |
+| `packages/extensions` | `core`, `di`, `protocol`, React, `markdown-it`, `shiki` | Electron, `bootstrap`, the desktop shell |
+| `packages/bootstrap`  | `core`, `extensions`, `di`                              | Electron, `desktop`                      |
+| `packages/desktop`    | `core`, `protocol`, `bootstrap`, `extensions`           | —                                        |
 
-`packages/bootstrap` is the only place that assembles: `createBackend` for the Node ends, `createFrontEnd` for the browser, `bootstrap-web.ts` for the web end. Everything else exports, nothing else composes.
+`packages/bootstrap` is the only place that assembles: `createBackend` for the core container, `createFrontEnd` for the window container. Everything else exports, nothing else composes.
 
-`packages/desktop` (not yet built) is the only place allowed to import Electron. Make the boundary a build error, not a convention.
+`packages/desktop` is the only place allowed to import Electron. Its main process boots the core and owns the IPC edge; its renderer is the React app, loaded from `milu://app/index.html` through a registered custom protocol. Make the boundary a build error, not a convention.
 
-Booting the core in-process is what makes the desktop cheap: Electron's main process _is_ Node, so the desktop shell starts the same server `bootstrap-web.ts` would, on a loopback port, and the renderer connects to it like any browser. Splitting it into a child process later is a process-boundary change, not a code change — that is the point of runtime neutrality.
+Booting the core in-process is what makes the desktop cheap: Electron's main process _is_ Node, so `desktop/main.ts` calls `createBackend` and answers the renderer over preload IPC. Splitting the core into a utility process later is a process-boundary change, not a code change — that is the point of runtime neutrality.
 
 ## Settled decisions
 
 Do not re-open these without the user saying so.
 
 1. **Single user.** No multi-tenancy, no auth system.
-2. **One transport: WebSocket.** Desktop keeps no Electron IPC for the protocol. RPC _semantics_ stay — `id`-tagged request/response frames plus untagged event frames — but the protocol layer implements them, not `ipcRenderer` and not `BrowserView.defineRPC`.
-3. **Desktop is a web client on loopback.** The shell boots the backend in-process, loads `http://127.0.0.1:<port>/` into a `BrowserWindow`, and the view opens `ws://127.0.0.1:<port>/ws`; web and desktop run the identical two paths. A random token in the window URL, checked at handshake — a loopback port is open to every process on the machine.
+2. **One transport: Electron IPC.** Requests are `ipcRenderer.invoke("milu:request", method, params)`; events are `webContents.send("milu:event", ...)`; the renderer's `Transport` port is the only thing that knows the channel names. `Methods` is the only registry. No HTTP server, no WebSocket, no `BrowserView.defineRPC`.
+3. **Desktop is one app.** Electron's main process boots the core in-process; the renderer loads from `milu://app/index.html` through a custom protocol (with a CSP) and talks over a preload bridge with `contextIsolation` and `sandbox`. No port, no token, no network surface. A web end would be another `Transport` adapter later, not another app.
 4. **Behavior over tests.** No test suite. The user verifies.
 
 ## v1 is a read-only reference

@@ -150,13 +150,6 @@ export type LiveEvent =
 	| ({ readonly type: "layout" } & LayoutState)
 	| { readonly type: "dialog"; readonly id: string; readonly dialog: DialogDescriptor };
 
-export type Frame =
-	| { kind: "req"; id: number; method: string; params: unknown }
-	| { kind: "res"; id: number; ok: true; result: unknown }
-	| { kind: "res"; id: number; ok: false; error: WireError }
-	| { kind: "entry"; session: string; seq: number; entry: Entry }
-	| { kind: "live"; event: LiveEvent };
-
 export interface Methods {
 	transcript: {
 		params: { session: string; mode?: "older" | "newer"; cursor?: string; conversations?: number };
@@ -168,7 +161,10 @@ export interface Methods {
 	hotkeys: { params: Record<string, never>; result: { bindings: readonly ActionBinding[] } };
 	sessions: { params: Record<string, never>; result: { sessions: SessionRow[]; selected: string | null } };
 	select: { params: { session: string | null }; result: { selected: string | null } };
-	invoke: { params: { action: string; session?: string; args?: unknown }; result: { ok: boolean; error?: string; command?: BrowserCommand } };
+	invoke: {
+		params: { action: string; session?: string; args?: unknown; confirmed?: boolean };
+		result: { ok: boolean; error?: string; command?: BrowserCommand; confirm?: ConfirmCopy };
+	};
 	answer: { params: { id: string; value: unknown }; result: Record<string, never> };
 	contributions: { params: { point: string }; result: { items: readonly ContributionItem[] } };
 	slots: { params: { point: string }; result: { items: readonly SlotItem[] } };
@@ -182,24 +178,14 @@ export type MethodName = keyof Methods;
 export type Params<K extends MethodName> = Methods[K]["params"];
 export type Result<K extends MethodName> = Methods[K]["result"];
 
-export const METHOD_NAMES: readonly MethodName[] = [
-	"transcript",
-	"prompt",
-	"abort",
-	"composer",
-	"hotkeys",
-	"sessions",
-	"select",
-	"invoke",
-	"answer",
-	"contributions",
-	"slots",
-	"welcome",
-	"pickDirectory",
-	"layout",
-	"layoutSet",
-];
+export type RpcResponse = { readonly ok: true; readonly result: unknown } | { readonly ok: false; readonly error: WireError };
 
-export function isFrame(value: unknown): value is Frame {
-	return typeof value === "object" && value !== null && typeof (value as { kind?: unknown }).kind === "string";
+export interface Snapshot {
+	readonly layout: LayoutState;
+	readonly sessions: readonly SessionRow[];
+	readonly selected: string | null;
+	readonly header: readonly ContributionItem[];
+	readonly hotkeys: readonly ActionBinding[];
+	readonly welcome: readonly WelcomeItem[];
+	readonly slots: Readonly<Record<string, readonly SlotItem[]>>;
 }
