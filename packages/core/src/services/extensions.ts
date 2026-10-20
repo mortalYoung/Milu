@@ -1,15 +1,20 @@
-import { createServiceId, DisposableStore, type Service } from "@milu/di";
+import { type Container, createServiceId, DisposableStore, type Service } from "@milu/di";
 
 import {
 	COMPOSER_LEFT_POINT,
 	COMPOSER_RIGHT_POINT,
 	COMPOSER_TIPS_POINT,
 	type ComposerTipItem,
+	type SlotItem,
+	type WelcomeItem,
 	type ComposerWidgetItem,
 	type Extension,
 	type ExtensionContext,
 	SESSION_HEADER_POINT,
+	CHAT_BAR_POINT,
+	CHAT_PANES_POINT,
 	SESSION_MENU_POINT,
+	WELCOME_ITEMS_POINT,
 	type SessionHeaderItem,
 	type SessionMenuItem,
 } from "../extensions/types.ts";
@@ -38,6 +43,7 @@ export class ExtensionService implements Service {
 		private readonly _actionService: ActionService,
 		private readonly _modelsService: ModelsService,
 		private readonly _settingsService: SettingsService,
+		private readonly _container: Container,
 		deps: ExtensionDeps,
 	) {
 		this._pending = deps.extensions;
@@ -49,6 +55,9 @@ export class ExtensionService implements Service {
 		this._contributionService.declare<ComposerWidgetItem>(COMPOSER_LEFT_POINT);
 		this._contributionService.declare<ComposerWidgetItem>(COMPOSER_RIGHT_POINT);
 		this._contributionService.declare<ComposerTipItem>(COMPOSER_TIPS_POINT);
+		this._contributionService.declare<WelcomeItem>(WELCOME_ITEMS_POINT);
+		this._contributionService.declare<SlotItem>(CHAT_BAR_POINT);
+		this._contributionService.declare<SlotItem>(CHAT_PANES_POINT);
 		for (const extension of this._pending) await this.load(extension);
 	}
 
@@ -61,6 +70,7 @@ export class ExtensionService implements Service {
 		const context: ExtensionContext = {
 			id: extension.id,
 			disposables,
+			get: (id) => this._container.get(id),
 			config: this._configService,
 			actions: this._actionService,
 			models: this._modelsService,

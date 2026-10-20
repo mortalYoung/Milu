@@ -1,8 +1,6 @@
 import type { WidgetProps } from "@milu/client";
 
-import { useStore } from "./use-store.ts";
-
-import "./widgets.css";
+import { useStore } from "../web/use-store.ts";
 
 export function ShellWidget(props: WidgetProps) {
 	const { host } = props;

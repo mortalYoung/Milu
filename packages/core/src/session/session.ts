@@ -109,6 +109,7 @@ export class Session {
 	private _workspace: WorkspaceFacts | null | undefined;
 	private _model: SessionModel | null | undefined;
 	private _usedTokens: number | null | undefined;
+	private _error: string | null = null;
 	private _prompt = "";
 
 	constructor(deps: SessionDeps) {
@@ -146,6 +147,7 @@ export class Session {
 			...(workspace ? { workspace: workspace.path, workspaceKind: workspace.kind, workspaceRepo: workspace.repo } : {}),
 			...(facts.last ? { lastMessage: facts.last.text, lastMessageAt: facts.last.time, lastMessageKind: facts.last.kind } : {}),
 			running: this.running,
+			...(this._error ? { error: this._error } : {}),
 		};
 	}
 
@@ -195,6 +197,7 @@ export class Session {
 		const loop = await this.open();
 		this._applyModel(loop, await this._modelOf());
 		void loop.run(text).catch((error: unknown) => {
+			this._error = error instanceof Error ? error.message : String(error);
 			console.error(`session ${this.name}: run failed:`, error);
 		});
 	}
@@ -233,9 +236,11 @@ export class Session {
 					return;
 				}
 				case "run_start":
+					this._error = null;
 					record(EVENTS.agentStart, { run: event.run, timestamp });
 					return;
 				case "run_end":
+					this._error = event.error ?? null;
 					record(EVENTS.agentEnd, { run: event.run, reason: event.error ? "error" : "completed", ...(event.error ? { error: event.error } : {}), timestamp });
 					return;
 				case "turn_start":

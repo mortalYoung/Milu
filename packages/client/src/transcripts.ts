@@ -1,61 +1,38 @@
 import { createServiceId, type Service } from "@milu/di";
-import type { SessionRow, SeqEntry } from "@milu/protocol";
+import type { SeqEntry } from "@milu/protocol";
 
 import type { Connection } from "./connection.ts";
-import type { SessionListService } from "./sessions.ts";
 import { Store } from "./store.ts";
 
 export interface TranscriptState {
-	readonly selected: string;
 	readonly logs: Readonly<Record<string, readonly SeqEntry[]>>;
 	readonly hasMore: Readonly<Record<string, boolean>>;
 	readonly loadingOlder: Readonly<Record<string, boolean>>;
-	readonly running: Readonly<Record<string, boolean>>;
-	readonly errors: Readonly<Record<string, string>>;
 	readonly drafts: Readonly<Record<string, string>>;
+	readonly errors: Readonly<Record<string, string>>;
 }
 
-const EMPTY: TranscriptState = { selected: "", logs: {}, hasMore: {}, loadingOlder: {}, running: {}, errors: {}, drafts: {} };
+const EMPTY: TranscriptState = { logs: {}, hasMore: {}, loadingOlder: {}, drafts: {}, errors: {} };
 const NO_ENTRIES: readonly SeqEntry[] = [];
 
 export class TranscriptService implements Service {
 	readonly state = new Store<TranscriptState>(EMPTY);
 	readonly linked = new Store(false);
+	readonly focused = new Store<{ id: string; at: number } | null>(null);
 
 	private readonly _loaded = new Set<string>();
 
-	constructor(
-		private readonly _connection: Connection,
-		private readonly _sessions: SessionListService,
-	) {}
-
-	selected(): string {
-		return this.state.get().selected;
-	}
+	constructor(private readonly _connection: Connection) {}
 
 	entries(session: string): readonly SeqEntry[] {
 		return this.state.get().logs[session] ?? NO_ENTRIES;
-	}
-
-	running(session: string): boolean {
-		return this.state.get().running[session] ?? this._sessions.get(session)?.running ?? false;
-	}
-
-	error(session: string): string {
-		return this.state.get().errors[session] ?? "";
 	}
 
 	draft(session: string): string {
 		return this.state.get().drafts[session] ?? "";
 	}
 
-	async select(session: string): Promise<void> {
-		this.state.update((current) => ({ ...current, selected: session }));
-
-		const row = this._sessions.get(session);
-		const at = row?.lastMessageAt ?? 0;
-		if (at > (row?.readAt ?? 0)) await this._sessions.markRead(session, at);
-
+	async open(session: string): Promise<void> {
 		if (this._loaded.has(session)) return;
 		this._loaded.add(session);
 		try {
@@ -66,7 +43,8 @@ export class TranscriptService implements Service {
 				hasMore: { ...current.hasMore, [session]: window.hasMore },
 			}));
 		} catch (error) {
-			this.setError(session, error instanceof Error ? error.message : String(error));
+			this._loaded.delete(session);
+			this.fail(session, error instanceof Error ? error.message : String(error));
 		}
 	}
 
@@ -89,29 +67,34 @@ export class TranscriptService implements Service {
 				};
 			});
 		} catch (error) {
-			this.setError(session, error instanceof Error ? error.message : String(error));
+			this.fail(session, error instanceof Error ? error.message : String(error));
 		} finally {
 			this.state.update((state) => ({ ...state, loadingOlder: { ...state.loadingOlder, [session]: false } }));
 		}
 	}
 
-	async send(text: string): Promise<void> {
-		const session = this.selected();
+	async send(session: string, text: string): Promise<void> {
 		const body = text.trim();
 		if (!session || !body) return;
 		this.setDraft(session, "");
 		this.clearError(session);
 		try {
-			await this._connection.request("prompt", { session, text: body });
+			await this._connection.request("prompt", { text: body });
 		} catch (error) {
-			this.setError(session, error instanceof Error ? error.message : String(error));
+			this.fail(session, error instanceof Error ? error.message : String(error));
 		}
 	}
 
+	focus(id: string): void {
+		this.focused.set({ id, at: Date.now() });
+	}
+
+	clearFocus(): void {
+		this.focused.set(null);
+	}
+
 	async abort(): Promise<void> {
-		const session = this.selected();
-		if (!session) return;
-		await this._connection.request("abort", { session });
+		await this._connection.request("abort", {});
 	}
 
 	append(session: string, entry: SeqEntry): void {
@@ -120,14 +103,6 @@ export class TranscriptService implements Service {
 			if (existing.some((seen) => seen.seq === entry.seq)) return current;
 			return { ...current, logs: { ...current.logs, [session]: [...existing, entry] } };
 		});
-	}
-
-	setStatus(session: string, running: boolean, error?: string): void {
-		this.state.update((current) => ({
-			...current,
-			running: { ...current.running, [session]: running },
-			...(error ? { errors: { ...current.errors, [session]: error } } : {}),
-		}));
 	}
 
 	setDraft(session: string, draft: string): void {
@@ -139,18 +114,13 @@ export class TranscriptService implements Service {
 		if (!up) this._loaded.clear();
 	}
 
-	async chooseFirst(rows: readonly SessionRow[]): Promise<void> {
-		if (this.selected()) return;
-		const first = rows[0];
-		if (first) await this.select(first.name);
-	}
-
 	dispose(): void {
 		this.state.dispose();
 		this.linked.dispose();
+		this.focused.dispose();
 	}
 
-	private setError(session: string, message: string): void {
+	fail(session: string, message: string): void {
 		this.state.update((current) => ({ ...current, errors: { ...current.errors, [session]: message } }));
 	}
 

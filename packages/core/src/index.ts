@@ -5,6 +5,7 @@ import type { ConfigService } from "./services/config.ts";
 import type { ContributionService } from "./services/contributions.ts";
 import type { LayoutService } from "./services/layout.ts";
 import type { ModelsService } from "./services/models.ts";
+import type { SelectionService } from "./services/selection.ts";
 import type { SessionService } from "./services/sessions.ts";
 import type { SettingsService } from "./services/settings.ts";
 import type { ToolService } from "./services/tools.ts";
@@ -16,6 +17,7 @@ export { ConfigService, ConfigServiceId } from "./services/config.ts";
 export { ContributionPoint, ContributionService, ContributionServiceId } from "./services/contributions.ts";
 export { ExecutionService, ExecutionServiceId } from "./services/execution.ts";
 export { ExtensionService, ExtensionServiceId } from "./services/extensions.ts";
+export { declareExtensionServices } from "./extensions/services.ts";
 export {
 	COMPOSER_LEFT_POINT,
 	COMPOSER_RIGHT_POINT,
@@ -23,19 +25,26 @@ export {
 	EXTENSION_API_VERSION,
 	SESSION_HEADER_POINT,
 	SESSION_MENU_POINT,
+	CHAT_BAR_POINT,
+	CHAT_PANES_POINT,
 	SYSTEM_PROMPT_POINT,
+	WELCOME_ITEMS_POINT,
 	type ComposerTipItem,
 	type ComposerWidgetItem,
 	type Extension,
 	type ExtensionContext,
+	type ExtensionServiceDeclaration,
 	type PromptSection,
 	type SessionHeaderItem,
 	type SessionMenuItem,
 	type SessionValue,
+	type SlotItem,
+	type WelcomeItem,
 } from "./extensions/types.ts";
 export { LayoutService, LayoutServiceId, type LayoutServiceDeps } from "./services/layout.ts";
 export { ModelsService, ModelsServiceId, type ModelRef } from "./services/models.ts";
 export { PromptService, PromptServiceId } from "./services/prompt.ts";
+export { SelectionService, SelectionServiceId } from "./services/selection.ts";
 export { SessionService, SessionServiceId, type SessionEntry, type SessionLoopEvent } from "./services/sessions.ts";
 export { Session, type SessionDeps } from "./session/session.ts";
 export { SessionLog } from "./session/log.ts";
@@ -58,5 +67,6 @@ export interface Backend extends Disposable {
 	readonly tools: ToolService;
 	readonly settings: SettingsService;
 	readonly layout: LayoutService;
+	readonly selection: SelectionService;
 	close(): Promise<void>;
 }

@@ -1,4 +1,4 @@
-import type { Session } from "@milu/core";
+import type { Extension, Session } from "@milu/core";
 
 export interface SessionDetails {
 	readonly name: string;
@@ -18,7 +18,7 @@ export interface SessionDetails {
 	readonly runs: number;
 }
 
-export async function collectDetails(session: Session): Promise<SessionDetails> {
+async function collectDetails(session: Session): Promise<SessionDetails> {
 	const row = await session.row();
 	const entries = await session.entries();
 
@@ -53,3 +53,22 @@ export async function collectDetails(session: Session): Promise<SessionDetails> 
 		runs,
 	};
 }
+
+export const detailsExtension: Extension = {
+	id: "details",
+	apiVersion: 1,
+
+	contributions: {
+		"session.menu": [{ id: "details", order: 0, group: "view", title: "View details", icon: "info", action: "details.session" }],
+	},
+
+	activate(context) {
+		context.actions.register({
+			id: "details.session",
+			run: async ({ session, dialog }) => {
+				if (!session) throw new Error("details.session needs a session");
+				await dialog?.({ kind: "custom", id: "session-details", title: session.name, data: await collectDetails(session) });
+			},
+		});
+	},
+};

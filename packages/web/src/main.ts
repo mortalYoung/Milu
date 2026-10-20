@@ -1,5 +1,5 @@
 import { createFrontEnd } from "@milu/bootstrap/frontend";
-import { dialogs, markdown as markdownPlugins, widgets } from "@milu/extensions/web";
+import { dialogs, markdown as markdownPlugins, services as extensionServices, slots as extensionSlots, widgets } from "@milu/extensions/web";
 import { createMarkdown, DEFAULT_PLUGINS } from "@milu/markdown";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
@@ -16,9 +16,12 @@ async function main(): Promise<void> {
 	const front = await createFrontEnd({
 		url: `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/ws`,
 		markdown: createMarkdown([...DEFAULT_PLUGINS, ...markdownPlugins]),
+		platform: "web",
 		commands: { copy: (text) => copyPath(text) },
 		dialogs,
 		widgets,
+		services: extensionServices,
+		slots: extensionSlots,
 		components: [
 			{ id: "milu.session-list", component: SessionListSurface },
 			{ id: "milu.transcript", component: TranscriptPaneSurface },

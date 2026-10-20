@@ -1,9 +1,9 @@
 import type { WidgetProps } from "@milu/client";
 import { useEffect, useRef, useState } from "react";
 
-import type { MeterWidgetData } from "../composer.ts";
+import type { MeterWidgetData } from "./meter.ts";
 
-import "./widgets.css";
+import "./meter.css";
 
 const RADIUS = 5.5;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;

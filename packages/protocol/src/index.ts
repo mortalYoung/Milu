@@ -32,6 +32,7 @@ export const LOG_EVENTS = {
 	mcpChanged: "mcp/changed",
 	rewind: "rewind",
 	memoryContext: "memory/context",
+	scheduleRun: "schedule/run",
 } as const;
 
 export interface SessionRow {
@@ -45,6 +46,7 @@ export interface SessionRow {
 	readonly pinned?: boolean;
 	readonly readAt?: number;
 	readonly running: boolean;
+	readonly error?: string;
 	readonly lastMessage?: string;
 	readonly lastMessageAt?: number;
 	readonly lastMessageKind?: PreviewKind;
@@ -77,9 +79,32 @@ export interface ContributionItem {
 	readonly items?: readonly ContributionItem[];
 }
 
+export const SLOT_POINTS = { chatBar: "chat.bar", chatPanes: "chat.panes" } as const;
+
+export interface SlotItem {
+	readonly id: string;
+	readonly component: string;
+	readonly order?: number;
+}
+
+export interface WelcomeItem {
+	readonly id: string;
+	readonly title: string;
+	readonly variant: "primary" | "outline" | "key";
+	readonly icon?: string;
+	readonly keys?: readonly string[];
+	readonly order?: number;
+	readonly action: string;
+	readonly args?: unknown;
+}
+
+export type Platform = "web" | "desktop";
+
+export type Hotkey = string | Readonly<Record<Platform, string>>;
+
 export interface ActionBinding {
 	readonly id: string;
-	readonly hotkey: string;
+	readonly hotkey: Hotkey;
 	readonly scopes: readonly string[];
 }
 
@@ -104,10 +129,7 @@ export interface ComposerLayout {
 	readonly tips: readonly ComposerTip[];
 }
 
-export type BrowserCommand =
-	| { readonly kind: "copy"; readonly text: string }
-	| { readonly kind: "select"; readonly session: string }
-	| { readonly kind: "shell"; readonly on: boolean | "toggle" };
+export type BrowserCommand = { readonly kind: "copy"; readonly text: string } | { readonly kind: "shell"; readonly on: boolean | "toggle" };
 
 export interface SurfaceDeclaration {
 	readonly id: string;
@@ -124,6 +146,7 @@ export interface LayoutState {
 
 export type LiveEvent =
 	| { readonly type: "status"; readonly session: string; readonly running: boolean; readonly error?: string }
+	| { readonly type: "selection"; readonly selected: string | null }
 	| ({ readonly type: "layout" } & LayoutState)
 	| { readonly type: "dialog"; readonly id: string; readonly dialog: DialogDescriptor };
 
@@ -139,15 +162,17 @@ export interface Methods {
 		params: { session: string; mode?: "older" | "newer"; cursor?: string; conversations?: number };
 		result: { entries: SeqEntry[]; total: number; hasMore: boolean; reset: boolean };
 	};
-	prompt: { params: { session: string; text: string }; result: { accepted: boolean } };
-	abort: { params: { session: string }; result: Record<string, never> };
+	prompt: { params: { text: string }; result: { accepted: boolean } };
+	abort: { params: Record<string, never>; result: Record<string, never> };
 	composer: { params: { session: string }; result: ComposerLayout };
 	hotkeys: { params: Record<string, never>; result: { bindings: readonly ActionBinding[] } };
-	sessions: { params: Record<string, never>; result: { sessions: SessionRow[] } };
-	markRead: { params: { session: string; readAt: number }; result: Record<string, never> };
+	sessions: { params: Record<string, never>; result: { sessions: SessionRow[]; selected: string | null } };
+	select: { params: { session: string | null }; result: { selected: string | null } };
 	invoke: { params: { action: string; session?: string; args?: unknown }; result: { ok: boolean; error?: string; command?: BrowserCommand } };
 	answer: { params: { id: string; value: unknown }; result: Record<string, never> };
 	contributions: { params: { point: string }; result: { items: readonly ContributionItem[] } };
+	slots: { params: { point: string }; result: { items: readonly SlotItem[] } };
+	welcome: { params: Record<string, never>; result: { items: readonly WelcomeItem[] } };
 	pickDirectory: { params: { startingFolder?: string }; result: { path?: string } };
 	layout: { params: Record<string, never>; result: LayoutState };
 	layoutSet: { params: { layout: Layout }; result: LayoutState };
@@ -164,10 +189,12 @@ export const METHOD_NAMES: readonly MethodName[] = [
 	"composer",
 	"hotkeys",
 	"sessions",
-	"markRead",
+	"select",
 	"invoke",
 	"answer",
 	"contributions",
+	"slots",
+	"welcome",
 	"pickDirectory",
 	"layout",
 	"layoutSet",

@@ -19,6 +19,7 @@ The rebuild exists to enforce these rules. Break one and the reason for the rebu
 - **A singleton is unique to its container, never to the module.** `export const foo = new Foo()` is the v1 mistake wearing a better name — same implicit ordering, same untestable coupling, and it _looks_ clean, so nobody revisits it. The container is the only global.
 - **State has one owner and an explicit lifecycle.** One service owns each piece of mutable state, and it says out loud how it starts and how it stops (`create → initialize → dispose`). Watchers, timers, `AbortController`s and child processes are all disposed by their owner. v1 leaked every one of these.
 - **Only state earns a service.** A pure function is a function. Wrapping `fuzzy`, `trajectory`, `token-meter` in a class adds a layer and buys nothing.
+- **An extension may declare services.** `{ id: ServiceId, create }` declarations are registered before boot, on either end — core through `declareExtensionServices`, the window through `createFrontEnd({ services })`. The name carries the extension (`replies.state`), the container owns the lifecycle, and runtime registration stays closed, so a module-level singleton is still a bug.
 - **Permission must never degrade silently.** v1's sandbox chain is empty on anything but macOS, so the gate quietly disappears. A missing sandbox is a hard failure, never a fallback.
 
 ## Packages

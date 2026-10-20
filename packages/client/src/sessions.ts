@@ -10,21 +10,19 @@ export class SessionListService implements Service {
 
 	constructor(private readonly _connection: Connection) {}
 
-	async refresh(): Promise<void> {
+	async refresh(): Promise<string | null> {
 		const result = await this._connection.request("sessions", {});
 		this.rows.set(result.sessions);
 		this.arrived.set(true);
+		return result.selected;
 	}
 
 	get(session: string): SessionRow | undefined {
 		return this.rows.get().find((row) => row.name === session);
 	}
 
-	async markRead(session: string, readAt: number): Promise<void> {
-		const row = this.get(session);
-		if (!row || readAt <= (row.readAt ?? 0)) return;
-		this.rows.update((rows) => rows.map((each) => (each.name === session ? { ...each, readAt } : each)));
-		await this._connection.request("markRead", { session, readAt });
+	patchStatus(session: string, running: boolean, error?: string): void {
+		this.rows.update((rows) => rows.map((row) => (row.name === session ? { ...row, running, error: error ?? undefined } : row)));
 	}
 
 	dispose(): void {

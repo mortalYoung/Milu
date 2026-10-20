@@ -13,14 +13,6 @@ export interface ModelWidgetData {
 	readonly selected: ModelRef | null;
 }
 
-export interface MeterWidgetData {
-	readonly used: number;
-	readonly projectedTokens?: number;
-	readonly window: number;
-	readonly percent: number;
-	readonly breakdown: { readonly systemTokens: number; readonly toolsTokens: number; readonly messageTokens: number } | null;
-}
-
 let services: { readonly models: ModelsService; readonly settings: SettingsService } | null = null;
 
 function groupsOf(models: ModelsService, settings: SettingsService): ModelGroup[] {
@@ -47,7 +39,7 @@ async function modelDataOf(session: Session): Promise<ModelWidgetData | null> {
 }
 
 export const modelsExtension: Extension = {
-	id: "composer.models",
+	id: "models",
 	apiVersion: 1,
 
 	contributions: {
@@ -82,14 +74,5 @@ export const modelsExtension: Extension = {
 				await session.setModel({ provider: model.provider, modelId: model.id, thinkingLevel: level });
 			},
 		});
-	},
-};
-
-export const meterExtension: Extension = {
-	id: "composer.meter",
-	apiVersion: 1,
-
-	contributions: {
-		"composer.right": [{ id: "meter", order: 20, widget: "meter", data: (session: Session) => session.contextUsage() }],
 	},
 };

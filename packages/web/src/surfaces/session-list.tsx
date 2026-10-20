@@ -116,7 +116,7 @@ export function SessionListSurface(props: SurfaceProps) {
 	const { host } = props;
 	const rows = useStore(host.sessions.rows);
 	const arrived = useStore(host.sessions.arrived);
-	const state = useStore(host.transcript.state);
+	const selected = useStore(host.selection.selected);
 	const searchOpen = useStore(host.workbench.searchOpen);
 	const headerItems = useStore(host.header.items);
 
@@ -126,8 +126,6 @@ export function SessionListSurface(props: SurfaceProps) {
 	const searchRef = useRef<HTMLInputElement>(null);
 	const rowsRef = useRef<HTMLDivElement>(null);
 
-	const selected = state.selected;
-
 	const start = (item: ContributionItem, session: string): void => {
 		if (item.action) void run(item, session);
 	};
@@ -136,9 +134,6 @@ export function SessionListSurface(props: SurfaceProps) {
 		if (!item.action) return;
 		await host.actions.invoke(item.action, session, item.args);
 		await host.sessions.refresh();
-		if (host.transcript.selected() !== session || host.sessions.get(session)) return;
-		const next = host.sessions.rows.get()[0];
-		if (next) await host.transcript.select(next.name);
 	};
 	const closeSearch = () => {
 		host.workbench.setSearch(false);
@@ -210,11 +205,11 @@ export function SessionListSurface(props: SurfaceProps) {
 					host={host}
 					session={root}
 					selected={selected === root.name}
-					writing={host.transcript.running(root.name)}
+					writing={root.running}
 					unread={(root.lastMessageAt ?? 0) > (root.readAt ?? 0)}
 					childCount={leaves.length}
 					expanded={isExpanded}
-					onSelect={() => void host.transcript.select(root.name)}
+					onSelect={() => void host.selection.select(root.name)}
 					onToggle={() => toggle(root.name)}
 					onRun={(item) => start(item, root.name)}
 				/>
@@ -225,10 +220,10 @@ export function SessionListSurface(props: SurfaceProps) {
 								host={host}
 								session={leaf}
 								selected={selected === leaf.name}
-								writing={host.transcript.running(leaf.name)}
+								writing={leaf.running}
 								unread={(leaf.lastMessageAt ?? 0) > (leaf.readAt ?? 0)}
 								leaf
-								onSelect={() => void host.transcript.select(leaf.name)}
+								onSelect={() => void host.selection.select(leaf.name)}
 								onRun={(item) => start(item, leaf.name)}
 							/>
 						))

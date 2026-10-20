@@ -1,0 +1,105 @@
+import { createServiceId, formatHistoryTime, projectView, replyRows, type Service, type SlotComponent, Store, type SurfaceProps } from "@milu/client";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+import { useStore } from "../web/use-store.ts";
+
+import "./replies.css";
+
+const NO_ENTRIES: readonly never[] = [];
+
+export class RepliesService implements Service {
+	readonly open = new Store(false);
+
+	toggle(): void {
+		this.open.set(!this.open.get());
+	}
+
+	dispose(): void {
+		this.open.dispose();
+	}
+}
+
+export const RepliesServiceId = createServiceId<RepliesService>("replies.state");
+
+function label(text: string): string {
+	const line = text.split("\n").find((each) => each.trim() !== "") ?? "";
+	return line.length > 42 ? `${line.slice(0, 42)}…` : line;
+}
+
+function RepliesButton(props: SurfaceProps) {
+	const service = props.host.get(RepliesServiceId);
+	const open = useStore(service.open);
+	const wording = open ? "Hide replies" : "Show replies";
+	return (
+		<button type="button" className={open ? "replies-bar is-on" : "replies-bar"} aria-label={wording} aria-pressed={open} title={wording} onClick={() => service.toggle()}>
+			<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+				<path d="M8 6h13" />
+				<path d="M8 12h13" />
+				<path d="M8 18h13" />
+				<path d="M3 6h.01" />
+				<path d="M3 12h.01" />
+				<path d="M3 18h.01" />
+			</svg>
+		</button>
+	);
+}
+
+function RepliesPane(props: SurfaceProps) {
+	const { host } = props;
+	const service = host.get(RepliesServiceId);
+	const open = useStore(service.open);
+	const selected = useStore(host.selection.selected);
+	const state = useStore(host.transcript.state);
+	const entries = state.logs[selected] ?? NO_ENTRIES;
+
+	const rows = useMemo(() => replyRows(projectView(entries.map((seq) => seq.entry))), [entries]);
+	const [active, setActive] = useState<string | null>(null);
+	const list = useRef<HTMLDivElement>(null);
+
+	useEffect(() => {
+		if (!open) return;
+		list.current?.scrollTo({ top: list.current.scrollHeight });
+	}, [open, rows]);
+
+	if (!open) return null;
+
+	return (
+		<aside className="outline" aria-label="Replies">
+			<div className="outline-head">
+				<span className="outline-label">Replies</span>
+				<span className="outline-count">{rows.length}</span>
+			</div>
+			<div className="outline-list" ref={list}>
+				{rows.length === 0 ? (
+					<span className="outline-empty">no replies yet</span>
+				) : (
+					rows.map((row) => (
+						<button
+							key={row.id}
+							type="button"
+							className={active === row.id ? "outline-item active" : "outline-item"}
+							onClick={() => {
+								setActive(row.id);
+								host.transcript.focus(row.id);
+							}}
+						>
+							<span className="outline-meta">
+								<span className="outline-q">{row.question ? label(row.question) : "—"}</span>
+								<span className="outline-time">{formatHistoryTime(row.time)}</span>
+							</span>
+							<span className="outline-a">{label(row.text)}</span>
+							{row.count > 1 ? <span className="outline-stack">stack · {row.count}</span> : null}
+						</button>
+					))
+				)}
+			</div>
+		</aside>
+	);
+}
+
+export const services = [{ id: RepliesServiceId, create: () => new RepliesService() }];
+
+export const slots: readonly SlotComponent[] = [
+	{ id: "replies.bar", component: RepliesButton },
+	{ id: "replies.pane", component: RepliesPane },
+];

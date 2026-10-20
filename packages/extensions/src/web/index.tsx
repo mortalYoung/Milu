@@ -1,11 +1,12 @@
-import type { DialogComponent, WidgetComponent } from "@milu/client";
+import type { DialogComponent, FrontEndService, SlotComponent, WidgetComponent } from "@milu/client";
 import type { MarkdownPlugin } from "@milu/markdown";
 
-import { CreateSessionDialog } from "./create.tsx";
-import { SessionDetailsDialog } from "./details.tsx";
-import { MeterWidget } from "./meter.tsx";
-import { ModelsWidget } from "./models.tsx";
-import { ShellWidget } from "./shell.tsx";
+import { CreateSessionDialog } from "../create/create.tsx";
+import { SessionDetailsDialog } from "../details/details.tsx";
+import { MeterWidget } from "../meter/meter.tsx";
+import { ModelsWidget } from "../models/models.tsx";
+import { slots as repliesSlots, services as repliesServices } from "../replies/replies.tsx";
+import { ShellWidget } from "../shell/shell.tsx";
 
 export const widgets: readonly WidgetComponent[] = [
 	{ id: "models", component: ModelsWidget },
@@ -14,6 +15,10 @@ export const widgets: readonly WidgetComponent[] = [
 ];
 
 export const markdown: readonly MarkdownPlugin[] = [];
+
+export const services: readonly FrontEndService[] = [...repliesServices];
+
+export const slots: readonly SlotComponent[] = [...repliesSlots];
 
 export const dialogs: readonly DialogComponent[] = [
 	{ id: "create-session", component: CreateSessionDialog },

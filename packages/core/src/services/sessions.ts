@@ -115,10 +115,6 @@ export class SessionService implements Service {
 		return this._sessions.get(name)?.running ?? false;
 	}
 
-	async markRead(name: string, readAt: number): Promise<void> {
-		await (await this.ensure(name)).markRead(readAt);
-	}
-
 	async shutdown(): Promise<void> {
 		for (const session of this._sessions.values()) await session.close();
 	}

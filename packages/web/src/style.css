@@ -36,6 +36,7 @@
 	--selected: color-mix(in srgb, var(--ink) 12%, transparent);
 	--signal: light-dark(#c64545, #d96868);
 	--accent-teal: light-dark(#2f7a6b, #5db8a6);
+	--accent-amber: #e8a55a;
 	--code-bg: light-dark(#f5f0e8, #1f1e1b);
 	--letter: light-dark(color-mix(in srgb, #8f9fb0 28%, var(--canvas)), color-mix(in srgb, #8f9fb0 36%, var(--canvas)));
 	--code-block-bg: light-dark(#f5f0e8, #181715);
@@ -920,6 +921,7 @@ body.pane-dragging {
 /* ——— the pane ——— */
 
 .transcript-pane {
+	position: relative;
 	display: flex;
 	flex-direction: column;
 	flex: 1;
@@ -1067,17 +1069,14 @@ body.pane-dragging {
 .chat-body {
 	display: flex;
 	flex-direction: column;
-	align-items: center;
 	flex: 1;
 	min-height: 0;
-	padding: 0 var(--page-gutter);
 }
 
 .chat-column {
 	display: flex;
 	flex-direction: column;
-	width: var(--transcript-measure);
-	max-width: 100%;
+	width: 100%;
 	flex: 1;
 	min-height: 0;
 }
@@ -1096,7 +1095,17 @@ body.pane-dragging {
 	min-height: 0;
 	overflow-y: auto;
 	overflow-anchor: none;
-	padding: 22px 12px 4px;
+	padding: 22px var(--page-gutter) 4px;
+}
+
+.transcript-inner {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	width: var(--transcript-measure);
+	max-width: 100%;
+	margin-left: max(0px, calc(50% - var(--transcript-measure) / 2));
+	margin-right: auto;
 }
 
 .load-earlier-wrap {
@@ -1405,6 +1414,70 @@ body.pane-dragging {
 	line-height: 1.714;
 	white-space: pre-wrap;
 	overflow-wrap: anywhere;
+}
+
+.msg-origin {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	width: fit-content;
+	max-width: 74%;
+	margin-left: auto;
+	padding-bottom: 4px;
+	padding-left: 8px;
+	font-family: var(--mono);
+	font-size: 10px;
+	color: var(--muted);
+}
+
+.msg-origin-badge {
+	flex: none;
+	padding: 1px 4px;
+	border: 1px solid var(--line);
+	border-radius: var(--r4);
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+.msg-origin-title {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.msg-origin-when {
+	flex: none;
+	color: var(--muted-soft);
+}
+
+.msg-origin-status {
+	flex: none;
+}
+
+.msg-origin-status.is-done {
+	color: var(--ink-soft);
+}
+
+.msg-origin-status.is-failed {
+	color: var(--signal);
+}
+
+.msg-origin-status.is-missed {
+	color: var(--accent-amber);
+}
+
+.msg-origin-status.is-dispatched,
+.msg-origin-status.is-skipped {
+	color: var(--muted-soft);
+}
+
+.msg-origin-error {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--signal);
 }
 
 .msg-body {
@@ -1877,7 +1950,7 @@ body.pane-dragging {
 
 .composer-slot {
 	flex: none;
-	padding: 0 12px 12px;
+	padding: 0 var(--page-gutter) 12px;
 }
 
 .composer {
@@ -2045,4 +2118,330 @@ body.pane-dragging {
 	font-weight: 500;
 	color: var(--muted);
 	user-select: none;
+}
+
+/* ——— welcome: the page you land on when no chat is open ——— */
+.chat-main {
+	display: flex;
+	flex: 1;
+	min-height: 0;
+	width: 100%;
+	flex-direction: column;
+	justify-content: safe center;
+	padding: 0 56px;
+	overflow-y: auto;
+}
+
+.welcome {
+	display: flex;
+	flex-direction: column;
+	padding-left: clamp(0px, 7vw, 96px);
+	max-width: 620px;
+	animation: welcome-in 240ms var(--ease-out) both;
+}
+
+.welcome-head {
+	margin: 0;
+	font-family: var(--serif);
+	font-weight: 500;
+	font-size: clamp(28px, 3.1vw, 38px);
+	line-height: 1.22;
+	letter-spacing: -0.6px;
+	max-width: 22ch;
+	text-wrap: balance;
+	color: var(--ink);
+}
+
+.welcome-head-text {
+	position: relative;
+	display: inline-block;
+}
+
+.welcome-caret {
+	position: absolute;
+	top: 50%;
+	right: -5px;
+	height: 0.92em;
+	width: 2px;
+	transform: translateY(-50%);
+	background: var(--muted-soft);
+	animation: welcome-blink 1s linear infinite;
+}
+
+.welcome-sub {
+	margin: 12px 0 0;
+	font-size: 13.5px;
+	line-height: 1.6;
+	max-width: 46ch;
+	color: var(--muted);
+}
+
+.welcome-tl {
+	position: relative;
+	margin-top: 48px;
+	display: flex;
+	flex-direction: column;
+	gap: 32px;
+}
+
+.welcome-spine {
+	position: absolute;
+	bottom: 4px;
+	left: 3px;
+	top: 4px;
+	width: 1px;
+	background: color-mix(in srgb, var(--ink) 8%, transparent);
+	transform-origin: top;
+	animation: welcome-spine 240ms var(--ease-out) both;
+}
+
+.welcome-grp {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.welcome-grp ul {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.welcome-eyebrow {
+	margin: 0;
+	padding-left: 18px;
+	font-family: var(--sans);
+	font-size: 10px;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.16em;
+	color: var(--muted-soft);
+}
+
+.welcome-row-item {
+	display: flex;
+}
+
+.welcome-tick {
+	position: absolute;
+	left: 0;
+	top: 11px;
+	width: 7px;
+	height: 7px;
+	border-radius: 50%;
+	border: 1px solid var(--muted-soft);
+	background: var(--canvas);
+}
+
+.welcome-empty {
+	position: relative;
+	display: flex;
+	align-items: baseline;
+	gap: 10px;
+	width: 100%;
+	padding: 5px 6px 5px 18px;
+}
+
+.welcome-what {
+	min-width: 0;
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-family: var(--sans);
+	font-size: 12.5px;
+	color: var(--ink);
+}
+
+.welcome-hint {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-family: var(--mono);
+	font-size: 10.5px;
+	color: var(--muted-soft);
+}
+
+.welcome-acts {
+	margin-top: 48px;
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 24px;
+}
+
+.welcome-buttons {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 8px;
+}
+
+.welcome-btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	height: 36px;
+	padding: 0 12px;
+	border: 1px solid color-mix(in srgb, var(--ink) 40%, transparent);
+	border-radius: var(--r6);
+	background: transparent;
+	color: var(--ink);
+	font-family: var(--sans);
+	font-size: 13px;
+	font-weight: 500;
+	white-space: nowrap;
+	cursor: pointer;
+	transition:
+		transform 160ms var(--ease-out),
+		background-color 160ms var(--ease-out),
+		border-color 160ms var(--ease-out),
+		color 160ms var(--ease-out);
+}
+
+.welcome-btn:hover {
+	background: var(--hover);
+}
+
+.welcome-btn:active {
+	transform: scale(0.97);
+}
+
+.welcome-btn:focus-visible {
+	outline: 2px solid var(--ink);
+	outline-offset: 2px;
+}
+
+.welcome-btn.is-primary {
+	padding: 0 16px;
+	border-color: var(--ink);
+	background: var(--ink);
+	color: var(--canvas);
+}
+
+.welcome-btn.is-primary:hover {
+	background: color-mix(in srgb, var(--ink) 90%, transparent);
+}
+
+.welcome-kbd {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	height: 16px;
+	min-width: 0;
+	padding: 0 4px;
+	border-radius: var(--r4);
+	background: color-mix(in srgb, var(--canvas) 15%, transparent);
+	color: color-mix(in srgb, var(--canvas) 75%, transparent);
+	font-family: var(--sans);
+	font-size: 10px;
+	font-weight: 500;
+}
+
+.welcome-keys {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	width: 220px;
+	font-size: 11.5px;
+	color: var(--muted);
+}
+
+.welcome-key {
+	display: flex;
+	width: 100%;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+	transition: color 160ms var(--ease-out);
+}
+
+.welcome-key:hover {
+	color: var(--ink);
+}
+
+.welcome-key > span:first-child {
+	border-bottom: 1px dotted var(--muted-soft);
+	padding-bottom: 1px;
+}
+
+.welcome-kbds {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.welcome-kbds kbd {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	height: 20px;
+	min-width: 20px;
+	padding: 0 4px;
+	border-radius: var(--r4);
+	background: var(--hover);
+	font-family: var(--sans);
+	font-size: 12px;
+	font-weight: 500;
+	color: var(--muted);
+}
+
+@keyframes welcome-in {
+	from {
+		opacity: 0;
+		transform: translateY(6px);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+
+@keyframes welcome-blink {
+	0%,
+	49% {
+		opacity: 1;
+	}
+	50%,
+	100% {
+		opacity: 0;
+	}
+}
+
+@keyframes welcome-spine {
+	from {
+		transform: scaleY(0);
+	}
+	to {
+		transform: scaleY(1);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.welcome,
+	.welcome-spine,
+	.welcome-caret {
+		animation: none;
+	}
+}
+
+.is-located {
+	animation: locate-flash 1.4s var(--ease-out);
+}
+
+@keyframes locate-flash {
+	from {
+		background-color: color-mix(in srgb, var(--ink) 10%, transparent);
+	}
+	to {
+		background-color: transparent;
+	}
 }

@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
 import { extname, join, normalize } from "node:path";
 
-import type { Backend } from "@milu/core";
+import { type Backend, type SlotItem, WELCOME_ITEMS_POINT, type WelcomeItem } from "@milu/core";
 import type { DialogDescriptor, Frame, LiveEvent, MethodName, Methods, SeqEntry } from "@milu/protocol";
 import { WebSocketServer, type WebSocket } from "ws";
 
@@ -102,18 +102,21 @@ export async function serve(options: ServeOptions): Promise<Server> {
 			return { entries, total: window.total, hasMore: window.hasMore, reset: window.reset };
 		},
 		async prompt(params) {
-			const session = await backend.sessions.ensure(params.session);
+			const name = backend.selection.selected;
+			if (!name) throw new Error("no session is selected");
+			const session = await backend.sessions.ensure(name);
 			try {
 				await session.run(params.text);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
-				live({ type: "status", session: params.session, running: false, error: message });
+				live({ type: "status", session: name, running: false, error: message });
 				return { accepted: false };
 			}
 			return { accepted: true };
 		},
-		async abort(params) {
-			backend.sessions.get(params.session).abort();
+		async abort() {
+			const name = backend.selection.selected;
+			if (name) backend.sessions.get(name).abort();
 			return {};
 		},
 		async hotkeys() {
@@ -123,11 +126,12 @@ export async function serve(options: ServeOptions): Promise<Server> {
 			return backend.sessions.composer(await backend.sessions.ensure(params.session));
 		},
 		async sessions() {
-			return { sessions: [...(await backend.sessions.list())] };
+			const sessions = [...(await backend.sessions.list())];
+			await backend.selection.reconcile(sessions.map((row) => row.name));
+			return { sessions, selected: backend.selection.selected };
 		},
-		async markRead(params) {
-			await backend.sessions.markRead(params.session, params.readAt);
-			return {};
+		async select(params) {
+			return { selected: await backend.selection.select(params.session) };
 		},
 		async invoke(params, socket) {
 			try {
@@ -149,6 +153,16 @@ export async function serve(options: ServeOptions): Promise<Server> {
 			askings.delete(params.id);
 			asking.settle(params.value);
 			return {};
+		},
+		async slots(params) {
+			const point = backend.contributions.get<SlotItem>(params.point);
+			const items = [...point.all()].sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.id.localeCompare(right.id));
+			return { items };
+		},
+		async welcome() {
+			const point = backend.contributions.get<WelcomeItem>(WELCOME_ITEMS_POINT);
+			const items = [...point.all()].sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.id.localeCompare(right.id));
+			return { items };
 		},
 		async contributions(params) {
 			const point = backend.contributions.get<{ id: string; title: string; icon?: string; order?: number; action: string }>(params.point);
@@ -204,6 +218,8 @@ export async function serve(options: ServeOptions): Promise<Server> {
 		if (event.type === "run_start") live({ type: "status", session, running: true });
 		if (event.type === "run_end") live({ type: "status", session, running: false, ...(event.error ? { error: event.error } : {}) });
 	});
+
+	const unsubscribeSelection = backend.selection.onChange((selected) => live({ type: "selection", selected }));
 
 	http.on("upgrade", (request, socket, head) => {
 		if (new URL(request.url ?? "/", "http://localhost").pathname !== "/ws") {
@@ -278,6 +294,7 @@ export async function serve(options: ServeOptions): Promise<Server> {
 			unsubscribeEntry.dispose();
 			unsubscribeLayout.dispose();
 			unsubscribeLoop.dispose();
+			unsubscribeSelection.dispose();
 			sockets.close();
 			http.close();
 		},

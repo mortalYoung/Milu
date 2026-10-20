@@ -2,7 +2,7 @@ import { type DialogProps, formatWorkspacePath, listTime } from "@milu/client";
 import { Markdown } from "@milu/markdown/react";
 import { useState } from "react";
 
-import type { SessionDetails } from "../details.ts";
+import type { SessionDetails } from "./details.ts";
 
 import "./details.css";
 

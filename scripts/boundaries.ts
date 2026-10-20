@@ -4,9 +4,13 @@ import { join, relative } from "node:path";
 interface Rule {
 	readonly pkg: string;
 	readonly dir?: string;
+	readonly match?: RegExp;
 	readonly forbid: readonly (string | RegExp)[];
 	readonly why: string;
 }
+
+const WINDOW_HALF = [/^node:/, "electron", /^@milu\/(core|server|di)$/];
+const WINDOW_WHY = "an extension's web half renders in the window: client types only, no server code";
 
 const RULES: readonly Rule[] = [
 	{ pkg: "protocol", forbid: [/^node:/, "electron"], why: "the wire is frames and method maps — no runtime" },
@@ -38,12 +42,8 @@ const RULES: readonly Rule[] = [
 		forbid: ["electron", /^@milu\/(web|server)$/],
 		why: "an extension gets core capabilities and client types, nothing about a shell",
 	},
-	{
-		pkg: "extensions",
-		dir: "extensions/src/web",
-		forbid: [/^node:/, "electron", /^@milu\/(core|server|di)$/],
-		why: "an extension's web half renders in the window: client types only, no server code",
-	},
+	{ pkg: "extensions", dir: "extensions/src/web", forbid: WINDOW_HALF, why: WINDOW_WHY },
+	{ pkg: "extensions", dir: "extensions/src", match: /\.tsx$/, forbid: WINDOW_HALF, why: WINDOW_WHY },
 ];
 
 const ROOT = join(new URL("..", import.meta.url).pathname, "packages");
@@ -68,11 +68,13 @@ const violations: string[] = [];
 for (const rule of RULES) {
 	const dir = join(ROOT, rule.dir ?? join(rule.pkg, "src"));
 	for (const file of await sources(dir)) {
+		const rel = relative(ROOT, file);
+		if (rule.match && !rule.match.test(rel)) continue;
 		const text = await readFile(file, "utf8");
 		for (const match of text.matchAll(SPECIFIER)) {
 			const specifier = match[1] ?? "";
 			if (!rule.forbid.some((pattern) => (typeof pattern === "string" ? pattern === specifier : pattern.test(specifier)))) continue;
-			violations.push(`${relative(ROOT, file)} imports "${specifier}" — ${rule.why}`);
+			violations.push(`${rel} imports "${specifier}" — ${rule.why}`);
 		}
 	}
 }

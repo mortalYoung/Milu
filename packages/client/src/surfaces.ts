@@ -1,4 +1,4 @@
-import { createServiceId, type Service } from "@milu/di";
+import { createServiceId, type Service, type ServiceId } from "@milu/di";
 import type { LayoutState } from "@milu/protocol";
 import type { ComponentType } from "react";
 
@@ -11,9 +11,12 @@ import type { HeaderService } from "./header.ts";
 import type { HotkeysService } from "./hotkeys.ts";
 import type { MarkdownPort } from "./markdown.ts";
 import type { PickerService } from "./picker.ts";
+import type { SelectionService } from "./selection.ts";
 import type { SessionListService } from "./sessions.ts";
+import type { SlotsService } from "./slots.ts";
 import type { Store } from "./store.ts";
 import type { TranscriptService } from "./transcripts.ts";
+import type { WelcomeService } from "./welcome.ts";
 import type { WorkbenchService } from "./workbench.ts";
 
 export interface SurfaceProps {
@@ -28,7 +31,9 @@ export interface SurfaceComponent {
 export interface Host {
 	readonly connection: Connection;
 	readonly sessions: SessionListService;
+	readonly selection: SelectionService;
 	readonly transcript: TranscriptService;
+	readonly welcome: WelcomeService;
 	readonly workbench: WorkbenchService;
 	readonly actions: ActionsService;
 	readonly dialogs: DialogService;
@@ -40,7 +45,9 @@ export interface Host {
 	readonly widgets: WidgetRegistry;
 	readonly picker: PickerService;
 	readonly surfaces: SurfaceRegistry;
+	readonly slots: SlotsService;
 	readonly layoutState: Store<LayoutState>;
+	readonly get: <T extends Service>(id: ServiceId<T>) => T;
 }
 
 export class SurfaceRegistry implements Service {

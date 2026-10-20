@@ -15,6 +15,15 @@ export interface ViewTool {
 	isError?: boolean;
 }
 
+export interface ViewSchedule {
+	scheduleId: string;
+	title: string;
+	runId?: string;
+	trigger?: "schedule" | "manual" | "catchup";
+	status?: "dispatched" | "done" | "failed" | "skipped" | "missed";
+	error?: string;
+}
+
 export interface ViewEscalation {
 	id: string;
 	command: string;
@@ -33,6 +42,7 @@ export interface ViewItem {
 	to?: string;
 	peerKind?: "ask" | "reply";
 	requestId?: string;
+	schedule?: ViewSchedule;
 	thinking?: { text: string; redacted?: boolean };
 	tool?: ViewTool;
 	say?: true;
@@ -114,6 +124,9 @@ function userVisit(entry: LogEntry, out: ViewItem[]): void {
 		from?: unknown;
 		peerKind?: unknown;
 		requestId?: unknown;
+		scheduleId?: unknown;
+		scheduleRunId?: unknown;
+		scheduleTitle?: unknown;
 	};
 	if (typeof message.skill === "string") return;
 	out.push({
@@ -124,6 +137,15 @@ function userVisit(entry: LogEntry, out: ViewItem[]): void {
 		...(typeof message.from === "string" ? { from: message.from } : {}),
 		...(message.peerKind === "ask" || message.peerKind === "reply" ? { peerKind: message.peerKind } : {}),
 		...(typeof message.requestId === "string" ? { requestId: message.requestId } : {}),
+		...(typeof message.scheduleId === "string"
+			? {
+					schedule: {
+						scheduleId: message.scheduleId,
+						title: typeof message.scheduleTitle === "string" ? message.scheduleTitle : message.scheduleId,
+						...(typeof message.scheduleRunId === "string" ? { runId: message.scheduleRunId } : {}),
+					},
+				}
+			: {}),
 	});
 }
 
@@ -245,6 +267,24 @@ function escalationDecisionVisit(entry: LogEntry, out: ViewItem[]): void {
 	if (item?.escalation) item.escalation.status = status;
 }
 
+const isRunStatus = (value: unknown): value is NonNullable<ViewSchedule["status"]> =>
+	value === "dispatched" || value === "done" || value === "failed" || value === "skipped" || value === "missed";
+
+function scheduleRunVisit(entry: LogEntry, out: ViewItem[]): void {
+	if (entry.type !== "custom") return;
+	const data = entry.data as { scheduleId?: unknown; scheduleTitle?: unknown; runId?: unknown; trigger?: unknown; status?: unknown; error?: unknown } | undefined;
+	if (data?.scheduleId == null) return;
+	const runId = typeof data.runId === "string" ? data.runId : "";
+	const item = findLast(out, (row) => row.kind === "user" && row.schedule != null && (runId ? row.schedule.runId === runId : row.schedule.scheduleId === String(data.scheduleId)));
+	if (!item?.schedule) return;
+	item.schedule.status = isRunStatus(data.status) ? data.status : "dispatched";
+	if (typeof data.runId === "string") item.schedule.runId = data.runId;
+	if (data.trigger === "schedule" || data.trigger === "manual" || data.trigger === "catchup") item.schedule.trigger = data.trigger;
+	if (typeof data.scheduleTitle === "string" && data.scheduleTitle) item.schedule.title = data.scheduleTitle;
+	if (typeof data.error === "string" && data.error) item.schedule.error = data.error;
+	else delete item.schedule.error;
+}
+
 function rewindVisit(entry: LogEntry, out: ViewItem[]): void {
 	if (entry.type !== "custom") return;
 	const data = entry.data as { targetId?: unknown; text?: unknown; shadowedIds?: unknown } | undefined;
@@ -309,6 +349,7 @@ const VISITORS: Readonly<Record<string, (entry: LogEntry, out: ViewItem[]) => vo
 	[LOG_EVENTS.agentEnd]: agentEndVisit,
 	[LOG_EVENTS.escalationRequest]: escalationVisit,
 	[LOG_EVENTS.escalationDecision]: escalationDecisionVisit,
+	[LOG_EVENTS.scheduleRun]: scheduleRunVisit,
 	[LOG_EVENTS.rewind]: rewindVisit,
 };
 
@@ -373,4 +414,45 @@ export function layoutView(items: readonly ViewItem[]): DisplayRow[] {
 		out.push(item);
 	}
 	return foldSteps(out);
+}
+
+export interface ReplyRow {
+	readonly id: string;
+	readonly question: string;
+	readonly questionId?: string;
+	readonly text: string;
+	readonly time: number;
+	readonly count: number;
+}
+
+function answerOf(previous: ReplyRow | null, item: ViewItem, question: string, questionId: string | undefined): ReplyRow {
+	if (previous === null) return { id: item.id, question, questionId, text: item.text, time: item.time, count: 1 };
+	return { ...previous, id: item.id, text: item.text, time: item.time, count: previous.count + 1 };
+}
+
+export function replyRows(items: readonly ViewItem[]): readonly ReplyRow[] {
+	const out: ReplyRow[] = [];
+	let question = "";
+	let questionId: string | undefined;
+	let current: ReplyRow | null = null;
+	const close = () => {
+		if (!current) return;
+		out.push(current);
+		current = null;
+	};
+	for (const item of items) {
+		if (item.kind === "user") {
+			close();
+			question = item.text;
+			questionId = item.id;
+			continue;
+		}
+		if (item.kind === "assistant" && item.text.trim() !== "") {
+			current = answerOf(current, item, question, questionId);
+			continue;
+		}
+		if (item.kind === "error" || item.kind === "sep") close();
+	}
+	close();
+	return out;
 }

@@ -1,5 +1,5 @@
 import { createServiceId, type Disposable, type Service } from "@milu/di";
-import type { BrowserCommand, ConfirmCopy, DialogDescriptor } from "@milu/protocol";
+import type { BrowserCommand, ConfirmCopy, DialogDescriptor, Hotkey } from "@milu/protocol";
 
 import type { Session } from "../session/session.ts";
 import type { SessionService } from "./sessions.ts";
@@ -15,13 +15,13 @@ export interface ActionContext {
 export interface Action {
 	readonly id: string;
 	readonly scope?: string | readonly string[];
-	readonly hotkey?: string;
+	readonly hotkey?: Hotkey;
 	readonly run: (context: ActionContext) => void | BrowserCommand | Promise<void | BrowserCommand>;
 }
 
 export interface ActionBinding {
 	readonly id: string;
-	readonly hotkey: string;
+	readonly hotkey: Hotkey;
 	readonly scopes: readonly string[];
 }
 

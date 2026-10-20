@@ -7,6 +7,7 @@ import {
 	ConfigServiceId,
 	ContributionService,
 	ContributionServiceId,
+	declareExtensionServices,
 	ExecutionService,
 	ExecutionServiceId,
 	LayoutService,
@@ -15,6 +16,8 @@ import {
 	ModelsServiceId,
 	PromptService,
 	PromptServiceId,
+	SelectionService,
+	SelectionServiceId,
 	ExtensionService,
 	ExtensionServiceId,
 	SessionService,
@@ -44,7 +47,7 @@ export async function createBackend(config: BackendConfig): Promise<Backend> {
 	container.register(
 		ExtensionServiceId,
 		(c) =>
-			new ExtensionService(c.get(ContributionServiceId), c.get(ConfigServiceId), c.get(ActionServiceId), c.get(ModelsServiceId), c.get(SettingsServiceId), {
+			new ExtensionService(c.get(ContributionServiceId), c.get(ConfigServiceId), c.get(ActionServiceId), c.get(ModelsServiceId), c.get(SettingsServiceId), c, {
 				extensions: EXTENSIONS,
 			}),
 	);
@@ -53,6 +56,9 @@ export async function createBackend(config: BackendConfig): Promise<Backend> {
 		(c) =>
 			new SessionService(c.get(ExecutionServiceId), c.get(SettingsServiceId), c.get(ModelsServiceId), c.get(ToolServiceId), c.get(ContributionServiceId), c.get(PromptServiceId)),
 	);
+	container.register(SelectionServiceId, (c) => new SelectionService(c.get(SessionServiceId), c.get(ConfigServiceId)));
+
+	declareExtensionServices(container, EXTENSIONS);
 
 	await container.initialize();
 
@@ -67,6 +73,7 @@ export async function createBackend(config: BackendConfig): Promise<Backend> {
 		tools: container.get(ToolServiceId),
 		settings: container.get(SettingsServiceId),
 		layout: container.get(LayoutServiceId),
+		selection: container.get(SelectionServiceId),
 		dispose: () => container.dispose(),
 		async close() {
 			container.dispose();

@@ -4,7 +4,6 @@ import type { Connection } from "./connection.ts";
 
 export interface BrowserCommands {
 	readonly copy?: (text: string) => void | Promise<void>;
-	readonly select?: (session: string) => void | Promise<void>;
 	readonly shell?: (on: boolean | "toggle") => void | Promise<void>;
 }
 
@@ -20,11 +19,6 @@ export class ActionsService implements Service {
 
 		const command = result.command;
 		if (!command) return;
-
-		if (command.kind === "select") {
-			await this._commands.select?.(command.session);
-			return;
-		}
 
 		if (command.kind === "shell") {
 			await this._commands.shell?.(command.on);

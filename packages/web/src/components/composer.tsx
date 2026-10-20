@@ -9,14 +9,13 @@ const MAX_HEIGHT = 120;
 
 export function Composer(props: { host: Host }) {
 	const { host } = props;
-	const state = useStore(host.transcript.state);
 	const linked = useStore(host.transcript.linked);
 	const layout = useStore(host.composer.layout);
 	const shellMode = useStore(host.composer.shellMode);
 
-	const selected = state.selected;
-	const text = state.drafts[selected] ?? "";
-	const busy = selected ? host.transcript.running(selected) : false;
+	const selected = useStore(host.selection.selected);
+	const text = useStore(host.transcript.state, (state) => state.drafts[selected] ?? "");
+	const busy = useStore(host.sessions.rows, (rows) => rows.find((row) => row.name === selected)?.running ?? false);
 
 	const area = useRef<HTMLTextAreaElement>(null);
 	const composing = useRef(false);
@@ -54,18 +53,18 @@ export function Composer(props: { host: Host }) {
 			try {
 				await host.actions.invoke("shell.run", selected, { command: value });
 			} catch (error) {
-				host.transcript.setStatus(selected, false, error instanceof Error ? error.message : String(error));
+				host.transcript.fail(selected, error instanceof Error ? error.message : String(error));
 			}
 			return;
 		}
 		if (!linked) return;
-		await host.transcript.send(value);
+		await host.transcript.send(selected, value);
 	};
 
 	const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
 		const native = event.nativeEvent;
 		const claimed = host.composer.keydown(
-			{ key: native.key, shift: native.shiftKey, meta: native.metaKey, ctrl: native.ctrlKey, alt: native.altKey, isComposing: native.isComposing },
+			{ key: native.key, code: native.code, shift: native.shiftKey, meta: native.metaKey, ctrl: native.ctrlKey, alt: native.altKey, isComposing: native.isComposing },
 			{ session: selected, text, composing: composing.current },
 		);
 		if (claimed) {

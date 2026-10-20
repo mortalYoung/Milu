@@ -1,15 +1,17 @@
 import { type MarkdownPort, type SurfaceProps, type StepGroup, type ViewItem, formatHistoryTime, layoutView, oneLine, projectView, stepSummary } from "@milu/client";
 import { Markdown } from "@milu/markdown/react";
-import type { SeqEntry } from "@milu/protocol";
+import { SLOT_POINTS, type SeqEntry } from "@milu/protocol";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { copyPath } from "../clipboard.ts";
 import { ChatBar } from "../components/chat-bar.tsx";
 import { Composer } from "../components/composer.tsx";
 import { ArrowDownIcon, CheckIcon, CircleStopIcon, CopyIcon } from "../components/icons.tsx";
+import { Welcome } from "../components/welcome.tsx";
 import { useStore } from "../use-store.ts";
 
 const NO_ENTRIES: readonly SeqEntry[] = [];
+const NO_PANES: readonly never[] = [];
 
 const hasSelection = (): boolean => window.getSelection()?.isCollapsed === false;
 
@@ -39,8 +41,18 @@ function CopyButton(props: { text: string }) {
 }
 
 function UserBubble(props: { item: ViewItem }) {
+	const schedule = props.item.schedule;
 	return (
-		<div className="msg-block msg-block-user">
+		<div className="msg-block msg-block-user" data-entry={props.item.id}>
+			{schedule ? (
+				<div className="msg-origin">
+					<span className="msg-origin-badge">scheduled</span>
+					<span className="msg-origin-title">{schedule.title}</span>
+					<span className="msg-origin-when">{schedule.trigger === "manual" ? "manual" : "on time"}</span>
+					{schedule.status ? <span className={"msg-origin-status is-" + schedule.status}>{schedule.status === "done" ? "ok" : schedule.status}</span> : null}
+					{schedule.error ? <span className="msg-origin-error">{schedule.error}</span> : null}
+				</div>
+			) : null}
 			<div className="msg-user read-clamp">{props.item.text}</div>
 			<div className="msg-meta">
 				<span className="msg-at">{formatHistoryTime(props.item.time)}</span>
@@ -52,7 +64,7 @@ function UserBubble(props: { item: ViewItem }) {
 
 function ReplyCard(props: { item: ViewItem; port: MarkdownPort }) {
 	return (
-		<div className="msg-reply">
+		<div className="msg-reply" data-entry={props.item.id}>
 			<div className="msg-reply-head">
 				<span className="msg-reply-stamp">
 					{props.item.from} · {formatHistoryTime(props.item.time)}
@@ -71,7 +83,7 @@ function EscalationCard(props: { item: ViewItem }) {
 	if (!escalation) return null;
 	const tone = escalation.status === "approved" ? " ok" : escalation.status === "rejected" ? " no" : " drp";
 	return (
-		<div className="msg-escalation">
+		<div className="msg-escalation" data-entry={props.item.id}>
 			<div className="msg-escalation-head">sandbox escalation</div>
 			<pre className="msg-escalation-cmd">{escalation.command}</pre>
 			<div className="msg-escalation-meta">
@@ -205,16 +217,20 @@ function StepBlock(props: {
 
 export function TranscriptPaneSurface(props: SurfaceProps) {
 	const { host } = props;
-	const state = useStore(host.transcript.state);
 
-	const selected = state.selected;
-	const entries = state.logs[selected] ?? NO_ENTRIES;
-	const error = state.errors[selected] ?? "";
-	const working = state.running[selected] ?? false;
+	const selected = useStore(host.selection.selected);
+	const entries = useStore(host.transcript.state, (state) => state.logs[selected] ?? NO_ENTRIES);
+	const loadError = useStore(host.transcript.state, (state) => state.errors[selected] ?? "");
+	const runError = useStore(host.sessions.rows, (rows) => rows.find((row) => row.name === selected)?.error ?? "");
+	const error = loadError || runError;
+	const working = useStore(host.sessions.rows, (rows) => rows.find((row) => row.name === selected)?.running ?? false);
 
 	const items = useMemo(() => projectView(entries.map((seq) => seq.entry)), [entries]);
 	const display = useMemo(() => layoutView(items), [items]);
 	const tail = items.length > 0 ? items[items.length - 1] : undefined;
+
+	const panes = useStore(host.slots.state, (state) => state[SLOT_POINTS.chatPanes] ?? NO_PANES);
+	const focused = useStore(host.transcript.focused);
 
 	const [openSteps, setOpenSteps] = useState<ReadonlySet<string>>(() => new Set());
 	const [openRows, setOpenRows] = useState<ReadonlySet<string>>(() => new Set());
@@ -251,8 +267,8 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 		};
 	}, [display, following]);
 
-	const hasMore = state.hasMore[selected] ?? false;
-	const loadingOlder = state.loadingOlder[selected] ?? false;
+	const hasMore = useStore(host.transcript.state, (state) => state.hasMore[selected] ?? false);
+	const loadingOlder = useStore(host.transcript.state, (state) => state.loadingOlder[selected] ?? false);
 	const loadOlder = () => {
 		setFollowing(false);
 		const element = scroll.current;
@@ -262,6 +278,18 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 			element.scrollTop += element.scrollHeight - before;
 		});
 	};
+
+	useEffect(() => {
+		if (!focused) return;
+		const element = scroll.current?.querySelector(`[data-entry="${CSS.escape(focused.id)}"]`);
+		host.transcript.clearFocus();
+		if (!element) return;
+		setFollowing(false);
+		element.scrollIntoView({ block: "center", behavior: "smooth" });
+		element.classList.add("is-located");
+		const timer = window.setTimeout(() => element.classList.remove("is-located"), 1400);
+		return () => window.clearTimeout(timer);
+	}, [focused, host]);
 
 	const onScroll = () => {
 		const element = scroll.current;
@@ -275,94 +303,107 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 			<ChatBar host={host} />
 
 			<div className="chat-body">
-				<div className="chat-column">
-					<div className="transcript-view">
-						<div className="transcript" ref={scroll} onScroll={onScroll}>
-							{hasMore ? (
-								<div className="load-earlier-wrap">
-									<button type="button" className="load-earlier" onClick={loadOlder} disabled={loadingOlder}>
-										{loadingOlder ? "loading…" : "↑ load earlier"}
-									</button>
-								</div>
-							) : null}
-							{display.length === 0 ? <p className="empty">Send something.</p> : null}
-							{display.map((row) => {
-								if ("step" in row) {
-									const live = working && tail !== undefined && row.step.rows.some((item) => item.id === tail.id);
-									return (
-										<StepBlock
-											key={`s:${row.step.key}`}
-											group={row.step}
-											port={host.markdown}
-											working={working}
-											live={live}
-											open={openSteps.has(row.step.key)}
-											onToggle={() => setOpenSteps((previous) => toggle(previous, row.step.key))}
-											openRows={openRows}
-											onToggleRow={(key) => setOpenRows((previous) => toggle(previous, key))}
-										/>
-									);
-								}
-								const item = row.item;
-								if (item.kind === "sep") {
-									return (
-										<div key={`i:${item.id}`} className="time-sep">
-											{item.text}
+				{selected === "" ? (
+					<div className="chat-main">
+						<Welcome host={host} />
+					</div>
+				) : (
+					<div className="chat-column">
+						<div className="transcript-view">
+							<div className="transcript" ref={scroll} onScroll={onScroll}>
+								<div className="transcript-inner">
+									{hasMore ? (
+										<div className="load-earlier-wrap">
+											<button type="button" className="load-earlier" onClick={loadOlder} disabled={loadingOlder}>
+												{loadingOlder ? "loading…" : "↑ load earlier"}
+											</button>
 										</div>
-									);
-								}
-								if (item.kind === "escalation") {
-									return <EscalationCard key={`i:${item.id}`} item={item} />;
-								}
-								if (item.kind === "error") {
-									return (
-										<div key={`i:${item.id}`} className="sys-error">
+									) : null}
+									{display.length === 0 ? <p className="empty">Send something.</p> : null}
+									{display.map((row) => {
+										if ("step" in row) {
+											const live = working && tail !== undefined && row.step.rows.some((item) => item.id === tail.id);
+											return (
+												<StepBlock
+													key={`s:${row.step.key}`}
+													group={row.step}
+													port={host.markdown}
+													working={working}
+													live={live}
+													open={openSteps.has(row.step.key)}
+													onToggle={() => setOpenSteps((previous) => toggle(previous, row.step.key))}
+													openRows={openRows}
+													onToggleRow={(key) => setOpenRows((previous) => toggle(previous, key))}
+												/>
+											);
+										}
+										const item = row.item;
+										if (item.kind === "sep") {
+											return (
+												<div key={`i:${item.id}`} className="time-sep">
+													{item.text}
+												</div>
+											);
+										}
+										if (item.kind === "escalation") {
+											return <EscalationCard key={`i:${item.id}`} item={item} />;
+										}
+										if (item.kind === "error") {
+											return (
+												<div key={`i:${item.id}`} className="sys-error" data-entry={item.id}>
+													<span className="sys-error-tag">ERR</span>
+													<span className="sys-error-text">{item.text}</span>
+												</div>
+											);
+										}
+										if (item.kind === "aborted") {
+											return (
+												<div key={`i:${item.id}`} className="sys-stopped" data-entry={item.id}>
+													<CircleStopIcon size={12} />
+													<span>{item.text}</span>
+												</div>
+											);
+										}
+										if (item.kind === "user") {
+											return item.peerKind === "reply" ? <ReplyCard key={`i:${item.id}`} item={item} port={host.markdown} /> : <UserBubble key={`i:${item.id}`} item={item} />;
+										}
+										return (
+											<div key={`i:${item.id}`} className="msg-block msg-block-agent" data-entry={item.id}>
+												<Markdown port={host.markdown} text={item.text} className="msg-body" />
+												<div className="msg-meta">
+													<CopyButton text={item.text} />
+													<span className="msg-at">{formatHistoryTime(item.time)}</span>
+													{item.to ? <span className="msg-chip">→ {item.to}</span> : null}
+												</div>
+											</div>
+										);
+									})}
+									{error ? (
+										<div className="sys-error">
 											<span className="sys-error-tag">ERR</span>
-											<span className="sys-error-text">{item.text}</span>
+											<span className="sys-error-text">{error}</span>
 										</div>
-									);
-								}
-								if (item.kind === "aborted") {
-									return (
-										<div key={`i:${item.id}`} className="sys-stopped">
-											<CircleStopIcon size={12} />
-											<span>{item.text}</span>
-										</div>
-									);
-								}
-								if (item.kind === "user") {
-									return item.peerKind === "reply" ? <ReplyCard key={`i:${item.id}`} item={item} port={host.markdown} /> : <UserBubble key={`i:${item.id}`} item={item} />;
-								}
-								return (
-									<div key={`i:${item.id}`} className="msg-block msg-block-agent">
-										<Markdown port={host.markdown} text={item.text} className="msg-body" />
-										<div className="msg-meta">
-											<CopyButton text={item.text} />
-											<span className="msg-at">{formatHistoryTime(item.time)}</span>
-											{item.to ? <span className="msg-chip">→ {item.to}</span> : null}
-										</div>
-									</div>
-								);
-							})}
-							{error ? (
-								<div className="sys-error">
-									<span className="sys-error-tag">ERR</span>
-									<span className="sys-error-text">{error}</span>
+									) : null}
 								</div>
-							) : null}
+							</div>
+							{following ? null : (
+								<button type="button" className="back-to-bottom" aria-label="Back to latest" onClick={() => setFollowing(true)}>
+									<ArrowDownIcon size={13} />
+								</button>
+							)}
 						</div>
-						{following ? null : (
-							<button type="button" className="back-to-bottom" aria-label="Back to latest" onClick={() => setFollowing(true)}>
-								<ArrowDownIcon size={13} />
-							</button>
-						)}
-					</div>
 
-					<div className="composer-slot">
-						<Composer host={host} />
+						<div className="composer-slot">
+							<Composer host={host} />
+						</div>
 					</div>
-				</div>
+				)}
 			</div>
+
+			{panes.map((item) => {
+				const Component = host.slots.component(item.component);
+				return Component ? <Component key={item.id} host={host} /> : null;
+			})}
 		</div>
 	);
 }

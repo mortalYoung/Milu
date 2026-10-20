@@ -5,11 +5,24 @@ import { DialogHost } from "./components/dialog-host.tsx";
 import { Grip } from "./components/grip.tsx";
 import { useStore } from "./use-store.ts";
 
+const WELCOME_SCOPES: ReadonlySet<string> = new Set(["welcome"]);
+const CHAT_SCOPES: ReadonlySet<string> = new Set(["chat"]);
+
 export function Workbench(props: { host: Host }) {
 	const { host } = props;
 
 	useEffect(() => {
 		const onKey = (event: KeyboardEvent) => {
+			const selected = host.selection.selected.get();
+			const binding = host.hotkeys.match(
+				{ key: event.key, code: event.code, shift: event.shiftKey, meta: event.metaKey, ctrl: event.ctrlKey, alt: event.altKey, isComposing: event.isComposing },
+				selected === "" ? WELCOME_SCOPES : CHAT_SCOPES,
+			);
+			if (binding) {
+				event.preventDefault();
+				void host.actions.invoke(binding.id, selected === "" ? undefined : selected);
+				return;
+			}
 			if (!(event.metaKey || event.ctrlKey)) return;
 			if (event.key === "f") {
 				event.preventDefault();
