@@ -4,6 +4,8 @@ import { chatExtension } from "./chat/chat.ts";
 import { copyExtension } from "./copy/copy.ts";
 import { createExtension } from "./create/create.ts";
 import { detailsExtension } from "./details/details.ts";
+import { fetchExtension } from "./fetch/fetch.ts";
+import { filesExtension } from "./files/files.ts";
 import { meterExtension } from "./meter/meter.ts";
 import { modelsExtension } from "./models/models.ts";
 import { openExtension } from "./open/open.ts";
@@ -23,6 +25,8 @@ export const extensions: readonly Extension[] = [
 	openExtension,
 	trashExtension,
 	chatExtension,
+	filesExtension,
+	fetchExtension,
 	remindersExtension,
 	repliesExtension,
 	modelsExtension,

@@ -1,4 +1,4 @@
-import type { AgentEvent, AgentMessage } from "@earendil-works/pi-agent-core";
+import type { AgentEvent, AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
 import { Agent } from "@earendil-works/pi-agent-core";
 import type { Api, Model, ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { DisposableStore, createServiceId, Emitter, type Event, type Service } from "@milu/di";
@@ -69,8 +69,12 @@ export class AgentLoopService implements Service {
 		return this._agent.state.messages;
 	}
 
+	tools(): readonly AgentTool[] {
+		return this._agent.state.tools;
+	}
+
 	async run(input: string | AgentMessage): Promise<AgentLoopRun> {
-		this._agent.state.tools = [...this._toolService.tools()];
+		this._agent.state.tools = [...(await this._toolService.tools(this._session))];
 		await this._emit("beforeRun", this._agent.state.messages);
 		if (typeof input === "string") await this._agent.prompt(input);
 		else await this._agent.prompt(input);

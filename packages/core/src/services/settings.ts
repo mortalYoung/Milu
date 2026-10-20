@@ -2,7 +2,7 @@ import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { createServiceId, type Service } from "@milu/di";
+import { createServiceId, type Disposable, type Service } from "@milu/di";
 
 import type { ConfigService } from "./config.ts";
 
@@ -51,7 +51,6 @@ export interface Settings {
 	retry?: { maxRetries?: number; baseDelayMs?: number };
 	bash?: { timeoutSec?: number };
 	delete?: { strict?: boolean };
-	webFetch?: { timeoutMs?: number; maxBytes?: number; maxChars?: number; userAgent?: string };
 	compaction?: {
 		thresholdRatio?: number;
 		digestMaxItems?: number;
@@ -99,6 +98,32 @@ function defaults(root: string): Settings {
 	};
 }
 
+function isSectionObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export class SettingsPoint<T> implements Disposable {
+	private _closed = false;
+
+	constructor(
+		private readonly _service: SettingsService,
+		readonly key: string,
+		private readonly _defaults: T,
+	) {}
+
+	get(): T {
+		if (this._closed) throw new Error(`settings "${this.key}" is no longer declared`);
+		const value = (this._service.get() as unknown as Record<string, unknown>)[this.key];
+		if (value === undefined) return this._defaults;
+		if (isSectionObject(value) && isSectionObject(this._defaults)) return { ...this._defaults, ...value } as T;
+		return value as T;
+	}
+
+	dispose(): void {
+		this._closed = true;
+	}
+}
+
 function isMissing(error: unknown): boolean {
 	return typeof error === "object" && error !== null && "code" in error && (error as { code?: unknown }).code === "ENOENT";
 }
@@ -117,6 +142,7 @@ export class SettingsService implements Service {
 
 	private _settings: Settings;
 	private _loaded = false;
+	private readonly _declared = new Set<string>();
 
 	constructor(private readonly _configService: ConfigService) {
 		this.file = join(this._configService.root, "settings.json");
@@ -145,6 +171,13 @@ export class SettingsService implements Service {
 		return this._settings;
 	}
 
+	declare<T>(section: { readonly key: string; readonly defaults: T }): SettingsPoint<T> {
+		this.get();
+		if (this._declared.has(section.key)) throw new Error(`settings "${section.key}" is already declared`);
+		this._declared.add(section.key);
+		return new SettingsPoint(this, section.key, section.defaults);
+	}
+
 	async update(patch: Partial<Settings>): Promise<void> {
 		this.get();
 		const next = { ...this._settings, ...patch };
@@ -156,7 +189,9 @@ export class SettingsService implements Service {
 		this._settings = next;
 	}
 
-	dispose(): void {}
+	dispose(): void {
+		this._declared.clear();
+	}
 }
 
 export const SettingsServiceId = createServiceId<SettingsService>("SettingsService");

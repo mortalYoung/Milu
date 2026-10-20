@@ -62,7 +62,19 @@ export {
 } from "./session/events.ts";
 export type { SessionModel, SessionProfile, WorkspaceFacts } from "./session/files.ts";
 export { SettingsService, SettingsServiceId, type Settings } from "./services/settings.ts";
-export { ToolService, ToolServiceId } from "./services/tools.ts";
+export { ToolService, ToolServiceId, type Tool, type ToolContext, type ToolFactory } from "./services/tools.ts";
+export {
+	bindEnv,
+	createEditTool,
+	createReadTool,
+	createWriteTool,
+	Type,
+	type AgentTool,
+	type AgentToolResult,
+	type ExecutionEnv,
+	type Static,
+	type TSchema,
+} from "./tools/index.ts";
 export { LocalExecutionEnv } from "./execution/local-env.ts";
 
 export interface BackendConfig {

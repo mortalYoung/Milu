@@ -1,9 +1,6 @@
-import type { AgentTool, ExecutionEnv } from "@earendil-works/pi-agent-core";
-import { createEditTool, createReadTool, createWriteTool } from "@earendil-works/pi-agent-core";
+export type { AgentTool, AgentToolResult, ExecutionEnv } from "@earendil-works/pi-agent-core";
+export { createEditTool, createReadTool, createWriteTool } from "@earendil-works/pi-agent-core";
 
-import { bindEnv } from "./bind-env.ts";
+export { bindEnv } from "./bind-env.ts";
 
-export function createFileTools(env: ExecutionEnv): AgentTool[] {
-	const context = { env };
-	return [bindEnv(createReadTool(), context), bindEnv(createWriteTool(), context), bindEnv(createEditTool(), context)];
-}
+export { Type, type Static, type TSchema } from "@earendil-works/pi-ai";

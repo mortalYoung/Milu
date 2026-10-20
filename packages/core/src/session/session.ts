@@ -304,7 +304,7 @@ export class Session {
 		if (!window) return null;
 
 		const messages = await this._log.transcript();
-		const tools = this._deps.toolService.tools();
+		const tools = await this._deps.toolService.tools(this);
 		const prompt = this.systemPrompt();
 		const breakdown = priceMessages(prompt, tools, messages);
 		const used = await this._contextTokens();
@@ -391,7 +391,7 @@ export class Session {
 	}
 
 	private _requestHeader(): Record<string, unknown> {
-		const tools = this._deps.toolService.tools().map((tool) => ({ name: tool.name, description: tool.description, parameters: tool.parameters }));
+		const tools = (this._loop?.tools() ?? []).map((tool) => ({ name: tool.name, description: tool.description, parameters: tool.parameters }));
 		return { systemPrompt: this.systemPrompt(), toolNames: tools.map((tool) => tool.name), tools, timestamp: Date.now() };
 	}
 
