@@ -5,6 +5,7 @@ import type { PreviewKind, SeqEntry, SessionRow } from "@milu/protocol";
 
 import { AgentLoopService, type AgentLoopEvent } from "../services/agent-loop.ts";
 import type { ExecutionService } from "../services/execution.ts";
+import type { HookService } from "../services/hooks.ts";
 import type { ModelsService } from "../services/models.ts";
 import type { PromptService } from "../services/prompt.ts";
 import type { ToolService } from "../services/tools.ts";
@@ -87,6 +88,7 @@ export interface SessionDeps {
 	readonly modelsService: ModelsService;
 	readonly toolService: ToolService;
 	readonly promptService: PromptService;
+	readonly hookService: HookService;
 }
 
 export class Session {
@@ -180,7 +182,7 @@ export class Session {
 		if (this._loop) return this._loop;
 		await this._log.open();
 
-		const loop = new AgentLoopService(this._deps.modelsService, this._deps.toolService);
+		const loop = new AgentLoopService(this._deps.modelsService, this._deps.toolService, this._deps.hookService, this);
 		this._applyModel(loop, await this._modelOf());
 		await this._applyPrompt(loop);
 		this._loop = loop;
@@ -242,6 +244,9 @@ export class Session {
 				case "run_end":
 					this._error = event.error ?? null;
 					record(EVENTS.agentEnd, { run: event.run, reason: event.error ? "error" : "completed", ...(event.error ? { error: event.error } : {}), timestamp });
+					return;
+				case "reminder":
+					record(event.reminder.type, { ...event.reminder.data, timestamp });
 					return;
 				case "turn_start":
 					record(EVENTS.turnStart, { run: event.run, turn: event.turn, timestamp });

@@ -3,6 +3,9 @@ import { Agent } from "@earendil-works/pi-agent-core";
 import type { Api, Model, ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { DisposableStore, createServiceId, Emitter, type Event, type Service } from "@milu/di";
 
+import { type AgentReminder, reminderText } from "../session/events.ts";
+import type { Session } from "../session/session.ts";
+import type { AgentHookPoint, HookService } from "./hooks.ts";
 import type { ModelsService } from "./models.ts";
 import type { ToolService } from "./tools.ts";
 
@@ -18,6 +21,7 @@ export type AgentLoopEvent =
 	| ({ type: "message_end"; message: AgentMessage } & AgentLoopProgress)
 	| ({ type: "tool_start"; toolCallId: string; toolName: string; args: unknown } & AgentLoopProgress)
 	| ({ type: "tool_end"; toolCallId: string; toolName: string; isError: boolean } & AgentLoopProgress)
+	| { type: "reminder"; reminder: AgentReminder }
 	| ({ type: "turn_end" } & AgentLoopProgress)
 	| ({ type: "run_end"; error?: string } & AgentLoopProgress);
 
@@ -37,11 +41,18 @@ export class AgentLoopService implements Service {
 	constructor(
 		private readonly _modelsService: ModelsService,
 		private readonly _toolService: ToolService,
+		private readonly _hookService: HookService,
+		private readonly _session: Session,
 	) {
 		this._agent = new Agent({
 			streamFn: this._modelsService.stream,
 			followUpMode: "one-at-a-time",
 			steeringMode: "one-at-a-time",
+			transformContext: async (messages) => {
+				const injected = await this._emit("beforeRequest", messages);
+				if (injected.length === 0) return messages;
+				return [...messages, ...injected];
+			},
 		});
 		this.events = this._emitter.event;
 		this._disposables.add(this._emitter);
@@ -60,6 +71,7 @@ export class AgentLoopService implements Service {
 
 	async run(input: string | AgentMessage): Promise<AgentLoopRun> {
 		this._agent.state.tools = [...this._toolService.tools()];
+		await this._emit("beforeRun", this._agent.state.messages);
 		if (typeof input === "string") await this._agent.prompt(input);
 		else await this._agent.prompt(input);
 		await this._agent.waitForIdle();
@@ -122,8 +134,29 @@ export class AgentLoopService implements Service {
 		this._agent.state.messages = [...messages];
 	}
 
+	private inject(messages: readonly AgentMessage[]): void {
+		this._agent.state.messages = [...this._agent.state.messages, ...messages];
+	}
+
 	dispose(): void {
 		this._disposables.dispose();
+	}
+
+	// ——— the hooks, fired where the loop turns ———
+
+	private async _emit(point: AgentHookPoint, messages: readonly AgentMessage[]): Promise<readonly AgentMessage[]> {
+		const reminders = await this._hookService.emit(point, { session: this._session, messages });
+		const timestamp = Date.now();
+		const injected: AgentMessage[] = [];
+		for (const reminder of reminders) {
+			const text = reminderText(reminder.type, reminder.data);
+			if (text.trim() === "") continue;
+			injected.push({ role: "user", content: text, timestamp } as AgentMessage);
+			this._emitter.fire({ type: "reminder", reminder });
+		}
+		if (injected.length === 0) return [];
+		this.inject(injected);
+		return injected;
 	}
 
 	// ——— pi's events, relayed as ours ———

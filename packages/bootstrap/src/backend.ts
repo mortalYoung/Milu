@@ -10,6 +10,8 @@ import {
 	declareExtensionServices,
 	ExecutionService,
 	ExecutionServiceId,
+	HookService,
+	HookServiceId,
 	LayoutService,
 	LayoutServiceId,
 	ModelsService,
@@ -42,6 +44,7 @@ export async function createBackend(config: BackendConfig): Promise<Backend> {
 	container.register(LayoutServiceId, (c) => new LayoutService(c.get(ConfigServiceId)));
 	container.register(ToolServiceId, (c) => new ToolService(c.get(ConfigServiceId), c.get(ExecutionServiceId)));
 	container.register(PromptServiceId, (c) => new PromptService(c.get(ContributionServiceId)));
+	container.register(HookServiceId, () => new HookService());
 	container.register(ActionServiceId, () => new ActionService());
 	container.register(
 		ExtensionServiceId,
@@ -53,7 +56,15 @@ export async function createBackend(config: BackendConfig): Promise<Backend> {
 	container.register(
 		SessionServiceId,
 		(c) =>
-			new SessionService(c.get(ExecutionServiceId), c.get(SettingsServiceId), c.get(ModelsServiceId), c.get(ToolServiceId), c.get(ContributionServiceId), c.get(PromptServiceId)),
+			new SessionService(
+				c.get(ExecutionServiceId),
+				c.get(SettingsServiceId),
+				c.get(ModelsServiceId),
+				c.get(ToolServiceId),
+				c.get(ContributionServiceId),
+				c.get(PromptServiceId),
+				c.get(HookServiceId),
+			),
 	);
 	container.register(SelectionServiceId, (c) => new SelectionService(c.get(SessionServiceId), c.get(ConfigServiceId)));
 

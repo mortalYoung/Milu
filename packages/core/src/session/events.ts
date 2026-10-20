@@ -2,6 +2,13 @@ import { LOG_EVENTS } from "@milu/protocol";
 
 export const EVENTS = LOG_EVENTS;
 
+export type ReminderType = (typeof EVENTS)["timeGapReminder" | "contextChanged" | "instructionsChanged" | "mcpChanged"];
+
+export interface AgentReminder {
+	readonly type: ReminderType;
+	readonly data: Record<string, unknown>;
+}
+
 function escapeXml(text: string): string {
 	return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -42,4 +49,26 @@ export function mcpChangedText(data: { readonly server: string; readonly change:
 	const granted = data.granted.length > 0 ? data.granted.join(", ") : "none";
 	const action = data.change === "added" ? `MCP server "${data.server}" is now authorized` : `MCP server "${data.server}" is no longer authorized`;
 	return `<system_reminder>${action}. Authorized servers: ${granted}. Use mcp_list to see available tools and mcp_call to invoke one.</system_reminder>`;
+}
+
+export function reminderText(type: ReminderType, data: Record<string, unknown>): string {
+	switch (type) {
+		case EVENTS.timeGapReminder:
+			return typeof data["text"] === "string" ? data["text"] : "";
+		case EVENTS.contextChanged:
+			return contextChangedText({
+				workspace: typeof data["workspace"] === "string" ? data["workspace"] : null,
+				storage: typeof data["storage"] === "string" ? data["storage"] : null,
+				sandbox: typeof data["sandbox"] === "string" ? data["sandbox"] : "workspace-write",
+				skills: Array.isArray(data["skills"]) ? (data["skills"] as ContextChangedData["skills"]) : [],
+			});
+		case EVENTS.instructionsChanged:
+			return instructionsChangedText(typeof data["agentMd"] === "string" ? data["agentMd"] : null);
+		case EVENTS.mcpChanged:
+			return mcpChangedText({
+				server: typeof data["server"] === "string" ? data["server"] : "",
+				change: data["change"] === "removed" ? "removed" : "added",
+				granted: Array.isArray(data["granted"]) ? data["granted"].filter((value): value is string => typeof value === "string") : [],
+			});
+	}
 }

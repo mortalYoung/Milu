@@ -18,6 +18,8 @@ export { ContributionPoint, ContributionService, ContributionServiceId } from ".
 export { ExecutionService, ExecutionServiceId } from "./services/execution.ts";
 export { ExtensionService, ExtensionServiceId } from "./services/extensions.ts";
 export { declareExtensionServices } from "./extensions/services.ts";
+export { HookService, HookServiceId, type AgentHook, type AgentHookContext, type AgentHookPoint } from "./services/hooks.ts";
+export { expandHome } from "./services/settings.ts";
 export {
 	COMPOSER_LEFT_POINT,
 	COMPOSER_RIGHT_POINT,
@@ -48,6 +50,16 @@ export { SelectionService, SelectionServiceId } from "./services/selection.ts";
 export { SessionService, SessionServiceId, type SessionEntry, type SessionLoopEvent } from "./services/sessions.ts";
 export { Session, type SessionDeps } from "./session/session.ts";
 export { SessionLog } from "./session/log.ts";
+export {
+	contextChangedText,
+	EVENTS,
+	instructionsChangedText,
+	mcpChangedText,
+	reminderText,
+	type AgentReminder,
+	type ContextChangedData,
+	type ReminderType,
+} from "./session/events.ts";
 export type { SessionModel, SessionProfile, WorkspaceFacts } from "./session/files.ts";
 export { SettingsService, SettingsServiceId, type Settings } from "./services/settings.ts";
 export { ToolService, ToolServiceId } from "./services/tools.ts";

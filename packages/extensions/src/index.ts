@@ -9,6 +9,7 @@ import { modelsExtension } from "./models/models.ts";
 import { openExtension } from "./open/open.ts";
 import { pinExtension } from "./pin/pin.ts";
 import { promptExtension } from "./prompt/prompt.ts";
+import { remindersExtension } from "./reminders/reminders.ts";
 import { repliesExtension } from "./replies/replies.ts";
 import { shellExtension } from "./shell/shell.ts";
 import { tipsExtension } from "./tips/tips.ts";
@@ -22,6 +23,7 @@ export const extensions: readonly Extension[] = [
 	openExtension,
 	trashExtension,
 	chatExtension,
+	remindersExtension,
 	repliesExtension,
 	modelsExtension,
 	meterExtension,

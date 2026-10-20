@@ -18,6 +18,7 @@ import { Session } from "../session/session.ts";
 import type { AgentLoopEvent } from "./agent-loop.ts";
 import type { ContributionService } from "./contributions.ts";
 import type { ExecutionService } from "./execution.ts";
+import type { HookService } from "./hooks.ts";
 import type { ModelsService } from "./models.ts";
 import type { PromptService } from "./prompt.ts";
 import { expandHome, type SettingsService } from "./settings.ts";
@@ -50,6 +51,7 @@ export class SessionService implements Service {
 		private readonly _toolService: ToolService,
 		private readonly _contributionService: ContributionService,
 		private readonly _promptService: PromptService,
+		private readonly _hookService: HookService,
 	) {
 		this.onEntry = this._entryEmitter.event;
 		this.onLoopEvent = this._loopEmitter.event;
@@ -83,6 +85,7 @@ export class SessionService implements Service {
 			modelsService: this._modelsService,
 			toolService: this._toolService,
 			promptService: this._promptService,
+			hookService: this._hookService,
 		});
 		this._sessions.set(name, session);
 

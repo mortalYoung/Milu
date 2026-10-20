@@ -1,6 +1,6 @@
 import type { AgentMessage, Entry } from "@earendil-works/pi-agent-core";
 
-import { contextChangedText, EVENTS, instructionsChangedText, mcpChangedText } from "./events.ts";
+import { EVENTS, reminderText, type ReminderType } from "./events.ts";
 
 export interface SliceItem {
 	readonly id: string;
@@ -46,51 +46,11 @@ function memoryContext(ctx: SliceContext): void {
 	push(ctx, textMessage("user", data["text"], stamp(ctx.entry, data)));
 }
 
-function textUser(ctx: SliceContext): void {
-	const data = custom(ctx.entry, ctx.entry.type === "custom" ? ctx.entry.customType : "");
-	if (!data) return;
-	push(ctx, textMessage("user", typeof data["text"] === "string" ? data["text"] : "", stamp(ctx.entry, data)));
-}
-
-function contextChanged(ctx: SliceContext): void {
-	const data = custom(ctx.entry, EVENTS.contextChanged);
-	if (!data) return;
-	push(
-		ctx,
-		textMessage(
-			"user",
-			contextChangedText({
-				workspace: typeof data["workspace"] === "string" ? data["workspace"] : null,
-				storage: typeof data["storage"] === "string" ? data["storage"] : null,
-				sandbox: typeof data["sandbox"] === "string" ? data["sandbox"] : "workspace-write",
-				skills: Array.isArray(data["skills"]) ? (data["skills"] as { name: string; description: string; digest: string }[]) : [],
-			}),
-			stamp(ctx.entry, data),
-		),
-	);
-}
-
-function instructionsChanged(ctx: SliceContext): void {
-	const data = custom(ctx.entry, EVENTS.instructionsChanged);
-	if (!data) return;
-	push(ctx, textMessage("user", instructionsChangedText(typeof data["agentMd"] === "string" ? data["agentMd"] : null), stamp(ctx.entry, data)));
-}
-
-function mcpChanged(ctx: SliceContext): void {
-	const data = custom(ctx.entry, EVENTS.mcpChanged);
-	if (!data) return;
-	push(
-		ctx,
-		textMessage(
-			"user",
-			mcpChangedText({
-				server: typeof data["server"] === "string" ? data["server"] : "",
-				change: data["change"] === "removed" ? "removed" : "added",
-				granted: Array.isArray(data["granted"]) ? data["granted"].filter((value): value is string => typeof value === "string") : [],
-			}),
-			stamp(ctx.entry, data),
-		),
-	);
+function reminder(ctx: SliceContext): void {
+	const entry = ctx.entry;
+	if (entry.type !== "custom") return;
+	const data = (entry.data ?? {}) as Record<string, unknown>;
+	push(ctx, textMessage("user", reminderText(entry.customType as ReminderType, data), stamp(entry, data)));
 }
 
 function message(ctx: SliceContext): void {
@@ -190,10 +150,10 @@ function rewind(ctx: SliceContext): void {
 const BY_CUSTOM: Record<string, (ctx: SliceContext) => void> = {
 	[EVENTS.sendMessage]: sendMessage,
 	[EVENTS.memoryContext]: memoryContext,
-	[EVENTS.timeGapReminder]: textUser,
-	[EVENTS.contextChanged]: contextChanged,
-	[EVENTS.instructionsChanged]: instructionsChanged,
-	[EVENTS.mcpChanged]: mcpChanged,
+	[EVENTS.timeGapReminder]: reminder,
+	[EVENTS.contextChanged]: reminder,
+	[EVENTS.instructionsChanged]: reminder,
+	[EVENTS.mcpChanged]: reminder,
 	[EVENTS.toolResult]: toolResult,
 	[EVENTS.compaction]: compaction,
 	[EVENTS.rewind]: rewind,
