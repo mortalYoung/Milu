@@ -155,7 +155,7 @@ export function Composer(props: { host: Host }) {
 
 				{tips.length > 0 ? (
 					<div className="composer-tip">
-						<div className="composer-tip-row">
+						<div className={`composer-tip-row ${shellMode ? "shell" : "chat"}`} key={shellMode ? "shell" : "chat"}>
 							{tips.map((tip) => (
 								<span className="composer-tip-item" key={tip.id}>
 									{tip.keys?.map((key, index) => (

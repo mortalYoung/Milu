@@ -19,7 +19,7 @@ export function ChatBar(props: { host: Host }) {
 		<header className={columns.list.mode === "flow" ? "chat-bar" : "chat-bar at-edge"}>
 			<div className="chat-bar-lead">
 				{columns.list.mode === "collapsed" ? (
-					<button type="button" className="bar-icon" aria-label="Show chat list" title="Show chat list (⌘B)" onClick={() => host.columns.toggleList()}>
+					<button type="button" className="bar-icon list-expand" aria-label="Show chat list" title="Show chat list (⌘B)" onClick={() => host.columns.toggleList()}>
 						<PanelLeftOpenIcon size={16} />
 					</button>
 				) : null}
