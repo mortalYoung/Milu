@@ -35,6 +35,7 @@ export interface EnvOptions {
 	readonly sandboxed: boolean;
 	readonly strictDelete: boolean;
 	confine(policy: PermissionPolicy, argv: string[]): Promise<ConfinedArgv | null>;
+	onExit?(command: string, exitCode: number): void;
 }
 
 export function createEnv(policy: PermissionPolicy, options: EnvOptions): ExecutionEnv {
@@ -75,7 +76,9 @@ export function createEnv(policy: PermissionPolicy, options: EnvOptions): Execut
 
 		const confined = await options.confine(policy, ["/bin/sh", "-c", command]);
 		if (!confined) return err(new ExecutionError("shell_unavailable", `no usable sandbox on ${process.platform} — refusing to run an unconfined command`));
-		return runCommand(policy, confined, opts ?? {});
+		const result = await runCommand(policy, confined, opts ?? {});
+		if (result.ok && result.value.exitCode !== 0) options.onExit?.(command, result.value.exitCode);
+		return result;
 	};
 
 	return {

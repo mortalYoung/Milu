@@ -16,6 +16,7 @@ import {
 import { createServiceId, type Service } from "@milu/di";
 
 import { seatbeltBackend } from "./backends/seatbelt.ts";
+import { movesToTrash } from "./delete-verbs.ts";
 import { createEnv } from "./env.ts";
 import { type EscalationDecision, type EscalationRequest, escalationLog, type EscalationState, readDecisions } from "./escalations.ts";
 import { isStrictlyWider } from "./modes.ts";
@@ -38,6 +39,7 @@ export class PermissionService implements Service {
 	private _delete: SettingsPoint<{ strict: boolean }> | null = null;
 	private readonly _nonce = Date.now().toString(36);
 	private _seq = 0;
+	private readonly _failures = new Map<string, string[]>();
 
 	constructor(
 		private readonly _settingsService: SettingsService,
@@ -67,11 +69,22 @@ export class PermissionService implements Service {
 				sandboxed: this.isConfining(),
 				strictDelete: this._delete ? this._delete.get().strict !== false : true,
 				confine: (policy, argv) => this._confine(policy, argv),
+				onExit: (command, exitCode) => {
+					if (exitCode === 0) return;
+					const failures = this._failures.get(session.name) ?? [];
+					failures.push(command);
+					this._failures.set(session.name, failures.slice(-5));
+				},
 			},
 		);
 	}
 
 	async intercept(call: ToolCall, next: ToolNext): Promise<ToolResult> {
+		if (call.name === "rm") {
+			const refusal = await this._deleteGate(call);
+			if (refusal) return refusal;
+		}
+
 		const { sandbox_mode: requested, justification } = (call.params ?? {}) as { sandbox_mode?: SandboxMode; justification?: string };
 
 		if (!requested) return next(call, this.env(call.session, call.workspace));
@@ -135,6 +148,29 @@ export class PermissionService implements Service {
 		const backend = this._backendOf();
 		if (!backend) return null;
 		return backend.confine(argv, policy);
+	}
+
+	private async _deleteGate(call: ToolCall): Promise<ToolResult | null> {
+		if (this._delete?.get().strict === false) return null;
+		const trash = this.trash();
+		const failures = this._failures.get(call.session.name) ?? [];
+		if (failures.some((command) => movesToTrash(command, trash))) return null;
+		const tried =
+			failures.length > 0
+				? `Failed bash calls this turn:\n${failures
+						.slice(-3)
+						.map((command) => `  - ${command.trim().slice(0, 120) || "(unknown)"}`)
+						.join("\n")}`
+				: "No bash call has failed in this turn.";
+		return {
+			content: [
+				{
+					type: "text",
+					text: `Refused: strict delete mode wants a failed trash move first. ${tried}\nMove the paths into the trash (\`mv <path> ${trash}/\`) and call rm again only if that fails.`,
+				},
+			],
+			details: { ok: false, code: "no_failed_trash_move", deleted: [], failed: [] },
+		};
 	}
 
 	private async _state(session: Session): Promise<EscalationState> {

@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import { basename } from "node:path";
 
 import { gitRoots, isInside, isInsideAny } from "./roots.ts";
@@ -21,7 +22,17 @@ export function commandMentionsSensitive(command: string): boolean {
 	return SENSITIVE_COMMAND.test(command);
 }
 
+function isProtected(target: string, policy: PermissionPolicy): boolean {
+	if (target === "/" || target === homedir()) return true;
+	for (const root of [policy.workspace, policy.storage]) {
+		if (!root) continue;
+		if (target === root || isInside(root, target)) return true;
+	}
+	return false;
+}
+
 export function checkPath(target: string, op: "read" | "write", policy: PermissionPolicy, sandboxMounted: boolean): PermissionDecision {
+	if (op === "write" && isProtected(target, policy)) return deny("outside_workspace", "refused: a filesystem root, the workspace/storage root itself, or an ancestor of it");
 	if (isInside(target, policy.storage)) return ALLOWED;
 	if (isSensitiveName(basename(target))) return deny("sensitive_file", "Sensitive file access is not allowed (except inside the storage path)");
 	if (op === "write") {

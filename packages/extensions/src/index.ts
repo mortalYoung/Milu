@@ -15,6 +15,7 @@ import { pinExtension } from "./pin/pin.ts";
 import { promptExtension } from "./prompt/prompt.ts";
 import { remindersExtension } from "./reminders/reminders.ts";
 import { repliesExtension } from "./replies/replies.ts";
+import { rmExtension } from "./rm/rm.ts";
 import { shellExtension } from "./shell/shell.ts";
 import { tipsExtension } from "./tips/tips.ts";
 import { trashExtension } from "./trash/trash.ts";
@@ -30,6 +31,7 @@ export const extensions: readonly Extension[] = [
 	chatExtension,
 	filesExtension,
 	bashExtension,
+	rmExtension,
 	fetchExtension,
 	remindersExtension,
 	repliesExtension,
