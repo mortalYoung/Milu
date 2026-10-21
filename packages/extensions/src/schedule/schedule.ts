@@ -77,7 +77,6 @@ export class ScheduleService implements Service {
 		this._enabled = this._settingsService.declare({ key: "schedulesEnabled", defaults: true });
 		this._dailyCap = this._settingsService.declare({ key: "schedulesDailyCap", defaults: 200 });
 
-		// A clock has to be armed before anyone opens the chat: the service initializes after SessionService, so the names are real here.
 		for (const name of await this._sessionService.names()) {
 			const session = this._sessionService.get(name);
 			if (await hasDefinitions(session.root)) await this.start(session);

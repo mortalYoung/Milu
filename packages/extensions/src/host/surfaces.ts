@@ -4,6 +4,8 @@ import type { ComponentType } from "react";
 import type { MarkdownPort } from "../markdown/types.ts";
 import type { ActionsService } from "./actions.ts";
 import type { ColumnsService } from "./columns.ts";
+import type { CommandRegistry } from "./commands.ts";
+import type { ComposerTriggerRegistry } from "./composer-triggers.ts";
 import type { ComposerService, WidgetRegistry } from "./composer.ts";
 import type { Connection } from "./connection.ts";
 import type { DialogService } from "./dialogs.ts";
@@ -39,6 +41,8 @@ export interface Host {
 	readonly columns: ColumnsService;
 	readonly header: HeaderService;
 	readonly composer: ComposerService;
+	readonly commands: CommandRegistry;
+	readonly triggers: ComposerTriggerRegistry;
 	readonly hotkeys: HotkeysService;
 	readonly markdown: MarkdownPort;
 	readonly widgets: WidgetRegistry;

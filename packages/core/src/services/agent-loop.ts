@@ -182,6 +182,8 @@ export class AgentLoopService implements Service {
 	}
 
 	reset(): void {
+		this._running = false;
+		this._pending.length = 0;
 		this._agent.reset();
 	}
 

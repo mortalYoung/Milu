@@ -1,0 +1,100 @@
+.command-menu {
+	position: absolute;
+	bottom: calc(100% + 8px);
+	left: 50%;
+	z-index: 50;
+	width: calc(100% - 2rem);
+	max-width: var(--transcript-measure);
+	max-height: 240px;
+	overflow-y: auto;
+	padding: 4px 0;
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	background: var(--surface);
+	transform: translateX(-50%);
+	animation: command-menu-in 180ms var(--ease-out);
+}
+
+.command-menu-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	padding: 6px 12px;
+	border: 0;
+	background: transparent;
+	color: var(--ink);
+	font-family: var(--mono);
+	font-size: 12px;
+	text-align: left;
+	cursor: pointer;
+}
+
+.command-menu-item:hover,
+.command-menu-item.selected {
+	background: var(--hover);
+}
+
+.command-menu-name {
+	flex: none;
+	color: var(--signal);
+}
+
+.command-menu-desc {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	color: var(--muted);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.command-menu-hint {
+	flex: none;
+	color: var(--muted);
+}
+
+.command-menu-badge {
+	flex: none;
+	padding: 1px 4px;
+	border: 1px solid color-mix(in srgb, var(--signal) 30%, transparent);
+	border-radius: 4px;
+	font-family: var(--sans);
+	font-size: 10px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--signal);
+}
+
+.command-menu-header {
+	padding: 6px 12px 2px;
+	font-family: var(--sans);
+	font-size: 10px;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--muted);
+}
+
+.command-menu-empty {
+	padding: 6px 12px;
+	font-family: var(--mono);
+	font-size: 10px;
+	color: var(--muted);
+}
+
+@keyframes command-menu-in {
+	from {
+		opacity: 0;
+		transform: translateX(-50%) translateY(4px);
+	}
+	to {
+		opacity: 1;
+		transform: translateX(-50%) translateY(0);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.command-menu {
+		animation: none;
+	}
+}

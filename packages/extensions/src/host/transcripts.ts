@@ -54,6 +54,11 @@ export class TranscriptService implements Service {
 		}
 	}
 
+	async reload(session: string): Promise<void> {
+		this._loaded.delete(session);
+		await this.open(session);
+	}
+
 	async loadOlder(session: string): Promise<void> {
 		const current = this.store.getState();
 		if (!current.hasMore[session] || current.loadingOlder[session]) return;

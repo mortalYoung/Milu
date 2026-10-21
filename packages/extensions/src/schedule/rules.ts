@@ -35,7 +35,6 @@ export function jitterFor(id: string, span: number): number {
 	return (hash >>> 0) % Math.max(1, span);
 }
 
-/** Deterministic per-schedule offset, so a pile of schedules created together does not fire together. */
 export function advanceNext(id: string, rule: ScheduleRule, from: number, jitter: boolean): number | null {
 	const base = nextFire(rule, from);
 	if (base === null) return null;
@@ -70,7 +69,6 @@ export interface ParsedWhen {
 	readonly error?: string;
 }
 
-/** The clock a model may write: a 5-field cron expression in local time, nothing else. */
 export function parseCronWhen(when: string, now: number): ParsedWhen {
 	const expression = when
 		.trim()
@@ -87,7 +85,6 @@ export function parseCronWhen(when: string, now: number): ParsedWhen {
 	return { rule, describe: describeRule(rule) };
 }
 
-/** What the model may put on the clock: bounded in count, and never faster than a human could keep up with. */
 export function checkAgentCreate(definitions: readonly ScheduleDefinition[], rule: ScheduleRule, now: number): string | null {
 	const active = definitions.filter((item) => item.enabled && item.lifecycleStatus === "active").length;
 	if (active >= MAX_ACTIVE) return `this chat already has ${MAX_ACTIVE} active schedules`;

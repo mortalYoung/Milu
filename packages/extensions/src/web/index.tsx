@@ -1,13 +1,35 @@
+import { commandsTrigger } from "../commands/commands.tsx";
 import { CreateSessionDialog } from "../create/create.tsx";
 import { SessionDetailsDialog } from "../details/details.tsx";
-import type { DialogComponent, FrontEndService, SlotComponent, WidgetComponent } from "../host/index.ts";
+import type { ComposerCommand, ComposerTriggerComponent, DialogComponent, FrontEndService, SlotComponent, WidgetComponent } from "../host/index.ts";
 import type { MarkdownPlugin } from "../markdown/index.ts";
+import { partnersTrigger } from "../mentions/mentions.tsx";
 import { MeterWidget } from "../meter/meter.tsx";
 import { ModelsWidget } from "../models/models.tsx";
 import { slots as repliesSlots, services as repliesServices } from "../replies/replies.tsx";
 import { ScheduleButton, ScheduleDialog, ScheduleTimeline } from "../schedule/schedule.tsx";
 import { ShellWidget } from "../shell/shell.tsx";
 import { TasksDialog, TasksWidget } from "../tasks/tasks.tsx";
+
+export const commands: readonly ComposerCommand[] = [
+	{
+		id: "clear",
+		name: "clear",
+		description: "Clear the conversation and start a fresh session (previous log is archived)",
+		kind: "execute",
+		action: "chat.clear",
+	},
+	{
+		id: "workspace",
+		name: "workspace",
+		description: "Set or clear the working directory for this conversation (no path clears)",
+		kind: "leadingInput",
+		hint: "[<path>]",
+		action: "chat.workspace",
+	},
+];
+
+export const triggers: readonly ComposerTriggerComponent[] = [commandsTrigger, partnersTrigger];
 
 export const widgets: readonly WidgetComponent[] = [
 	{ id: "models", component: ModelsWidget },

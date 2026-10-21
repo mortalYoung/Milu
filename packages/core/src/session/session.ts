@@ -20,6 +20,7 @@ import {
 	tildify,
 	type SessionProfile,
 	workspaceOf,
+	writeWorkspace,
 	type WorkspaceFacts,
 	writeModel,
 	writePinned,
@@ -195,13 +196,20 @@ export class Session {
 		return this._log.transcript(options);
 	}
 
-	async deliver(text: string, meta: { schedule?: { scheduleId: string; runId: string; title: string } } = {}): Promise<void> {
+	async deliver(
+		text: string,
+		meta: {
+			schedule?: { scheduleId: string; runId: string; title: string };
+			peer?: { from: string; kind: "ask" | "reply"; requestId: string; hop: number };
+		} = {},
+	): Promise<void> {
 		const loop = await this.open();
 		const message = {
 			role: "user",
 			content: text,
 			timestamp: Date.now(),
 			...(meta.schedule ? { scheduleId: meta.schedule.scheduleId, scheduleRunId: meta.schedule.runId, scheduleTitle: meta.schedule.title } : {}),
+			...(meta.peer ? { from: meta.peer.from, peerKind: meta.peer.kind, requestId: meta.peer.requestId, hop: meta.peer.hop } : {}),
 		} as AgentMessage;
 		if (loop.isRunning()) {
 			void loop.run(message).catch((error: unknown) => {
@@ -280,6 +288,15 @@ export class Session {
 	}
 
 	// ——— the run ———
+
+	async reset(): Promise<void> {
+		await this._log.reset();
+		const loop = await this.open();
+		loop.reset();
+		this._suspended.clear();
+		this._usedTokens = null;
+		this._error = null;
+	}
 
 	async open(): Promise<AgentLoopService> {
 		if (this._loop) return this._loop;
@@ -385,6 +402,11 @@ export class Session {
 
 	async workspace(): Promise<WorkspaceFacts | null> {
 		return this._workspaceOf();
+	}
+
+	async setWorkspace(path: string | null): Promise<void> {
+		await writeWorkspace(this.root, path);
+		this._workspace = undefined;
 	}
 
 	async profile(): Promise<SessionProfile | null> {

@@ -90,6 +90,10 @@ export function writeReadAt(dir: string, readAt: number): Promise<void> {
 	return writeJson(join(dir, READ_FILE), { readAt });
 }
 
+export async function writeWorkspace(dir: string, path: string | null): Promise<void> {
+	await writeJson(join(dir, WORKSPACE_FILE), { path, kind: null, repo: null });
+}
+
 export async function workspaceOf(dir: string): Promise<WorkspaceFacts | null> {
 	const data = await readJson<{ path?: unknown; kind?: unknown; repo?: unknown }>(join(dir, WORKSPACE_FILE));
 	if (typeof data?.path !== "string" || !data.path) return null;

@@ -38,6 +38,12 @@ export class SessionLog {
 		return (await this._sessionOrThrow().getMetadata()).createdAt;
 	}
 
+	async reset(): Promise<void> {
+		await this.open();
+		await this._queue;
+		this._session = await this._repo().create({ cwd: this.root });
+	}
+
 	async append(message: AgentMessage): Promise<string | undefined> {
 		await this.open();
 		return this._enqueue(() => this._sessionOrThrow().appendMessage(stripUndefined(message)));

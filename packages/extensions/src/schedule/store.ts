@@ -33,7 +33,6 @@ export interface ScheduleDefinition {
 	readonly createdBy: "user" | "agent";
 }
 
-/** A configuration failure cannot heal by repeating it: stop the schedule and say why. */
 export class ScheduleConfigError extends Error {}
 
 export type RunStatus = "dispatched" | "skipped" | "missed";

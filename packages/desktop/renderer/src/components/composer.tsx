@@ -1,11 +1,18 @@
-import type { Host } from "@milu/extensions/host";
+import { detectComposerTrigger, type ComposerTriggerToken, type Host } from "@milu/extensions/host";
 import { LOG_EVENTS, type ComposerWidget } from "@milu/protocol";
-import { type KeyboardEvent, useEffect, useRef } from "react";
+import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 
 import { ArrowUpIcon, SquareIcon } from "./icons.tsx";
 
 const MAX_HEIGHT = 120;
+const NO_ITEMS: readonly unknown[] = [];
+const COMMAND_LINE = /^\/([a-z][a-z0-9_-]*)(?:\s+(.*))?$/s;
+
+function parseCommandLine(value: string): { name: string; args: string } | null {
+	const match = COMMAND_LINE.exec(value.trim());
+	return match ? { name: match[1] ?? "", args: match[2] ?? "" } : null;
+}
 
 export function Composer(props: { host: Host }) {
 	const { host } = props;
@@ -19,6 +26,14 @@ export function Composer(props: { host: Host }) {
 
 	const area = useRef<HTMLTextAreaElement>(null);
 	const composing = useRef(false);
+	useStore(host.sessions.store, (state) => state.rows);
+	const [menu, setMenu] = useState<{ readonly session: string; readonly token: ComposerTriggerToken } | null>(null);
+	const [menuIndex, setMenuIndex] = useState(0);
+	const lastTrigger = useRef<string | null>(null);
+	const active = menu && menu.session === selected && !shellMode ? menu.token : null;
+	const contribution = active ? host.triggers.get(active.trigger) : undefined;
+	const items = active && contribution ? contribution.items(host, active.query) : NO_ITEMS;
+	const menuSelected = items.length === 0 ? 0 : Math.min(menuIndex, items.length - 1);
 
 	const resize = () => {
 		const element = area.current;
@@ -67,11 +82,105 @@ export function Composer(props: { host: Host }) {
 			}
 			return;
 		}
+		const parsed = parseCommandLine(value);
+		if (parsed) {
+			const command = host.commands.find(parsed.name);
+			if (!command) {
+				syncTrigger(text, text.length);
+				return;
+			}
+			try {
+				await host.actions.invoke(command.action, selected, { args: parsed.args });
+				host.transcript.setDraft(selected, "");
+				void host.sessions.refresh();
+				await host.transcript.reload(selected);
+			} catch (error) {
+				host.transcript.fail(selected, error instanceof Error ? error.message : String(error));
+			}
+			return;
+		}
 		if (!linked) return;
 		await host.transcript.send(selected, value);
 	};
 
+	const syncTrigger = (value: string, caret: number): void => {
+		const chars = new Set(host.triggers.all().map((trigger) => trigger.trigger));
+		const token = shellMode || composing.current ? null : detectComposerTrigger(value, caret, chars);
+		const found = token ? host.triggers.get(token.trigger) : undefined;
+		if (!token || !found || (found.leading === true && token.span.start !== 0)) {
+			lastTrigger.current = null;
+			setMenu(null);
+			return;
+		}
+		const key = `${selected}:${token.trigger}:${token.query}:${token.span.start}`;
+		if (lastTrigger.current !== key) {
+			lastTrigger.current = key;
+			setMenuIndex(0);
+		}
+		setMenu((current) =>
+			current &&
+			current.session === selected &&
+			current.token.trigger === token.trigger &&
+			current.token.query === token.query &&
+			current.token.span.start === token.span.start &&
+			current.token.span.end === token.span.end
+				? current
+				: { session: selected, token },
+		);
+	};
+
+	const pick = (index: number): void => {
+		const element = area.current;
+		const item = items[index];
+		if (!active || !contribution || !element || item === undefined) return;
+		if (contribution.pick?.(host, item, selected) === true) {
+			host.transcript.setDraft(selected, "");
+			lastTrigger.current = null;
+			setMenu(null);
+			queueMicrotask(() => element.focus());
+			return;
+		}
+		const insertion = contribution.insert(item);
+		const value = element.value;
+		const next = `${value.slice(0, active.span.start)}${insertion}${value.slice(active.span.end)}`;
+		const caret = active.span.start + insertion.length;
+		host.transcript.setDraft(selected, next);
+		lastTrigger.current = null;
+		setMenu(null);
+		queueMicrotask(() => {
+			element.focus();
+			element.setSelectionRange(caret, caret);
+			resize();
+		});
+	};
+
 	const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+		if (active) {
+			if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+				event.preventDefault();
+				if (items.length > 0) {
+					const delta = event.key === "ArrowDown" ? 1 : -1;
+					setMenuIndex((index) => (index + delta + items.length) % items.length);
+				}
+				return;
+			}
+			if (event.key === "Tab" && !event.shiftKey && items.length > 0) {
+				event.preventDefault();
+				pick(menuSelected);
+				return;
+			}
+			if (event.key === "Escape") {
+				event.preventDefault();
+				lastTrigger.current = null;
+				setMenu(null);
+				return;
+			}
+			if (event.key === "Enter" && !event.shiftKey && !event.repeat && !event.nativeEvent.isComposing && !composing.current && items.length > 0) {
+				event.preventDefault();
+				pick(menuSelected);
+				return;
+			}
+		}
 		const native = event.nativeEvent;
 		const claimed = host.composer.keydown(
 			{ key: native.key, code: native.code, shift: native.shiftKey, meta: native.metaKey, ctrl: native.ctrlKey, alt: native.altKey, isComposing: native.isComposing },
@@ -96,6 +205,15 @@ export function Composer(props: { host: Host }) {
 	const tips = composerPending ? [] : layout.tips.filter((tip) => (tip.when ?? "chat") === (shellMode ? "shell" : "chat"));
 	const showSend = text.trim() !== "" || busy;
 	const hasActions = composerPending || layout.left.length > 0 || layout.right.length > 0 || showSend;
+	const commandHint = (() => {
+		if (active) return null;
+		const parsed = parseCommandLine(text);
+		if (!parsed) return null;
+		const command = host.commands.find(parsed.name);
+		return command?.kind === "leadingInput" && parsed.args.trim() === "" ? command : null;
+	})();
+
+	const TriggerMenu = contribution?.component;
 
 	return (
 		<form
@@ -106,6 +224,13 @@ export function Composer(props: { host: Host }) {
 				void submit();
 			}}
 		>
+			{TriggerMenu && active ? <TriggerMenu host={host} query={active.query} items={items} selectedIndex={menuSelected} onHover={setMenuIndex} onPick={pick} /> : null}
+			{commandHint ? (
+				<div className="composer-command-hint">
+					<span className="composer-command-hint-name">/{commandHint.name}</span>
+					{commandHint.hint ? <span className="composer-command-hint-args">{commandHint.hint}</span> : null}
+				</div>
+			) : null}
 			<div className="composer-row">
 				<div className={`composer-box${shellMode ? " shell" : ""}`}>
 					<div className="composer-input-layer">
@@ -120,8 +245,13 @@ export function Composer(props: { host: Host }) {
 							spellCheck={false}
 							aria-label="Message"
 							onChange={(event) => {
-								host.transcript.setDraft(selected, event.currentTarget.value);
+								const value = event.currentTarget.value;
+								host.transcript.setDraft(selected, value);
 								resize();
+								syncTrigger(value, event.currentTarget.selectionStart ?? value.length);
+							}}
+							onSelect={(event) => {
+								syncTrigger(event.currentTarget.value, event.currentTarget.selectionStart ?? 0);
 							}}
 							onKeyDown={onKeyDown}
 							onCompositionStart={() => {

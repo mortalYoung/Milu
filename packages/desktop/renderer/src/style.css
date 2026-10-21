@@ -2042,6 +2042,31 @@ body.pane-dragging {
 	max-width: calc(var(--transcript-measure) + 32px);
 }
 
+.composer-command-hint {
+	position: absolute;
+	bottom: calc(100% + 8px);
+	left: 50%;
+	z-index: 40;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 4px 12px;
+	border: 1px solid var(--line);
+	border-radius: 6px;
+	background: var(--surface);
+	font-family: var(--mono);
+	font-size: 10px;
+	transform: translateX(-50%);
+}
+
+.composer-command-hint-name {
+	color: var(--signal);
+}
+
+.composer-command-hint-args {
+	color: var(--muted);
+}
+
 .composer-box {
 	width: 100%;
 	min-width: 0;

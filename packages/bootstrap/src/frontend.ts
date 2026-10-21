@@ -17,8 +17,14 @@ import {
 	PickerServiceId,
 	ColumnsService,
 	ColumnsServiceId,
+	CommandRegistry,
+	CommandRegistryId,
+	type ComposerCommand,
 	ComposerService,
 	ComposerServiceId,
+	ComposerTriggerRegistry,
+	ComposerTriggerRegistryId,
+	type ComposerTriggerComponent,
 	type WidgetComponent,
 	WidgetRegistry,
 	WidgetRegistryId,
@@ -50,6 +56,8 @@ export interface FrontEndDeps {
 	readonly transport: Transport;
 	readonly components?: readonly SurfaceComponent[];
 	readonly widgets?: readonly WidgetComponent[];
+	readonly triggers?: readonly ComposerTriggerComponent[];
+	readonly composerCommands?: readonly ComposerCommand[];
 	readonly commands?: BrowserCommands;
 	readonly dialogs?: readonly DialogComponent[];
 	readonly services?: readonly FrontEndService[];
@@ -92,6 +100,8 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	container.register(WidgetRegistryId, () => new WidgetRegistry(deps.widgets ?? []));
 	container.register(HotkeysServiceId, () => new HotkeysService(deps.platform));
 	container.register(ComposerServiceId, (c) => new ComposerService(c.get(ConnectionId), c.get(ActionsServiceId), c.get(HotkeysServiceId)));
+	container.register(ComposerTriggerRegistryId, () => new ComposerTriggerRegistry(deps.triggers ?? []));
+	container.register(CommandRegistryId, () => new CommandRegistry(deps.composerCommands ?? []));
 	container.register(LayoutServiceId, () => new LayoutService());
 	await container.initialize();
 
@@ -109,6 +119,8 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	const workbench = container.get(WorkbenchServiceId);
 	const surfaces = container.get(SurfaceRegistryId);
 	const composer = container.get(ComposerServiceId);
+	const triggers = container.get(ComposerTriggerRegistryId);
+	const commands = container.get(CommandRegistryId);
 	const hotkeys = container.get(HotkeysServiceId);
 	const widgets = container.get(WidgetRegistryId);
 	const layout = container.get(LayoutServiceId);
@@ -156,6 +168,8 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 			dialogs,
 			header,
 			composer,
+			triggers,
+			commands,
 			hotkeys,
 			widgets,
 			picker,

@@ -11,6 +11,7 @@ import { mcpExtension } from "./mcp/mcp.ts";
 import { meterExtension } from "./meter/meter.ts";
 import { modelsExtension } from "./models/models.ts";
 import { openExtension } from "./open/open.ts";
+import { peerExtension } from "./peer/peer.ts";
 import { permissionExtension } from "./permission/permission.ts";
 import { pinExtension } from "./pin/pin.ts";
 import { promptExtension } from "./prompt/prompt.ts";
@@ -39,6 +40,7 @@ export const extensions: readonly Extension[] = [
 	rmExtension,
 	mcpExtension,
 	scheduleExtension,
+	peerExtension,
 	fetchExtension,
 	skillsExtension,
 	remindersExtension,

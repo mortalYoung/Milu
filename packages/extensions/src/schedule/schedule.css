@@ -160,7 +160,6 @@
 	color: var(--muted-soft);
 }
 
-/* the pill that hangs beside the chat name, and the quick look it opens — v1's read-only view */
 .chat-bar-sched {
 	display: flex;
 	flex: none;
