@@ -20,7 +20,7 @@ export type ToolResult = AgentToolResult<any>;
 
 export type ToolNext = (call: ToolCall, env: ExecutionEnv) => Promise<ToolResult>;
 
-export type ToolMiddleware = (call: ToolCall, next: ToolNext) => Promise<ToolResult>;
+export type ToolMiddleware = (call: ToolCall, env: ExecutionEnv, next: ToolNext) => Promise<ToolResult>;
 
 export interface Tool {
 	readonly name: string;
@@ -111,7 +111,7 @@ export class ToolService implements Service {
 
 		const env = this._executionService.env(call.workspace ?? this._configService.workspace);
 		const chain = this._middleware.reduceRight<ToolNext>(
-			(next, middleware) => (inner, _env) => middleware(inner, next),
+			(next, middleware) => (inner, innerEnv) => middleware(inner, innerEnv, next),
 			(inner, innerEnv) => tool.run(inner, innerEnv),
 		);
 		return chain(call, env);

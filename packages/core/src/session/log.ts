@@ -38,16 +38,24 @@ export class SessionLog {
 		return (await this._sessionOrThrow().getMetadata()).createdAt;
 	}
 
-	append(message: AgentMessage): Promise<string | undefined> {
+	async append(message: AgentMessage): Promise<string | undefined> {
+		await this.open();
 		return this._enqueue(() => this._sessionOrThrow().appendMessage(stripUndefined(message)));
 	}
 
-	record(type: string, data?: unknown): Promise<string | undefined> {
+	async record(type: string, data?: unknown): Promise<string | undefined> {
+		await this.open();
 		return this._enqueue(() => this._sessionOrThrow().appendCustomEntry(type, data === undefined ? undefined : stripUndefined(data)));
 	}
 
 	async flush(): Promise<void> {
 		await this._queue;
+	}
+
+	async records(customType: string): Promise<SeqEntry[]> {
+		await this.open();
+		const listed = await this._sessionOrThrow().findEntries({ type: "custom", customType });
+		return listed.map((entry) => ({ seq: entry.seq, entry })).sort((left, right) => left.seq - right.seq);
 	}
 
 	async entries(since = 0): Promise<SeqEntry[]> {

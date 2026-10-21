@@ -1,5 +1,6 @@
 import type { Host } from "@milu/extensions/host";
 import * as Dialog from "@radix-ui/react-dialog";
+import { X } from "lucide-react";
 import { createElement } from "react";
 import { useStore } from "zustand";
 
@@ -30,6 +31,9 @@ export function DialogHost(props: { host: Host }) {
 					) : custom ? (
 						<>
 							<Dialog.Title className="conv-dialog-hidden">{pending?.dialog.kind === "custom" ? (pending.dialog.title ?? pending.dialog.id) : ""}</Dialog.Title>
+							<Dialog.Close className="conv-dialog-close" aria-label="Close">
+								<X size={16} />
+							</Dialog.Close>
 							{createElement(custom, {
 								host,
 								data: pending?.dialog.kind === "custom" ? pending.dialog.data : undefined,

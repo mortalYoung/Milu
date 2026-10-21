@@ -1,5 +1,5 @@
 import type { Host } from "@milu/extensions/host";
-import type { ComposerWidget } from "@milu/protocol";
+import { LOG_EVENTS, type ComposerWidget } from "@milu/protocol";
 import { type KeyboardEvent, useEffect, useRef } from "react";
 import { useStore } from "zustand";
 
@@ -29,6 +29,16 @@ export function Composer(props: { host: Host }) {
 
 	useEffect(() => {
 		void host.composer.load(selected);
+	}, [host, selected]);
+
+	useEffect(() => {
+		const dispose = host.connection.onEntry(({ session: name, entry: framed }) => {
+			const entry = framed.entry;
+			if (name !== selected || entry.type !== "custom") return;
+			if (entry.customType !== LOG_EVENTS.taskStart && entry.customType !== LOG_EVENTS.taskEnd) return;
+			void host.composer.load(selected);
+		});
+		return () => dispose.dispose();
 	}, [host, selected]);
 
 	useEffect(() => {

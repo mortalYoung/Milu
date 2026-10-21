@@ -27,7 +27,7 @@ export const permissionExtension: Extension = {
 		const tools = context.get(ToolServiceId);
 
 		context.disposables.add(tools.extend({ tools: ["bash"], properties: escalationFields }));
-		context.disposables.add(tools.use((call, next) => permission.intercept(call, next)));
+		context.disposables.add(tools.use((call, env, next) => permission.intercept(call, env, next)));
 
 		context.actions.register({
 			id: "permission.answer",

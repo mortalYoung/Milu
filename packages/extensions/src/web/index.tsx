@@ -6,11 +6,13 @@ import { MeterWidget } from "../meter/meter.tsx";
 import { ModelsWidget } from "../models/models.tsx";
 import { slots as repliesSlots, services as repliesServices } from "../replies/replies.tsx";
 import { ShellWidget } from "../shell/shell.tsx";
+import { TasksDialog, TasksWidget } from "../tasks/tasks.tsx";
 
 export const widgets: readonly WidgetComponent[] = [
 	{ id: "models", component: ModelsWidget },
 	{ id: "meter", component: MeterWidget },
 	{ id: "shell", component: ShellWidget },
+	{ id: "tasks", component: TasksWidget },
 ];
 
 export const markdown: readonly MarkdownPlugin[] = [];
@@ -22,4 +24,5 @@ export const slots: readonly SlotComponent[] = [...repliesSlots];
 export const dialogs: readonly DialogComponent[] = [
 	{ id: "create-session", component: CreateSessionDialog },
 	{ id: "session-details", component: SessionDetailsDialog },
+	{ id: "tasks", component: TasksDialog },
 ];

@@ -176,6 +176,7 @@ async function runCommand(
 	const base = policy.workspace ?? policy.storage;
 	const cwd = options.cwd ? resolve(base, options.cwd) : base;
 	await mkdir(cwd, { recursive: true });
+	if (options.abortSignal?.aborted) return err(new ExecutionError("aborted", "Command aborted"));
 
 	return await new Promise((resolve_) => {
 		const child = spawn(confined.argv[0] ?? "", confined.argv.slice(1), { cwd, env: process.env, detached: true, stdio: ["ignore", "pipe", "pipe"] });
@@ -208,6 +209,8 @@ async function runCommand(
 				if (child.exitCode === null) signalGroup("SIGKILL");
 			}, KILL_ESCALATE_MS);
 		};
+
+		if (options.abortSignal?.aborted) teardown();
 
 		const timer = options.timeout
 			? setTimeout(() => {

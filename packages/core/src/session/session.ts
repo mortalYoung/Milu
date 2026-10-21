@@ -177,6 +177,10 @@ export class Session {
 		return this._log.entries(since);
 	}
 
+	async records(customType: string): Promise<SeqEntry[]> {
+		return this._log.records(customType);
+	}
+
 	async window(options: { mode?: "older" | "newer"; cursor?: string; conversations: number }): Promise<OriginWindow> {
 		return this._log.window(options);
 	}
@@ -188,6 +192,15 @@ export class Session {
 
 	async transcript(options?: { keepDangling?: boolean }): Promise<AgentMessage[]> {
 		return this._log.transcript(options);
+	}
+
+	async deliver(text: string): Promise<void> {
+		const loop = await this.open();
+		if (loop.isRunning()) {
+			loop.followUp({ role: "user", content: text, timestamp: Date.now() } as AgentMessage);
+			return;
+		}
+		await this.run(text);
 	}
 
 	async record(type: string, data?: unknown): Promise<void> {

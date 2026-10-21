@@ -885,6 +885,27 @@ body.pane-dragging {
 	overflow: hidden;
 }
 
+.conv-dialog-close {
+	position: absolute;
+	top: 16px;
+	right: 16px;
+	z-index: 10;
+	display: grid;
+	place-items: center;
+	padding: 0;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--ink);
+	opacity: 0.7;
+	cursor: pointer;
+	transition: opacity 120ms var(--ease-out);
+}
+
+.conv-dialog-close:hover {
+	opacity: 1;
+}
+
 .conv-dialog-hidden {
 	position: absolute;
 	width: 1px;

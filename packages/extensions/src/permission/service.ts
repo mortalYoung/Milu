@@ -79,7 +79,7 @@ export class PermissionService implements Service {
 		);
 	}
 
-	async intercept(call: ToolCall, next: ToolNext): Promise<ToolResult> {
+	async intercept(call: ToolCall, _env: ExecutionEnv, next: ToolNext): Promise<ToolResult> {
 		if (call.name === "rm") {
 			const refusal = await this._deleteGate(call);
 			if (refusal) return refusal;

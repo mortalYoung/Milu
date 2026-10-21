@@ -32,6 +32,8 @@ export const LOG_EVENTS = {
 	mcpChanged: "mcp/changed",
 	rewind: "rewind",
 	memoryContext: "memory/context",
+	taskStart: "task/start",
+	taskEnd: "task/end",
 	scheduleRun: "schedule/run",
 } as const;
 
