@@ -1,3 +1,4 @@
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
 
 import { type DialogProps, formatWorkspacePath, listTime } from "../host/index.ts";
@@ -15,11 +16,7 @@ function formatDate(ts: number): string {
 }
 
 function Chevron(props: { open: boolean }) {
-	return (
-		<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-			{props.open ? <path d="m6 9 6 6 6-6" /> : <path d="m9 18 6-6-6-6" />}
-		</svg>
-	);
+	return props.open ? <ChevronDown size={14} /> : <ChevronRight size={14} />;
 }
 
 export function SessionDetailsDialog(props: DialogProps) {

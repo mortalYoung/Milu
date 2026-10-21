@@ -1,4 +1,5 @@
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 
 import type { WidgetProps } from "../host/index.ts";
@@ -94,9 +95,5 @@ export function ModelsWidget(props: WidgetProps) {
 }
 
 function Chevron(props: { open: boolean }) {
-	return (
-		<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-			{props.open ? <path d="m9 18 6-6-6-6" /> : <path d="m15 18-6-6 6-6" />}
-		</svg>
-	);
+	return props.open ? <ChevronRight size={13} /> : <ChevronLeft size={13} />;
 }

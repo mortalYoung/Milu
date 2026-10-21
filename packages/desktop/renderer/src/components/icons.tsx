@@ -1,163 +1,55 @@
+import {
+	ArrowDown,
+	ArrowUp,
+	Check,
+	ChevronDown,
+	ChevronRight,
+	CircleStop,
+	Copy,
+	EllipsisVertical,
+	Folder,
+	FolderTree,
+	Info,
+	type LucideIcon,
+	PanelLeft,
+	PanelLeftClose,
+	PanelLeftOpen,
+	Pin,
+	PinOff,
+	Plus,
+	Search,
+	Square,
+	SquarePen,
+	Trash2,
+} from "lucide-react";
 import type { ReactNode } from "react";
 
-function Icon(props: { size?: number; children: ReactNode; className?: string }) {
-	return (
-		<svg
-			width={props.size ?? 14}
-			height={props.size ?? 14}
-			viewBox="0 0 24 24"
-			fill="none"
-			stroke="currentColor"
-			strokeWidth={2}
-			strokeLinecap="round"
-			strokeLinejoin="round"
-			aria-hidden="true"
-			className={props.className}
-		>
-			{props.children}
-		</svg>
-	);
+function sized(icon: LucideIcon, fallback = 14) {
+	const Icon = icon;
+	return (props: { size?: number }) => <Icon size={props.size ?? fallback} />;
 }
 
-export function SearchIcon(props: { size?: number }) {
-	return (
-		<Icon {...props}>
-			<circle cx="11" cy="11" r="8" />
-			<path d="m21 21-4.3-4.3" />
-		</Icon>
-	);
-}
-
-export function PanelLeftCloseIcon(props: { size?: number }) {
-	return (
-		<Icon {...props}>
-			<rect width="18" height="18" x="3" y="3" rx="2" />
-			<path d="M9 3v18" />
-			<path d="m16 15-3-3 3-3" />
-		</Icon>
-	);
-}
-
-export function PanelLeftIcon(props: { size?: number }) {
-	return (
-		<Icon {...props}>
-			<rect width="18" height="18" x="3" y="3" rx="2" />
-			<path d="M9 3v18" />
-		</Icon>
-	);
-}
-
-export function PanelLeftOpenIcon(props: { size?: number }) {
-	return (
-		<Icon {...props}>
-			<rect width="18" height="18" x="3" y="3" rx="2" />
-			<path d="M9 3v18" />
-			<path d="m14 9 3 3-3 3" />
-		</Icon>
-	);
-}
-
-export function ChevronRightIcon(props: { size?: number }) {
-	return (
-		<Icon {...props}>
-			<path d="m9 18 6-6-6-6" />
-		</Icon>
-	);
-}
-
-export function ChevronDownIcon(props: { size?: number }) {
-	return (
-		<Icon {...props}>
-			<path d="m6 9 6 6 6-6" />
-		</Icon>
-	);
-}
-
-export function FolderTreeIcon(props: { size?: number }) {
-	return (
-		<Icon {...props}>
-			<path d="M20 10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2.5a1 1 0 0 1-.8-.4l-.9-1.2A1 1 0 0 0 15 3h-2a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z" />
-			<path d="M20 21a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1h-2.5a1 1 0 0 1-.8-.4l-.9-1.2a1 1 0 0 0-.8-.4h-2a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z" />
-			<path d="M3 5a2 2 0 0 1 2-2h3" />
-			<path d="M3 5v14a2 2 0 0 0 2 2h3" />
-		</Icon>
-	);
-}
-
-export function MoreVerticalIcon(props: { size?: number }) {
-	return (
-		<Icon {...props}>
-			<circle cx="12" cy="12" r="1" />
-			<circle cx="12" cy="5" r="1" />
-			<circle cx="12" cy="19" r="1" />
-		</Icon>
-	);
-}
-
-export function CheckIcon(props: { size?: number }) {
-	return (
-		<Icon {...props}>
-			<path d="M20 6 9 17l-5-5" />
-		</Icon>
-	);
-}
-
-export function ArrowDownIcon(props: { size?: number }) {
-	return (
-		<Icon {...props}>
-			<path d="M12 5v14" />
-			<path d="m19 12-7 7-7-7" />
-		</Icon>
-	);
-}
-
-export function CircleStopIcon(props: { size?: number }) {
-	return (
-		<Icon {...props}>
-			<circle cx="12" cy="12" r="10" />
-			<rect width="6" height="6" x="9" y="9" rx="1" />
-		</Icon>
-	);
-}
-
-export function CopyIcon(props: { size?: number }) {
-	return (
-		<Icon {...props}>
-			<rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
-			<path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
-		</Icon>
-	);
-}
-
-export function PinIcon(props: { size?: number }) {
-	return (
-		<Icon {...props}>
-			<path d="M12 17v5" />
-			<path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" />
-		</Icon>
-	);
-}
-
-export function PinOffIcon(props: { size?: number }) {
-	return (
-		<Icon {...props}>
-			<path d="M12 17v5" />
-			<path d="M15 9.34V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H7.89" />
-			<path d="m2 2 20 20" />
-			<path d="M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h11" />
-		</Icon>
-	);
-}
-
-export function InfoIcon(props: { size?: number }) {
-	return (
-		<Icon {...props}>
-			<circle cx="12" cy="12" r="10" />
-			<path d="M12 16v-4" />
-			<path d="M12 8h.01" />
-		</Icon>
-	);
-}
+export const SearchIcon = sized(Search);
+export const PanelLeftCloseIcon = sized(PanelLeftClose);
+export const PanelLeftIcon = sized(PanelLeft);
+export const PanelLeftOpenIcon = sized(PanelLeftOpen);
+export const ChevronRightIcon = sized(ChevronRight);
+export const ChevronDownIcon = sized(ChevronDown);
+export const FolderTreeIcon = sized(FolderTree);
+export const MoreVerticalIcon = sized(EllipsisVertical);
+export const CheckIcon = sized(Check);
+export const ArrowDownIcon = sized(ArrowDown);
+export const CircleStopIcon = sized(CircleStop);
+export const CopyIcon = sized(Copy);
+export const PinIcon = sized(Pin);
+export const PinOffIcon = sized(PinOff);
+export const InfoIcon = sized(Info);
+export const FolderIcon = sized(Folder);
+export const TrashIcon = sized(Trash2);
+export const PlusIcon = sized(Plus);
+export const SquareIcon = sized(Square);
+export const ArrowUpIcon = sized(ArrowUp);
+export const SquarePenIcon = sized(SquarePen);
 
 const NAMED: Record<string, (props: { size?: number }) => ReactNode> = {
 	info: InfoIcon,
@@ -172,57 +64,4 @@ const NAMED: Record<string, (props: { size?: number }) => ReactNode> = {
 export function IconByName(props: { name?: string; size?: number }) {
 	const Icon = props.name ? NAMED[props.name] : undefined;
 	return Icon ? <Icon size={props.size} /> : null;
-}
-
-export function FolderIcon(props: { size?: number }) {
-	return (
-		<Icon {...props}>
-			<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
-		</Icon>
-	);
-}
-
-export function TrashIcon(props: { size?: number }) {
-	return (
-		<Icon {...props}>
-			<path d="M3 6h18" />
-			<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-			<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-		</Icon>
-	);
-}
-
-export function PlusIcon(props: { size?: number }) {
-	return (
-		<Icon {...props}>
-			<path d="M12 5v14" />
-			<path d="M5 12h14" />
-		</Icon>
-	);
-}
-
-export function SquareIcon(props: { size?: number }) {
-	return (
-		<Icon {...props}>
-			<rect width="14" height="14" x="5" y="5" rx="1.5" />
-		</Icon>
-	);
-}
-
-export function ArrowUpIcon(props: { size?: number }) {
-	return (
-		<Icon {...props}>
-			<path d="m5 12 7-7 7 7" />
-			<path d="M12 19V5" />
-		</Icon>
-	);
-}
-
-export function SquarePenIcon(props: { size?: number }) {
-	return (
-		<Icon {...props}>
-			<path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-			<path d="M18.375 2.625a2.121 2.121 0 1 1 3 3L12 15l-4 1 1-4Z" />
-		</Icon>
-	);
 }

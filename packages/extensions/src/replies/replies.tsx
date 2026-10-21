@@ -1,3 +1,4 @@
+import { List } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
@@ -31,14 +32,7 @@ function RepliesButton(props: SurfaceProps) {
 	const wording = open ? "Hide replies" : "Show replies";
 	return (
 		<button type="button" className={open ? "replies-bar is-on" : "replies-bar"} aria-label={wording} aria-pressed={open} title={wording} onClick={() => service.toggle()}>
-			<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-				<path d="M8 6h13" />
-				<path d="M8 12h13" />
-				<path d="M8 18h13" />
-				<path d="M3 6h.01" />
-				<path d="M3 12h.01" />
-				<path d="M3 18h.01" />
-			</svg>
+			<List size={15} />
 		</button>
 	);
 }
