@@ -4,6 +4,33 @@ export const chatExtension: Extension = {
 	id: "chat",
 	apiVersion: 1,
 
+	contributions: {
+		"composer.commands": [
+			{
+				id: "compact",
+				name: "compact",
+				description: "Manually compact the conversation surface",
+				kind: "execute",
+				action: "chat.compact",
+			},
+			{
+				id: "clear",
+				name: "clear",
+				description: "Clear the conversation and start a fresh session (previous log is archived)",
+				kind: "execute",
+				action: "chat.clear",
+			},
+			{
+				id: "workspace",
+				name: "workspace",
+				description: "Set or clear the working directory for this conversation (no path clears)",
+				kind: "leadingInput",
+				hint: "[<path>]",
+				action: "chat.workspace",
+			},
+		],
+	},
+
 	activate(context) {
 		context.actions.register({
 			id: "chat.close",
@@ -20,6 +47,15 @@ export const chatExtension: Extension = {
 				if (!session) throw new Error("chat.clear needs a session");
 				if (session.running) throw new Error("the chat is busy");
 				await session.reset();
+			},
+		});
+
+		context.actions.register({
+			id: "chat.compact",
+			run: async ({ session }) => {
+				if (!session) throw new Error("chat.compact needs a session");
+				const result = await session.compact();
+				if (!result) throw new Error("nothing to compact yet");
 			},
 		});
 

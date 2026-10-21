@@ -19,7 +19,6 @@ import {
 	ColumnsServiceId,
 	CommandRegistry,
 	CommandRegistryId,
-	type ComposerCommand,
 	ComposerService,
 	ComposerServiceId,
 	ComposerTriggerRegistry,
@@ -57,7 +56,6 @@ export interface FrontEndDeps {
 	readonly components?: readonly SurfaceComponent[];
 	readonly widgets?: readonly WidgetComponent[];
 	readonly triggers?: readonly ComposerTriggerComponent[];
-	readonly composerCommands?: readonly ComposerCommand[];
 	readonly commands?: BrowserCommands;
 	readonly dialogs?: readonly DialogComponent[];
 	readonly services?: readonly FrontEndService[];
@@ -101,7 +99,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	container.register(HotkeysServiceId, () => new HotkeysService(deps.platform));
 	container.register(ComposerServiceId, (c) => new ComposerService(c.get(ConnectionId), c.get(ActionsServiceId), c.get(HotkeysServiceId)));
 	container.register(ComposerTriggerRegistryId, () => new ComposerTriggerRegistry(deps.triggers ?? []));
-	container.register(CommandRegistryId, () => new CommandRegistry(deps.composerCommands ?? []));
+	container.register(CommandRegistryId, () => new CommandRegistry());
 	container.register(LayoutServiceId, () => new LayoutService());
 	await container.initialize();
 
@@ -148,6 +146,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 			header.apply(snapshot.header);
 			hotkeys.apply(snapshot.hotkeys);
 			welcome.apply(snapshot.welcome);
+			commands.apply(snapshot.commands);
 			slots.apply(snapshot.slots);
 		} finally {
 			applying = false;

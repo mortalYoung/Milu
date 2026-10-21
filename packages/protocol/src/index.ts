@@ -118,6 +118,16 @@ export interface ComposerWidget {
 	readonly order?: number;
 }
 
+export interface ComposerCommand {
+	readonly id: string;
+	readonly name: string;
+	readonly description: string;
+	readonly kind: "execute" | "leadingInput";
+	readonly action: string;
+	readonly hint?: string;
+	readonly category?: "command" | "skill";
+}
+
 export interface ComposerTip {
 	readonly id: string;
 	readonly label: string;
@@ -185,6 +195,7 @@ export type RpcResponse = { readonly ok: true; readonly result: unknown } | { re
 
 export interface Snapshot {
 	readonly layout: LayoutState;
+	readonly commands: readonly ComposerCommand[];
 	readonly sessions: readonly SessionRow[];
 	readonly selected: string | null;
 	readonly header: readonly ContributionItem[];

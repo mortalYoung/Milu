@@ -1,6 +1,7 @@
 import type { Disposable } from "@milu/di";
 
 import type { ActionService } from "./services/actions.ts";
+import type { CommandsService } from "./services/commands.ts";
 import type { ConfigService } from "./services/config.ts";
 import type { ContributionService } from "./services/contributions.ts";
 import type { LayoutService } from "./services/layout.ts";
@@ -13,6 +14,7 @@ import type { ToolService } from "./services/tools.ts";
 export type { AgentLoopEvent, AgentLoopRun, AgentLoopService } from "./services/agent-loop.ts";
 export { AgentLoopServiceId } from "./services/agent-loop.ts";
 export { ActionService, ActionServiceId, type Action, type ActionContext } from "./services/actions.ts";
+export { CommandsService, CommandsServiceId } from "./services/commands.ts";
 export { ConfigService, ConfigServiceId } from "./services/config.ts";
 export { ContributionPoint, ContributionService, ContributionServiceId, type ContributionScope } from "./services/contributions.ts";
 export { ExecutionService, ExecutionServiceId } from "./services/execution.ts";
@@ -24,6 +26,7 @@ export {
 	COMPOSER_LEFT_POINT,
 	COMPOSER_RIGHT_POINT,
 	COMPOSER_TIPS_POINT,
+	COMPOSER_COMMANDS_POINT,
 	EXTENSION_API_VERSION,
 	SESSION_HEADER_POINT,
 	SESSION_MENU_POINT,
@@ -33,6 +36,7 @@ export {
 	WELCOME_TIMELINE_POINT,
 	SYSTEM_PROMPT_POINT,
 	WELCOME_ITEMS_POINT,
+	type ComposerCommand,
 	type ComposerTipItem,
 	type ComposerWidgetItem,
 	type Extension,
@@ -99,6 +103,7 @@ export interface Backend extends Disposable {
 	readonly config: ConfigService;
 	readonly contributions: ContributionService;
 	readonly actions: ActionService;
+	readonly commands: CommandsService;
 	readonly tools: ToolService;
 	readonly settings: SettingsService;
 	readonly layout: LayoutService;

@@ -9,6 +9,7 @@ import type { HookService } from "../services/hooks.ts";
 import type { ModelsService } from "../services/models.ts";
 import type { PromptService } from "../services/prompt.ts";
 import type { ToolService } from "../services/tools.ts";
+import { planCompaction } from "./compact.ts";
 import { EVENTS } from "./events.ts";
 import {
 	modelOf,
@@ -296,6 +297,26 @@ export class Session {
 		this._suspended.clear();
 		this._usedTokens = null;
 		this._error = null;
+	}
+
+	async compact(): Promise<{ shadowed: number } | null> {
+		if (this.running) throw new Error("the chat is busy");
+		if (this.hasSuspended()) throw new Error("an approval is pending");
+		const entries = await this._log.rawEntries();
+		const messages = await this._log.transcript();
+		const plan = planCompaction(entries, messages);
+		if (!plan) return null;
+		await this._log.record(EVENTS.compaction, {
+			summary: plan.summary,
+			throughEntryId: plan.throughEntryId,
+			shadowedIds: plan.shadowedIds,
+			shadowed: plan.shadowed,
+			tier: plan.tier,
+			timestamp: Date.now(),
+		});
+		const loop = await this.open();
+		loop.restore(await this._log.transcript());
+		return { shadowed: plan.shadowed };
 	}
 
 	async open(): Promise<AgentLoopService> {

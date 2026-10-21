@@ -1,5 +1,5 @@
 import type { Container, DisposableStore, ServiceId, Service } from "@milu/di";
-import { SLOT_POINTS, type SlotItem, type WelcomeItem } from "@milu/protocol";
+import { SLOT_POINTS, type ComposerCommand, type SlotItem, type WelcomeItem } from "@milu/protocol";
 
 import type { ActionService } from "../services/actions.ts";
 import type { ConfigService } from "../services/config.ts";
@@ -12,6 +12,7 @@ export const SESSION_HEADER_POINT = "session.header";
 export const COMPOSER_LEFT_POINT = "composer.left";
 export const COMPOSER_RIGHT_POINT = "composer.right";
 export const COMPOSER_TIPS_POINT = "composer.tips";
+export const COMPOSER_COMMANDS_POINT = "composer.commands";
 export const SYSTEM_PROMPT_POINT = "system.prompt";
 export const WELCOME_ITEMS_POINT = "welcome.items";
 export const CHAT_BAR_POINT = SLOT_POINTS.chatBar;
@@ -19,7 +20,7 @@ export const CHAT_NAME_POINT = SLOT_POINTS.chatName;
 export const CHAT_PANES_POINT = SLOT_POINTS.chatPanes;
 export const WELCOME_TIMELINE_POINT = SLOT_POINTS.welcomeTimeline;
 
-export type { SlotItem, WelcomeItem };
+export type { ComposerCommand, SlotItem, WelcomeItem };
 
 export type SessionValue<T> = T | ((session: Session) => T | null | Promise<T | null>);
 
@@ -69,6 +70,7 @@ export interface ExtensionContributions {
 	readonly "composer.left"?: readonly ComposerWidgetItem[];
 	readonly "composer.right"?: readonly ComposerWidgetItem[];
 	readonly "composer.tips"?: readonly ComposerTipItem[];
+	readonly "composer.commands"?: readonly ComposerCommand[];
 	readonly "system.prompt"?: readonly PromptSection[];
 	readonly "welcome.items"?: readonly WelcomeItem[];
 	readonly "welcome.timeline"?: readonly SlotItem[];

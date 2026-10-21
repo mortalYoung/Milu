@@ -1,35 +1,31 @@
 import { createServiceId, type Service } from "@milu/di";
+import type { ComposerCommand } from "@milu/protocol";
+import { createStore } from "zustand/vanilla";
 
-export interface ComposerCommand {
-	readonly id: string;
-	readonly name: string;
-	readonly description: string;
-	readonly kind: "execute" | "leadingInput";
-	readonly action: string;
-	readonly hint?: string;
-	readonly category?: "command" | "skill";
-}
+export type { ComposerCommand };
 
 export class CommandRegistry implements Service {
-	private readonly _commands = new Map<string, ComposerCommand>();
+	readonly store = createStore<{ commands: readonly ComposerCommand[] }>()(() => ({ commands: [] }));
 
-	constructor(commands: readonly ComposerCommand[]) {
+	apply(commands: readonly ComposerCommand[]): void {
+		const names = new Set<string>();
 		for (const command of commands) {
-			if (this._commands.has(command.name)) throw new Error(`command "/${command.name}" is already contributed`);
-			this._commands.set(command.name, command);
+			if (names.has(command.name)) throw new Error(`command "/${command.name}" is already contributed`);
+			names.add(command.name);
 		}
+		this.store.setState({ commands }, true);
 	}
 
 	all(): readonly ComposerCommand[] {
-		return [...this._commands.values()];
+		return this.store.getState().commands;
 	}
 
 	find(name: string): ComposerCommand | undefined {
-		return this._commands.get(name);
+		return this.store.getState().commands.find((command) => command.name === name);
 	}
 
 	dispose(): void {
-		this._commands.clear();
+		this.store.setState({ commands: [] }, true);
 	}
 }
 

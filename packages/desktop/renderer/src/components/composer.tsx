@@ -27,6 +27,7 @@ export function Composer(props: { host: Host }) {
 	const area = useRef<HTMLTextAreaElement>(null);
 	const composing = useRef(false);
 	useStore(host.sessions.store, (state) => state.rows);
+	useStore(host.commands.store, (state) => state.commands);
 	const [menu, setMenu] = useState<{ readonly session: string; readonly token: ComposerTriggerToken } | null>(null);
 	const [menuIndex, setMenuIndex] = useState(0);
 	const lastTrigger = useRef<string | null>(null);

@@ -1,14 +1,6 @@
 import { createFrontEnd } from "@milu/bootstrap/frontend";
 import { createMarkdown, DEFAULT_PLUGINS } from "@milu/extensions/markdown";
-import {
-	commands as extensionCommands,
-	dialogs,
-	markdown as markdownPlugins,
-	services as extensionServices,
-	slots as extensionSlots,
-	triggers as extensionTriggers,
-	widgets,
-} from "@milu/extensions/web";
+import { dialogs, markdown as markdownPlugins, services as extensionServices, slots as extensionSlots, triggers as extensionTriggers, widgets } from "@milu/extensions/web";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -30,7 +22,6 @@ async function main(): Promise<void> {
 		dialogs,
 		widgets,
 		triggers: extensionTriggers,
-		composerCommands: extensionCommands,
 		services: extensionServices,
 		slots: extensionSlots,
 		components: [

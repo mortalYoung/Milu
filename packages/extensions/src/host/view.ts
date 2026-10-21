@@ -270,6 +270,12 @@ function escalationDecisionVisit(entry: LogEntry, out: ViewItem[]): void {
 
 const isRunStatus = (value: unknown): value is NonNullable<ViewSchedule["status"]> => value === "dispatched" || value === "skipped" || value === "missed";
 
+function compactionVisit(entry: LogEntry, out: ViewItem[]): void {
+	if (entry.type !== "custom") return;
+	const data = entry.data as { timestamp?: unknown } | undefined;
+	out.push({ id: entry.id, kind: "assistant", text: "context compacted", time: typeof data?.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0) });
+}
+
 function scheduleRunVisit(entry: LogEntry, out: ViewItem[]): void {
 	if (entry.type !== "custom") return;
 	const data = entry.data as { scheduleId?: unknown; scheduleTitle?: unknown; runId?: unknown; trigger?: unknown; status?: unknown; error?: unknown } | undefined;
@@ -349,6 +355,7 @@ const VISITORS: Readonly<Record<string, (entry: LogEntry, out: ViewItem[]) => vo
 	[LOG_EVENTS.agentEnd]: agentEndVisit,
 	[LOG_EVENTS.escalationRequest]: escalationVisit,
 	[LOG_EVENTS.escalationDecision]: escalationDecisionVisit,
+	[LOG_EVENTS.compaction]: compactionVisit,
 	[LOG_EVENTS.scheduleRun]: scheduleRunVisit,
 	[LOG_EVENTS.rewind]: rewindVisit,
 };

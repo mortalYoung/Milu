@@ -145,6 +145,7 @@ export class IpcServer {
 			selected: this._backend.selection.selected,
 			header: this._ordered<ContributionItem>(SESSION_HEADER_POINT),
 			hotkeys: this._backend.actions.bindings(),
+			commands: this._backend.commands.list(),
 			welcome: this._ordered<WelcomeItem>(WELCOME_ITEMS_POINT),
 			slots: {
 				[SLOT_POINTS.chatBar]: await this._backend.sessions.slots(SLOT_POINTS.chatBar, selected),

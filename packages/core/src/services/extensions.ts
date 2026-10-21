@@ -4,6 +4,8 @@ import {
 	COMPOSER_LEFT_POINT,
 	COMPOSER_RIGHT_POINT,
 	COMPOSER_TIPS_POINT,
+	COMPOSER_COMMANDS_POINT,
+	type ComposerCommand,
 	type ComposerTipItem,
 	type SlotItem,
 	type WelcomeItem,
@@ -57,6 +59,7 @@ export class ExtensionService implements Service {
 		this._contributionService.declare<ComposerWidgetItem>(COMPOSER_LEFT_POINT);
 		this._contributionService.declare<ComposerWidgetItem>(COMPOSER_RIGHT_POINT);
 		this._contributionService.declare<ComposerTipItem>(COMPOSER_TIPS_POINT);
+		this._contributionService.declare<ComposerCommand>(COMPOSER_COMMANDS_POINT);
 		this._contributionService.declare<WelcomeItem>(WELCOME_ITEMS_POINT);
 		this._contributionService.declare<SlotItem>(WELCOME_TIMELINE_POINT, "global");
 		this._contributionService.declare<SlotItem>(CHAT_BAR_POINT);
