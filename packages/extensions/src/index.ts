@@ -1,5 +1,6 @@
 import type { Extension } from "@milu/core";
 
+import { bashExtension } from "./bash/bash.ts";
 import { chatExtension } from "./chat/chat.ts";
 import { copyExtension } from "./copy/copy.ts";
 import { createExtension } from "./create/create.ts";
@@ -9,6 +10,7 @@ import { filesExtension } from "./files/files.ts";
 import { meterExtension } from "./meter/meter.ts";
 import { modelsExtension } from "./models/models.ts";
 import { openExtension } from "./open/open.ts";
+import { permissionExtension } from "./permission/permission.ts";
 import { pinExtension } from "./pin/pin.ts";
 import { promptExtension } from "./prompt/prompt.ts";
 import { remindersExtension } from "./reminders/reminders.ts";
@@ -24,8 +26,10 @@ export const extensions: readonly Extension[] = [
 	copyExtension,
 	openExtension,
 	trashExtension,
+	permissionExtension,
 	chatExtension,
 	filesExtension,
+	bashExtension,
 	fetchExtension,
 	remindersExtension,
 	repliesExtension,

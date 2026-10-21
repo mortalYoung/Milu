@@ -69,8 +69,8 @@ export class SessionLog {
 		return projectOrigin(await this.rawEntries());
 	}
 
-	async transcript(): Promise<AgentMessage[]> {
-		return projectSlice(await this.origin());
+	async transcript(options?: { keepDangling?: boolean }): Promise<AgentMessage[]> {
+		return projectSlice(await this.origin(), options);
 	}
 
 	async window(options: { mode?: "older" | "newer"; cursor?: string; conversations: number }): Promise<OriginWindow> {

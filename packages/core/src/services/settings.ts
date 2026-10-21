@@ -49,8 +49,6 @@ export interface Settings {
 	commands_path?: string;
 	mcp_config_path?: string;
 	retry?: { maxRetries?: number; baseDelayMs?: number };
-	bash?: { timeoutSec?: number };
-	delete?: { strict?: boolean };
 	compaction?: {
 		thresholdRatio?: number;
 		digestMaxItems?: number;
@@ -92,7 +90,6 @@ function defaults(root: string): Settings {
 		schedulesDailyCap: 200,
 		memoryMaxScenes: DEFAULT_MEMORY_MAX_SCENES,
 		memoryPendingRounds: DEFAULT_MEMORY_PENDING_ROUNDS,
-		delete: { strict: true },
 		explorer: { lineGap: 0.2, fold: { braces: true, markdown: true } },
 		highlight: { tokenizeMaxLineLength: 3000, tokenizeTimeLimit: 500 },
 	};

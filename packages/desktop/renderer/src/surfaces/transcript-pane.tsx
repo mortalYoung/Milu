@@ -1,4 +1,4 @@
-import { type SurfaceProps, type StepGroup, type ViewItem, formatHistoryTime, layoutView, oneLine, projectView, stepSummary } from "@milu/extensions/host";
+import { type Host, type SurfaceProps, type StepGroup, type ViewItem, formatHistoryTime, layoutView, oneLine, projectView, stepSummary } from "@milu/extensions/host";
 import type { MarkdownPort } from "@milu/extensions/markdown";
 import { Markdown } from "@milu/extensions/markdown/react";
 import { SLOT_POINTS, type SeqEntry } from "@milu/protocol";
@@ -80,10 +80,15 @@ function ReplyCard(props: { item: ViewItem; port: MarkdownPort }) {
 	);
 }
 
-function EscalationCard(props: { item: ViewItem }) {
+function EscalationCard(props: { item: ViewItem; host: Host; session: string }) {
 	const escalation = props.item.escalation;
 	if (!escalation) return null;
 	const tone = escalation.status === "approved" ? " ok" : escalation.status === "rejected" ? " no" : " drp";
+	const answer = (approved: boolean): void => {
+		void props.host.actions.invoke("permission.answer", props.session, { escalationId: escalation.id, approved }).catch((error: unknown) => {
+			props.host.transcript.fail(props.session, error instanceof Error ? error.message : String(error));
+		});
+	};
 	return (
 		<div className="msg-escalation" data-entry={props.item.id}>
 			<div className="msg-escalation-head">sandbox escalation</div>
@@ -94,7 +99,18 @@ function EscalationCard(props: { item: ViewItem }) {
 				</span>
 				{escalation.justification ? <span className="msg-escalation-just">justification: {escalation.justification}</span> : null}
 			</div>
-			<div className={"msg-escalation-status" + tone}>{escalation.status}</div>
+			{escalation.status === "pending" ? (
+				<div className="msg-escalation-actions">
+					<button type="button" className="conv-dialog-button" onClick={() => answer(true)}>
+						Approve
+					</button>
+					<button type="button" className="conv-dialog-button" onClick={() => answer(false)}>
+						Deny
+					</button>
+				</div>
+			) : (
+				<div className={"msg-escalation-status" + tone}>{escalation.status}</div>
+			)}
 		</div>
 	);
 }
@@ -349,7 +365,7 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 											);
 										}
 										if (item.kind === "escalation") {
-											return <EscalationCard key={`i:${item.id}`} item={item} />;
+											return <EscalationCard key={`i:${item.id}`} item={item} host={host} session={selected} />;
 										}
 										if (item.kind === "error") {
 											return (

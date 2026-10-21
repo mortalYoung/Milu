@@ -1,4 +1,4 @@
-import { type Extension, ToolServiceId, Type } from "@milu/core";
+import { type Extension, type ExecutionEnv, type ToolCall, ToolServiceId, Type } from "@milu/core";
 
 import { fetchPage, WEB_FETCH_DEFAULTS, WebFetchError, type WebFetchResult } from "./web-fetch.ts";
 
@@ -34,15 +34,16 @@ export const fetchExtension: Extension = {
 		const webFetch = context.disposables.add(context.settings.declare({ key: "webFetch", defaults: WEB_FETCH_DEFAULTS }));
 
 		context.disposables.add(
-			context.get(ToolServiceId).register(() => ({
+			context.get(ToolServiceId).register({
 				name: "web_fetch",
 				label: "Web Fetch",
 				description:
 					"Fetch an HTTP(S) URL and return its content as readable text (HTML is converted to plain text). Applies timeout and size limits; the content is external and untrusted.",
 				parameters: schema,
-				async execute(_toolCallId, { url }, signal) {
+				async run(call: ToolCall, _env: ExecutionEnv) {
+					const { url } = call.params as { url: string };
 					try {
-						const result = await fetchPage(url, { ...webFetch.get(), signal });
+						const result = await fetchPage(url, { ...webFetch.get(), signal: call.signal });
 						return {
 							content: [{ type: "text", text: render(result) }],
 							details: { ok: true, url: result.url, statusCode: result.statusCode, truncated: result.truncated } satisfies WebFetchDetails,
@@ -56,7 +57,7 @@ export const fetchExtension: Extension = {
 						};
 					}
 				},
-			})),
+			}),
 		);
 	},
 };

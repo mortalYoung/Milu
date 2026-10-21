@@ -1,4 +1,4 @@
-import { bindEnv, createEditTool, createReadTool, createWriteTool, type Extension, ToolServiceId } from "@milu/core";
+import { createEditTool, createReadTool, createWriteTool, type Extension, ToolServiceId, withEnv } from "@milu/core";
 
 export const filesExtension: Extension = {
 	id: "files",
@@ -6,8 +6,8 @@ export const filesExtension: Extension = {
 
 	activate(context) {
 		const tools = context.get(ToolServiceId);
-		context.disposables.add(tools.register(({ env }) => bindEnv(createReadTool(), { env })));
-		context.disposables.add(tools.register(({ env }) => bindEnv(createWriteTool(), { env })));
-		context.disposables.add(tools.register(({ env }) => bindEnv(createEditTool(), { env })));
+		context.disposables.add(tools.register(withEnv(createReadTool())));
+		context.disposables.add(tools.register(withEnv(createWriteTool())));
+		context.disposables.add(tools.register(withEnv(createEditTool())));
 	},
 };

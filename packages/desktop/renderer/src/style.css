@@ -1698,6 +1698,12 @@ body.pane-dragging {
 	color: var(--muted);
 }
 
+.msg-escalation-actions {
+	display: flex;
+	gap: 8px;
+	margin-top: 8px;
+}
+
 .msg-escalation-status.ok {
 	color: var(--signal);
 }

@@ -83,6 +83,13 @@ export class AgentLoopService implements Service {
 		return error ? { error } : {};
 	}
 
+	async continue(): Promise<AgentLoopRun> {
+		await this._agent.continue();
+		await this._agent.waitForIdle();
+		const error = this._agent.state.errorMessage;
+		return error ? { error } : {};
+	}
+
 	followUp(message: AgentMessage): void {
 		this._agent.followUp(message);
 	}

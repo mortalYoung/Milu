@@ -1,4 +1,4 @@
-import type { AgentMessage, Entry } from "@earendil-works/pi-agent-core";
+import type { AgentMessage, AgentToolResult, Entry } from "@earendil-works/pi-agent-core";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { DisposableStore, Emitter, type Event } from "@milu/di";
 import type { PreviewKind, SeqEntry, SessionRow } from "@milu/protocol";
@@ -81,6 +81,19 @@ function lastVisible(entries: readonly Entry[]): LastVisible | null {
 	return last;
 }
 
+type ToolResult = Extract<AgentMessage, { role: "toolResult" }>;
+
+interface ToolCallBlock {
+	readonly type?: string;
+	readonly id?: unknown;
+	readonly name?: unknown;
+}
+
+function toolCalls(message: AgentMessage): ToolCallBlock[] {
+	if (message.role !== "assistant" || !Array.isArray(message.content)) return [];
+	return (message.content as ToolCallBlock[]).filter((block) => block.type === "toolCall");
+}
+
 export interface SessionDeps {
 	readonly name: string;
 	readonly root: string;
@@ -113,6 +126,7 @@ export class Session {
 	private _usedTokens: number | null | undefined;
 	private _error: string | null = null;
 	private _prompt = "";
+	private readonly _suspended = new Set<string>();
 
 	constructor(deps: SessionDeps) {
 		this._deps = deps;
@@ -172,8 +186,47 @@ export class Session {
 		return entries.map((entry) => ({ seq: seqs.get(entry.id) ?? 0, entry })).filter((each) => each.seq > 0);
 	}
 
-	async transcript(): Promise<AgentMessage[]> {
-		return this._log.transcript();
+	async transcript(options?: { keepDangling?: boolean }): Promise<AgentMessage[]> {
+		return this._log.transcript(options);
+	}
+
+	async record(type: string, data?: unknown): Promise<void> {
+		await this._log.record(type, data);
+	}
+
+	suspend(toolCallId: string): void {
+		this._suspended.add(toolCallId);
+	}
+
+	async resume(toolCallId: string, build: () => Promise<AgentToolResult<unknown>>): Promise<boolean> {
+		const loop = await this.open();
+		const messages = [...(await this._log.transcript({ keepDangling: true }))];
+		const at = messages.findIndex((message) => toolCalls(message).some((call) => call.id === toolCallId));
+		if (at < 0) return false;
+		if (messages.slice(at + 1).some((message) => message.role !== "toolResult")) return false;
+
+		const call = toolCalls(messages[at]!).find((each) => each.id === toolCallId);
+		const outcome = await build();
+		const result = {
+			role: "toolResult",
+			toolCallId,
+			toolName: String(call?.name ?? ""),
+			content: outcome.content,
+			details: outcome.details,
+			timestamp: Date.now(),
+		} as ToolResult;
+		loop.restore([...messages, result]);
+		await this._recordToolResult(result);
+		this._suspended.delete(toolCallId);
+		return true;
+	}
+
+	async continue(): Promise<void> {
+		const loop = await this.open();
+		void loop.continue().catch((error: unknown) => {
+			this._error = error instanceof Error ? error.message : String(error);
+			console.error(`session ${this.name}: continue failed:`, error);
+		});
 	}
 
 	// ——— the run ———
@@ -222,16 +275,7 @@ export class Session {
 						this._usedTokens = usage.input + usage.cacheRead + usage.cacheWrite;
 					}
 					if (message.role === "toolResult") {
-						record(EVENTS.toolResult, {
-							toolCallId: message.toolCallId,
-							toolName: message.toolName,
-							content: message.content,
-							...(message.details === undefined ? {} : { details: message.details }),
-							...(message.usage === undefined ? {} : { usage: message.usage }),
-							isError: message.isError === true,
-							...(Array.isArray(message.addedToolNames) ? { addedToolNames: message.addedToolNames } : {}),
-							timestamp,
-						});
+						if (!this._suspended.has(message.toolCallId)) void this._recordToolResult(message);
 						return;
 					}
 					void this._log.append(message);
@@ -388,6 +432,19 @@ export class Session {
 		if (!(await promptChangedSinceLastPersist(this.root, prompt))) return;
 		await this._log.record(EVENTS.systemPrompt, { text: prompt, timestamp: Date.now() });
 		await recordPrompt(this.root, prompt);
+	}
+
+	private _recordToolResult(message: ToolResult): Promise<string | undefined> {
+		return this._log.record(EVENTS.toolResult, {
+			toolCallId: message.toolCallId,
+			toolName: message.toolName,
+			content: message.content,
+			...(message.details === undefined ? {} : { details: message.details }),
+			...(message.usage === undefined ? {} : { usage: message.usage }),
+			isError: message.isError === true,
+			...(Array.isArray(message.addedToolNames) ? { addedToolNames: message.addedToolNames } : {}),
+			timestamp: Date.now(),
+		});
 	}
 
 	private _requestHeader(): Record<string, unknown> {

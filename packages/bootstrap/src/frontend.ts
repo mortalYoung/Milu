@@ -115,6 +115,15 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 
 	const disposables = new DisposableStore();
 	disposables.add(deps.markdown);
+	disposables.add(
+		connection.onLive((event) => {
+			if (event.type !== "dialog") return;
+			void (async () => {
+				const value = await dialogs.ask(event.id, event.dialog);
+				await connection.request("answer", { id: event.id, value });
+			})();
+		}),
+	);
 	let started = false;
 	let applying = false;
 

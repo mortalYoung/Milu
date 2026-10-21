@@ -26,7 +26,7 @@ export const shellExtension: Extension = {
 		context.actions.register({
 			id: "shell.run",
 			run: () => {
-				throw new Error("no shell until the permission guard exists — an ungated shell cannot be taken back");
+				throw new Error("shell mode has no runner yet");
 			},
 		});
 	},

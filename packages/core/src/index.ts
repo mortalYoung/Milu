@@ -61,17 +61,26 @@ export {
 	type ReminderType,
 } from "./session/events.ts";
 export type { SessionModel, SessionProfile, WorkspaceFacts } from "./session/files.ts";
-export { SettingsService, SettingsServiceId, type Settings } from "./services/settings.ts";
-export { ToolService, ToolServiceId, type Tool, type ToolContext, type ToolFactory } from "./services/tools.ts";
+export { SettingsService, SettingsServiceId, type SandboxMode, type Settings, type SettingsPoint } from "./services/settings.ts";
+export { ToolService, ToolServiceId, type Tool, type ToolCall, type ToolFields, type ToolMiddleware, type ToolNext, type ToolResult } from "./services/tools.ts";
 export {
 	bindEnv,
+	withEnv,
 	createEditTool,
 	createReadTool,
 	createWriteTool,
+	err,
+	ExecutionError,
+	FileError,
+	ok,
 	Type,
+	type AgentMessage,
 	type AgentTool,
 	type AgentToolResult,
 	type ExecutionEnv,
+	type FileInfo,
+	type FileKind,
+	type Result,
 	type Static,
 	type TSchema,
 } from "./tools/index.ts";
