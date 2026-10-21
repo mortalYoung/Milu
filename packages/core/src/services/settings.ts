@@ -44,7 +44,6 @@ export interface Settings {
 	memoryMaxScenes?: number;
 	memoryPendingRounds?: number;
 	commands_path?: string;
-	mcp_config_path?: string;
 	retry?: { maxRetries?: number; baseDelayMs?: number };
 	compaction?: {
 		thresholdRatio?: number;
@@ -71,7 +70,6 @@ function defaults(root: string): Settings {
 		detect_instructions_file: "AGENTS.md",
 		defaultSandboxMode: "workspace-write",
 		commands_path: join(root, "commands"),
-		mcp_config_path: join(root, "mcp.json"),
 		theme: "system",
 		toastPlacement: "bottomcenter",
 		toastDurationMs: 4000,

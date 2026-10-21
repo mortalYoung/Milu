@@ -17,6 +17,7 @@
 		"@milu/core": "workspace:*",
 		"@milu/di": "workspace:*",
 		"@milu/protocol": "workspace:*",
+		"@modelcontextprotocol/sdk": "^1.32.1",
 		"@radix-ui/react-dropdown-menu": "^2.2.1",
 		"@shikijs/markdown-it": "^4.5.0",
 		"lucide-react": "^1.60.0",
