@@ -17,6 +17,7 @@ import { remindersExtension } from "./reminders/reminders.ts";
 import { repliesExtension } from "./replies/replies.ts";
 import { rmExtension } from "./rm/rm.ts";
 import { shellExtension } from "./shell/shell.ts";
+import { skillsExtension } from "./skills/skills.ts";
 import { tasksExtension } from "./tasks/tasks.ts";
 import { tipsExtension } from "./tips/tips.ts";
 import { trashExtension } from "./trash/trash.ts";
@@ -35,6 +36,7 @@ export const extensions: readonly Extension[] = [
 	tasksExtension,
 	rmExtension,
 	fetchExtension,
+	skillsExtension,
 	remindersExtension,
 	repliesExtension,
 	modelsExtension,

@@ -27,6 +27,7 @@ export interface Tool {
 	readonly label: string;
 	readonly description: string;
 	readonly parameters: TSchema;
+	readonly executionMode?: "sequential" | "parallel";
 	run(call: ToolCall, env: ExecutionEnv): Promise<ToolResult>;
 }
 
@@ -91,6 +92,7 @@ export class ToolService implements Service {
 			label: tool.label,
 			description: tool.description,
 			parameters: extend(tool.parameters, this._fields, tool.name),
+			...(tool.executionMode === undefined ? {} : { executionMode: tool.executionMode }),
 			execute: (toolCallId: string, params: unknown, signal?: AbortSignal) => this._run({ session, workspace, toolCallId, name: tool.name, params, signal }),
 		}));
 	}

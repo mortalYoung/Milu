@@ -1,7 +1,10 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { type AgentHookContext, type AgentReminder, EVENTS, type Extension, expandHome, HookServiceId, reminderText, type SettingsService } from "@milu/core";
+
+import { type SkillsService, SkillsServiceId } from "../skills/service.ts";
 
 const HOUR = 60 * 60 * 1000;
 
@@ -36,7 +39,11 @@ function timeGap(context: AgentHookContext): void {
 	});
 }
 
-async function contextChanged(context: AgentHookContext, settings: SettingsService): Promise<void> {
+function digestOf(name: string, description: string): string {
+	return createHash("sha256").update(`${name}\n${description}`).digest("hex");
+}
+
+async function contextChanged(context: AgentHookContext, settings: SettingsService, skills: SkillsService): Promise<void> {
 	const workspace = await context.session.workspace();
 	injectUnlessCarried(context, {
 		type: EVENTS.contextChanged,
@@ -44,7 +51,7 @@ async function contextChanged(context: AgentHookContext, settings: SettingsServi
 			workspace: workspace ? expandHome(workspace.path) : null,
 			storage: join(context.session.root, "storage"),
 			sandbox: settings.get().defaultSandboxMode ?? "workspace-write",
-			skills: [],
+			skills: (await skills.list(context.session)).map((skill) => ({ name: skill.name, description: skill.description, digest: digestOf(skill.name, skill.description) })),
 		},
 	});
 }
@@ -68,8 +75,9 @@ export const remindersExtension: Extension = {
 
 	activate(context) {
 		const hooks = context.get(HookServiceId);
+		const skills = context.get(SkillsServiceId);
 		context.disposables.add(hooks.on("beforeRun", timeGap));
-		context.disposables.add(hooks.on("beforeRequest", (each) => contextChanged(each, context.settings)));
+		context.disposables.add(hooks.on("beforeRequest", (each) => contextChanged(each, context.settings, skills)));
 		context.disposables.add(hooks.on("beforeRequest", (each) => instructionsChanged(each, context.settings)));
 	},
 };

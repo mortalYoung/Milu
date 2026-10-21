@@ -34,9 +34,6 @@ export interface Settings {
 	theme?: ThemeMode;
 	toastPlacement?: ToastPlacement;
 	toastDurationMs?: number;
-	skills_dirs?: string[];
-	skills_watch?: boolean;
-	skills_watch_delay_ms?: number;
 	shellContinuous?: boolean;
 	rememberSession?: boolean;
 	memoryEnabled?: boolean;
@@ -78,9 +75,6 @@ function defaults(root: string): Settings {
 		theme: "system",
 		toastPlacement: "bottomcenter",
 		toastDurationMs: 4000,
-		skills_dirs: [".agents/skills"],
-		skills_watch: true,
-		skills_watch_delay_ms: 300,
 		shellContinuous: true,
 		rememberSession: true,
 		memoryEnabled: true,
