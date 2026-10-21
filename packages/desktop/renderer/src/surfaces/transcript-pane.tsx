@@ -51,7 +51,7 @@ function UserBubble(props: { item: ViewItem }) {
 					<span className="msg-origin-badge">scheduled</span>
 					<span className="msg-origin-title">{schedule.title}</span>
 					<span className="msg-origin-when">{schedule.trigger === "manual" ? "manual" : "on time"}</span>
-					{schedule.status ? <span className={"msg-origin-status is-" + schedule.status}>{schedule.status === "done" ? "ok" : schedule.status}</span> : null}
+					{schedule.status ? <span className={"msg-origin-status is-" + schedule.status}>{schedule.status === "dispatched" ? "sent" : schedule.status}</span> : null}
 					{schedule.error ? <span className="msg-origin-error">{schedule.error}</span> : null}
 				</div>
 			) : null}

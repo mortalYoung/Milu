@@ -119,6 +119,7 @@ export class Session {
 	private readonly _loopEmitter = new Emitter<AgentLoopEvent>();
 	private readonly _disposables = new DisposableStore();
 	private _loop: AgentLoopService | null = null;
+	private _opening: Promise<AgentLoopService> | null = null;
 	private _profile: SessionProfile | null | undefined;
 	private _readAt: number | undefined;
 	private _workspace: WorkspaceFacts | null | undefined;
@@ -194,13 +195,34 @@ export class Session {
 		return this._log.transcript(options);
 	}
 
-	async deliver(text: string): Promise<void> {
+	async deliver(text: string, meta: { schedule?: { scheduleId: string; runId: string; title: string } } = {}): Promise<void> {
 		const loop = await this.open();
+		const message = {
+			role: "user",
+			content: text,
+			timestamp: Date.now(),
+			...(meta.schedule ? { scheduleId: meta.schedule.scheduleId, scheduleRunId: meta.schedule.runId, scheduleTitle: meta.schedule.title } : {}),
+		} as AgentMessage;
 		if (loop.isRunning()) {
-			loop.followUp({ role: "user", content: text, timestamp: Date.now() } as AgentMessage);
+			void loop.run(message).catch((error: unknown) => {
+				this._error = error instanceof Error ? error.message : String(error);
+				console.error(`session ${this.name}: run failed:`, error);
+			});
 			return;
 		}
-		await this.run(text);
+		const model = await this._modelOf();
+		if (loop.isRunning()) {
+			void loop.run(message).catch((error: unknown) => {
+				this._error = error instanceof Error ? error.message : String(error);
+				console.error(`session ${this.name}: run failed:`, error);
+			});
+			return;
+		}
+		this._applyModel(loop, model);
+		void loop.run(message).catch((error: unknown) => {
+			this._error = error instanceof Error ? error.message : String(error);
+			console.error(`session ${this.name}: run failed:`, error);
+		});
 	}
 
 	async record(type: string, data?: unknown): Promise<void> {
@@ -211,12 +233,26 @@ export class Session {
 		this._suspended.add(toolCallId);
 	}
 
+	hasSuspended(): boolean {
+		return this._suspended.size > 0;
+	}
+
 	async resume(toolCallId: string, build: () => Promise<AgentToolResult<unknown>>): Promise<boolean> {
 		const loop = await this.open();
+		if (loop.isStreaming()) {
+			this._suspended.delete(toolCallId);
+			return false;
+		}
 		const messages = [...(await this._log.transcript({ keepDangling: true }))];
 		const at = messages.findIndex((message) => toolCalls(message).some((call) => call.id === toolCallId));
-		if (at < 0) return false;
-		if (messages.slice(at + 1).some((message) => message.role !== "toolResult")) return false;
+		if (at < 0) {
+			this._suspended.delete(toolCallId);
+			return false;
+		}
+		if (messages.slice(at + 1).some((message) => message.role !== "toolResult")) {
+			this._suspended.delete(toolCallId);
+			return false;
+		}
 
 		const call = toolCalls(messages[at]!).find((each) => each.id === toolCallId);
 		const outcome = await build();
@@ -236,6 +272,7 @@ export class Session {
 
 	async continue(): Promise<void> {
 		const loop = await this.open();
+		if (loop.isRunning()) return;
 		void loop.continue().catch((error: unknown) => {
 			this._error = error instanceof Error ? error.message : String(error);
 			console.error(`session ${this.name}: continue failed:`, error);
@@ -246,6 +283,14 @@ export class Session {
 
 	async open(): Promise<AgentLoopService> {
 		if (this._loop) return this._loop;
+		this._opening ??= this._openLoop().catch((error: unknown) => {
+			this._opening = null;
+			throw error;
+		});
+		return this._opening;
+	}
+
+	private async _openLoop(): Promise<AgentLoopService> {
 		await this._log.open();
 
 		const loop = new AgentLoopService(this._deps.modelsService, this._deps.toolService, this._deps.hookService, this);
@@ -263,7 +308,22 @@ export class Session {
 
 	async run(text: string): Promise<void> {
 		const loop = await this.open();
-		this._applyModel(loop, await this._modelOf());
+		if (loop.isRunning()) {
+			void loop.run(text).catch((error: unknown) => {
+				this._error = error instanceof Error ? error.message : String(error);
+				console.error(`session ${this.name}: run failed:`, error);
+			});
+			return;
+		}
+		const model = await this._modelOf();
+		if (loop.isRunning()) {
+			void loop.run(text).catch((error: unknown) => {
+				this._error = error instanceof Error ? error.message : String(error);
+				console.error(`session ${this.name}: run failed:`, error);
+			});
+			return;
+		}
+		this._applyModel(loop, model);
 		void loop.run(text).catch((error: unknown) => {
 			this._error = error instanceof Error ? error.message : String(error);
 			console.error(`session ${this.name}: run failed:`, error);

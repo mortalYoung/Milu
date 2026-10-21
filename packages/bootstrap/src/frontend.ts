@@ -85,7 +85,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	container.register(SelectionServiceId, (c) => new SelectionService(c.get(ConnectionId)));
 	container.register(TranscriptServiceId, (c) => new TranscriptService(c.get(ConnectionId)));
 	container.register(WelcomeServiceId, () => new WelcomeService());
-	container.register(SlotsServiceId, () => new SlotsService(deps.slots ?? []));
+	container.register(SlotsServiceId, (c) => new SlotsService(c.get(ConnectionId), deps.slots ?? []));
 	container.register(ColumnsServiceId, () => new ColumnsService());
 	container.register(WorkbenchServiceId, () => new WorkbenchService());
 	container.register(SurfaceRegistryId, () => new SurfaceRegistry(deps.components ?? []));

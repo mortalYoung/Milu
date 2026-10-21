@@ -81,12 +81,13 @@ export interface ContributionItem {
 	readonly items?: readonly ContributionItem[];
 }
 
-export const SLOT_POINTS = { chatBar: "chat.bar", chatPanes: "chat.panes" } as const;
+export const SLOT_POINTS = { chatBar: "chat.bar", chatName: "chat.name", chatPanes: "chat.panes", welcomeTimeline: "welcome.timeline" } as const;
 
 export interface SlotItem {
 	readonly id: string;
 	readonly component: string;
 	readonly order?: number;
+	readonly data?: unknown;
 }
 
 export interface WelcomeItem {
@@ -169,7 +170,7 @@ export interface Methods {
 	};
 	answer: { params: { id: string; value: unknown }; result: Record<string, never> };
 	contributions: { params: { point: string }; result: { items: readonly ContributionItem[] } };
-	slots: { params: { point: string }; result: { items: readonly SlotItem[] } };
+	slots: { params: { point: string; session?: string }; result: { items: readonly SlotItem[] } };
 	welcome: { params: Record<string, never>; result: { items: readonly WelcomeItem[] } };
 	pickDirectory: { params: { startingFolder?: string }; result: { path?: string } };
 	layout: { params: Record<string, never>; result: LayoutState };

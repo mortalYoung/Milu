@@ -2,6 +2,7 @@ export { ActionsService, ActionsServiceId, type BrowserCommands } from "./action
 export { ColumnsService, ColumnsServiceId, GRIP_WIDTH, type Columns, type DockMode, type ListMode } from "./columns.ts";
 export { type ComposerKey, formatHotkey, HotkeysService, HotkeysServiceId } from "./hotkeys.ts";
 export { ComposerService, ComposerServiceId, type ComposerKeyState, WidgetRegistry, WidgetRegistryId, type WidgetComponent, type WidgetProps } from "./composer.ts";
+export type { SlotProps } from "./slots.ts";
 export { DialogService, DialogServiceId, type DialogComponent, type DialogProps, type PendingDialog } from "./dialogs.ts";
 export { Connection, ConnectionId } from "./connection.ts";
 export type { ServerEvent, Transport } from "./transport.ts";
@@ -17,7 +18,19 @@ export { SurfaceRegistry, SurfaceRegistryId, type Host, type SurfaceComponent, t
 export { TranscriptService, TranscriptServiceId, type TranscriptState } from "./transcripts.ts";
 export { WelcomeService, WelcomeServiceId } from "./welcome.ts";
 export { WorkbenchService, WorkbenchServiceId } from "./workbench.ts";
-export { activityAt, byPinThenRecency, filterSessions, formatWorkspacePath, fuzzyScore, listTime, oneLine, previewFor, workspaceLabel } from "./utils/chat.ts";
+export {
+	activityAt,
+	byPinThenRecency,
+	describeNextRun,
+	filterSessions,
+	formatWorkspacePath,
+	fuzzyScore,
+	listTime,
+	type NextRunParts,
+	oneLine,
+	previewFor,
+	workspaceLabel,
+} from "./utils/chat.ts";
 export {
 	dayOf,
 	formatHistoryTime,

@@ -1,12 +1,16 @@
 import { createServiceId, type Disposable, DisposableStore, type Service } from "@milu/di";
 
+export type ContributionScope = "session" | "global";
+
 export class ContributionPoint<T> implements Disposable {
 	readonly id: string;
+	readonly scope: ContributionScope;
 
 	private readonly _values: T[] = [];
 
-	constructor(id: string) {
+	constructor(id: string, scope: ContributionScope) {
 		this.id = id;
+		this.scope = scope;
 	}
 
 	contribute(value: T): Disposable {
@@ -38,9 +42,9 @@ export class ContributionService implements Service {
 		return found as ContributionPoint<T>;
 	}
 
-	declare<T>(id: string): ContributionPoint<T> {
+	declare<T>(id: string, scope: ContributionScope = "session"): ContributionPoint<T> {
 		if (this._points.has(id)) throw new Error(`${id} is already declared`);
-		const point = this._owned.add(new ContributionPoint<T>(id));
+		const point = this._owned.add(new ContributionPoint<T>(id, scope));
 		this._points.set(id, point as ContributionPoint<unknown>);
 		return point;
 	}

@@ -14,7 +14,7 @@ export type { AgentLoopEvent, AgentLoopRun, AgentLoopService } from "./services/
 export { AgentLoopServiceId } from "./services/agent-loop.ts";
 export { ActionService, ActionServiceId, type Action, type ActionContext } from "./services/actions.ts";
 export { ConfigService, ConfigServiceId } from "./services/config.ts";
-export { ContributionPoint, ContributionService, ContributionServiceId } from "./services/contributions.ts";
+export { ContributionPoint, ContributionService, ContributionServiceId, type ContributionScope } from "./services/contributions.ts";
 export { ExecutionService, ExecutionServiceId } from "./services/execution.ts";
 export { ExtensionService, ExtensionServiceId } from "./services/extensions.ts";
 export { declareExtensionServices } from "./extensions/services.ts";
@@ -28,7 +28,9 @@ export {
 	SESSION_HEADER_POINT,
 	SESSION_MENU_POINT,
 	CHAT_BAR_POINT,
+	CHAT_NAME_POINT,
 	CHAT_PANES_POINT,
+	WELCOME_TIMELINE_POINT,
 	SYSTEM_PROMPT_POINT,
 	WELCOME_ITEMS_POINT,
 	type ComposerTipItem,

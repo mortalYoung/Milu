@@ -37,6 +37,8 @@ export class AgentLoopService implements Service {
 	private readonly _disposables = new DisposableStore();
 	private _runs = 0;
 	private _turn = 0;
+	private _running = false;
+	private readonly _pending: (string | AgentMessage)[] = [];
 
 	constructor(
 		private readonly _modelsService: ModelsService,
@@ -62,6 +64,10 @@ export class AgentLoopService implements Service {
 	// ——— the surface ———
 
 	isRunning(): boolean {
+		return this._running;
+	}
+
+	isStreaming(): boolean {
 		return this._agent.state.isStreaming;
 	}
 
@@ -74,6 +80,34 @@ export class AgentLoopService implements Service {
 	}
 
 	async run(input: string | AgentMessage): Promise<AgentLoopRun> {
+		if (this._running) {
+			this._pending.push(input);
+			return {};
+		}
+		this._running = true;
+		try {
+			return await this._execute(input);
+		} finally {
+			this._running = false;
+			void this._drain();
+		}
+	}
+
+	async continue(): Promise<AgentLoopRun> {
+		if (this._running) throw new Error("the loop is already running");
+		this._running = true;
+		try {
+			await this._agent.continue();
+			await this._agent.waitForIdle();
+			const error = this._agent.state.errorMessage;
+			return error ? { error } : {};
+		} finally {
+			this._running = false;
+			void this._drain();
+		}
+	}
+
+	private async _execute(input: string | AgentMessage): Promise<AgentLoopRun> {
 		this._agent.state.tools = [...(await this._toolService.tools(this._session))];
 		await this._emit("beforeRun", this._agent.state.messages);
 		if (typeof input === "string") await this._agent.prompt(input);
@@ -83,15 +117,25 @@ export class AgentLoopService implements Service {
 		return error ? { error } : {};
 	}
 
-	async continue(): Promise<AgentLoopRun> {
-		await this._agent.continue();
-		await this._agent.waitForIdle();
-		const error = this._agent.state.errorMessage;
-		return error ? { error } : {};
+	private _awaitingToolResult(): boolean {
+		const last = this._agent.state.messages.at(-1);
+		if (!last || last.role !== "assistant" || !Array.isArray(last.content)) return false;
+		return last.content.some((block) => (block as { type?: unknown }).type === "toolCall");
 	}
 
-	followUp(message: AgentMessage): void {
-		this._agent.followUp(message);
+	private async _drain(): Promise<void> {
+		while (!this._running && !this._session.hasSuspended?.() && !this._awaitingToolResult() && this._pending.length > 0) {
+			const next = this._pending.shift()!;
+			this._running = true;
+			try {
+				await this._execute(next);
+			} catch (error) {
+				console.error(`loop ${this._session.name}: queued message failed:`, error);
+				return;
+			} finally {
+				this._running = false;
+			}
+		}
 	}
 
 	abort(): void {

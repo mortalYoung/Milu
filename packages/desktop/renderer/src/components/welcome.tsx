@@ -1,11 +1,12 @@
 import { formatHotkey, type Host } from "@milu/extensions/host";
-import type { WelcomeItem } from "@milu/protocol";
+import { SLOT_POINTS, type WelcomeItem } from "@milu/protocol";
 import { useEffect, useState } from "react";
 import { useStore } from "zustand";
 
 import { IconByName } from "./icons.tsx";
 
 const HEAD = "Say something and it starts.";
+const NO_TIMELINE: readonly never[] = [];
 
 let typed = false;
 
@@ -14,6 +15,7 @@ const calm = (): boolean => window.matchMedia("(prefers-reduced-motion: reduce)"
 export function Welcome(props: { host: Host }) {
 	const { host } = props;
 	const items = useStore(host.welcome.store, (state) => state.items);
+	const timeline = useStore(host.slots.store, (state) => state.points[SLOT_POINTS.welcomeTimeline] ?? NO_TIMELINE);
 	const bindings = useStore(host.hotkeys.store, (state) => state.bindings);
 	const [chars, setChars] = useState(() => (typed || calm() ? HEAD.length : 0));
 	const typing = chars < HEAD.length;
@@ -21,6 +23,17 @@ export function Welcome(props: { host: Host }) {
 	useEffect(() => {
 		typed = true;
 	}, []);
+
+	useEffect(() => {
+		const load = (): void => {
+			void host.slots.load(SLOT_POINTS.welcomeTimeline);
+		};
+		load();
+		const subscription = host.connection.onLive((event) => {
+			if (event.type === "status") load();
+		});
+		return () => subscription.dispose();
+	}, [host]);
 
 	useEffect(() => {
 		if (!typing) return;
@@ -50,18 +63,25 @@ export function Welcome(props: { host: Host }) {
 
 			<div className="welcome-tl">
 				<span className="welcome-spine" aria-hidden="true" />
-				<section className="welcome-grp">
-					<h3 className="welcome-eyebrow">Next</h3>
-					<ul>
-						<li className="welcome-row-item">
-							<span className="welcome-empty">
-								<span className="welcome-tick" aria-hidden="true" />
-								<span className="welcome-what">nothing coming up</span>
-								<span className="welcome-hint">try “every day at 9:00 summarize the repo”</span>
-							</span>
-						</li>
-					</ul>
-				</section>
+				{timeline.length === 0 ? (
+					<section className="welcome-grp">
+						<h3 className="welcome-eyebrow">Next</h3>
+						<ul>
+							<li className="welcome-row-item">
+								<span className="welcome-empty">
+									<span className="welcome-tick" aria-hidden="true" />
+									<span className="welcome-what">nothing coming up</span>
+									<span className="welcome-hint">try “every day at 9:00 summarize the repo”</span>
+								</span>
+							</li>
+						</ul>
+					</section>
+				) : (
+					timeline.map((item) => {
+						const Component = host.slots.component(item.component);
+						return Component ? <Component key={item.id} host={host} data={item.data} /> : null;
+					})
+				)}
 			</div>
 
 			<div className="welcome-acts">

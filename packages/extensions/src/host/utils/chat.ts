@@ -37,6 +37,20 @@ function dayGap(ts: number, now: number): number {
 	return Math.round((to.getTime() - from.getTime()) / 86_400_000);
 }
 
+export interface NextRunParts {
+	readonly day: string;
+	readonly offset: number | null;
+	readonly clock: string;
+}
+
+export function describeNextRun(ts: number, now = Date.now()): NextRunParts {
+	const d = new Date(ts);
+	const days = -dayGap(ts, now);
+	const clock = clockOf(d);
+	if (days === 0) return { day: "", offset: null, clock };
+	return { day: stampOf(d, now), offset: days > 0 ? days : null, clock };
+}
+
 export function listTime(ts: number, now = Date.now()): string {
 	const d = new Date(ts);
 	const days = dayGap(ts, now);

@@ -15,7 +15,9 @@ export const COMPOSER_TIPS_POINT = "composer.tips";
 export const SYSTEM_PROMPT_POINT = "system.prompt";
 export const WELCOME_ITEMS_POINT = "welcome.items";
 export const CHAT_BAR_POINT = SLOT_POINTS.chatBar;
+export const CHAT_NAME_POINT = SLOT_POINTS.chatName;
 export const CHAT_PANES_POINT = SLOT_POINTS.chatPanes;
+export const WELCOME_TIMELINE_POINT = SLOT_POINTS.welcomeTimeline;
 
 export type { SlotItem, WelcomeItem };
 
@@ -69,6 +71,7 @@ export interface ExtensionContributions {
 	readonly "composer.tips"?: readonly ComposerTipItem[];
 	readonly "system.prompt"?: readonly PromptSection[];
 	readonly "welcome.items"?: readonly WelcomeItem[];
+	readonly "welcome.timeline"?: readonly SlotItem[];
 	readonly "chat.bar"?: readonly SlotItem[];
 	readonly "chat.panes"?: readonly SlotItem[];
 }

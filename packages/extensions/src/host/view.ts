@@ -20,7 +20,7 @@ export interface ViewSchedule {
 	title: string;
 	runId?: string;
 	trigger?: "schedule" | "manual" | "catchup";
-	status?: "dispatched" | "done" | "failed" | "skipped" | "missed";
+	status?: "dispatched" | "skipped" | "missed";
 	error?: string;
 }
 
@@ -142,6 +142,7 @@ function userVisit(entry: LogEntry, out: ViewItem[]): void {
 					schedule: {
 						scheduleId: message.scheduleId,
 						title: typeof message.scheduleTitle === "string" ? message.scheduleTitle : message.scheduleId,
+						status: "dispatched",
 						...(typeof message.scheduleRunId === "string" ? { runId: message.scheduleRunId } : {}),
 					},
 				}
@@ -267,8 +268,7 @@ function escalationDecisionVisit(entry: LogEntry, out: ViewItem[]): void {
 	if (item?.escalation) item.escalation.status = status;
 }
 
-const isRunStatus = (value: unknown): value is NonNullable<ViewSchedule["status"]> =>
-	value === "dispatched" || value === "done" || value === "failed" || value === "skipped" || value === "missed";
+const isRunStatus = (value: unknown): value is NonNullable<ViewSchedule["status"]> => value === "dispatched" || value === "skipped" || value === "missed";
 
 function scheduleRunVisit(entry: LogEntry, out: ViewItem[]): void {
 	if (entry.type !== "custom") return;

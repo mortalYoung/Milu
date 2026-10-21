@@ -1,5 +1,6 @@
 import type { Host } from "@milu/extensions/host";
 import { SLOT_POINTS } from "@milu/protocol";
+import { useEffect } from "react";
 import { useStore } from "zustand";
 
 import { PanelLeftOpenIcon } from "./icons.tsx";
@@ -11,8 +12,13 @@ export function ChatBar(props: { host: Host }) {
 	const columns = useStore(host.columns.store, (state) => state.columns);
 	const linked = useStore(host.connection.store, (state) => state.linked);
 	const items = useStore(host.slots.store, (state) => state.points[SLOT_POINTS.chatBar] ?? NO_ITEMS);
+	const nameItems = useStore(host.slots.store, (state) => state.points[SLOT_POINTS.chatName] ?? NO_ITEMS);
 
 	const name = useStore(host.selection.store, (state) => state.selected);
+
+	useEffect(() => {
+		void host.slots.load(SLOT_POINTS.chatName, name || undefined);
+	}, [host, name]);
 	const running = useStore(host.sessions.store, (state) => state.rows.find((row) => row.name === name)?.running ?? false);
 
 	return (
@@ -37,12 +43,16 @@ export function ChatBar(props: { host: Host }) {
 						Writing…
 					</span>
 				) : null}
+				{nameItems.map((item) => {
+					const Component = host.slots.component(item.component);
+					return Component ? <Component key={item.id} host={host} data={item.data} /> : null;
+				})}
 			</div>
 
 			<div className="chat-bar-tools">
 				{items.map((item) => {
 					const Component = host.slots.component(item.component);
-					return Component ? <Component key={item.id} host={host} /> : null;
+					return Component ? <Component key={item.id} host={host} data={item.data} /> : null;
 				})}
 				{linked ? null : <span className="dot off" title="Disconnected" />}
 			</div>

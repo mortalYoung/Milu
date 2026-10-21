@@ -12,7 +12,9 @@ import {
 	type ExtensionContext,
 	SESSION_HEADER_POINT,
 	CHAT_BAR_POINT,
+	CHAT_NAME_POINT,
 	CHAT_PANES_POINT,
+	WELCOME_TIMELINE_POINT,
 	SESSION_MENU_POINT,
 	WELCOME_ITEMS_POINT,
 	type SessionHeaderItem,
@@ -56,7 +58,9 @@ export class ExtensionService implements Service {
 		this._contributionService.declare<ComposerWidgetItem>(COMPOSER_RIGHT_POINT);
 		this._contributionService.declare<ComposerTipItem>(COMPOSER_TIPS_POINT);
 		this._contributionService.declare<WelcomeItem>(WELCOME_ITEMS_POINT);
+		this._contributionService.declare<SlotItem>(WELCOME_TIMELINE_POINT, "global");
 		this._contributionService.declare<SlotItem>(CHAT_BAR_POINT);
+		this._contributionService.declare<SlotItem>(CHAT_NAME_POINT);
 		this._contributionService.declare<SlotItem>(CHAT_PANES_POINT);
 		for (const extension of this._pending) await this.load(extension);
 	}

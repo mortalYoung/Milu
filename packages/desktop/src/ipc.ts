@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { type Backend, SESSION_HEADER_POINT, type SlotItem, WELCOME_ITEMS_POINT, type WelcomeItem } from "@milu/core";
+import { type Backend, SESSION_HEADER_POINT, WELCOME_ITEMS_POINT, type WelcomeItem } from "@milu/core";
 import { type ContributionItem, type DialogDescriptor, type LiveEvent, type MethodName, type Params, type Result, SLOT_POINTS, type Snapshot } from "@milu/protocol";
 import { BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent, type OpenDialogOptions, type WebContents } from "electron";
 
@@ -138,6 +138,7 @@ export class IpcServer {
 	private async _snapshot(): Promise<Snapshot> {
 		const sessions = [...(await this._backend.sessions.list())];
 		await this._backend.selection.reconcile(sessions.map((row) => row.name));
+		const selected = this._backend.selection.selected ? this._backend.sessions.get(this._backend.selection.selected) : null;
 		return {
 			layout: this._backend.layout.state(),
 			sessions,
@@ -146,8 +147,10 @@ export class IpcServer {
 			hotkeys: this._backend.actions.bindings(),
 			welcome: this._ordered<WelcomeItem>(WELCOME_ITEMS_POINT),
 			slots: {
-				[SLOT_POINTS.chatBar]: this._ordered<SlotItem>(SLOT_POINTS.chatBar),
-				[SLOT_POINTS.chatPanes]: this._ordered<SlotItem>(SLOT_POINTS.chatPanes),
+				[SLOT_POINTS.chatBar]: await this._backend.sessions.slots(SLOT_POINTS.chatBar, selected),
+				[SLOT_POINTS.chatName]: await this._backend.sessions.slots(SLOT_POINTS.chatName, selected),
+				[SLOT_POINTS.chatPanes]: await this._backend.sessions.slots(SLOT_POINTS.chatPanes, selected),
+				[SLOT_POINTS.welcomeTimeline]: await this._backend.sessions.slots(SLOT_POINTS.welcomeTimeline),
 			},
 		};
 	}
@@ -225,7 +228,8 @@ export class IpcServer {
 	}
 
 	private async _slots(params: Params<"slots">): Promise<Result<"slots">> {
-		return { items: this._ordered<SlotItem>(params.point) };
+		const session = params.session ? this._backend.sessions.get(params.session) : null;
+		return { items: await this._backend.sessions.slots(params.point, session) };
 	}
 
 	private async _welcome(): Promise<Result<"welcome">> {

@@ -1,7 +1,7 @@
 import { join } from "node:path";
 
 import { createServiceId, DisposableStore, Emitter, type Event, type Service } from "@milu/di";
-import type { ComposerTip, ComposerWidget, ContributionItem, SeqEntry, SessionRow } from "@milu/protocol";
+import type { ComposerTip, ComposerWidget, ContributionItem, SeqEntry, SessionRow, SlotItem } from "@milu/protocol";
 
 import {
 	COMPOSER_LEFT_POINT,
@@ -16,7 +16,7 @@ import {
 import { profileOf } from "../session/files.ts";
 import { Session } from "../session/session.ts";
 import type { AgentLoopEvent } from "./agent-loop.ts";
-import type { ContributionService } from "./contributions.ts";
+import type { ContributionPoint, ContributionService } from "./contributions.ts";
 import type { ExecutionService } from "./execution.ts";
 import type { HookService } from "./hooks.ts";
 import type { ModelsService } from "./models.ts";
@@ -140,6 +140,17 @@ export class SessionService implements Service {
 		this._relays.clear();
 	}
 
+	async slots(point: string, session?: Session | null): Promise<SlotItem[]> {
+		const source = this._contributionService.get<SlotItem>(point);
+		const items: SlotItem[] = [];
+		for (const item of source.all()) {
+			const data = await this._dataOf(item, source, session);
+			if (data === null) continue;
+			items.push({ id: item.id, component: item.component, ...(item.order === undefined ? {} : { order: item.order }), ...(data === undefined ? {} : { data }) });
+		}
+		return items.sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.id.localeCompare(right.id));
+	}
+
 	async composer(session: Session): Promise<{ left: ComposerWidget[]; right: ComposerWidget[]; tips: ComposerTip[] }> {
 		return {
 			left: await this._widgetsOf(COMPOSER_LEFT_POINT, session),
@@ -156,6 +167,12 @@ export class SessionService implements Service {
 				}))
 				.sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.id.localeCompare(right.id)),
 		};
+	}
+
+	private async _dataOf(item: SlotItem, point: ContributionPoint<SlotItem>, session: Session | null | undefined): Promise<unknown> {
+		if (typeof item.data !== "function") return item.data;
+		if (point.scope === "global") return (item.data as () => unknown)();
+		return session ? (item.data as (session: Session) => unknown)(session) : undefined;
 	}
 
 	private async _widgetsOf(point: string, session: Session): Promise<ComposerWidget[]> {

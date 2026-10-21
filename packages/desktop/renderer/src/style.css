@@ -1033,6 +1033,10 @@ body.pane-dragging {
 	max-width: 38%;
 }
 
+.chat-bar-name:has(.chat-bar-sched) {
+	max-width: 38%;
+}
+
 .chat-bar-name-text {
 	display: flex;
 	align-items: center;
@@ -1522,14 +1526,6 @@ body.pane-dragging {
 
 .msg-origin-status {
 	flex: none;
-}
-
-.msg-origin-status.is-done {
-	color: var(--ink-soft);
-}
-
-.msg-origin-status.is-failed {
-	color: var(--signal);
 }
 
 .msg-origin-status.is-missed {
@@ -2329,6 +2325,33 @@ body.pane-dragging {
 	display: flex;
 }
 
+.welcome-row {
+	position: relative;
+	display: flex;
+	width: 100%;
+	align-items: baseline;
+	gap: 10px;
+	padding: 5px 6px 5px 18px;
+	border: 0;
+	border-radius: var(--r4);
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+	transition: background-color 120ms var(--ease-out);
+}
+
+@media (hover: hover) and (pointer: fine) {
+	.welcome-row:hover {
+		background: var(--hover);
+	}
+
+	.welcome-row:hover .welcome-chat {
+		border-bottom-color: var(--muted-soft);
+	}
+}
+
 .welcome-tick {
 	position: absolute;
 	left: 0;
@@ -2349,6 +2372,18 @@ body.pane-dragging {
 	padding: 5px 6px 5px 18px;
 }
 
+.welcome-when {
+	width: 104px;
+	flex-shrink: 0;
+	overflow: hidden;
+	font-family: var(--mono);
+	font-size: 11px;
+	font-variant-numeric: tabular-nums;
+	color: var(--muted);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 .welcome-what {
 	min-width: 0;
 	flex: 1;
@@ -2360,6 +2395,20 @@ body.pane-dragging {
 	color: var(--ink);
 }
 
+.welcome-chat {
+	flex-shrink: 0;
+	border-bottom: 1px solid transparent;
+	font-family: var(--serif);
+	font-size: 12.5px;
+	color: var(--ink-soft);
+	transition: border-color 120ms var(--ease-out);
+}
+
+.welcome-offset {
+	font-size: 8.5px;
+	color: var(--muted-soft);
+}
+
 .welcome-hint {
 	min-width: 0;
 	overflow: hidden;
@@ -2367,6 +2416,13 @@ body.pane-dragging {
 	white-space: nowrap;
 	font-family: var(--mono);
 	font-size: 10.5px;
+	color: var(--muted-soft);
+}
+
+.welcome-more {
+	padding-left: 18px;
+	font-family: var(--mono);
+	font-size: 10px;
 	color: var(--muted-soft);
 }
 
