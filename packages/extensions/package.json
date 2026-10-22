@@ -9,7 +9,7 @@
 		"./host/tooltip": "./src/host/tooltip.tsx",
 		"./markdown": "./src/markdown/index.ts",
 		"./markdown/react": "./src/markdown/react.tsx",
-		"./web": "./src/web/index.tsx"
+		"./web": "./src/web/index.ts"
 	},
 	"scripts": {
 		"typecheck": "tsc --noEmit"

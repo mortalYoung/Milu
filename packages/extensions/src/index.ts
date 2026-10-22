@@ -1,31 +1,31 @@
 import type { Extension } from "@milu/core";
 
-import { bashExtension } from "./bash/bash.ts";
-import { chatExtension } from "./chat/chat.ts";
-import { copyExtension } from "./copy/copy.ts";
-import { createExtension } from "./create/create.ts";
-import { detailsExtension } from "./details/details.ts";
-import { fetchExtension } from "./fetch/fetch.ts";
-import { filesExtension } from "./files/files.ts";
-import { mcpExtension } from "./mcp/mcp.ts";
-import { meterExtension } from "./meter/meter.ts";
-import { modelsExtension } from "./models/models.ts";
-import { openExtension } from "./open/open.ts";
-import { peerExtension } from "./peer/peer.ts";
-import { permissionExtension } from "./permission/permission.ts";
-import { pinExtension } from "./pin/pin.ts";
-import { promptExtension } from "./prompt/prompt.ts";
-import { remindersExtension } from "./reminders/reminders.ts";
-import { repliesExtension } from "./replies/replies.ts";
-import { rmExtension } from "./rm/rm.ts";
-import { runtimeExtension } from "./runtime/runtime.ts";
-import { scheduleExtension } from "./schedule/schedule.ts";
-import { shellExtension } from "./shell/shell.ts";
-import { skillsExtension } from "./skills/skills.ts";
-import { tasksExtension } from "./tasks/tasks.ts";
-import { tipsExtension } from "./tips/tips.ts";
-import { trajectoryExtension } from "./trajectory/trajectory.ts";
-import { trashExtension } from "./trash/trash.ts";
+import { bashExtension } from "./bash/index.ts";
+import { chatExtension } from "./chat/index.ts";
+import { copyExtension } from "./copy/index.ts";
+import { createExtension } from "./create/index.ts";
+import { detailsExtension } from "./details/index.ts";
+import { fetchExtension } from "./fetch/index.ts";
+import { filesExtension } from "./files/index.ts";
+import { mcpExtension } from "./mcp/index.ts";
+import { meterExtension } from "./meter/index.ts";
+import { modelsExtension } from "./models/index.ts";
+import { openExtension } from "./open/index.ts";
+import { peerExtension } from "./peer/index.ts";
+import { permissionExtension } from "./permission/index.ts";
+import { pinExtension } from "./pin/index.ts";
+import { promptExtension } from "./prompt/index.ts";
+import { remindersExtension } from "./reminders/index.ts";
+import { repliesExtension } from "./replies/index.ts";
+import { rmExtension } from "./rm/index.ts";
+import { runtimeExtension } from "./runtime/index.ts";
+import { scheduleExtension } from "./schedule/index.ts";
+import { shellExtension } from "./shell/index.ts";
+import { skillsExtension } from "./skills/index.ts";
+import { tasksExtension } from "./tasks/index.ts";
+import { tipsExtension } from "./tips/index.ts";
+import { trajectoryExtension } from "./trajectory/index.ts";
+import { trashExtension } from "./trash/index.ts";
 
 export const extensions: readonly Extension[] = [
 	createExtension,
