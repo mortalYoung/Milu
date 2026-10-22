@@ -6,10 +6,10 @@ import { createRoot } from "react-dom/client";
 
 import { copyPath } from "./clipboard.ts";
 import { installMarkdownClicks } from "./markdown-clicks.ts";
+import { Root } from "./root.tsx";
 import { SessionListSurface } from "./surfaces/session-list.tsx";
 import { TranscriptPaneSurface } from "./surfaces/transcript-pane.tsx";
 import { IpcTransport } from "./transport.ts";
-import { Workbench } from "./workbench.tsx";
 
 import "./style.css";
 
@@ -34,7 +34,7 @@ async function main(): Promise<void> {
 	if (!root) throw new Error("#root is missing from index.html");
 
 	installMarkdownClicks(front.host);
-	createRoot(root).render(createElement(Workbench, { host: front.host }));
+	createRoot(root).render(createElement(Root, { host: front.host }));
 	front.start();
 }
 

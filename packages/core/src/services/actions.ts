@@ -11,12 +11,14 @@ export interface ActionContext {
 	readonly dialog?: (dialog: DialogDescriptor) => Promise<unknown>;
 }
 
+export type ActionOutcome = void | BrowserCommand | { readonly data: unknown };
+
 export interface Action {
 	readonly id: string;
 	readonly scope?: string | readonly string[];
 	readonly hotkey?: Hotkey;
 	readonly confirm?: (context: ActionContext) => ConfirmCopy | null | Promise<ConfirmCopy | null>;
-	readonly run: (context: ActionContext) => void | BrowserCommand | Promise<void | BrowserCommand>;
+	readonly run: (context: ActionContext) => ActionOutcome | Promise<ActionOutcome>;
 }
 
 export interface ActionBinding {
@@ -52,8 +54,8 @@ export class ActionService implements Service {
 		return (await this._action(id).confirm?.(context)) ?? null;
 	}
 
-	async run(id: string, context: ActionContext): Promise<BrowserCommand | undefined> {
-		return (await this._action(id).run(context)) ?? undefined;
+	async run(id: string, context: ActionContext): Promise<ActionOutcome> {
+		return this._action(id).run(context);
 	}
 
 	dispose(): void {

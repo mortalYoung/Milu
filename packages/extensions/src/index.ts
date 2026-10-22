@@ -8,7 +8,6 @@ import { detailsExtension } from "./details/details.ts";
 import { fetchExtension } from "./fetch/fetch.ts";
 import { filesExtension } from "./files/files.ts";
 import { mcpExtension } from "./mcp/mcp.ts";
-import { memoryExtension } from "./memory/memory.ts";
 import { meterExtension } from "./meter/meter.ts";
 import { modelsExtension } from "./models/models.ts";
 import { openExtension } from "./open/open.ts";
@@ -19,6 +18,7 @@ import { promptExtension } from "./prompt/prompt.ts";
 import { remindersExtension } from "./reminders/reminders.ts";
 import { repliesExtension } from "./replies/replies.ts";
 import { rmExtension } from "./rm/rm.ts";
+import { runtimeExtension } from "./runtime/runtime.ts";
 import { scheduleExtension } from "./schedule/schedule.ts";
 import { shellExtension } from "./shell/shell.ts";
 import { skillsExtension } from "./skills/skills.ts";
@@ -40,13 +40,13 @@ export const extensions: readonly Extension[] = [
 	tasksExtension,
 	rmExtension,
 	mcpExtension,
-	memoryExtension,
 	scheduleExtension,
 	peerExtension,
 	fetchExtension,
 	skillsExtension,
 	remindersExtension,
 	repliesExtension,
+	runtimeExtension,
 	modelsExtension,
 	meterExtension,
 	shellExtension,

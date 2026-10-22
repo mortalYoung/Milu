@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
-import type { McpConfig, McpLifecycle, McpServerConfig, McpServerTools, McpToolSummary } from "./types.ts";
+import type { McpConfig, McpLifecycle, McpServerConfig, McpServerStatus, McpServerTools, McpToolSummary } from "./types.ts";
 
 const DEFAULT_IDLE_TTL_MS = 60_000;
 const DEFAULT_MAX_BUFFER_SIZE = 10 * 1024 * 1024;
@@ -79,6 +79,16 @@ export class McpManager {
 		}
 		this._touch(session);
 		return session.tools;
+	}
+
+	statuses(): McpServerStatus[] {
+		return [...this._sessions.values()].map((session) => ({
+			name: session.config.name,
+			lifecycle: session.config.lifecycle ?? this._defaultLifecycle,
+			state: session.state,
+			toolCount: session.tools.length,
+			...(session.error ? { error: session.error } : {}),
+		}));
 	}
 
 	async resolve(granted: readonly string[]): Promise<readonly McpServerTools[]> {

@@ -3,6 +3,7 @@ import { AlarmClock } from "lucide-react";
 import { useState } from "react";
 
 import { describeNextRun, type DialogProps, type SlotProps } from "../host/index.ts";
+import { Tip } from "../host/tooltip.tsx";
 
 import "./schedule.css";
 
@@ -138,17 +139,19 @@ export function ScheduleTimeline(props: SlotProps) {
 					const when = describeNextRun(row.at);
 					return (
 						<li className="welcome-row-item" key={`${row.session}:${row.id}`}>
-							<button type="button" className="welcome-row" title={row.title} onClick={() => void props.host.selection.select(row.session)}>
-								<span className="welcome-tick" aria-hidden="true" />
-								<span className="welcome-when">
-									{when.day}
-									{when.offset !== null ? <sub className="welcome-offset">+{when.offset}</sub> : null}
-									{when.day ? " " : ""}
-									{when.clock}
-								</span>
-								<span className="welcome-what">{row.title || row.id}</span>
-								<span className="welcome-chat">{row.session}</span>
-							</button>
+							<Tip label={row.title}>
+								<button type="button" className="welcome-row" onClick={() => void props.host.selection.select(row.session)}>
+									<span className="welcome-tick" aria-hidden="true" />
+									<span className="welcome-when">
+										{when.day}
+										{when.offset !== null ? <sub className="welcome-offset">+{when.offset}</sub> : null}
+										{when.day ? " " : ""}
+										{when.clock}
+									</span>
+									<span className="welcome-what">{row.title || row.id}</span>
+									<span className="welcome-chat">{row.session}</span>
+								</button>
+							</Tip>
 						</li>
 					);
 				})}

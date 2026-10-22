@@ -103,14 +103,19 @@ export function filterSessions(rows: readonly SessionRow[], query: string): Sess
 	return hits.map(({ row }) => row);
 }
 
+export function tildifyPath(path: string): string {
+	return path.replace(/^\/(?:Users|home)\/[^/]+/, "~");
+}
+
 export function workspaceLabel(row: SessionRow): string {
-	if (row.workspace && (row.workspaceKind === "worktree" || row.workspaceKind === "repo") && row.workspaceRepo) return row.workspaceRepo;
+	if (row.workspace && (row.workspaceKind === "worktree" || row.workspaceKind === "repo") && row.workspaceRepo) return tildifyPath(row.workspaceRepo);
 	return formatWorkspacePath(row.workspace ?? "", 30);
 }
 
 export function formatWorkspacePath(path: string, max = 48): string {
-	if (path.length <= max) return path;
-	const head = path.slice(0, Math.ceil(max * 0.45));
-	const tail = path.slice(-Math.floor(max * 0.45));
+	const tildified = tildifyPath(path);
+	if (tildified.length <= max) return tildified;
+	const head = tildified.slice(0, Math.ceil(max * 0.45));
+	const tail = tildified.slice(-Math.floor(max * 0.45));
 	return `${head}…${tail}`;
 }

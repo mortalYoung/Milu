@@ -16,7 +16,7 @@ export type { Entry, StreamFn } from "@earendil-works/pi-agent-core";
 export type { Message, Model } from "@earendil-works/pi-ai";
 export type { AgentLoopEvent, AgentLoopRun, AgentLoopService } from "./services/agent-loop.ts";
 export { AgentLoopServiceId } from "./services/agent-loop.ts";
-export { ActionService, ActionServiceId, type Action, type ActionContext } from "./services/actions.ts";
+export { ActionService, ActionServiceId, type Action, type ActionContext, type ActionOutcome } from "./services/actions.ts";
 export { CommandsService, CommandsServiceId } from "./services/commands.ts";
 export { CompactionService, CompactionServiceId, type CompactionContext, type CompactionPlanner } from "./services/compaction.ts";
 export { ConfigService, ConfigServiceId } from "./services/config.ts";

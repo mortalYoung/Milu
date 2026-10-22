@@ -15,6 +15,17 @@ export class ActionsService implements Service {
 		private readonly _commands: BrowserCommands,
 	) {}
 
+	async request<T>(action: string, session?: string, args?: unknown): Promise<T | undefined> {
+		let result = await this._send(action, session, args, false);
+		if (!result.ok) throw new Error(result.error ?? `action "${action}" failed`);
+		if (result.confirm) {
+			if (!(await this._dialogService.confirm(result.confirm))) return undefined;
+			result = await this._send(action, session, args, true);
+			if (!result.ok) throw new Error(result.error ?? `action "${action}" failed`);
+		}
+		return result.data as T | undefined;
+	}
+
 	async invoke(action: string, session?: string, args?: unknown): Promise<void> {
 		let result = await this._send(action, session, args, false);
 		if (!result.ok) throw new Error(result.error ?? `action "${action}" failed`);

@@ -1041,10 +1041,22 @@ body.pane-dragging {
 	display: flex;
 	align-items: center;
 	min-width: 0;
+	padding: 0;
+	border: 0;
+	background: transparent;
 	font-family: var(--mono);
 	font-size: 13px;
 	line-height: 1;
 	color: var(--ink-soft);
+	cursor: pointer;
+}
+
+.chat-bar-name-text:hover {
+	color: var(--ink);
+}
+
+.chat-bar-name-text:disabled {
+	cursor: default;
 }
 
 .chat-bar-name-text > span {

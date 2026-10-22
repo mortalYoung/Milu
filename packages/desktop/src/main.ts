@@ -96,12 +96,26 @@ async function main(): Promise<void> {
 	console.log(`[milu] partners=${backend.sessions.partnerRoot}`);
 }
 
-app
-	.whenReady()
-	.then(main)
-	.catch((error: unknown) => {
-		console.error("[milu] failed to start", error);
-		app.quit();
+const singleInstance = HIDDEN || app.requestSingleInstanceLock();
+
+if (!singleInstance) {
+	app.quit();
+} else {
+	app.on("second-instance", () => {
+		const existing = BrowserWindow.getAllWindows()[0];
+		if (!existing) return;
+		if (existing.isMinimized()) existing.restore();
+		existing.show();
+		existing.focus();
 	});
 
-app.on("window-all-closed", () => app.quit());
+	app
+		.whenReady()
+		.then(main)
+		.catch((error: unknown) => {
+			console.error("[milu] failed to start", error);
+			app.quit();
+		});
+
+	app.on("window-all-closed", () => app.quit());
+}

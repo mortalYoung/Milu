@@ -1,4 +1,5 @@
 import type { Host } from "@milu/extensions/host";
+import { Tip } from "@milu/extensions/host/tooltip";
 import { type ReactNode, useEffect, useRef } from "react";
 import { useStore } from "zustand";
 
@@ -149,7 +150,13 @@ function Column(props: { host: Host; slot: string; width?: number; min?: number;
 				? props.fallback
 				: ids.map((id) => {
 						const Component = props.host.surfaces.get(id);
-						if (!Component) return <div key={id} className="surface-missing" data-surface={id} title={`${props.slot}:${id}`} />;
+						if (!Component) {
+							return (
+								<Tip key={id} label={`${props.slot}:${id}`}>
+									<div className="surface-missing" data-surface={id} />
+								</Tip>
+							);
+						}
 						return <Component key={id} host={props.host} />;
 					})}
 		</div>

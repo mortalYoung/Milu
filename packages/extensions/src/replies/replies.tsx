@@ -4,6 +4,7 @@ import { useStore } from "zustand";
 import { createStore } from "zustand/vanilla";
 
 import { createServiceId, formatHistoryTime, projectView, replyRows, type Service, type SlotComponent, type SurfaceProps } from "../host/index.ts";
+import { Tip } from "../host/tooltip.tsx";
 
 import "./replies.css";
 
@@ -31,9 +32,11 @@ function RepliesButton(props: SurfaceProps) {
 	const open = useStore(service.store, (state) => state.open);
 	const wording = open ? "Hide replies" : "Show replies";
 	return (
-		<button type="button" className={open ? "replies-bar is-on" : "replies-bar"} aria-label={wording} aria-pressed={open} title={wording} onClick={() => service.toggle()}>
-			<List size={15} />
-		</button>
+		<Tip label={wording}>
+			<button type="button" className={open ? "replies-bar is-on" : "replies-bar"} aria-label={wording} aria-pressed={open} onClick={() => service.toggle()}>
+				<List size={15} />
+			</button>
+		</Tip>
 	);
 }
 

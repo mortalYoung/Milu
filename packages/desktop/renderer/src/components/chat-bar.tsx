@@ -1,4 +1,5 @@
 import type { Host } from "@milu/extensions/host";
+import { Tip } from "@milu/extensions/host/tooltip";
 import { SLOT_POINTS } from "@milu/protocol";
 import { useEffect } from "react";
 import { useStore } from "zustand";
@@ -25,16 +26,28 @@ export function ChatBar(props: { host: Host }) {
 		<header className={columns.list.mode === "flow" ? "chat-bar" : "chat-bar at-edge"}>
 			<div className="chat-bar-lead">
 				{columns.list.mode === "collapsed" ? (
-					<button type="button" className="bar-icon list-expand" aria-label="Show chat list" title="Show chat list (⌘B)" onClick={() => host.columns.toggleList()}>
-						<PanelLeftOpenIcon size={16} />
-					</button>
+					<Tip label="Show chat list (⌘B)">
+						<button type="button" className="bar-icon list-expand" aria-label="Show chat list" onClick={() => host.columns.toggleList()}>
+							<PanelLeftOpenIcon size={16} />
+						</button>
+					</Tip>
 				) : null}
 			</div>
 
 			<div className="chat-bar-name">
-				<span className="chat-bar-name-text" title={name || undefined}>
-					<span>{name || "Chat"}</span>
-				</span>
+				<Tip label={name ? "View details (⌘E)" : undefined}>
+					<button
+						type="button"
+						className="chat-bar-name-text"
+						aria-label={name ? `${name} — view details` : "View details"}
+						disabled={!name}
+						onClick={() => {
+							if (name) void host.actions.invoke("details.session", name);
+						}}
+					>
+						<span>{name || "Chat"}</span>
+					</button>
+				</Tip>
 				{running ? (
 					<span className="chat-bar-status">
 						<span className="work-dot" />
@@ -54,7 +67,11 @@ export function ChatBar(props: { host: Host }) {
 					const Component = host.slots.component(item.component);
 					return Component ? <Component key={item.id} host={host} data={item.data} /> : null;
 				})}
-				{linked ? null : <span className="dot off" title="Disconnected" />}
+				{linked ? null : (
+					<Tip label="Disconnected">
+						<span className="dot off" />
+					</Tip>
+				)}
 			</div>
 		</header>
 	);

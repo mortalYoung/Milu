@@ -1,4 +1,5 @@
 import { detectComposerTrigger, type ComposerTriggerToken, type Host } from "@milu/extensions/host";
+import { Tip } from "@milu/extensions/host/tooltip";
 import { LOG_EVENTS, type ComposerWidget } from "@milu/protocol";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
@@ -279,15 +280,16 @@ export function Composer(props: { host: Host }) {
 							<div className="composer-actions-right">
 								{composerPending ? null : layout.right.map(renderWidget)}
 								{showSend ? (
-									<button
-										type="button"
-										className={`composer-send${busy ? " composer-stop" : ""}`}
-										aria-label={busy ? "Stop" : "Send"}
-										title={busy ? "Stop" : "Send"}
-										onClick={() => (busy ? void host.transcript.abort() : void submit())}
-									>
-										{busy ? <SquareIcon size={12} /> : <ArrowUpIcon size={13} />}
-									</button>
+									<Tip label={busy ? "Stop" : "Send"}>
+										<button
+											type="button"
+											className={`composer-send${busy ? " composer-stop" : ""}`}
+											aria-label={busy ? "Stop" : "Send"}
+											onClick={() => (busy ? void host.transcript.abort() : void submit())}
+										>
+											{busy ? <SquareIcon size={12} /> : <ArrowUpIcon size={13} />}
+										</button>
+									</Tip>
 								) : null}
 							</div>
 						</div>

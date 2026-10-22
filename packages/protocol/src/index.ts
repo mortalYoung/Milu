@@ -178,7 +178,7 @@ export interface Methods {
 	select: { params: { session: string | null }; result: { selected: string | null } };
 	invoke: {
 		params: { action: string; session?: string; args?: unknown; confirmed?: boolean };
-		result: { ok: boolean; error?: string; command?: BrowserCommand; confirm?: ConfirmCopy };
+		result: { ok: boolean; error?: string; command?: BrowserCommand; confirm?: ConfirmCopy; data?: unknown };
 	};
 	answer: { params: { id: string; value: unknown }; result: Record<string, never> };
 	contributions: { params: { point: string }; result: { items: readonly ContributionItem[] } };

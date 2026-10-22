@@ -30,6 +30,7 @@ export {
 	listTime,
 	type NextRunParts,
 	oneLine,
+	tildifyPath,
 	previewFor,
 	workspaceLabel,
 } from "./utils/chat.ts";

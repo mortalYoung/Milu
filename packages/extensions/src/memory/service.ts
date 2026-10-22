@@ -8,6 +8,7 @@ import { planMemoryCompaction } from "./compact.ts";
 import { consolidateMemory } from "./consolidate.ts";
 import { buildMemoryContext, type MemoryContext } from "./context.ts";
 import { organizeMemory } from "./extract.ts";
+import { buildMemoryOverview, type MemoryOverview } from "./overview.ts";
 import { latestPersona, organizePersona, personaTrigger, readPersonaLines, rebuildPersonaView } from "./persona.ts";
 import { DEFAULT_MAX_SCENES, foldScenes, MEMORY_SCENE_BATCH, organizeScenes, readSceneLines, rebuildSceneViews, scenePendingCount } from "./scenes.ts";
 import {
@@ -31,6 +32,7 @@ export class MemoryService implements Service {
 	private readonly _timers = new Map<string, ReturnType<typeof setTimeout>>();
 	private readonly _rounds = new Map<string, number>();
 	private readonly _runs = new Map<string, Promise<number>>();
+	private readonly _stageRuns = new Map<string, Promise<number>>();
 	private _enabled: SettingsPoint<boolean> | null = null;
 	private _idleMinutes: SettingsPoint<number> | null = null;
 	private _maxScenes: SettingsPoint<number> | null = null;
@@ -57,6 +59,10 @@ export class MemoryService implements Service {
 		return queryMemory(await readMemoryLines(session.root), opts);
 	}
 
+	async overview(session: Session, entries?: readonly Entry[]): Promise<MemoryOverview> {
+		return buildMemoryOverview(session.root, entries ?? (await session.rawEntries()));
+	}
+
 	async organize(session: Session): Promise<number> {
 		if (this._enabled?.get() === false) return 0;
 		const existing = this._runs.get(session.name);
@@ -80,21 +86,25 @@ export class MemoryService implements Service {
 		if (this._enabled?.get() === false) return 0;
 		const model = await this._modelOf(session);
 		if (!model) return 0;
-		return organizeScenes({
-			dir: session.root,
-			model,
-			streamFn: this._modelsService.stream,
-			reason: force ? "manual" : "threshold",
-			maxScenes: this._maxScenes?.get(),
-			logRun: this._runLog(session),
-		});
+		return this._singleStage("scene", session.name, () =>
+			organizeScenes({
+				dir: session.root,
+				model,
+				streamFn: this._modelsService.stream,
+				reason: force ? "manual" : "threshold",
+				maxScenes: this._maxScenes?.get(),
+				logRun: this._runLog(session),
+			}),
+		);
 	}
 
 	async consolidate(session: Session): Promise<number> {
 		if (this._enabled?.get() === false) return 0;
 		const model = await this._modelOf(session);
 		if (!model) return 0;
-		return consolidateMemory({ dir: session.root, model, streamFn: this._modelsService.stream, logRun: this._runLog(session) });
+		return this._singleStage("consolidate", session.name, () =>
+			consolidateMemory({ dir: session.root, model, streamFn: this._modelsService.stream, logRun: this._runLog(session) }),
+		);
 	}
 
 	async persona(session: Session, force = false): Promise<number> {
@@ -103,14 +113,17 @@ export class MemoryService implements Service {
 		if (!model) return 0;
 		const trigger = force ? { run: true, reason: "manual" as const } : await personaTrigger(session.root);
 		if (!trigger.run || !trigger.reason) return 0;
-		return organizePersona({
-			dir: session.root,
-			model,
-			streamFn: this._modelsService.stream,
-			reason: trigger.reason,
-			...(force ? { force: true } : {}),
-			logRun: this._runLog(session),
-		});
+		const reason = trigger.reason;
+		return this._singleStage("persona", session.name, () =>
+			organizePersona({
+				dir: session.root,
+				model,
+				streamFn: this._modelsService.stream,
+				reason,
+				...(force ? { force: true } : {}),
+				logRun: this._runLog(session),
+			}),
+		);
 	}
 
 	async context(session: Session): Promise<MemoryContext | null> {
@@ -169,6 +182,7 @@ export class MemoryService implements Service {
 		for (const timer of this._timers.values()) clearTimeout(timer);
 		this._timers.clear();
 		this._runs.clear();
+		this._stageRuns.clear();
 		this._rounds.clear();
 	}
 
@@ -195,19 +209,36 @@ export class MemoryService implements Service {
 	private async _stages(session: Session, model: Model<any>): Promise<void> {
 		const pending = await scenePendingCount(session.root);
 		if (pending >= MEMORY_SCENE_BATCH) {
-			await organizeScenes({
-				dir: session.root,
-				model,
-				streamFn: this._modelsService.stream,
-				reason: "threshold",
-				maxScenes: this._maxScenes?.get(),
-				logRun: this._runLog(session),
-			});
+			await this._singleStage("scene", session.name, () =>
+				organizeScenes({
+					dir: session.root,
+					model,
+					streamFn: this._modelsService.stream,
+					reason: "threshold",
+					maxScenes: this._maxScenes?.get(),
+					logRun: this._runLog(session),
+				}),
+			);
 		}
 		const trigger = await personaTrigger(session.root);
 		if (trigger.run && trigger.reason) {
-			await organizePersona({ dir: session.root, model, streamFn: this._modelsService.stream, reason: trigger.reason, logRun: this._runLog(session) });
+			const reason = trigger.reason;
+			await this._singleStage("persona", session.name, () =>
+				organizePersona({ dir: session.root, model, streamFn: this._modelsService.stream, reason, logRun: this._runLog(session) }),
+			);
 		}
+	}
+
+	private _singleStage(stage: "scene" | "persona" | "consolidate", name: string, run: () => Promise<number>): Promise<number> {
+		const key = `${stage}:${name}`;
+		const existing = this._stageRuns.get(key);
+		if (existing) return existing;
+		let promise: Promise<number>;
+		promise = run().finally(() => {
+			if (this._stageRuns.get(key) === promise) this._stageRuns.delete(key);
+		});
+		this._stageRuns.set(key, promise);
+		return promise;
 	}
 
 	private async _flushForCompact(session: Session): Promise<{ memoryAvailable: boolean; covered: boolean; coveredIndex: number }> {

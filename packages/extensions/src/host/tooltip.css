@@ -1,0 +1,15 @@
+.milu-tip {
+	z-index: 90;
+	max-width: 340px;
+	padding: 4px 8px;
+	border-radius: 4px;
+	background: var(--ink);
+	color: var(--canvas);
+	font-family: var(--sans);
+	font-size: 10px;
+	line-height: 1.5;
+	white-space: pre-line;
+	overflow-wrap: anywhere;
+	user-select: none;
+	box-shadow: 0 6px 18px color-mix(in srgb, var(--ink) 18%, transparent);
+}

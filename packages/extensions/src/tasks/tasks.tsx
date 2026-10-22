@@ -2,6 +2,7 @@ import { Terminal } from "lucide-react";
 import { useState } from "react";
 
 import type { DialogProps, WidgetProps } from "../host/index.ts";
+import { Tip } from "../host/tooltip.tsx";
 
 import "./tasks.css";
 
@@ -66,9 +67,11 @@ export function TasksWidget(props: WidgetProps) {
 	if (!data) return null;
 	return (
 		<span className="tasks-slot">
-			<button type="button" className="composer-icon-btn" aria-label="Tasks" title="Tasks" onClick={() => void props.host.actions.invoke("tasks.open", data.session)}>
-				<Terminal size={15} />
-			</button>
+			<Tip label="Tasks">
+				<button type="button" className="composer-icon-btn" aria-label="Tasks" onClick={() => void props.host.actions.invoke("tasks.open", data.session)}>
+					<Terminal size={15} />
+				</button>
+			</Tip>
 			{data.running > 0 ? <span className="tasks-count">{data.running}</span> : null}
 		</span>
 	);

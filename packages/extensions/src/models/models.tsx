@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 
 import type { WidgetProps } from "../host/index.ts";
+import { Tip } from "../host/tooltip.tsx";
 import type { ModelWidgetData } from "./models.ts";
 
 import "./models.css";
@@ -25,23 +26,24 @@ export function ModelsWidget(props: WidgetProps) {
 
 	return (
 		<div className={`composer-model${expanded ? " expanded" : ""}`}>
-			<button
-				type="button"
-				className="composer-model-toggle"
-				aria-expanded={expanded}
-				aria-label={expanded ? "Collapse model and effort" : `Model and effort: ${data.label} · ${data.effort}`}
-				title={expanded ? "collapse" : `${data.label} · ${data.effort}`}
-				onClick={() => {
-					if (expanded) {
-						setMenuOpen(false);
-						setExpanded(false);
-						return;
-					}
-					setExpanded(true);
-				}}
-			>
-				<Chevron open={expanded} />
-			</button>
+			<Tip label={expanded ? "collapse" : `${data.label} · ${data.effort}`}>
+				<button
+					type="button"
+					className="composer-model-toggle"
+					aria-expanded={expanded}
+					aria-label={expanded ? "Collapse model and effort" : `Model and effort: ${data.label} · ${data.effort}`}
+					onClick={() => {
+						if (expanded) {
+							setMenuOpen(false);
+							setExpanded(false);
+							return;
+						}
+						setExpanded(true);
+					}}
+				>
+					<Chevron open={expanded} />
+				</button>
+			</Tip>
 			<span className="composer-model-slide">
 				<span className="composer-model-sep" aria-hidden="true" />
 				<DropdownMenu.Root open={menuOpen} onOpenChange={setMenuOpen}>

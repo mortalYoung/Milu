@@ -216,8 +216,10 @@ export class IpcServer {
 				const confirm = await this._backend.actions.confirm(params.action, context);
 				if (confirm) return { ok: true, confirm };
 			}
-			const command = await this._backend.actions.run(params.action, context);
-			return { ok: true, ...(command ? { command } : {}) };
+			const outcome = await this._backend.actions.run(params.action, context);
+			if (outcome && "kind" in outcome && (outcome.kind === "copy" || outcome.kind === "shell")) return { ok: true, command: outcome };
+			if (outcome && "data" in outcome) return { ok: true, data: outcome.data };
+			return { ok: true };
 		} catch (error) {
 			return { ok: false, error: reason(error) };
 		}

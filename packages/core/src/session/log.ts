@@ -16,6 +16,7 @@ export class SessionLog {
 	readonly onEntry: Event<SeqEntry>;
 
 	private _session: Session<JsonlSessionMetadata> | null = null;
+	private _opening: Promise<Session<JsonlSessionMetadata>> | null = null;
 	private _queue: Promise<void> = Promise.resolve();
 	private readonly _emitter = new Emitter<SeqEntry>();
 
@@ -28,9 +29,18 @@ export class SessionLog {
 
 	async open(): Promise<void> {
 		if (this._session) return;
+		this._opening ??= this._open();
+		try {
+			this._session = await this._opening;
+		} finally {
+			this._opening = null;
+		}
+	}
+
+	private async _open(): Promise<Session<JsonlSessionMetadata>> {
 		const repo = this._repo();
 		const latest = (await repo.list({ cwd: this.root }))[0];
-		this._session = latest ? await repo.open(latest) : await repo.create({ cwd: this.root });
+		return latest ? repo.open(latest) : repo.create({ cwd: this.root });
 	}
 
 	async startedAt(): Promise<number | undefined> {

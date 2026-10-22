@@ -1,4 +1,5 @@
 import { activityAt, byPinThenRecency, filterSessions, type Host, listTime, previewFor, type SurfaceProps, workspaceLabel } from "@milu/extensions/host";
+import { Tip } from "@milu/extensions/host/tooltip";
 import type { ContributionItem, SessionRow } from "@milu/protocol";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
@@ -81,10 +82,14 @@ function Row(props: {
 							previewFor(session) || "—"
 						)}
 					</span>
-					{props.unread ? <span className="conv-unread-dot" title="new messages" /> : null}
+					{props.unread ? (
+						<Tip label="new messages">
+							<span className="conv-unread-dot" />
+						</Tip>
+					) : null}
 				</span>
 				{session.workspace ? (
-					<span className="conv-ws" title={session.workspace}>
+					<span className="conv-ws">
 						{session.workspaceKind === "worktree" ? <FolderTreeIcon size={10} /> : null}
 						<span className="truncate">{workspaceLabel(session)}</span>
 					</span>
@@ -233,16 +238,17 @@ export function SessionListSurface(props: SurfaceProps) {
 		<div className="session-list">
 			<div className="sidebar-windowbar">
 				<div className={`conv-search${searchOpen ? " open" : ""}`}>
-					<button
-						type="button"
-						className="conv-icon-btn"
-						aria-expanded={searchOpen}
-						aria-label={searchOpen ? "Close search" : "Search sessions"}
-						title="Search sessions (⌘F)"
-						onClick={() => (searchOpen ? closeSearch() : host.workbench.setSearch(true))}
-					>
-						<SearchIcon />
-					</button>
+					<Tip label="Search sessions (⌘F)">
+						<button
+							type="button"
+							className="conv-icon-btn"
+							aria-expanded={searchOpen}
+							aria-label={searchOpen ? "Close search" : "Search sessions"}
+							onClick={() => (searchOpen ? closeSearch() : host.workbench.setSearch(true))}
+						>
+							<SearchIcon />
+						</button>
+					</Tip>
 					<span className="conv-search-slide">
 						<input
 							ref={searchRef}
@@ -267,13 +273,17 @@ export function SessionListSurface(props: SurfaceProps) {
 					</span>
 				</div>
 				{headerItems.map((item) => (
-					<button key={item.id} type="button" className="conv-icon-btn" aria-label={item.title} title={item.title} onClick={() => void host.actions.invoke(item.action ?? "")}>
-						<IconByName name={item.icon} size={14} />
-					</button>
+					<Tip key={item.id} label={item.title}>
+						<button type="button" className="conv-icon-btn" aria-label={item.title} onClick={() => void host.actions.invoke(item.action ?? "")}>
+							<IconByName name={item.icon} size={14} />
+						</button>
+					</Tip>
 				))}
-				<button type="button" className="sidebar-toggle" aria-label="Hide session list" title="Hide session list (⌘B)" onClick={() => host.columns.closeList()}>
-					<PanelLeftCloseIcon size={16} />
-				</button>
+				<Tip label="Hide session list (⌘B)">
+					<button type="button" className="sidebar-toggle" aria-label="Hide session list" onClick={() => host.columns.closeList()}>
+						<PanelLeftCloseIcon size={16} />
+					</button>
+				</Tip>
 			</div>
 
 			<div className="sidebar-brand">

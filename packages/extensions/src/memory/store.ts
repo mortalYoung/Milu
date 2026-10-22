@@ -142,9 +142,16 @@ export interface MemoryRunSummary {
 export async function readMemoryRunSummaries(dir: string, limit = 5): Promise<{ runs: MemoryRunSummary[]; total: number }> {
 	try {
 		const raw = await readFile(memoryRunsFilePath(dir), "utf8");
-		const lines = raw.split("\n").filter((line) => line.trim() !== "");
+		let total = 0;
+		for (let index = 0; index < raw.length; index += 1) if (raw.charCodeAt(index) === 10) total += 1;
+		if (raw.length > 0 && raw.charCodeAt(raw.length - 1) !== 10) total += 1;
 		const runs: MemoryRunSummary[] = [];
-		for (const line of lines) {
+		let end = raw.length;
+		while (end > 0 && runs.length < limit) {
+			const start = raw.lastIndexOf("\n", end - 1) + 1;
+			const line = raw.slice(start, end).trim();
+			end = start - 1;
+			if (!line) continue;
 			try {
 				const record = JSON.parse(line) as MemoryRunRecord;
 				runs.push({
@@ -158,7 +165,7 @@ export async function readMemoryRunSummaries(dir: string, limit = 5): Promise<{ 
 				});
 			} catch {}
 		}
-		return { runs: runs.slice(-limit), total: runs.length };
+		return { runs: runs.reverse(), total };
 	} catch {
 		return { runs: [], total: 0 };
 	}

@@ -1,4 +1,4 @@
-import { type Extension, HookServiceId, SettingsServiceId, ToolServiceId, Type } from "@milu/core";
+import { type Extension, HookServiceId, type SandboxMode, SettingsServiceId, ToolServiceId, Type } from "@milu/core";
 
 import { PermissionService, PermissionServiceId } from "./service.ts";
 
@@ -28,6 +28,15 @@ export const permissionExtension: Extension = {
 
 		context.disposables.add(tools.extend({ tools: ["bash"], properties: escalationFields }));
 		context.disposables.add(tools.use((call, env, next) => permission.intercept(call, env, next)));
+
+		context.actions.register({
+			id: "permission.sandbox",
+			run: async ({ args }) => {
+				const mode = (args as { mode?: SandboxMode } | undefined)?.mode;
+				if (mode !== "read-only" && mode !== "workspace-write" && mode !== "danger-full-access") throw new Error("permission.sandbox needs a mode");
+				await context.settings.update({ defaultSandboxMode: mode });
+			},
+		});
 
 		context.actions.register({
 			id: "permission.answer",

@@ -19,6 +19,7 @@ import { createServiceId, type Service } from "@milu/di";
 import { configPath, loadConfig } from "./config.ts";
 import { grantedServers } from "./grants.ts";
 import { McpManager } from "./manager.ts";
+import type { McpServerStatus } from "./types.ts";
 
 const schema = Type.Object({
 	op: Type.Union([Type.Literal("list"), Type.Literal("call")], { description: 'What to do: "list" the authorized servers and their tools, or "call" one tool.' }),
@@ -54,6 +55,20 @@ export class McpService implements Service {
 			tools: server.tools.map((tool) => ({ name: tool.name, ...(tool.description ? { description: tool.description } : {}) })),
 			...(server.error ? { error: server.error } : {}),
 		}));
+	}
+
+	async statuses(session: Session): Promise<McpServerStatus[]> {
+		const byName = new Map(this._manager.statuses().map((status) => [status.name, status]));
+		return (await grantedServers(session)).map((name) => {
+			const status = byName.get(name);
+			return {
+				name,
+				lifecycle: status?.lifecycle ?? "lazy",
+				state: status?.state ?? "stopped",
+				toolCount: status?.toolCount ?? 0,
+				...(status?.error ? { error: status.error } : {}),
+			};
+		});
 	}
 
 	async call(session: Session, server: string, tool: string, args: unknown, signal?: AbortSignal): Promise<{ content: string; isError: boolean }> {

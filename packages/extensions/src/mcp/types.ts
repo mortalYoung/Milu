@@ -31,3 +31,11 @@ export interface McpServerTools {
 	readonly tools: readonly McpToolSummary[];
 	readonly error?: string;
 }
+
+export interface McpServerStatus {
+	readonly name: string;
+	readonly lifecycle: McpLifecycle;
+	readonly state: "stopped" | "connecting" | "connected" | "error";
+	readonly toolCount: number;
+	readonly error?: string;
+}
