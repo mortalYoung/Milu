@@ -60,13 +60,13 @@ export class PeerService implements Service {
 	private readonly _inbound = new Map<string, InboundAsk>();
 	private readonly _text = new Map<string, string>();
 
-	constructor(private readonly _sessions: SessionService) {}
+	constructor(private readonly _sessionService: SessionService) {}
 
 	async list(asker: string): Promise<readonly PeerMember[]> {
-		const names = (await this._sessions.names()).filter((name) => name !== asker);
+		const names = (await this._sessionService.names()).filter((name) => name !== asker);
 		return Promise.all(
 			names.map(async (name) => {
-				const profile = await this._sessions.get(name).profile();
+				const profile = await this._sessionService.get(name).profile();
 				return { name, ...(profile?.forkedFrom ? { forkedFrom: profile.forkedFrom } : {}) };
 			}),
 		);
@@ -112,7 +112,7 @@ export class PeerService implements Service {
 		const text = this._text.get(session) ?? "";
 		this._text.delete(session);
 		if (!inbound) return;
-		if (this._sessions.get(session).hasSuspended()) return;
+		if (this._sessionService.get(session).hasSuspended()) return;
 
 		this._inbound.delete(session);
 		void this._settle(session, inbound, text).catch((error: unknown) => console.error(`peer ${session}: settle failed:`, error));
@@ -128,7 +128,7 @@ export class PeerService implements Service {
 	}
 
 	private async _settle(session: string, inbound: InboundAsk, text: string): Promise<void> {
-		const local = this._sessions.get(session);
+		const local = this._sessionService.get(session);
 		const lastUser = [...(await local.open()).messages()].reverse().find((message) => message.role === "user") as { peerKind?: unknown; requestId?: unknown } | undefined;
 		const owes = lastUser?.peerKind === "ask" && lastUser.requestId === inbound.requestId;
 
@@ -159,7 +159,7 @@ export class PeerService implements Service {
 	}
 
 	private async _session(name: string): Promise<Session | null> {
-		return (await this._sessions.names()).includes(name) ? this._sessions.get(name) : null;
+		return (await this._sessionService.names()).includes(name) ? this._sessionService.get(name) : null;
 	}
 }
 

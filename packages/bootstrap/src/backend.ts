@@ -5,6 +5,8 @@ import {
 	ActionServiceId,
 	CommandsService,
 	CommandsServiceId,
+	CompactionService,
+	CompactionServiceId,
 	ConfigService,
 	ConfigServiceId,
 	ContributionService,
@@ -49,6 +51,7 @@ export async function createBackend(config: BackendConfig): Promise<Backend> {
 	container.register(HookServiceId, () => new HookService());
 	container.register(ActionServiceId, () => new ActionService());
 	container.register(CommandsServiceId, (c) => new CommandsService(c.get(ContributionServiceId)));
+	container.register(CompactionServiceId, () => new CompactionService());
 	container.register(
 		ExtensionServiceId,
 		(c) =>
@@ -67,6 +70,7 @@ export async function createBackend(config: BackendConfig): Promise<Backend> {
 				c.get(ContributionServiceId),
 				c.get(PromptServiceId),
 				c.get(HookServiceId),
+				c.get(CompactionServiceId),
 			),
 	);
 	container.register(SelectionServiceId, (c) => new SelectionService(c.get(SessionServiceId), c.get(ConfigServiceId)));

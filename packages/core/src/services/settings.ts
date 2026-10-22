@@ -36,10 +36,6 @@ export interface Settings {
 	toastDurationMs?: number;
 	shellContinuous?: boolean;
 	rememberSession?: boolean;
-	memoryEnabled?: boolean;
-	memoryIdleMinutes?: number;
-	memoryMaxScenes?: number;
-	memoryPendingRounds?: number;
 	commands_path?: string;
 	retry?: { maxRetries?: number; baseDelayMs?: number };
 	compaction?: {
@@ -53,8 +49,6 @@ export interface Settings {
 	palette?: { searchIgnoreDirs?: string[] };
 }
 
-export const DEFAULT_MEMORY_MAX_SCENES = 15;
-export const DEFAULT_MEMORY_PENDING_ROUNDS = 10;
 export const DEFAULT_PALETTE_IGNORE_DIRS = [".git", ".DS_Store", "node_modules", "dist", "build", ".next", "out", "target", ".cache", "__pycache__", ".venv", "venv"];
 
 export function expandHome(value: string): string {
@@ -72,10 +66,6 @@ function defaults(root: string): Settings {
 		toastDurationMs: 4000,
 		shellContinuous: true,
 		rememberSession: true,
-		memoryEnabled: true,
-		memoryIdleMinutes: 5,
-		memoryMaxScenes: DEFAULT_MEMORY_MAX_SCENES,
-		memoryPendingRounds: DEFAULT_MEMORY_PENDING_ROUNDS,
 		explorer: { lineGap: 0.2, fold: { braces: true, markdown: true } },
 		highlight: { tokenizeMaxLineLength: 3000, tokenizeTimeLimit: 500 },
 	};
@@ -89,14 +79,14 @@ export class SettingsPoint<T> implements Disposable {
 	private _closed = false;
 
 	constructor(
-		private readonly _service: SettingsService,
+		private readonly _settingsService: SettingsService,
 		readonly key: string,
 		private readonly _defaults: T,
 	) {}
 
 	get(): T {
 		if (this._closed) throw new Error(`settings "${this.key}" is no longer declared`);
-		const value = (this._service.get() as unknown as Record<string, unknown>)[this.key];
+		const value = (this._settingsService.get() as unknown as Record<string, unknown>)[this.key];
 		if (value === undefined) return this._defaults;
 		if (isSectionObject(value) && isSectionObject(this._defaults)) return { ...this._defaults, ...value } as T;
 		return value as T;

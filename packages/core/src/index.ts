@@ -11,10 +11,14 @@ import type { SessionService } from "./services/sessions.ts";
 import type { SettingsService } from "./services/settings.ts";
 import type { ToolService } from "./services/tools.ts";
 
+export { Agent } from "@earendil-works/pi-agent-core";
+export type { Entry, StreamFn } from "@earendil-works/pi-agent-core";
+export type { Message, Model } from "@earendil-works/pi-ai";
 export type { AgentLoopEvent, AgentLoopRun, AgentLoopService } from "./services/agent-loop.ts";
 export { AgentLoopServiceId } from "./services/agent-loop.ts";
 export { ActionService, ActionServiceId, type Action, type ActionContext } from "./services/actions.ts";
 export { CommandsService, CommandsServiceId } from "./services/commands.ts";
+export { CompactionService, CompactionServiceId, type CompactionContext, type CompactionPlanner } from "./services/compaction.ts";
 export { ConfigService, ConfigServiceId } from "./services/config.ts";
 export { ContributionPoint, ContributionService, ContributionServiceId, type ContributionScope } from "./services/contributions.ts";
 export { ExecutionService, ExecutionServiceId } from "./services/execution.ts";
@@ -56,6 +60,8 @@ export { SelectionService, SelectionServiceId } from "./services/selection.ts";
 export { SessionService, SessionServiceId, type SessionEntry, type SessionLoopEvent } from "./services/sessions.ts";
 export { Session, type SessionDeps } from "./session/session.ts";
 export { SessionLog } from "./session/log.ts";
+export { projectSlice } from "./session/slice.ts";
+export type { CompactionPlan, CompactionTier } from "./session/compact.ts";
 export {
 	contextChangedText,
 	EVENTS,

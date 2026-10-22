@@ -5,10 +5,10 @@ import { COMPOSER_COMMANDS_POINT } from "../extensions/types.ts";
 import type { ContributionService } from "./contributions.ts";
 
 export class CommandsService implements Service {
-	constructor(private readonly _contributions: ContributionService) {}
+	constructor(private readonly _contributionService: ContributionService) {}
 
 	list(): readonly ComposerCommand[] {
-		return this._contributions.get<ComposerCommand>(COMPOSER_COMMANDS_POINT).all();
+		return this._contributionService.get<ComposerCommand>(COMPOSER_COMMANDS_POINT).all();
 	}
 
 	dispose(): void {}

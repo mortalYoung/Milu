@@ -7,12 +7,14 @@ const QA_MAX_CHARS = 200;
 const PREAMBLE = "Earlier messages were removed from the active context to keep the conversation within the model's window; they remain in the session log.";
 const QA_HEADER = "Recent Q/A:";
 
+export type CompactionTier = "full" | "shrunk" | "degraded";
+
 export interface CompactionPlan {
 	readonly summary: string;
 	readonly throughEntryId: string;
 	readonly shadowedIds: readonly string[];
 	readonly shadowed: number;
-	readonly tier: "degraded";
+	readonly tier: CompactionTier;
 }
 
 function messageText(content: unknown): string {

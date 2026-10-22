@@ -11,7 +11,7 @@ export interface BrowserCommands {
 export class ActionsService implements Service {
 	constructor(
 		private readonly _connection: Connection,
-		private readonly _dialogs: DialogService,
+		private readonly _dialogService: DialogService,
 		private readonly _commands: BrowserCommands,
 	) {}
 
@@ -20,7 +20,7 @@ export class ActionsService implements Service {
 		if (!result.ok) throw new Error(result.error ?? `action "${action}" failed`);
 
 		if (result.confirm) {
-			if (!(await this._dialogs.confirm(result.confirm))) return;
+			if (!(await this._dialogService.confirm(result.confirm))) return;
 			result = await this._send(action, session, args, true);
 			if (!result.ok) throw new Error(result.error ?? `action "${action}" failed`);
 		}

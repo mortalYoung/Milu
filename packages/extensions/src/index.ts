@@ -8,6 +8,7 @@ import { detailsExtension } from "./details/details.ts";
 import { fetchExtension } from "./fetch/fetch.ts";
 import { filesExtension } from "./files/files.ts";
 import { mcpExtension } from "./mcp/mcp.ts";
+import { memoryExtension } from "./memory/memory.ts";
 import { meterExtension } from "./meter/meter.ts";
 import { modelsExtension } from "./models/models.ts";
 import { openExtension } from "./open/open.ts";
@@ -39,6 +40,7 @@ export const extensions: readonly Extension[] = [
 	tasksExtension,
 	rmExtension,
 	mcpExtension,
+	memoryExtension,
 	scheduleExtension,
 	peerExtension,
 	fetchExtension,

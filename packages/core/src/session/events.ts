@@ -2,7 +2,7 @@ import { LOG_EVENTS } from "@milu/protocol";
 
 export const EVENTS = LOG_EVENTS;
 
-export type ReminderType = (typeof EVENTS)["timeGapReminder" | "contextChanged" | "instructionsChanged" | "mcpChanged"];
+export type ReminderType = (typeof EVENTS)["timeGapReminder" | "contextChanged" | "instructionsChanged" | "mcpChanged" | "memoryContext"];
 
 export interface AgentReminder {
 	readonly type: ReminderType;
@@ -64,6 +64,8 @@ export function reminderText(type: ReminderType, data: Record<string, unknown>):
 			});
 		case EVENTS.instructionsChanged:
 			return instructionsChangedText(typeof data["agentMd"] === "string" ? data["agentMd"] : null);
+		case EVENTS.memoryContext:
+			return typeof data["text"] === "string" ? data["text"] : "";
 		case EVENTS.mcpChanged:
 			return mcpChangedText({
 				server: typeof data["server"] === "string" ? data["server"] : "",

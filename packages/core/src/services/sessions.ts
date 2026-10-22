@@ -16,6 +16,7 @@ import {
 import { profileOf } from "../session/files.ts";
 import { Session } from "../session/session.ts";
 import type { AgentLoopEvent } from "./agent-loop.ts";
+import type { CompactionService } from "./compaction.ts";
 import type { ContributionPoint, ContributionService } from "./contributions.ts";
 import type { ExecutionService } from "./execution.ts";
 import type { HookService } from "./hooks.ts";
@@ -52,6 +53,7 @@ export class SessionService implements Service {
 		private readonly _contributionService: ContributionService,
 		private readonly _promptService: PromptService,
 		private readonly _hookService: HookService,
+		private readonly _compactionService: CompactionService,
 	) {
 		this.onEntry = this._entryEmitter.event;
 		this.onLoopEvent = this._loopEmitter.event;
@@ -86,6 +88,7 @@ export class SessionService implements Service {
 			toolService: this._toolService,
 			promptService: this._promptService,
 			hookService: this._hookService,
+			compactionService: this._compactionService,
 		});
 		this._sessions.set(name, session);
 

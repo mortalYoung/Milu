@@ -4,12 +4,12 @@ import { DisposableStore, Emitter, type Event } from "@milu/di";
 import type { PreviewKind, SeqEntry, SessionRow } from "@milu/protocol";
 
 import { AgentLoopService, type AgentLoopEvent } from "../services/agent-loop.ts";
+import type { CompactionService } from "../services/compaction.ts";
 import type { ExecutionService } from "../services/execution.ts";
 import type { HookService } from "../services/hooks.ts";
 import type { ModelsService } from "../services/models.ts";
 import type { PromptService } from "../services/prompt.ts";
 import type { ToolService } from "../services/tools.ts";
-import { planCompaction } from "./compact.ts";
 import { EVENTS } from "./events.ts";
 import {
 	modelOf,
@@ -104,6 +104,7 @@ export interface SessionDeps {
 	readonly toolService: ToolService;
 	readonly promptService: PromptService;
 	readonly hookService: HookService;
+	readonly compactionService: CompactionService;
 }
 
 export class Session {
@@ -195,6 +196,10 @@ export class Session {
 
 	async transcript(options?: { keepDangling?: boolean }): Promise<AgentMessage[]> {
 		return this._log.transcript(options);
+	}
+
+	async rawEntries(): Promise<Entry[]> {
+		return this._log.rawEntries();
 	}
 
 	async deliver(
@@ -304,7 +309,7 @@ export class Session {
 		if (this.hasSuspended()) throw new Error("an approval is pending");
 		const entries = await this._log.rawEntries();
 		const messages = await this._log.transcript();
-		const plan = planCompaction(entries, messages);
+		const plan = await this._deps.compactionService.plan({ session: this, entries, messages });
 		if (!plan) return null;
 		await this._log.record(EVENTS.compaction, {
 			summary: plan.summary,

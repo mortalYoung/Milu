@@ -31,6 +31,8 @@ export const LOG_EVENTS = {
 	instructionsChanged: "instructions/changed",
 	mcpChanged: "mcp/changed",
 	rewind: "rewind",
+	memoryRunStart: "memory/run/start",
+	memoryRunEnd: "memory/run/end",
 	memoryContext: "memory/context",
 	taskStart: "task/start",
 	taskEnd: "task/end",
