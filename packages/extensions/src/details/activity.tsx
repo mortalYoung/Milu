@@ -7,6 +7,16 @@ const TOKENS_PER_TURN = 3_000;
 const LOAD_LEVELS = [100, 300, 900];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
+const HEAT = [
+	"bg-[color-mix(in_srgb,var(--color-heat)_12%,var(--canvas))]",
+	"bg-[color-mix(in_srgb,var(--color-heat)_32%,var(--canvas))]",
+	"bg-[color-mix(in_srgb,var(--color-heat)_52%,var(--canvas))]",
+	"bg-[color-mix(in_srgb,var(--color-heat)_71%,var(--canvas))]",
+	"bg-[color-mix(in_srgb,var(--color-heat)_90%,var(--canvas))]",
+] as const;
+
+const CELL = "aspect-square rounded-[4px] transition-[background-color] duration-[240ms] hover:outline hover:outline-1 hover:outline-ink motion-reduce:transition-none";
+
 function loadOf(day: ActivityDay): number {
 	return day.turns + day.freshTokens / TOKENS_PER_TURN;
 }
@@ -68,8 +78,8 @@ export function ActivityHeatmap(props: { days: readonly ActivityDay[]; weeks?: n
 	}
 
 	return (
-		<div className="ext-act" style={cellStyle}>
-			<div className="ext-act-months" style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` }}>
+		<div className="flex min-w-0 flex-col gap-[5px] select-none" style={cellStyle}>
+			<div className="ml-6 grid gap-[var(--act-gap)] text-[10px] leading-[10px] text-muted" style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` }}>
 				{months
 					.filter((mark) => mark.span >= 3)
 					.map((mark) => (
@@ -78,34 +88,35 @@ export function ActivityHeatmap(props: { days: readonly ActivityDay[]; weeks?: n
 						</span>
 					))}
 			</div>
-			<div className="ext-act-grid">
-				<div className="ext-act-weekdays">
+			<div className="flex">
+				<div className="grid w-6 shrink-0 grid-rows-[repeat(7,1fr)] gap-[var(--act-gap)] pr-1 text-[10px] leading-none text-muted">
 					<span style={{ gridRow: "1" }}>Mon</span>
 					<span style={{ gridRow: "3" }}>Wed</span>
 					<span style={{ gridRow: "5" }}>Fri</span>
 				</div>
-				<div className="ext-act-cells">
+				<div className="grid min-w-0 flex-1 auto-cols-[minmax(0,1fr)] grid-flow-col grid-rows-[repeat(7,auto)] gap-[var(--act-gap)]">
 					{shown.map((day) =>
 						props.loading ? (
-							<div key={day.ts} className="ext-act-cell hlv-0 is-loading" />
+							<div
+								key={day.ts}
+								className={`${CELL} animate-[skeleton-pulse_1.4s_ease-in-out_infinite] bg-[color-mix(in_srgb,var(--line)_45%,transparent)] motion-reduce:animate-none`}
+							/>
 						) : (
 							<Tip key={day.ts} label={tipFor(day)}>
-								<div className={`ext-act-cell hlv-${levelOf(loadOf(day))}`} />
+								<div className={`${CELL} ${HEAT[levelOf(loadOf(day))]}`} />
 							</Tip>
 						),
 					)}
 				</div>
 			</div>
 			{props.legend === false ? null : (
-				<div className="ext-act-legend">
+				<div className="mt-[3px] flex items-center gap-[3px] text-[10px] text-muted">
 					<span>less</span>
-					<i className="ext-act-cell hlv-0" />
-					<i className="ext-act-cell hlv-1" />
-					<i className="ext-act-cell hlv-2" />
-					<i className="ext-act-cell hlv-3" />
-					<i className="ext-act-cell hlv-4" />
+					{HEAT.map((shade) => (
+						<i key={shade} className={`${CELL} size-[10px] aspect-auto ${shade}`} />
+					))}
 					<span>more</span>
-					<span className="ext-act-note">shade blends turns and fresh tokens</span>
+					<span className="ml-1.5 text-muted-soft">shade blends turns and fresh tokens</span>
 				</div>
 			)}
 		</div>

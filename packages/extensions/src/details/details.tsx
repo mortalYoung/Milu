@@ -7,13 +7,14 @@ import { Tip } from "../host/tooltip.tsx";
 import { Markdown } from "../markdown/react.tsx";
 import { ActivityHeatmap } from "./activity.tsx";
 import { AnimatedNumber } from "./animated-number.tsx";
+import { CARD, EYEBROW, HEAD_ROW, MENU, MENU_CHECK, MENU_ITEM, MENU_LABEL, SUMMARY } from "./chrome.ts";
 import type { ModelChoiceGroup, SessionDetails, SessionSummary } from "./details.ts";
 import { MemorySection } from "./memory.tsx";
 import { ScheduleSection } from "./schedule.tsx";
 import { LoadingLines } from "./skeleton.tsx";
 import { digits, formatBytes, formatDate, formatSize, formatTokens, percent, seconds, tokensPerSecond } from "./utils.ts";
 
-import "./details.css";
+const DOT: Readonly<Record<string, string>> = { connected: "bg-accent-teal", connecting: "bg-accent-amber", error: "bg-signal" };
 
 function Chevron(props: { open: boolean }) {
 	return props.open ? <ChevronDown size={14} /> : <ChevronRight size={14} />;
@@ -39,17 +40,21 @@ function MenuValue(props: { label: string; value: string; tip?: string; children
 			<span className="shrink-0 text-[12px] text-muted">{props.label}</span>
 			<DropdownMenu.Root>
 				<DropdownMenu.Trigger asChild>
-					<button type="button" className="ext-details-menu-value" aria-label={`${props.label}: ${props.tip ?? props.value}`}>
+					<button
+						type="button"
+						className="inline-flex min-w-0 cursor-pointer items-center gap-[3px] border-0 bg-transparent p-0 font-mono text-[12px] text-ink"
+						aria-label={`${props.label}: ${props.tip ?? props.value}`}
+					>
 						<Tip label={props.tip}>
-							<span className="ext-details-menu-text">
+							<span className="inline-flex min-w-0 items-center gap-[3px] [&>span:first-child]:overflow-hidden [&>span:first-child]:text-ellipsis [&>span:first-child]:whitespace-nowrap">
 								<span>{props.value}</span>
-								<ChevronDown size={9} />
+								<ChevronDown size={9} className="shrink-0 text-muted-soft" />
 							</span>
 						</Tip>
 					</button>
 				</DropdownMenu.Trigger>
 				<DropdownMenu.Portal>
-					<DropdownMenu.Content className="ext-details-menu" align="end" sideOffset={4} collisionPadding={8}>
+					<DropdownMenu.Content className={MENU} align="end" sideOffset={4} collisionPadding={8}>
 						{props.children}
 					</DropdownMenu.Content>
 				</DropdownMenu.Portal>
@@ -63,11 +68,11 @@ function ModelMenu(props: { groups: readonly ModelChoiceGroup[]; model: { provid
 		<>
 			{props.groups.map((group) => (
 				<DropdownMenu.Group key={group.provider}>
-					<DropdownMenu.Label className="ext-details-menu-label">{group.provider}</DropdownMenu.Label>
+					<DropdownMenu.Label className={MENU_LABEL}>{group.provider}</DropdownMenu.Label>
 					{group.models.map((model) => (
-						<DropdownMenu.Item className="ext-details-menu-item" key={model.id} onSelect={() => props.onSelect(group.provider, model.id)}>
+						<DropdownMenu.Item className={MENU_ITEM} key={model.id} onSelect={() => props.onSelect(group.provider, model.id)}>
 							<span>{model.name}</span>
-							{props.model?.provider === group.provider && props.model.modelId === model.id ? <span className="ext-details-menu-check">✓</span> : null}
+							{props.model?.provider === group.provider && props.model.modelId === model.id ? <span className={MENU_CHECK}>✓</span> : null}
 						</DropdownMenu.Item>
 					))}
 				</DropdownMenu.Group>
@@ -170,12 +175,12 @@ export function SessionDetailsDialog(props: DialogProps) {
 			</header>
 
 			<div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-5 pt-2.5 pb-5">
-				{error ? <p className="ext-details-error">{error}</p> : null}
+				{error ? <p className="mb-2.5 rounded-md border-[0.5px] border-[color-mix(in_srgb,var(--signal)_40%,transparent)] px-2.5 py-2 text-[12px] text-signal">{error}</p> : null}
 
 				<div className="grid grid-cols-3 gap-2.5">
 					{cards.map((card) => (
 						<div className="flex flex-col rounded-md border border-line bg-surface px-3 py-2.5" key={card.label}>
-							<span className="ext-details-caption">{card.label}</span>
+							<span className={EYEBROW}>{card.label}</span>
 							<span className="mt-1 font-mono text-[18px] leading-tight text-ink">{card.value}</span>
 							<span className="mt-0.5 font-mono text-[10px] text-muted">{card.hint}</span>
 						</div>
@@ -183,27 +188,27 @@ export function SessionDetailsDialog(props: DialogProps) {
 				</div>
 
 				<div className="mt-2.5 rounded-md border border-line bg-surface p-3">
-					<p className="ext-details-caption">Activity · last 12 months</p>
-					{error ? <p className="ext-details-muted">—</p> : <ActivityHeatmap days={details?.activity ?? []} loading={!details} />}
+					<p className={EYEBROW}>Activity · last 12 months</p>
+					{error ? <p className="text-[11px] text-muted">—</p> : <ActivityHeatmap days={details?.activity ?? []} loading={!details} />}
 				</div>
 
 				<div className="mt-2.5 grid grid-cols-[minmax(0,1fr)_240px] gap-2.5">
 					<div className="flex min-w-0 flex-col gap-2.5">
-						<section className="ext-details-card">
-							<button type="button" className="ext-details-head-row" aria-expanded={personaOpen} onClick={() => setPersonaOpen(!personaOpen)}>
-								<span className="ext-details-caption">Persona</span>
-								<span className="ext-details-summary">{personaLine}</span>
+						<section className={CARD}>
+							<button type="button" className={HEAD_ROW} aria-expanded={personaOpen} onClick={() => setPersonaOpen(!personaOpen)}>
+								<span className={EYEBROW}>Persona</span>
+								<span className={SUMMARY}>{personaLine}</span>
 								<Chevron open={personaOpen} />
 							</button>
 							{personaOpen ? (
-								<div className="ext-details-persona">
+								<div className="px-3 pb-3 [&_p]:m-0 [&_p]:text-[13px] [&_p]:leading-[1.65] [&_p]:whitespace-pre-wrap [&_p]:text-ink [&_p]:[overflow-wrap:anywhere]">
 									{shown.persona?.trim() ? (
 										<Markdown port={props.host.markdown} text={shown.persona} />
 									) : (
 										<>
 											<p>No persona on file</p>
-											<p className="ext-details-prose">
-												A hand-written paragraph in <code>profile.json</code>, read as this session's standing instructions.
+											<p className="mt-1 leading-[1.6] text-muted">
+												A hand-written paragraph in <code className="font-mono text-[12px]">profile.json</code>, read as this session's standing instructions.
 											</p>
 										</>
 									)}
@@ -217,7 +222,7 @@ export function SessionDetailsDialog(props: DialogProps) {
 
 					<div className="flex min-w-0 flex-col gap-3">
 						<section className="rounded-md border border-line bg-surface p-3">
-							<p className="ext-details-caption">This Session</p>
+							<p className={EYEBROW}>This Session</p>
 							<div className="mt-2 grid gap-2 text-[12px]">
 								<Fact
 									label="Tokens"
@@ -264,7 +269,7 @@ export function SessionDetailsDialog(props: DialogProps) {
 						</section>
 
 						<section className="rounded-md border border-line bg-surface p-3">
-							<p className="ext-details-caption">Status</p>
+							<p className={EYEBROW}>Status</p>
 							<div className="mt-2 grid gap-2 text-[12px]">
 								<Fact label="Workspace" block tip={shown.workspace?.path ? tildifyPath(shown.workspace.path) : undefined}>
 									{shown.workspace?.path ? formatWorkspacePath(shown.workspace.path, 34) : "—"}
@@ -285,9 +290,9 @@ export function SessionDetailsDialog(props: DialogProps) {
 								{details?.efforts.length ? (
 									<MenuValue label="Effort" value={details.effort} tip="Effort (Thinking Level)">
 										{details.efforts.map((level) => (
-											<DropdownMenu.Item className="ext-details-menu-item" key={level} onSelect={() => void setEffort(level)}>
+											<DropdownMenu.Item className={MENU_ITEM} key={level} onSelect={() => void setEffort(level)}>
 												<span>{level}</span>
-												{level === details.effort ? <span className="ext-details-menu-check">✓</span> : null}
+												{level === details.effort ? <span className={MENU_CHECK}>✓</span> : null}
 											</DropdownMenu.Item>
 										))}
 									</MenuValue>
@@ -297,9 +302,9 @@ export function SessionDetailsDialog(props: DialogProps) {
 								{details ? (
 									<MenuValue label="Sandbox" value={sandbox} tip="default permission for new runs (global)">
 										{SANDBOX_OPTIONS.map((option) => (
-											<DropdownMenu.Item className="ext-details-menu-item" key={option.mode} onSelect={() => void setSandbox(option.mode)}>
+											<DropdownMenu.Item className={MENU_ITEM} key={option.mode} onSelect={() => void setSandbox(option.mode)}>
 												<span>{option.label}</span>
-												{option.mode === details.sandbox ? <span className="ext-details-menu-check">✓</span> : null}
+												{option.mode === details.sandbox ? <span className={MENU_CHECK}>✓</span> : null}
 											</DropdownMenu.Item>
 										))}
 									</MenuValue>
@@ -311,15 +316,15 @@ export function SessionDetailsDialog(props: DialogProps) {
 								<Fact label="Skills" block>
 									{details ? (
 										details.skills.length > 0 ? (
-											<ul className="ext-details-chips">
+											<ul className="m-0 flex list-none flex-col gap-1 p-0 [&>li]:rounded-md [&>li]:border-[0.5px] [&>li]:border-line [&>li]:px-1.5 [&>li]:py-[1px] [&>li]:font-mono [&>li]:text-[11px] [&>li]:text-ink-soft [&>li]:[overflow-wrap:anywhere]">
 												{details.skills.map((skill) => (
 													<li key={skill.name}>
-														{skill.name} <span className="ext-details-chip-note">· {skill.scope}</span>
+														{skill.name} <span className="text-muted">· {skill.scope}</span>
 													</li>
 												))}
 											</ul>
 										) : (
-											<span className="ext-details-muted">none granted</span>
+											<span className="text-[11px] text-muted">none granted</span>
 										)
 									) : pending ? (
 										<LoadingLines rows={2} />
@@ -330,18 +335,18 @@ export function SessionDetailsDialog(props: DialogProps) {
 								<Fact label="MCP Servers" block>
 									{details ? (
 										details.mcp.length > 0 ? (
-											<ul className="ext-details-chips">
+											<ul className="m-0 flex list-none flex-col gap-1 p-0 [&>li]:rounded-md [&>li]:border-[0.5px] [&>li]:border-line [&>li]:px-1.5 [&>li]:py-[1px] [&>li]:font-mono [&>li]:text-[11px] [&>li]:text-ink-soft [&>li]:[overflow-wrap:anywhere]">
 												{details.mcp.map((server) => (
 													<li key={server.name}>
 														<Tip label={server.state}>
-															<span className={`ext-details-dot is-${server.state}`} />
+															<span className={`inline-block size-1.5 rounded-full ${DOT[server.state] ?? "bg-muted-soft"}`} />
 														</Tip>{" "}
-														{server.name} <span className="ext-details-chip-note">· {server.toolCount} tools</span>
+														{server.name} <span className="text-muted">· {server.toolCount} tools</span>
 													</li>
 												))}
 											</ul>
 										) : (
-											<span className="ext-details-muted">none granted</span>
+											<span className="text-[11px] text-muted">none granted</span>
 										)
 									) : pending ? (
 										<LoadingLines rows={2} />

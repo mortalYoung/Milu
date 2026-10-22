@@ -2,10 +2,10 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
 
 import type { RunRecord, ScheduleDefinition } from "../schedule/store.ts";
+import { CARD, EYEBROW, HEAD_ROW, SUMMARY } from "./chrome.ts";
 import { LoadingLines, Skeleton } from "./skeleton.tsx";
 import { clockOf, clockTime } from "./utils.ts";
 
-const EYEBROW = "ext-details-caption";
 const WEEKDAYS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
 const MAX_NODES = 6;
@@ -187,47 +187,59 @@ export function ScheduleSection(props: {
 			}
 		}
 		const missed = node.runs.some((run) => run.status === "missed");
-		const className = "sch-slot" + (node.next ? " is-next" : "") + (node.kind === "span" ? " is-span" : "") + (missed ? " is-miss" : "");
+		const span = node.kind === "span";
 
 		return (
-			<div className={className} key={node.key}>
-				<span className="sch-at">{node.paused ? "—" : node.kind === "span" ? clockOf(new Date(node.spanFrom ?? node.at)) : clockOf(new Date(node.at))}</span>
-				<span className="sch-spine">
-					<i />
+			<div className="grid grid-cols-[44px_10px_minmax(0,1fr)] items-start" key={node.key}>
+				<span className="pt-[7px] pr-1.5 text-right font-mono text-[11px] tabular-nums text-ink-soft">
+					{node.paused ? "—" : span ? clockOf(new Date(node.spanFrom ?? node.at)) : clockOf(new Date(node.at))}
 				</span>
-				<span className="sch-body">
-					<button type="button" className="sch-row" aria-expanded={isOpen} onClick={() => setExpanded(isOpen ? null : node.key)}>
-						<span className="sch-title">{item.title || item.display}</span>
-						<span className="sch-facts">
-							<span className={missed ? "sch-miss" : node.next ? "sch-next" : "sch-muted"}>{facts.join(" · ")}</span>
+				<span className="relative self-stretch">
+					{span ? <span className="absolute inset-y-0 left-[3px] w-[3px] rounded-full bg-line-strong" /> : <span className="absolute inset-y-0 left-1 w-px bg-line" />}
+					{span ? null : (
+						<span
+							className={`absolute top-2.5 left-[0.5px] block size-2 rounded-full border-[1.5px] bg-surface ${missed ? "border-accent-amber bg-accent-amber" : node.next ? "border-ink bg-ink" : "border-muted-soft"}`}
+						/>
+					)}
+				</span>
+				<span className="relative flex min-w-0 flex-col pb-2 pl-2">
+					<button
+						type="button"
+						className="flex min-w-0 cursor-pointer flex-col gap-[3px] bg-transparent p-0 text-left"
+						aria-expanded={isOpen}
+						onClick={() => setExpanded(isOpen ? null : node.key)}
+					>
+						<span className="overflow-hidden font-sans text-[12px] text-ellipsis whitespace-nowrap text-ink">{item.title || item.display}</span>
+						<span className="overflow-hidden font-mono text-[11px] text-ellipsis whitespace-nowrap text-muted">
+							<span className={missed ? "text-accent-amber" : node.next ? "text-ink" : "text-muted"}>{facts.join(" · ")}</span>
 						</span>
 					</button>
 					{isOpen ? (
-						<div className="sch-detail">
-							<p className="sch-prompt">{item.payload.text}</p>
-							<div className="sch-meta">
+						<div className="mt-2 flex flex-col gap-1.5 rounded-md border-[0.5px] border-line bg-canvas p-2">
+							<p className="m-0 text-[12px] leading-[1.6] whitespace-pre-wrap text-ink [overflow-wrap:anywhere]">{item.payload.text}</p>
+							<div className="flex items-baseline gap-1.5 font-mono text-[11px] text-muted">
 								<span>{item.display}</span>
-								<span className="sch-muted">·</span>
+								<span className="text-muted">·</span>
 								<span>{item.runCount} runs</span>
 								{props.sandbox && props.sandbox !== "—" ? (
 									<>
-										<span className="sch-muted">·</span>
-										<span className="sch-muted">{props.sandbox}</span>
+										<span className="text-muted">·</span>
+										<span className="text-muted">{props.sandbox}</span>
 									</>
 								) : null}
 							</div>
 							{runs.filter((run) => run.scheduleId === item.id).length > 0 ? (
-								<ul className="sch-runs">
+								<ul className="m-0 flex list-none flex-col gap-0.5 border-t-[0.5px] border-line px-0 pt-1.5">
 									{runs
 										.filter((run) => run.scheduleId === item.id)
 										.sort((left, right) => (right.dispatchedAt ?? right.scheduledAt) - (left.dispatchedAt ?? left.scheduledAt))
 										.slice(0, 5)
 										.map((run) => (
-											<li key={run.runId}>
-												<span className="sch-time">{clockTime(run.dispatchedAt ?? run.scheduledAt)}</span>
-												<span className={run.status === "missed" ? "sch-miss" : "sch-muted"}>{STATUS_TEXT[run.status]}</span>
-												<span className="sch-muted">{run.trigger}</span>
-												{run.error ? <span className="sch-fail">{run.error}</span> : null}
+											<li className="flex items-baseline gap-2 font-mono text-[11px] text-muted" key={run.runId}>
+												<span className="text-muted">{clockTime(run.dispatchedAt ?? run.scheduledAt)}</span>
+												<span className={run.status === "missed" ? "text-accent-amber" : "text-muted"}>{STATUS_TEXT[run.status]}</span>
+												<span className="text-muted">{run.trigger}</span>
+												{run.error ? <span className="text-signal">{run.error}</span> : null}
 											</li>
 										))}
 								</ul>
@@ -240,37 +252,37 @@ export function ScheduleSection(props: {
 	}
 
 	return (
-		<section className="ext-details-card">
-			<button type="button" className="ext-details-head-row" aria-expanded={open} onClick={() => setOpen(!open)}>
+		<section className={CARD}>
+			<button type="button" className={HEAD_ROW} aria-expanded={open} onClick={() => setOpen(!open)}>
 				<span className={EYEBROW}>Scheduled</span>
-				<span className="ext-details-summary">{summary}</span>
+				<span className={SUMMARY}>{summary}</span>
 				{open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
 			</button>
 
 			{open ? (
-				<div className="sch-wrap">
+				<div className="flex flex-col gap-2 border-t-[0.5px] border-line px-3 pt-2.5 pb-3">
 					{props.loading && !props.data ? <LoadingLines rows={3} /> : null}
 					{!props.loading && schedules.length === 0 ? (
-						<div className="sch-empty">
-							<p>Nothing scheduled</p>
-							<p className="sch-muted">Ask in the chat to put work on the clock.</p>
+						<div className="flex flex-col gap-1">
+							<p className="m-0 text-[12px] text-ink">Nothing scheduled</p>
+							<p className="m-0 text-[12px] text-muted">Ask in the chat to put work on the clock.</p>
 						</div>
 					) : null}
 					{schedules.length > 0 ? (
-						<div className="sch-axis">
+						<div className="flex flex-col gap-2">
 							{axis.groups.map((group) => (
-								<div className="sch-group" key={group.key}>
-									<div className="sch-day">
+								<div className="flex flex-col" key={group.key}>
+									<div className="flex items-baseline justify-between gap-2 pb-1 font-mono text-[10px] tracking-[0.1em] text-muted">
 										<span>{group.label}</span>
-										<span className="sch-muted">{group.collapsed ? `${group.count} entries` : ""}</span>
+										<span className="text-muted">{group.collapsed ? `${group.count} entries` : ""}</span>
 									</div>
 									{group.nodes.map(renderNode)}
-									{group.folded > 0 ? <div className="sch-folded">… {group.folded} earlier</div> : null}
+									{group.folded > 0 ? <div className="pb-1 pl-[54px] font-mono text-[10px] text-muted-soft">… {group.folded} earlier</div> : null}
 								</div>
 							))}
-							<div className="sch-now">
-								<span className="sch-at">{clockOf(new Date(now))}</span>
-								<span className="sch-now-line" />
+							<div className="grid grid-cols-[44px_minmax(0,1fr)] items-center">
+								<span className="pr-1.5 text-right font-mono text-[11px] font-semibold tabular-nums text-ink">{clockOf(new Date(now))}</span>
+								<span className="h-px bg-[color-mix(in_srgb,var(--ink)_35%,transparent)]" />
 							</div>
 						</div>
 					) : null}

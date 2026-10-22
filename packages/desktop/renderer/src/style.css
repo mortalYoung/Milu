@@ -336,6 +336,27 @@ body.pane-dragging {
 	}
 }
 
+@keyframes tasks-live-pulse {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.3;
+	}
+}
+
+@keyframes command-menu-in {
+	from {
+		opacity: 0;
+		transform: translateX(-50%) translateY(4px);
+	}
+	to {
+		opacity: 1;
+		transform: translateX(-50%) translateY(0);
+	}
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.sidebar,
 	.sidebar.collapsed {
@@ -1525,18 +1546,6 @@ body.pane-dragging {
 .back-to-bottom:hover {
 	background-image: linear-gradient(var(--hover), var(--hover));
 	color: var(--ink);
-}
-
-@keyframes work-dot {
-	0%,
-	60%,
-	100% {
-		opacity: 0.25;
-	}
-
-	30% {
-		opacity: 1;
-	}
 }
 
 /* ——— the composer: a card on the reading axis, its controls contributed ——— */

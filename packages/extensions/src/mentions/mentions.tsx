@@ -1,10 +1,8 @@
 import type { SessionRow } from "@milu/protocol";
 
+import { DESC, EMPTY, HEADER, HINT, ITEM, MENU } from "../composer/menu.ts";
 import type { ComposerTriggerComponent, ComposerTriggerProps } from "../host/index.ts";
 import { oneLine } from "../host/index.ts";
-
-import "../composer/menu.css";
-import "./mentions.css";
 
 function filterPartners(rows: readonly SessionRow[], query: string): readonly SessionRow[] {
 	const needle = query.trim().toLowerCase();
@@ -22,27 +20,27 @@ function filterPartners(rows: readonly SessionRow[], query: string): readonly Se
 function PartnerMenu(props: ComposerTriggerProps) {
 	const rows = props.items as readonly SessionRow[];
 	return (
-		<div className="command-menu" role="listbox" aria-label="Partners">
-			<div className="command-menu-header">Partners</div>
+		<div className={MENU} role="listbox" aria-label="Partners">
+			<div className={HEADER}>Partners</div>
 			{rows.map((row, index) => (
 				<button
 					type="button"
 					key={row.name}
-					className={"command-menu-item" + (index === props.selectedIndex ? " selected" : "")}
+					className={`${ITEM} ${index === props.selectedIndex ? "bg-hover" : ""}`}
 					role="option"
 					aria-selected={index === props.selectedIndex}
 					onMouseEnter={() => props.onHover(index)}
 					onClick={() => props.onPick(index)}
 				>
-					<span className="flex size-7 shrink-0 items-center justify-center rounded-full border border-line bg-surface font-serif text-[14px] font-semibold leading-none text-ink">
+					<span className="flex size-5 shrink-0 items-center justify-center rounded-full border border-line bg-surface font-serif text-[12px] font-semibold leading-none text-ink">
 						<span className="block translate-y-[0.1em] leading-none">{row.name.charAt(0)}</span>
 					</span>
-					<span className="command-menu-name mention-name">@{row.name}</span>
-					{row.lastMessage ? <span className="command-menu-desc">{oneLine(row.lastMessage)}</span> : null}
-					{row.running ? <span className="command-menu-hint">writing…</span> : null}
+					<span className="shrink-0 text-ink">@{row.name}</span>
+					{row.lastMessage ? <span className={DESC}>{oneLine(row.lastMessage)}</span> : null}
+					{row.running ? <span className={HINT}>writing…</span> : null}
 				</button>
 			))}
-			{rows.length === 0 ? <div className="command-menu-empty">no partner found</div> : null}
+			{rows.length === 0 ? <div className={EMPTY}>no partner found</div> : null}
 		</div>
 	);
 }

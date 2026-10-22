@@ -1,9 +1,0 @@
-.command-menu .conv-avatar {
-	width: 20px;
-	height: 20px;
-	font-size: 10px;
-}
-
-.command-menu-item .mention-name {
-	color: var(--ink);
-}

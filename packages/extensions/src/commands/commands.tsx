@@ -1,6 +1,5 @@
+import { BADGE, DESC, EMPTY, HEADER, HINT, ITEM, MENU, NAME } from "../composer/menu.ts";
 import type { ComposerCommand, ComposerTriggerComponent, ComposerTriggerProps } from "../host/index.ts";
-
-import "../composer/menu.css";
 
 type Row = { readonly header: string } | { readonly item: ComposerCommand; readonly index: number };
 
@@ -37,30 +36,30 @@ function groupItems(items: readonly ComposerCommand[]): readonly Row[] {
 function CommandMenu(props: ComposerTriggerProps) {
 	const rows = groupItems(props.items as readonly ComposerCommand[]);
 	return (
-		<div className="command-menu" role="listbox" aria-label="Commands">
+		<div className={MENU} role="listbox" aria-label="Commands">
 			{rows.map((row) =>
 				"header" in row ? (
-					<div className="command-menu-header" key={`h:${row.header}`}>
+					<div className={HEADER} key={`h:${row.header}`}>
 						{row.header}
 					</div>
 				) : (
 					<button
 						type="button"
 						key={`i:${row.item.id}`}
-						className={"command-menu-item" + (row.index === props.selectedIndex ? " selected" : "")}
+						className={`${ITEM} ${row.index === props.selectedIndex ? "bg-hover" : ""}`}
 						role="option"
 						aria-selected={row.index === props.selectedIndex}
 						onMouseEnter={() => props.onHover(row.index)}
 						onClick={() => props.onPick(row.index)}
 					>
-						<span className="command-menu-name">/{row.item.name}</span>
-						<span className="command-menu-desc">{row.item.description}</span>
-						{row.item.hint ? <span className="command-menu-hint">{row.item.hint}</span> : null}
-						{row.item.category === "skill" ? <span className="command-menu-badge">skill</span> : null}
+						<span className={NAME}>/{row.item.name}</span>
+						<span className={DESC}>{row.item.description}</span>
+						{row.item.hint ? <span className={HINT}>{row.item.hint}</span> : null}
+						{row.item.category === "skill" ? <span className={BADGE}>skill</span> : null}
 					</button>
 				),
 			)}
-			{rows.length === 0 ? <div className="command-menu-empty">no command found</div> : null}
+			{rows.length === 0 ? <div className={EMPTY}>no command found</div> : null}
 		</div>
 	);
 }

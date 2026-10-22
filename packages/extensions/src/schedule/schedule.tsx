@@ -5,8 +5,6 @@ import { useState } from "react";
 import { describeNextRun, type DialogProps, type SlotProps } from "../host/index.ts";
 import { Tip } from "../host/tooltip.tsx";
 
-import "./schedule.css";
-
 interface ScheduleView {
 	readonly id: string;
 	readonly title: string;
@@ -56,10 +54,6 @@ function clockTime(at: number | null): string {
 	return `${date.getMonth() + 1}/${date.getDate()} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-function statusTone(status: RunView["status"]): string {
-	return status === "missed" ? " missed" : "";
-}
-
 function scheduleStatus(item: ScheduleView): string {
 	return item.enabled && item.lifecycleStatus === "active" ? "active" : item.lifecycleStatus;
 }
@@ -86,18 +80,26 @@ export function ScheduleButton(props: SlotProps) {
 	return (
 		<Popover.Root>
 			<Popover.Trigger asChild>
-				<button type="button" className="chat-bar-sched" aria-label={`${label} — show schedules`}>
+				<button
+					type="button"
+					className="ml-1.5 flex h-[18px] shrink-0 cursor-pointer items-center gap-1 rounded-full border border-line bg-transparent px-1.5 font-mono text-[10px] leading-none text-muted hover:border-line-strong hover:text-ink"
+					aria-label={`${label} — show schedules`}
+				>
 					<AlarmClock size={11} />
 					{data.schedules.length}
 				</button>
 			</Popover.Trigger>
 			<Popover.Portal>
-				<Popover.Content className="sched-pop" align="center" sideOffset={8}>
-					<div className="sched-pop-head">
-						<span className="sched-pop-eyebrow">Scheduled</span>
-						<span className="sched-pop-summary">{summary}</span>
+				<Popover.Content
+					className="z-[70] flex w-[330px] max-w-[80vw] flex-col overflow-hidden rounded-lg border-[0.5px] border-line-strong bg-surface shadow-[0_12px_32px_color-mix(in_srgb,var(--ink)_16%,transparent)]"
+					align="center"
+					sideOffset={8}
+				>
+					<div className="flex items-baseline gap-2 border-b border-line px-3 py-2">
+						<span className="font-sans text-[11px] font-semibold tracking-[0.12em] text-muted uppercase">Scheduled</span>
+						<span className="min-w-0 flex-1 overflow-hidden text-right font-mono text-[10.5px] text-ellipsis whitespace-nowrap text-muted-soft">{summary}</span>
 					</div>
-					<ul className="sched-pop-rows">
+					<ul className="m-0 flex max-h-[300px] list-none flex-col overflow-y-auto p-0">
 						{data.schedules.map((item) => {
 							const latest = data.runs
 								.filter((run) => run.scheduleId === item.id)
@@ -110,15 +112,21 @@ export function ScheduleButton(props: SlotProps) {
 								.filter((value): value is string => Boolean(value))
 								.join(" · ");
 							return (
-								<li className="sched-pop-row" key={item.id}>
-									<span className="sched-pop-clock">{item.display}</span>
-									<span className="sched-pop-title">{item.title}</span>
-									<span className={`sched-pop-facts${latest ? ` is-${latest.status}` : ""}`}>{facts}</span>
+								<li className="flex flex-col gap-[3px] border-b border-line px-3 py-2 last:border-b-0" key={item.id}>
+									<span className="font-mono text-[10px] tracking-[0.08em] text-muted uppercase">{item.display}</span>
+									<span className="overflow-hidden font-sans text-[12px] text-ellipsis whitespace-nowrap text-ink">{item.title}</span>
+									<span className={`overflow-hidden font-mono text-[10.5px] text-ellipsis whitespace-nowrap ${latest?.status === "missed" ? "text-accent-amber" : "text-muted"}`}>
+										{facts}
+									</span>
 								</li>
 							);
 						})}
 					</ul>
-					<button type="button" className="sched-pop-more" onClick={() => void props.host.actions.invoke("schedule.open", data.session)}>
+					<button
+						type="button"
+						className="cursor-pointer border-0 border-t border-line bg-transparent px-3 py-1.5 text-left font-sans text-[11px] text-muted hover:bg-hover hover:text-ink"
+						onClick={() => void props.host.actions.invoke("schedule.open", data.session)}
+					>
 						Open details
 					</button>
 				</Popover.Content>
@@ -187,16 +195,16 @@ export function ScheduleDialog(props: DialogProps) {
 					.join(" · ");
 
 	return (
-		<div className="sched-dialog">
-			<div className="sched-head">
-				<h2>Scheduled</h2>
-				<span className="sched-summary">{summary}</span>
+		<div className="flex w-[min(640px,calc(100vw-48px))] max-h-[min(80vh,640px)] flex-col overflow-hidden">
+			<div className="flex items-baseline gap-3 border-b border-line pt-4 pr-12 pb-3 pl-5">
+				<h2 className="m-0 font-sans text-[16px] font-semibold text-ink">Scheduled</h2>
+				<span className="min-w-0 overflow-hidden font-mono text-[11px] text-ellipsis whitespace-nowrap text-muted">{summary}</span>
 			</div>
 
 			{schedules.length === 0 ? (
-				<p className="sched-empty">Nothing on the clock yet. Ask in the chat to put work on it.</p>
+				<p className="m-0 px-5 py-7 text-[13px] text-muted">Nothing on the clock yet. Ask in the chat to put work on it.</p>
 			) : (
-				<div className="sched-list">
+				<div className="min-h-0 overflow-y-auto p-1.5 [&>div+div]:border-t [&>div+div]:border-line-soft">
 					{schedules.map((item) => {
 						const history = bySchedule(item.id);
 						const latest = history[0];
@@ -209,27 +217,32 @@ export function ScheduleDialog(props: DialogProps) {
 							.join(" · ");
 						const expanded = open === item.id;
 						return (
-							<div className="sched-item" key={item.id}>
-								<button type="button" className="sched-row" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : item.id)}>
-									<span className="sched-title">{item.title || item.display}</span>
-									<span className={`sched-facts${latest ? statusTone(latest.status) : ""}`}>{facts}</span>
+							<div key={item.id}>
+								<button
+									type="button"
+									className="flex w-full cursor-pointer flex-col gap-0.5 rounded-md bg-transparent px-2.5 py-2 text-left hover:bg-hover"
+									aria-expanded={expanded}
+									onClick={() => setOpen(expanded ? null : item.id)}
+								>
+									<span className="font-sans text-[13px] text-ink">{item.title || item.display}</span>
+									<span className={`font-mono text-[10px] ${latest?.status === "missed" ? "text-accent-amber" : "text-muted"}`}>{facts}</span>
 								</button>
 								{expanded ? (
-									<div className="sched-detail">
-										<p className="sched-prompt">{item.payload.text}</p>
-										<div className="sched-meta">
+									<div className="px-2.5 pb-2.5">
+										<p className="m-0 mb-1.5 text-[12px] leading-[1.6] whitespace-pre-wrap text-ink-soft">{item.payload.text}</p>
+										<div className="flex flex-wrap gap-1.5 font-mono text-[10px] text-muted-soft">
 											<span>{item.display}</span>
 											<span>·</span>
 											<span>{scheduleStatus(item)}</span>
 										</div>
 										{history.length > 0 ? (
-											<ul className="sched-runs">
+											<ul className="m-0 mt-2 flex list-none flex-col gap-0.5 p-0">
 												{history.slice(0, 5).map((run) => (
-													<li key={run.runId}>
+													<li className="flex gap-2.5 font-mono text-[10px] text-muted" key={run.runId}>
 														<span>{clockTime(run.dispatchedAt ?? run.scheduledAt)}</span>
-														<span className={statusTone(run.status).trim()}>{STATUS_TEXT[run.status]}</span>
-														<span className="sched-trigger">{run.trigger}</span>
-														{run.error ? <span className="sched-failed">{run.error}</span> : null}
+														<span className={run.status === "missed" ? "text-accent-amber" : undefined}>{STATUS_TEXT[run.status]}</span>
+														<span className="text-muted-soft">{run.trigger}</span>
+														{run.error ? <span className="text-signal">{run.error}</span> : null}
 													</li>
 												))}
 											</ul>
