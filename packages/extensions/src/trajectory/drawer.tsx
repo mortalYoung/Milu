@@ -208,6 +208,22 @@ export function TrajectoryDrawer(props: { host: Host; service: TrajectoryService
 
 	const prepending = useRef(false);
 	const previousRows = useRef(flatRows.length);
+	const follow = useRef(true);
+
+	useEffect(() => {
+		const element = scroller.current;
+		if (!element || !follow.current) return;
+		const pin = () => {
+			if (follow.current) element.scrollTop = element.scrollHeight;
+		};
+		pin();
+		const frame = requestAnimationFrame(pin);
+		const settle = window.setTimeout(pin, 80);
+		return () => {
+			cancelAnimationFrame(frame);
+			window.clearTimeout(settle);
+		};
+	}, [flatRows.length, loading]);
 
 	useEffect(() => {
 		const element = scroller.current;
@@ -220,6 +236,7 @@ export function TrajectoryDrawer(props: { host: Host; service: TrajectoryService
 
 	const loadOlder = (): void => {
 		setSelectedKey(null);
+		follow.current = false;
 		prepending.current = true;
 		void service.loadOlder();
 	};
@@ -276,6 +293,8 @@ export function TrajectoryDrawer(props: { host: Host; service: TrajectoryService
 					className="min-h-0 flex-1 overflow-y-auto pt-2"
 					ref={scroller}
 					onScroll={() => {
+						const element = scroller.current;
+						if (element) follow.current = element.scrollHeight - element.clientHeight - element.scrollTop < 8;
 						if (selectedKey !== null) setSelectedKey(null);
 					}}
 				>

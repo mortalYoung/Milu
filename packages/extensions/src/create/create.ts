@@ -15,7 +15,7 @@ export const createExtension: Extension = {
 	activate(context) {
 		context.actions.register({
 			id: "create.session",
-			scope: "welcome",
+			scope: "app",
 			hotkey: { web: "Option+N", desktop: "Mod+N" },
 			run: async ({ sessions, dialog }) => {
 				const values = (await dialog?.({ kind: "custom", id: "create-session" })) as { name?: string; persona?: string; workspace?: string } | null;

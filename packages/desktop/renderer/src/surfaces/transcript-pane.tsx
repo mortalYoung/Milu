@@ -285,7 +285,7 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 			resize.disconnect();
 			mutations.disconnect();
 		};
-	}, [display, following]);
+	}, [display, following, selected]);
 
 	const hasMore = useStore(host.transcript.store, (state) => state.hasMore[selected] ?? false);
 	const loadingOlder = useStore(host.transcript.store, (state) => state.loadingOlder[selected] ?? false);

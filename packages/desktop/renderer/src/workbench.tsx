@@ -7,8 +7,8 @@ import { DialogHost } from "./components/dialog-host.tsx";
 import { Grip } from "./components/grip.tsx";
 import { SessionListSkeleton, TranscriptSkeleton } from "./components/skeletons.tsx";
 
-const WELCOME_SCOPES: ReadonlySet<string> = new Set(["welcome"]);
-const CHAT_SCOPES: ReadonlySet<string> = new Set(["chat"]);
+const WELCOME_SCOPES: ReadonlySet<string> = new Set(["welcome", "app"]);
+const CHAT_SCOPES: ReadonlySet<string> = new Set(["chat", "app"]);
 
 export function Workbench(props: { host: Host }) {
 	const { host } = props;
