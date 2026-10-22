@@ -100,10 +100,6 @@ export class TranscriptService implements Service {
 		this.store.setState((state) => ({ ...state, focused: { id, at: Date.now() } }), true);
 	}
 
-	clearFocus(): void {
-		this.store.setState((state) => ({ ...state, focused: null }), true);
-	}
-
 	async abort(): Promise<void> {
 		await this._connection.request("abort", {});
 	}

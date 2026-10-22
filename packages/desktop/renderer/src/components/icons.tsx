@@ -26,7 +26,7 @@ import type { ReactNode } from "react";
 
 function sized(icon: LucideIcon, fallback = 14) {
 	const Icon = icon;
-	return (props: { size?: number }) => <Icon size={props.size ?? fallback} />;
+	return (props: { size?: number; className?: string }) => <Icon size={props.size ?? fallback} className={props.className} />;
 }
 
 export const SearchIcon = sized(Search);
@@ -51,7 +51,7 @@ export const SquareIcon = sized(Square);
 export const ArrowUpIcon = sized(ArrowUp);
 export const SquarePenIcon = sized(SquarePen);
 
-const NAMED: Record<string, (props: { size?: number }) => ReactNode> = {
+const NAMED: Record<string, (props: { size?: number; className?: string }) => ReactNode> = {
 	info: InfoIcon,
 	folder: FolderIcon,
 	"square-pen": SquarePenIcon,
@@ -61,7 +61,7 @@ const NAMED: Record<string, (props: { size?: number }) => ReactNode> = {
 	copy: CopyIcon,
 };
 
-export function IconByName(props: { name?: string; size?: number }) {
+export function IconByName(props: { name?: string; size?: number; className?: string }) {
 	const Icon = props.name ? NAMED[props.name] : undefined;
-	return Icon ? <Icon size={props.size} /> : null;
+	return Icon ? <Icon size={props.size} className={props.className} /> : null;
 }

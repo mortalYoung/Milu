@@ -34,8 +34,8 @@ function PartnerMenu(props: ComposerTriggerProps) {
 					onMouseEnter={() => props.onHover(index)}
 					onClick={() => props.onPick(index)}
 				>
-					<span className="conv-avatar avatar-paper">
-						<span className="avatar-initial">{row.name.charAt(0)}</span>
+					<span className="flex size-7 shrink-0 items-center justify-center rounded-full border border-line bg-surface font-serif text-[14px] font-semibold leading-none text-ink">
+						<span className="block translate-y-[0.1em] leading-none">{row.name.charAt(0)}</span>
 					</span>
 					<span className="command-menu-name mention-name">@{row.name}</span>
 					{row.lastMessage ? <span className="command-menu-desc">{oneLine(row.lastMessage)}</span> : null}

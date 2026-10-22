@@ -77,9 +77,9 @@ export function Workbench(props: { host: Host }) {
 				mode={columns.list.mode}
 				fallback={
 					!arrived ? (
-						<div className="session-list">
-							<div className="sidebar-body">
-								<div className="conv-rows">
+						<div className="flex h-full min-h-0 flex-col px-3">
+							<div className="flex min-h-0 flex-1 flex-col pt-2">
+								<div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
 									<SessionListSkeleton />
 								</div>
 							</div>

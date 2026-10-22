@@ -20,10 +20,14 @@ function Chevron(props: { open: boolean }) {
 }
 
 function Fact(props: { label: string; tip?: string; block?: boolean; children: ReactNode }) {
-	const value = <span className="ext-details-fact-value">{props.children}</span>;
+	const value = (
+		<span className={props.block ? "w-full whitespace-normal text-left font-mono text-[12px] text-ink" : "min-w-0 truncate text-right font-mono text-[12px] text-ink"}>
+			{props.children}
+		</span>
+	);
 	return (
-		<div className={props.block ? "ext-details-fact is-block" : "ext-details-fact"}>
-			<span className="ext-details-fact-label">{props.label}</span>
+		<div className={props.block ? "flex min-w-0 flex-col gap-1" : "flex min-w-0 items-baseline justify-between gap-3"}>
+			<span className="shrink-0 text-[12px] text-muted">{props.label}</span>
 			{props.tip ? <Tip label={props.tip}>{value}</Tip> : value}
 		</div>
 	);
@@ -31,8 +35,8 @@ function Fact(props: { label: string; tip?: string; block?: boolean; children: R
 
 function MenuValue(props: { label: string; value: string; tip?: string; children: ReactNode }) {
 	return (
-		<div className="ext-details-fact">
-			<span className="ext-details-fact-label">{props.label}</span>
+		<div className="flex min-w-0 items-baseline justify-between gap-3">
+			<span className="shrink-0 text-[12px] text-muted">{props.label}</span>
 			<DropdownMenu.Root>
 				<DropdownMenu.Trigger asChild>
 					<button type="button" className="ext-details-menu-value" aria-label={`${props.label}: ${props.tip ?? props.value}`}>
@@ -153,38 +157,38 @@ export function SessionDetailsDialog(props: DialogProps) {
 	}
 
 	return (
-		<div className="ext-details">
-			<header className="ext-details-head">
-				<span className="ext-details-avatar">{initial}</span>
-				<div className="ext-details-ident">
-					<h2>{shown.name}</h2>
-					<p>
+		<div className="flex h-[min(720px,86vh)] w-[min(820px,calc(100vw-48px))] flex-col overflow-hidden font-sans text-ink">
+			<header className="flex shrink-0 items-center gap-3 border-b border-line px-5 pt-4 pb-3 pr-12">
+				<span className="grid size-10 place-items-center rounded-md bg-ink text-[18px] font-bold leading-none text-canvas">{initial}</span>
+				<div className="min-w-0">
+					<h2 className="m-0 text-[16px] font-semibold leading-tight text-ink">{shown.name}</h2>
+					<p className="m-0 mt-0.5 truncate text-[12px] text-muted">
 						{shown.path} · created {formatDate(shown.createdAt)}
 					</p>
 				</div>
-				{shown.running ? <span className="ext-details-writing">● writing</span> : null}
+				{shown.running ? <span className="ml-auto rounded-md border border-line bg-hover px-2 py-1 text-[10px] font-medium text-ink">● writing</span> : null}
 			</header>
 
-			<div className="ext-details-body">
+			<div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-5 pt-2.5 pb-5">
 				{error ? <p className="ext-details-error">{error}</p> : null}
 
-				<div className="ext-details-cards">
+				<div className="grid grid-cols-3 gap-2.5">
 					{cards.map((card) => (
-						<div className="ext-details-card ext-details-metric" key={card.label}>
+						<div className="flex flex-col rounded-md border border-line bg-surface px-3 py-2.5" key={card.label}>
 							<span className="ext-details-caption">{card.label}</span>
-							<span className="ext-details-number">{card.value}</span>
-							<span className="ext-details-hint">{card.hint}</span>
+							<span className="mt-1 font-mono text-[18px] leading-tight text-ink">{card.value}</span>
+							<span className="mt-0.5 font-mono text-[10px] text-muted">{card.hint}</span>
 						</div>
 					))}
 				</div>
 
-				<div className="ext-details-card ext-details-activity">
+				<div className="mt-2.5 rounded-md border border-line bg-surface p-3">
 					<p className="ext-details-caption">Activity · last 12 months</p>
 					{error ? <p className="ext-details-muted">—</p> : <ActivityHeatmap days={details?.activity ?? []} loading={!details} />}
 				</div>
 
-				<div className="ext-details-grid">
-					<div className="ext-details-column">
+				<div className="mt-2.5 grid grid-cols-[minmax(0,1fr)_240px] gap-2.5">
+					<div className="flex min-w-0 flex-col gap-2.5">
 						<section className="ext-details-card">
 							<button type="button" className="ext-details-head-row" aria-expanded={personaOpen} onClick={() => setPersonaOpen(!personaOpen)}>
 								<span className="ext-details-caption">Persona</span>
@@ -211,10 +215,10 @@ export function SessionDetailsDialog(props: DialogProps) {
 						<ScheduleSection data={details?.schedules ?? null} sandbox={sandbox} loading={!details && !error} />
 					</div>
 
-					<div className="ext-details-column">
-						<section className="ext-details-card ext-details-pad">
+					<div className="flex min-w-0 flex-col gap-3">
+						<section className="rounded-md border border-line bg-surface p-3">
 							<p className="ext-details-caption">This Session</p>
-							<div className="ext-details-facts">
+							<div className="mt-2 grid gap-2 text-[12px]">
 								<Fact
 									label="Tokens"
 									tip={
@@ -259,9 +263,9 @@ export function SessionDetailsDialog(props: DialogProps) {
 							</div>
 						</section>
 
-						<section className="ext-details-card ext-details-pad">
+						<section className="rounded-md border border-line bg-surface p-3">
 							<p className="ext-details-caption">Status</p>
-							<div className="ext-details-facts">
+							<div className="mt-2 grid gap-2 text-[12px]">
 								<Fact label="Workspace" block tip={shown.workspace?.path ? tildifyPath(shown.workspace.path) : undefined}>
 									{shown.workspace?.path ? formatWorkspacePath(shown.workspace.path, 34) : "—"}
 								</Fact>

@@ -261,6 +261,7 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 	}
 
 	const scroll = useRef<HTMLDivElement>(null);
+	const locating = useRef(false);
 
 	useEffect(() => {
 		if (!following) return;
@@ -301,16 +302,27 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 	useEffect(() => {
 		if (!focused) return;
 		const element = scroll.current?.querySelector(`[data-entry="${CSS.escape(focused.id)}"]`);
-		host.transcript.clearFocus();
 		if (!element) return;
 		setFollowing(false);
+		locating.current = true;
 		element.scrollIntoView({ block: "center", behavior: "smooth" });
 		element.classList.add("is-located");
-		const timer = window.setTimeout(() => element.classList.remove("is-located"), 1400);
-		return () => window.clearTimeout(timer);
-	}, [focused, host]);
+		const release = () => {
+			locating.current = false;
+		};
+		const scroller = scroll.current;
+		scroller?.addEventListener("scrollend", release, { once: true });
+		const timers = [window.setTimeout(() => element.classList.remove("is-located"), 1400), window.setTimeout(release, 1200)];
+		return () => {
+			locating.current = false;
+			element.classList.remove("is-located");
+			scroller?.removeEventListener("scrollend", release);
+			for (const timer of timers) window.clearTimeout(timer);
+		};
+	}, [focused]);
 
 	const onScroll = () => {
+		if (locating.current) return;
 		const element = scroll.current;
 		if (!element) return;
 		const atBottom = element.scrollHeight - element.clientHeight - element.scrollTop < 24;

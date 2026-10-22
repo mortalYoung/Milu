@@ -27,7 +27,7 @@ function Row(props: {
 
 	return (
 		<div
-			className={`conv-item${props.selected ? " selected" : ""}${props.leaf ? " ml-5" : ""}`}
+			className={`group relative flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-100 hover:bg-hover${props.selected ? " bg-selected" : ""}${props.leaf ? " ml-5" : ""}`}
 			role="button"
 			tabIndex={0}
 			aria-current={props.selected ? "true" : undefined}
@@ -45,17 +45,21 @@ function Row(props: {
 				props.onSelect();
 			}}
 		>
-			<span className={`conv-avatar ${props.selected ? "avatar-ink" : "avatar-paper"}`}>
-				<span className="avatar-initial">{session.name.charAt(0)}</span>
+			<span
+				className={`flex size-7 shrink-0 items-center justify-center rounded-full font-serif text-[14px] font-semibold leading-none ${
+					props.selected ? "bg-ink text-canvas" : "border border-line bg-surface text-ink"
+				}`}
+			>
+				<span className="block translate-y-[0.1em] leading-none">{session.name.charAt(0)}</span>
 			</span>
-			<span className="conv-main">
-				<span className="conv-name-row">
-					<span className="conv-name-wrap">
-						<span className="conv-name">{session.name}</span>
+			<span className="flex min-w-0 flex-1 flex-col leading-tight">
+				<span className="flex min-w-0 items-baseline justify-between gap-2">
+					<span className="flex min-w-0 items-center gap-1.5">
+						<span className="truncate font-serif text-[16px] font-semibold text-ink">{session.name}</span>
 						{props.childCount ? (
 							<button
 								type="button"
-								className="conv-fork-count"
+								className="inline-flex h-[15px] shrink-0 cursor-pointer items-center gap-0.5 rounded-full border border-line bg-transparent px-[5px] font-mono text-[10px] leading-none text-muted transition-colors hover:bg-hover hover:text-ink aria-expanded:text-ink"
 								aria-expanded={props.expanded}
 								aria-label={`${props.expanded ? "Collapse" : "Expand"} ${props.childCount} fork${props.childCount === 1 ? "" : "s"} of ${session.name}`}
 								onClick={(event) => {
@@ -68,12 +72,12 @@ function Row(props: {
 							</button>
 						) : null}
 					</span>
-					<span className="conv-time">{activityAt(session) ? listTime(activityAt(session)) : ""}</span>
+					<span className="whitespace-nowrap font-sans text-[12px] tracking-[0.03em] text-muted">{activityAt(session) ? listTime(activityAt(session)) : ""}</span>
 				</span>
-				<span className="conv-preview">
-					<span className="conv-preview-main">
+				<span className="mt-0.5 flex min-w-0 items-center gap-2 font-sans text-[13px] text-muted">
+					<span className="min-w-0 flex-1 truncate">
 						{props.writing ? (
-							<span className="conv-preview-dots">
+							<span className="inline-flex items-center gap-[3px] pt-[3px]">
 								<span className="work-dot" />
 								<span className="work-dot" />
 								<span className="work-dot" />
@@ -84,12 +88,12 @@ function Row(props: {
 					</span>
 					{props.unread ? (
 						<Tip label="new messages">
-							<span className="conv-unread-dot" />
+							<span className="inline-block size-1.5 shrink-0 rounded-full bg-signal" />
 						</Tip>
 					) : null}
 				</span>
 				{session.workspace ? (
-					<span className="conv-ws">
+					<span className="mt-[3px] flex min-w-0 items-center gap-[3px] font-mono text-[10px] text-muted-soft [&>svg]:shrink-0">
 						{session.workspaceKind === "worktree" ? <FolderTreeIcon size={10} /> : null}
 						<span className="truncate">{workspaceLabel(session)}</span>
 					</span>
@@ -103,7 +107,12 @@ function Row(props: {
 				}}
 			>
 				<MenuTrigger asChild>
-					<button type="button" className="conv-ellipsis" aria-label={`More actions for ${session.name}`} onClick={(event) => event.stopPropagation()}>
+					<button
+						type="button"
+						className="absolute top-1/2 right-1.5 grid size-6 -translate-y-1/2 cursor-pointer place-items-center rounded border-0 bg-[color-mix(in_srgb,var(--chrome)_80%,transparent)] text-muted opacity-0 transition-opacity duration-100 group-hover:opacity-100 hover:bg-surface hover:text-ink focus-visible:opacity-100 data-[state=open]:opacity-100"
+						aria-label={`More actions for ${session.name}`}
+						onClick={(event) => event.stopPropagation()}
+					>
 						<MoreVerticalIcon size={14} />
 					</button>
 				</MenuTrigger>
@@ -235,13 +244,13 @@ export function SessionListSurface(props: SurfaceProps) {
 	};
 
 	return (
-		<div className="session-list">
-			<div className="sidebar-windowbar">
-				<div className={`conv-search${searchOpen ? " open" : ""}`}>
+		<div className="flex h-full min-h-0 flex-col px-3">
+			<div className="flex h-[52px] flex-none items-center justify-end gap-2 pl-[76px] [-webkit-app-region:drag]">
+				<div className={`flex h-8 min-w-0 flex-1 items-center rounded-md border transition-colors duration-150 ${searchOpen ? "border-line bg-surface" : "border-transparent"}`}>
 					<Tip label="Search sessions (⌘F)">
 						<button
 							type="button"
-							className="conv-icon-btn"
+							className="grid size-[26px] shrink-0 cursor-pointer place-items-center rounded-full border-0 bg-transparent text-muted-soft transition-colors duration-100 hover:bg-hover hover:text-ink [-webkit-app-region:no-drag]"
 							aria-expanded={searchOpen}
 							aria-label={searchOpen ? "Close search" : "Search sessions"}
 							onClick={() => (searchOpen ? closeSearch() : host.workbench.setSearch(true))}
@@ -249,10 +258,10 @@ export function SessionListSurface(props: SurfaceProps) {
 							<SearchIcon />
 						</button>
 					</Tip>
-					<span className="conv-search-slide">
+					<span className={`flex min-w-0 flex-1 items-center overflow-hidden pr-2 transition-[max-width] duration-150 ${searchOpen ? "max-w-full" : "max-w-0"}`}>
 						<input
 							ref={searchRef}
-							className="conv-list-input"
+							className="min-w-0 flex-1 border-0 bg-transparent font-sans text-[14px] text-ink outline-none placeholder:text-muted"
 							type="text"
 							placeholder="Search sessions"
 							aria-label="Search sessions"
@@ -274,43 +283,53 @@ export function SessionListSurface(props: SurfaceProps) {
 				</div>
 				{headerItems.map((item) => (
 					<Tip key={item.id} label={item.title}>
-						<button type="button" className="conv-icon-btn" aria-label={item.title} onClick={() => void host.actions.invoke(item.action ?? "")}>
+						<button
+							type="button"
+							className="grid size-[26px] shrink-0 cursor-pointer place-items-center rounded-full border-0 bg-transparent text-muted-soft transition-colors duration-100 hover:bg-hover hover:text-ink [-webkit-app-region:no-drag]"
+							aria-label={item.title}
+							onClick={() => void host.actions.invoke(item.action ?? "")}
+						>
 							<IconByName name={item.icon} size={14} />
 						</button>
 					</Tip>
 				))}
 				<Tip label="Hide session list (⌘B)">
-					<button type="button" className="sidebar-toggle" aria-label="Hide session list" onClick={() => host.columns.closeList()}>
+					<button
+						type="button"
+						className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-ink-soft transition-colors duration-100 hover:bg-hover hover:text-ink [-webkit-app-region:no-drag]"
+						aria-label="Hide session list"
+						onClick={() => host.columns.closeList()}
+					>
 						<PanelLeftCloseIcon size={16} />
 					</button>
 				</Tip>
 			</div>
 
-			<div className="sidebar-brand">
-				<img className="brand-mark" src="/milu.png" alt="" />
-				<MiluWordmark class="sidebar-wordmark" />
+			<div className="flex h-11 flex-none items-center gap-3 border-b border-line text-ink">
+				<img className="size-[26px] shrink-0 rounded-[6px]" src="/milu.png" alt="" />
+				<MiluWordmark class="h-5 w-auto shrink-0" />
 			</div>
 
-			<div className="sidebar-body">
-				{rows.length === 0 ? <div className="conv-empty">no sessions yet</div> : null}
+			<div className="flex min-h-0 flex-1 flex-col pt-2">
+				{rows.length === 0 ? <div className="px-2 py-1 text-[13px] text-muted">no sessions yet</div> : null}
 
 				{searching && rows.length > 0 && visibleRoots.length === 0 ? (
-					<div className="conv-no-match">
-						<p className="conv-no-match-title">No sessions match</p>
-						<p className="conv-no-match-hint">
-							<button type="button" onClick={() => setQuery("")}>
+					<div className="px-1 py-3">
+						<p className="m-0 text-[13px] text-ink-soft">No sessions match</p>
+						<p className="m-0 mt-1 font-mono text-[10px] text-muted">
+							<button type="button" className="cursor-pointer border-0 bg-transparent p-0 font-[inherit] text-[inherit] hover:text-ink" onClick={() => setQuery("")}>
 								clear the filter
 							</button>
 						</p>
 					</div>
 				) : null}
 
-				<div className={`conv-rows edge-fade${edges.above ? " has-above" : ""}${edges.below ? " has-below" : ""}`} ref={rowsRef}>
+				<div className={`flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto edge-fade${edges.above ? " has-above" : ""}${edges.below ? " has-below" : ""}`} ref={rowsRef}>
 					{
 						<>
-							{pinnedRoots.length > 0 ? <div className="conv-section">Pinned</div> : null}
+							{pinnedRoots.length > 0 ? <div className="px-2 pt-4 pb-1.5 font-sans text-[10px] font-semibold tracking-[0.16em] text-muted-soft uppercase">Pinned</div> : null}
 							{pinnedRoots.map(renderRoot)}
-							{pinnedRoots.length > 0 && restRoots.length > 0 ? <div className="conv-gap" aria-hidden="true" /> : null}
+							{pinnedRoots.length > 0 && restRoots.length > 0 ? <div className="h-2.5 shrink-0" aria-hidden="true" /> : null}
 							{restRoots.map(renderRoot)}
 						</>
 					}
