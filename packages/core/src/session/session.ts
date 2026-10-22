@@ -29,7 +29,7 @@ import {
 } from "./files.ts";
 import { SessionLog } from "./log.ts";
 import type { OriginWindow } from "./origin.ts";
-import { projectSlice } from "./slice.ts";
+import { projectSlice, type SliceItem } from "./slice.ts";
 import { type ContextBreakdown, priceMessages, totalTokens } from "./tokens.ts";
 
 const DEFAULT_THINKING_LEVEL = "high";
@@ -196,6 +196,10 @@ export class Session {
 
 	async transcript(options?: { keepDangling?: boolean }): Promise<AgentMessage[]> {
 		return this._log.transcript(options);
+	}
+
+	async sliceItems(): Promise<SliceItem[]> {
+		return this._log.sliceItems();
 	}
 
 	async rawEntries(): Promise<Entry[]> {

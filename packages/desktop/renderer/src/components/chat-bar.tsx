@@ -21,9 +21,10 @@ export function ChatBar(props: { host: Host }) {
 		void host.slots.load(SLOT_POINTS.chatName, name || undefined);
 	}, [host, name]);
 	const running = useStore(host.sessions.store, (state) => state.rows.find((row) => row.name === name)?.running ?? false);
+	const bare = name === "";
 
 	return (
-		<header className={columns.list.mode === "flow" ? "chat-bar" : "chat-bar at-edge"}>
+		<header className={`${columns.list.mode === "flow" ? "chat-bar" : "chat-bar at-edge"}${bare ? " is-bare" : ""}`}>
 			<div className="chat-bar-lead">
 				{columns.list.mode === "collapsed" ? (
 					<Tip label="Show chat list (⌘B)">
@@ -34,33 +35,27 @@ export function ChatBar(props: { host: Host }) {
 				) : null}
 			</div>
 
-			<div className="chat-bar-name">
-				<Tip label={name ? "View details (⌘E)" : undefined}>
-					<button
-						type="button"
-						className="chat-bar-name-text"
-						aria-label={name ? `${name} — view details` : "View details"}
-						disabled={!name}
-						onClick={() => {
-							if (name) void host.actions.invoke("details.session", name);
-						}}
-					>
-						<span>{name || "Chat"}</span>
-					</button>
-				</Tip>
-				{running ? (
-					<span className="chat-bar-status">
-						<span className="work-dot" />
-						<span className="work-dot" />
-						<span className="work-dot" />
-						Writing…
-					</span>
-				) : null}
-				{nameItems.map((item) => {
-					const Component = host.slots.component(item.component);
-					return Component ? <Component key={item.id} host={host} data={item.data} /> : null;
-				})}
-			</div>
+			{bare ? null : (
+				<div className="chat-bar-name">
+					<Tip label="View details (⌘E)">
+						<button type="button" className="chat-bar-name-text" aria-label={`${name} — view details`} onClick={() => void host.actions.invoke("details.session", name)}>
+							<span>{name}</span>
+						</button>
+					</Tip>
+					{running ? (
+						<span className="chat-bar-status">
+							<span className="work-dot" />
+							<span className="work-dot" />
+							<span className="work-dot" />
+							Writing…
+						</span>
+					) : null}
+					{nameItems.map((item) => {
+						const Component = host.slots.component(item.component);
+						return Component ? <Component key={item.id} host={host} data={item.data} /> : null;
+					})}
+				</div>
+			)}
 
 			<div className="chat-bar-tools">
 				{items.map((item) => {

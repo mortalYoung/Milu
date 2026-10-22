@@ -29,6 +29,8 @@ export class IpcServer {
 	constructor(private readonly _backend: Backend) {
 		this._handlers = {
 			transcript: (params) => this._transcript(params),
+			origin: (params) => this._origin(params),
+			slice: (params) => this._slice(params),
 			prompt: (params) => this._prompt(params),
 			abort: () => this._abort(),
 			hotkeys: () => this._hotkeys(),
@@ -165,6 +167,23 @@ export class IpcServer {
 		});
 		const entries = await session.seqsOf(window.entries);
 		return { entries, total: window.total, hasMore: window.hasMore, reset: window.reset };
+	}
+
+	private async _origin(params: Params<"origin">): Promise<Result<"origin">> {
+		const session = await this._backend.sessions.ensure(params.session);
+		const window = await session.window({
+			...(params.mode ? { mode: params.mode } : {}),
+			...(params.cursor ? { cursor: params.cursor } : {}),
+			conversations: params.conversations ?? 20,
+		});
+		const entries = await session.seqsOf(window.entries);
+		return { entries, total: window.total, hasMore: window.hasMore, reset: window.reset };
+	}
+
+	private async _slice(params: Params<"slice">): Promise<Result<"slice">> {
+		const session = await this._backend.sessions.ensure(params.session);
+		const items = await session.sliceItems();
+		return { items: items.map((item) => ({ id: item.id, message: item.message })) };
 	}
 
 	private async _prompt(params: Params<"prompt">): Promise<Result<"prompt">> {

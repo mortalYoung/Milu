@@ -52,6 +52,8 @@ function label(text: string): string {
 function RepliesButton(props: SurfaceProps) {
 	const service = props.host.get(RepliesServiceId);
 	const open = useStore(service.store, (state) => state.open);
+	const selected = useStore(props.host.selection.store, (state) => state.selected);
+	if (selected === "") return null;
 	const wording = open ? "Hide replies" : "Show replies";
 	return (
 		<Tip label={wording}>

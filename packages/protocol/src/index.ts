@@ -170,6 +170,11 @@ export interface Methods {
 		params: { session: string; mode?: "older" | "newer"; cursor?: string; conversations?: number };
 		result: { entries: SeqEntry[]; total: number; hasMore: boolean; reset: boolean };
 	};
+	origin: {
+		params: { session: string; mode?: "older" | "newer"; cursor?: string; conversations?: number };
+		result: { entries: SeqEntry[]; total: number; hasMore: boolean; reset: boolean };
+	};
+	slice: { params: { session: string }; result: { items: { id: string; message: unknown }[] } };
 	prompt: { params: { text: string }; result: { accepted: boolean } };
 	abort: { params: Record<string, never>; result: Record<string, never> };
 	composer: { params: { session: string }; result: ComposerLayout };

@@ -46,6 +46,10 @@ export function Workbench(props: { host: Host }) {
 	const dockIds = layout.layout["dock"] ?? [];
 	const row = useRef<HTMLDivElement>(null);
 
+	useEffect(() => {
+		document.getElementById("boot-drag")?.remove();
+	}, []);
+
 	const readout = (dragged: "list" | "dock", width: number): string => {
 		const laid = host.columns.layoutFor(dragged === "list" ? { list: width } : { dock: width });
 		const parts: number[] = [];
@@ -78,6 +82,7 @@ export function Workbench(props: { host: Host }) {
 				fallback={
 					!arrived ? (
 						<div className="flex h-full min-h-0 flex-col px-3">
+							<div className="h-[52px] flex-none [-webkit-app-region:drag]" />
 							<div className="flex min-h-0 flex-1 flex-col pt-2">
 								<div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto">
 									<SessionListSkeleton />
@@ -108,8 +113,11 @@ export function Workbench(props: { host: Host }) {
 				onBackground={columns.list.mode === "overlay" ? () => host.columns.closeList() : undefined}
 				fallback={
 					!arrived ? (
-						<div className="chat-main">
-							<TranscriptSkeleton />
+						<div className="flex min-h-0 flex-1 flex-col">
+							<div className="h-[52px] flex-none [-webkit-app-region:drag]" />
+							<div className="chat-main">
+								<TranscriptSkeleton />
+							</div>
 						</div>
 					) : undefined
 				}

@@ -32,6 +32,8 @@ function serveRenderer(directory: string): void {
 
 async function main(): Promise<void> {
 	const appDir = app.getAppPath();
+	const icon = join(appDir, "build/icon.png");
+	if (process.platform === "darwin") app.dock?.setIcon(icon);
 	serveRenderer(join(appDir, "renderer/dist"));
 	const backend = await createBackend({ root: CONFIG_ROOT, workspace: WORKSPACE });
 	const ipc = new IpcServer(backend);
@@ -41,6 +43,7 @@ async function main(): Promise<void> {
 	const state = (rememberSession ? readWindowState(CONFIG_ROOT) : null) ?? DEFAULT_WINDOW_STATE;
 	const window = new BrowserWindow({
 		title: "Milu",
+		icon,
 		x: state.frame.x,
 		y: state.frame.y,
 		width: Math.max(state.frame.width, WINDOW_MIN.width),

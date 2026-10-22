@@ -5,7 +5,7 @@ import type { SeqEntry } from "@milu/protocol";
 
 import type { ExecutionService } from "../services/execution.ts";
 import { originWindow, projectOrigin, type OriginWindow } from "./origin.ts";
-import { projectSlice } from "./slice.ts";
+import { projectSlice, projectSliceItems, type SliceItem } from "./slice.ts";
 
 function stripUndefined<T>(value: T): T {
 	if (value === undefined) return value;
@@ -95,6 +95,10 @@ export class SessionLog {
 
 	async transcript(options?: { keepDangling?: boolean }): Promise<AgentMessage[]> {
 		return projectSlice(await this.origin(), options);
+	}
+
+	async sliceItems(options?: { keepDangling?: boolean }): Promise<SliceItem[]> {
+		return projectSliceItems(await this.origin(), options);
 	}
 
 	async window(options: { mode?: "older" | "newer"; cursor?: string; conversations: number }): Promise<OriginWindow> {

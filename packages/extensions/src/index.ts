@@ -24,6 +24,7 @@ import { shellExtension } from "./shell/shell.ts";
 import { skillsExtension } from "./skills/skills.ts";
 import { tasksExtension } from "./tasks/tasks.ts";
 import { tipsExtension } from "./tips/tips.ts";
+import { trajectoryExtension } from "./trajectory/trajectory.ts";
 import { trashExtension } from "./trash/trash.ts";
 
 export const extensions: readonly Extension[] = [
@@ -51,5 +52,6 @@ export const extensions: readonly Extension[] = [
 	meterExtension,
 	shellExtension,
 	tipsExtension,
+	trajectoryExtension,
 	promptExtension,
 ];

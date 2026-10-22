@@ -306,7 +306,7 @@ export function SessionListSurface(props: SurfaceProps) {
 			</div>
 
 			<div className="flex h-11 flex-none items-center gap-3 border-b border-line text-ink">
-				<img className="size-[26px] shrink-0 rounded-[6px]" src="/milu.png" alt="" />
+				<img className="size-[26px] shrink-0 rounded-[6px]" src="/pixel_milu.png" alt="" />
 				<MiluWordmark class="h-5 w-auto shrink-0" />
 			</div>
 

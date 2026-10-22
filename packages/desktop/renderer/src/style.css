@@ -346,6 +346,13 @@ body.pane-dragging {
 	}
 }
 
+@keyframes trajectory-in {
+	from {
+		opacity: 0;
+		transform: translateX(24px);
+	}
+}
+
 @keyframes command-menu-in {
 	from {
 		opacity: 0;
@@ -526,6 +533,10 @@ body.pane-dragging {
 	border-bottom: 0.5px solid var(--line);
 	user-select: none;
 	container-type: inline-size;
+}
+
+.chat-bar.is-bare {
+	border-bottom-color: transparent;
 }
 
 .chat-bar button {
