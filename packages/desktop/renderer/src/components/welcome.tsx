@@ -1,5 +1,5 @@
-import { formatHotkey, type Host } from "@milu/extensions/host";
 import { SLOT_POINTS, type WelcomeItem } from "@milu/protocol";
+import { formatHotkey, type Host } from "@milu/window";
 import { useEffect, useState } from "react";
 import { useStore } from "zustand";
 
@@ -17,6 +17,7 @@ export function Welcome(props: { host: Host }) {
 	const items = useStore(host.welcome.store, (state) => state.items);
 	const timeline = useStore(host.slots.store, (state) => state.points[SLOT_POINTS.welcomeTimeline] ?? NO_TIMELINE);
 	const bindings = useStore(host.hotkeys.store, (state) => state.bindings);
+	const components = useStore(host.slots.store, (state) => state.components);
 	const [chars, setChars] = useState(() => (typed || calm() ? HEAD.length : 0));
 	const typing = chars < HEAD.length;
 
@@ -78,7 +79,7 @@ export function Welcome(props: { host: Host }) {
 					</section>
 				) : (
 					timeline.map((item) => {
-						const Component = host.slots.component(item.component);
+						const Component = components.get(item.component);
 						return Component ? <Component key={item.id} host={host} data={item.data} /> : null;
 					})
 				)}

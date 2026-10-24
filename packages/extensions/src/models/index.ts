@@ -38,9 +38,10 @@ async function modelDataOf(session: Session): Promise<ModelWidgetData | null> {
 	return { label: chosen?.modelId ?? "default model", effort: session.thinkingLevel(), efforts, groups, selected: chosen };
 }
 
-export const modelsExtension: Extension = {
+const modelsExtension: Extension = {
 	id: "models",
 	apiVersion: 1,
+	widgets: [{ id: "models", type: "widget", entry: "./widget/models.tsx" }],
 
 	contributions: {
 		"composer.right": [{ id: "models", order: 10, widget: "models", data: (session: Session) => modelDataOf(session) }],
@@ -76,3 +77,5 @@ export const modelsExtension: Extension = {
 		});
 	},
 };
+
+export default modelsExtension;

@@ -1,13 +1,13 @@
+import type { SurfaceProps } from "@milu/window/api";
+import { Tip } from "@milu/window/api/tooltip";
 import { Waypoints } from "lucide-react";
 import { useStore } from "zustand";
 
-import type { SlotComponent, SurfaceProps } from "../../host/index.ts";
-import { Tip } from "../../host/tooltip.tsx";
-import { TrajectoryServiceId } from "../service/index.ts";
+import { ITrajectoryService } from "../service/index.ts";
 import { TrajectoryDrawer } from "./drawer.tsx";
 
-function TrajectoryButton(props: SurfaceProps) {
-	const service = props.host.get(TrajectoryServiceId);
+export function TrajectoryButton(props: SurfaceProps) {
+	const service = props.host.get(ITrajectoryService);
 	const open = useStore(service.store, (state) => state.open);
 	const selected = useStore(props.host.selection.store, (state) => state.selected);
 	if (selected === "") return null;
@@ -27,14 +27,9 @@ function TrajectoryButton(props: SurfaceProps) {
 	);
 }
 
-function TrajectoryPane(props: SurfaceProps) {
-	const service = props.host.get(TrajectoryServiceId);
+export function TrajectoryPane(props: SurfaceProps) {
+	const service = props.host.get(ITrajectoryService);
 	const open = useStore(service.store, (state) => state.open);
 	if (!open) return null;
 	return <TrajectoryDrawer host={props.host} service={service} />;
 }
-
-export const slots: readonly SlotComponent[] = [
-	{ id: "trajectory.bar", component: TrajectoryButton },
-	{ id: "trajectory.pane", component: TrajectoryPane },
-];

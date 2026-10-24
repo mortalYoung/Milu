@@ -113,4 +113,4 @@ export class ScheduleService implements Service {
 	}
 }
 
-export const ScheduleServiceId = createServiceId<ScheduleService>("schedule.clock");
+export const IScheduleService = createServiceId<ScheduleService>("schedule.clock");

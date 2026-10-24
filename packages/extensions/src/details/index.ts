@@ -3,14 +3,14 @@ import { join } from "node:path";
 
 import { type Entry, type Extension, type ModelsService, type Session, type SettingsService } from "@milu/core";
 
-import { McpServiceId } from "../mcp/index.ts";
+import { IMcpService } from "../mcp/index.ts";
 import type { McpServerStatus } from "../mcp/types.ts";
 import { buildMemoryOverview, type MemoryOverview } from "../memory/overview.ts";
-import { RuntimeStatsServiceId, type RuntimeSummary } from "../runtime/index.ts";
-import { ScheduleServiceId } from "../schedule/index.ts";
+import { IRuntimeStatsService, type RuntimeSummary } from "../runtime/index.ts";
+import { IScheduleService } from "../schedule/index.ts";
 import type { RunRecord, ScheduleDefinition } from "../schedule/store.ts";
 import type { SkillSummary } from "../skills/catalog.ts";
-import { SkillsServiceId } from "../skills/service/index.ts";
+import { ISkillsService } from "../skills/service/index.ts";
 
 export const HEATMAP_WEEKS = 53;
 
@@ -237,9 +237,10 @@ export async function collectDetails(session: Session, sources: DetailsSources):
 	};
 }
 
-export const detailsExtension: Extension = {
+const detailsExtension: Extension = {
 	id: "details",
 	apiVersion: 1,
+	widgets: [{ id: "session-details", type: "dialog", entry: "./widget/details.tsx" }],
 
 	contributions: {
 		"session.menu": [{ id: "details", order: 0, group: "view", title: "View details", icon: "info", action: "details.session" }],
@@ -248,10 +249,10 @@ export const detailsExtension: Extension = {
 	activate(context) {
 		const sources: DetailsSources = {
 			models: context.models,
-			schedule: context.get(ScheduleServiceId),
-			skills: context.get(SkillsServiceId),
-			mcp: context.get(McpServiceId),
-			runtime: context.get(RuntimeStatsServiceId),
+			schedule: context.get(IScheduleService),
+			skills: context.get(ISkillsService),
+			mcp: context.get(IMcpService),
+			runtime: context.get(IRuntimeStatsService),
 			settings: context.settings,
 		};
 
@@ -274,3 +275,5 @@ export const detailsExtension: Extension = {
 		});
 	},
 };
+
+export default detailsExtension;

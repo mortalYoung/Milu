@@ -2,99 +2,93 @@ import {
 	type Backend,
 	type BackendConfig,
 	ActionService,
-	ActionServiceId,
 	CommandsService,
-	CommandsServiceId,
 	CompactionService,
-	CompactionServiceId,
 	ConfigService,
-	ConfigServiceId,
 	ContributionService,
-	ContributionServiceId,
 	declareExtensionServices,
+	discoverExtensions,
 	ExecutionService,
-	ExecutionServiceId,
-	HookService,
-	HookServiceId,
-	LayoutService,
-	LayoutServiceId,
-	ModelsService,
-	ModelsServiceId,
-	PromptService,
-	PromptServiceId,
-	SelectionService,
-	SelectionServiceId,
 	ExtensionService,
-	ExtensionServiceId,
+	HookService,
+	IActionService,
+	ICommandsService,
+	ICompactionService,
+	IConfigService,
+	IContributionService,
+	IExecutionService,
+	IExtensionService,
+	IHookService,
+	ILayoutService,
+	ILifecycleService,
+	IModelsService,
+	IPromptService,
+	ISelectionService,
+	ISessionService,
+	ISettingsService,
+	IToolService,
+	LayoutService,
+	LifecycleService,
+	ModelsService,
+	PromptService,
+	SelectionService,
 	SessionService,
-	SessionServiceId,
 	SettingsService,
-	SettingsServiceId,
 	ToolService,
-	ToolServiceId,
 } from "@milu/core";
-import { Container } from "@milu/di";
+import { IInstantiationService, InstantiationService, ServiceCollection, SyncDescriptor } from "@milu/di";
 
-import { EXTENSIONS } from "./extensions.ts";
+import { sources } from "./extensions.ts";
 
 export async function createBackend(config: BackendConfig): Promise<Backend> {
-	const container = new Container();
+	const discovered = await discoverExtensions(sources(config.root));
 
-	container.register(ConfigServiceId, () => new ConfigService({ root: config.root, workspace: config.workspace }));
-	container.register(ContributionServiceId, () => new ContributionService());
-	container.register(ModelsServiceId, (c) => new ModelsService(c.get(ConfigServiceId), c.get(SettingsServiceId)));
-	container.register(ExecutionServiceId, () => new ExecutionService());
-	container.register(SettingsServiceId, (c) => new SettingsService(c.get(ConfigServiceId)));
-	container.register(LayoutServiceId, (c) => new LayoutService(c.get(ConfigServiceId)));
-	container.register(ToolServiceId, (c) => new ToolService(c.get(ConfigServiceId), c.get(ExecutionServiceId)));
-	container.register(PromptServiceId, (c) => new PromptService(c.get(ContributionServiceId)));
-	container.register(HookServiceId, () => new HookService());
-	container.register(ActionServiceId, () => new ActionService());
-	container.register(CommandsServiceId, (c) => new CommandsService(c.get(ContributionServiceId)));
-	container.register(CompactionServiceId, () => new CompactionService());
-	container.register(
-		ExtensionServiceId,
-		(c) =>
-			new ExtensionService(c.get(ContributionServiceId), c.get(ConfigServiceId), c.get(ActionServiceId), c.get(ModelsServiceId), c.get(SettingsServiceId), c, {
-				extensions: EXTENSIONS,
-			}),
-	);
-	container.register(
-		SessionServiceId,
-		(c) =>
-			new SessionService(
-				c.get(ExecutionServiceId),
-				c.get(SettingsServiceId),
-				c.get(ModelsServiceId),
-				c.get(ToolServiceId),
-				c.get(ContributionServiceId),
-				c.get(PromptServiceId),
-				c.get(HookServiceId),
-				c.get(CompactionServiceId),
-			),
-	);
-	container.register(SelectionServiceId, (c) => new SelectionService(c.get(SessionServiceId), c.get(ConfigServiceId)));
+	const services = new ServiceCollection();
+	services.set(IConfigService, new ConfigService({ root: config.root, workspace: config.workspace }));
+	services.set(IContributionService, new SyncDescriptor(ContributionService));
+	services.set(IExecutionService, new SyncDescriptor(ExecutionService));
+	services.set(ISettingsService, new SyncDescriptor(SettingsService));
+	services.set(IModelsService, new SyncDescriptor(ModelsService));
+	services.set(ILayoutService, new SyncDescriptor(LayoutService));
+	services.set(IToolService, new SyncDescriptor(ToolService));
+	services.set(IPromptService, new SyncDescriptor(PromptService));
+	services.set(IHookService, new SyncDescriptor(HookService));
+	services.set(IActionService, new SyncDescriptor(ActionService));
+	services.set(ICommandsService, new SyncDescriptor(CommandsService));
+	services.set(ICompactionService, new SyncDescriptor(CompactionService));
+	services.set(IExtensionService, new SyncDescriptor(ExtensionService, [discovered, config.hosts]));
+	services.set(ISessionService, new SyncDescriptor(SessionService));
+	services.set(ISelectionService, new SyncDescriptor(SelectionService));
+	services.set(ILifecycleService, new SyncDescriptor(LifecycleService));
 
-	declareExtensionServices(container, EXTENSIONS);
+	declareExtensionServices(services, discovered.extensions);
 
-	await container.initialize();
+	const instantiation = new InstantiationService(services);
+	services.set(IInstantiationService, instantiation);
+	await instantiation.initialize();
 
-	const sessions = container.get(SessionServiceId);
+	const sessions = instantiation.get(ISessionService);
+	const extensions = instantiation.get(IExtensionService);
+	const lifecycle = instantiation.get(ILifecycleService);
+	lifecycle.advance("restored");
+	void extensions.settled().then(() => lifecycle.advance("ready"));
 
 	return {
 		sessions,
-		models: container.get(ModelsServiceId),
-		config: container.get(ConfigServiceId),
-		contributions: container.get(ContributionServiceId),
-		actions: container.get(ActionServiceId),
-		commands: container.get(CommandsServiceId),
-		tools: container.get(ToolServiceId),
-		settings: container.get(SettingsServiceId),
-		layout: container.get(LayoutServiceId),
-		selection: container.get(SelectionServiceId),
-		dispose: () => container.dispose(),
+		extensions,
+		models: instantiation.get(IModelsService),
+		config: instantiation.get(IConfigService),
+		contributions: instantiation.get(IContributionService),
+		actions: instantiation.get(IActionService),
+		commands: instantiation.get(ICommandsService),
+		tools: instantiation.get(IToolService),
+		settings: instantiation.get(ISettingsService),
+		layout: instantiation.get(ILayoutService),
+		lifecycle,
+		selection: instantiation.get(ISelectionService),
+		dispose: () => instantiation.dispose(),
 		async close() {
-			container.dispose();
+			instantiation.dispose();
 			await sessions.shutdown();
 		},
 	};

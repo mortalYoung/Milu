@@ -1,3 +1,16 @@
-export { Container, createServiceId, type ServiceId } from "./container.ts";
+export {
+	createDecorator,
+	createServiceId,
+	IInstantiationService,
+	InstantiationService,
+	ServiceCollection,
+	SyncDescriptor,
+	type Constructor,
+	type ServiceDescriptor,
+	type ServiceFactory,
+	type ServiceId,
+	type ServiceIdentifier,
+} from "./instantiation.ts";
 export { Emitter, type Event } from "./events.ts";
-export { DisposableStore, type Disposable, type Service } from "./lifecycle.ts";
+export { DisposableStore } from "./lifecycle.ts";
+export type { Disposable, Service } from "./lifecycle.ts";

@@ -210,7 +210,7 @@ export class PermissionService implements Service {
 	}
 }
 
-export const PermissionServiceId = createServiceId<PermissionService>("permission.guard");
+export const IPermissionService = createServiceId<PermissionService>("permission.guard");
 
 function stopResult(): ToolResult {
 	return { content: [{ type: "text", text: STOP_TEXT }], details: { sandbox: { escalation: true } }, terminate: true };

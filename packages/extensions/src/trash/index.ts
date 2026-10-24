@@ -8,7 +8,7 @@ async function moveToTrash(path: string): Promise<void> {
 	await rename(path, join(homedir(), ".Trash", `${basename(path)}-${Date.now()}`));
 }
 
-export const trashExtension: Extension = {
+const trashExtension: Extension = {
 	id: "trash",
 	apiVersion: 1,
 
@@ -46,3 +46,5 @@ export const trashExtension: Extension = {
 		});
 	},
 };
+
+export default trashExtension;

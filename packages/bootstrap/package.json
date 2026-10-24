@@ -13,7 +13,8 @@
 	"dependencies": {
 		"@milu/core": "workspace:*",
 		"@milu/di": "workspace:*",
-		"@milu/extensions": "workspace:*"
+		"@milu/extensions": "workspace:*",
+		"@milu/window": "workspace:*"
 	},
 	"devDependencies": {
 		"@types/node": "latest"

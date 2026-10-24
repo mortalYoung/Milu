@@ -1,4 +1,4 @@
-import { type ExecutionEnv, type Extension, type ToolCall, ToolServiceId, Type } from "@milu/core";
+import { type ExecutionEnv, type Extension, type ToolCall, IToolService, Type } from "@milu/core";
 
 const DEFAULT_TIMEOUT_SEC = 15;
 
@@ -14,7 +14,7 @@ function tail(text: string): { text: string; truncated: boolean } {
 	return { text: `…${text.slice(-MAX_OUTPUT_CHARS)}`, truncated: true };
 }
 
-export const bashExtension: Extension = {
+const bashExtension: Extension = {
 	id: "bash",
 	apiVersion: 1,
 
@@ -22,7 +22,7 @@ export const bashExtension: Extension = {
 		const timeout = context.disposables.add(context.settings.declare({ key: "bash", defaults: { timeoutSec: DEFAULT_TIMEOUT_SEC } }));
 
 		context.disposables.add(
-			context.get(ToolServiceId).register({
+			context.get(IToolService).register({
 				name: "bash",
 				label: "bash",
 				description:
@@ -47,3 +47,5 @@ export const bashExtension: Extension = {
 		);
 	},
 };
+
+export default bashExtension;

@@ -69,4 +69,4 @@ export class ActionService implements Service {
 	}
 }
 
-export const ActionServiceId = createServiceId<ActionService>("ActionService");
+export const IActionService = createServiceId<ActionService>("ActionService");

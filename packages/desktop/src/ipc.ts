@@ -1,8 +1,20 @@
 import { randomUUID } from "node:crypto";
 
 import { type Backend, SESSION_HEADER_POINT, WELCOME_ITEMS_POINT, type WelcomeItem } from "@milu/core";
-import { type ContributionItem, type DialogDescriptor, type LiveEvent, type MethodName, type Params, type Result, SLOT_POINTS, type Snapshot } from "@milu/protocol";
+import {
+	type ContributionItem,
+	type DialogDescriptor,
+	type WidgetEntry,
+	type LiveEvent,
+	type MethodName,
+	type Params,
+	type Result,
+	SLOT_POINTS,
+	type Snapshot,
+} from "@milu/protocol";
 import { BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent, type OpenDialogOptions, type WebContents } from "electron";
+
+import { widgetUrl } from "./widget-url.ts";
 
 const DIALOG_TIMEOUT_MS = 5 * 60_000;
 
@@ -43,6 +55,9 @@ export class IpcServer {
 			welcome: () => this._welcome(),
 			contributions: (params) => this._contributions(params),
 			pickDirectory: (params, sender) => this._pickDirectory(params, sender),
+			widgets: () => this._widgetEntries(),
+			extensionData: (params) => this._extensionData(params),
+			extensions: () => this._extensions(),
 			layout: () => this._layout(),
 			layoutSet: (params) => this._layoutSet(params),
 		};
@@ -65,6 +80,7 @@ export class IpcServer {
 				}
 			}),
 			this._backend.selection.onChange((selected) => this._broadcast({ type: "live", event: { type: "selection", selected } })),
+			this._backend.lifecycle.onChange((phase) => this._broadcast({ type: "live", event: { type: "lifecycle", phase } })),
 		];
 		for (const subscription of subscriptions) this._cleanup.push(() => subscription.dispose());
 	}
@@ -137,11 +153,37 @@ export class IpcServer {
 		return [...this._backend.contributions.get<T>(point).all()].sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.id.localeCompare(right.id));
 	}
 
+	private async _extensionData(params: Params<"extensionData">): Promise<Result<"extensionData">> {
+		return { data: await this._backend.extensions.data(params.extension, params.key, params.session) };
+	}
+
+	private async _extensions(): Promise<Result<"extensions">> {
+		return { phase: this._backend.lifecycle.phase, ...this._backend.extensions.status() };
+	}
+
+	private async _widgetEntries(): Promise<readonly WidgetEntry[]> {
+		const entries: WidgetEntry[] = [];
+		for (const widget of this._backend.extensions.widgets()) {
+			const url = await widgetUrl(widget.extension, widget.entry, widget.root);
+			entries.push({
+				extension: widget.extension,
+				source: widget.root === undefined ? "builtin" : "package",
+				id: widget.id,
+				type: widget.type,
+				entry: widget.entry,
+				...(widget.export === undefined ? {} : { export: widget.export }),
+				...(url === undefined ? {} : { url }),
+			});
+		}
+		return entries;
+	}
+
 	private async _snapshot(): Promise<Snapshot> {
 		const sessions = [...(await this._backend.sessions.list())];
 		await this._backend.selection.reconcile(sessions.map((row) => row.name));
 		const selected = this._backend.selection.selected ? this._backend.sessions.get(this._backend.selection.selected) : null;
 		return {
+			lifecycle: this._backend.lifecycle.phase,
 			layout: this._backend.layout.state(),
 			sessions,
 			selected: this._backend.selection.selected,
@@ -191,6 +233,7 @@ export class IpcServer {
 		if (!name) throw new Error("no session is selected");
 		const session = await this._backend.sessions.ensure(name);
 		try {
+			await this._backend.extensions.settled();
 			await session.run(params.text);
 		} catch (error) {
 			this._broadcast({ type: "live", event: { type: "status", session: name, running: false, error: reason(error) } });

@@ -4,20 +4,20 @@ import {
 	CHAT_NAME_POINT,
 	WELCOME_TIMELINE_POINT,
 	type Session,
-	ContributionServiceId,
-	SessionServiceId,
+	IContributionService,
+	ISessionService,
 	type SlotItem,
-	SettingsServiceId,
+	ISettingsService,
 	type ToolCall,
 	type ToolResult,
-	ToolServiceId,
+	IToolService,
 	Type,
 } from "@milu/core";
 
-import { ScheduleService, ScheduleServiceId } from "./service/index.ts";
+import { ScheduleService, IScheduleService } from "./service/index.ts";
 import { type ScheduleDefinition } from "./store.ts";
 
-export { ScheduleServiceId } from "./service/index.ts";
+export { IScheduleService } from "./service/index.ts";
 
 const schema = Type.Object({
 	op: Type.Union([Type.Literal("list"), Type.Literal("create")], { description: 'What to do: "list" the schedules on this chat, or "create" a new one.' }),
@@ -52,18 +52,23 @@ function scheduleLine(definition: ScheduleDefinition): string {
 	return `${head}\n  ${tail}`;
 }
 
-export const scheduleExtension: Extension = {
+const scheduleExtension: Extension = {
 	id: "schedule",
 	apiVersion: 1,
+	widgets: [
+		{ id: "schedule.bar", type: "slot", entry: "./widget/schedule.tsx", export: "ScheduleButton" },
+		{ id: "schedule.welcome", type: "slot", entry: "./widget/schedule.tsx", export: "ScheduleTimeline" },
+		{ id: "schedule", type: "dialog", entry: "./widget/schedule.tsx", export: "ScheduleDialog" },
+	],
 
-	services: [{ id: ScheduleServiceId, create: (container) => new ScheduleService(container.get(SettingsServiceId), container.get(SessionServiceId)) }],
+	services: [{ id: IScheduleService, create: (container) => new ScheduleService(container.get(ISettingsService), container.get(ISessionService)) }],
 
 	activate(context) {
-		const schedule = context.get(ScheduleServiceId);
+		const schedule = context.get(IScheduleService);
 
 		context.disposables.add(
 			context
-				.get(ContributionServiceId)
+				.get(IContributionService)
 				.get<SlotItem>(CHAT_NAME_POINT)
 				.contribute({
 					id: "schedule",
@@ -78,7 +83,7 @@ export const scheduleExtension: Extension = {
 
 		context.disposables.add(
 			context
-				.get(ContributionServiceId)
+				.get(IContributionService)
 				.get<SlotItem>(WELCOME_TIMELINE_POINT)
 				.contribute({
 					id: "schedule",
@@ -101,7 +106,7 @@ export const scheduleExtension: Extension = {
 		});
 
 		context.disposables.add(
-			context.get(ToolServiceId).register({
+			context.get(IToolService).register({
 				name: "schedule",
 				label: "Schedule",
 				description:
@@ -135,3 +140,5 @@ export const scheduleExtension: Extension = {
 function say(value: string): ToolResult {
 	return { content: [{ type: "text", text: value }], details: {} };
 }
+
+export default scheduleExtension;

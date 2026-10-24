@@ -1,6 +1,6 @@
 import type { Extension } from "@milu/core";
 
-export const pinExtension: Extension = {
+const pinExtension: Extension = {
 	id: "pin",
 	apiVersion: 1,
 
@@ -28,3 +28,5 @@ export const pinExtension: Extension = {
 		});
 	},
 };
+
+export default pinExtension;

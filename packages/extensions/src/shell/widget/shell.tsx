@@ -1,8 +1,7 @@
+import type { WidgetProps } from "@milu/window/api";
+import { Tip } from "@milu/window/api/tooltip";
 import { DollarSign } from "lucide-react";
 import { useStore } from "zustand";
-
-import type { WidgetProps } from "../../host/index.ts";
-import { Tip } from "../../host/tooltip.tsx";
 
 export function ShellWidget(props: WidgetProps) {
 	const { host } = props;
@@ -16,3 +15,5 @@ export function ShellWidget(props: WidgetProps) {
 		</Tip>
 	);
 }
+
+export default ShellWidget;

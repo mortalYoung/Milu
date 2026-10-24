@@ -1,9 +1,9 @@
+import type { WidgetProps } from "@milu/window/api";
+import { Tip } from "@milu/window/api/tooltip";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 
-import type { WidgetProps } from "../../host/index.ts";
-import { Tip } from "../../host/tooltip.tsx";
 import type { ModelWidgetData } from "../index.ts";
 
 const MENU =
@@ -110,3 +110,5 @@ export function ModelsWidget(props: WidgetProps) {
 function Chevron(props: { open: boolean }) {
 	return props.open ? <ChevronRight size={13} /> : <ChevronLeft size={13} />;
 }
+
+export default ModelsWidget;

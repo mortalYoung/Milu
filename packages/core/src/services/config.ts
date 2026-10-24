@@ -104,4 +104,4 @@ export class ConfigService implements Service {
 	}
 }
 
-export const ConfigServiceId = createServiceId<ConfigService>("ConfigService");
+export const IConfigService = createServiceId<ConfigService>("ConfigService");

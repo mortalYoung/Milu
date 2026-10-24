@@ -1,20 +1,20 @@
 import {
-	CompactionServiceId,
+	ICompactionService,
 	EVENTS,
 	type ExecutionEnv,
 	type Extension,
-	HookServiceId,
-	ModelsServiceId,
-	SessionServiceId,
-	SettingsServiceId,
+	IHookService,
+	IModelsService,
+	ISessionService,
+	ISettingsService,
 	type ToolCall,
-	ToolServiceId,
+	IToolService,
 	type ToolResult,
 } from "@milu/core";
 
 import { lastMemoryDigest } from "./context.ts";
 import { memoryQuerySchema } from "./extract.ts";
-import { MemoryService, MemoryServiceId } from "./service/index.ts";
+import { MemoryService, IMemoryService } from "./service/index.ts";
 import { formatMemoryRecord, type MemoryKind, RECALL_MAX_DETAIL_CHARS, RECALL_MAX_TOTAL_CHARS } from "./store.ts";
 
 interface MemoryParams {
@@ -24,7 +24,7 @@ interface MemoryParams {
 	readonly includeSuperseded?: boolean;
 }
 
-export { MemoryServiceId };
+export { IMemoryService };
 
 export const memoryExtension: Extension = {
 	id: "memory",
@@ -32,8 +32,8 @@ export const memoryExtension: Extension = {
 
 	services: [
 		{
-			id: MemoryServiceId,
-			create: (container) => new MemoryService(container.get(ModelsServiceId), container.get(SessionServiceId), container.get(SettingsServiceId)),
+			id: IMemoryService,
+			create: (container) => new MemoryService(container.get(IModelsService), container.get(ISessionService), container.get(ISettingsService)),
 		},
 	],
 
@@ -51,12 +51,12 @@ export const memoryExtension: Extension = {
 	},
 
 	activate(context) {
-		const memory = context.get(MemoryServiceId);
+		const memory = context.get(IMemoryService);
 
-		context.disposables.add(context.get(CompactionServiceId).register(({ session, entries }) => memory.planCompact(session, entries)));
+		context.disposables.add(context.get(ICompactionService).register(({ session, entries }) => memory.planCompact(session, entries)));
 
 		context.disposables.add(
-			context.get(ToolServiceId).register({
+			context.get(IToolService).register({
 				name: "memory",
 				label: "Memory",
 				description:
@@ -122,7 +122,7 @@ export const memoryExtension: Extension = {
 		});
 
 		context.disposables.add(
-			context.get(HookServiceId).on("beforeRequest", async (hook) => {
+			context.get(IHookService).on("beforeRequest", async (hook) => {
 				const next = await memory.context(hook.session);
 				if (!next) return;
 				if (lastMemoryDigest(hook.messages) === next.digest) return;
@@ -131,7 +131,7 @@ export const memoryExtension: Extension = {
 		);
 
 		context.disposables.add(
-			context.get(SessionServiceId).onLoopEvent(({ session, event }) => {
+			context.get(ISessionService).onLoopEvent(({ session, event }) => {
 				if (event.type === "run_end") memory.afterRun(session);
 			}),
 		);

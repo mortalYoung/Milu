@@ -2,9 +2,9 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { type AgentHookContext, type AgentReminder, EVENTS, type Extension, expandHome, HookServiceId, reminderText, type SettingsService } from "@milu/core";
+import { type AgentHookContext, type AgentReminder, EVENTS, type Extension, expandHome, IHookService, reminderText, type SettingsService } from "@milu/core";
 
-import { type SkillsService, SkillsServiceId } from "../skills/service/index.ts";
+import { type SkillsService, ISkillsService } from "../skills/service/index.ts";
 
 const HOUR = 60 * 60 * 1000;
 
@@ -69,15 +69,17 @@ async function instructionsChanged(context: AgentHookContext, settings: Settings
 	injectUnlessCarried(context, { type: EVENTS.instructionsChanged, data: { agentMd } });
 }
 
-export const remindersExtension: Extension = {
+const remindersExtension: Extension = {
 	id: "reminders",
 	apiVersion: 1,
 
 	activate(context) {
-		const hooks = context.get(HookServiceId);
-		const skills = context.get(SkillsServiceId);
+		const hooks = context.get(IHookService);
+		const skills = context.get(ISkillsService);
 		context.disposables.add(hooks.on("beforeRun", timeGap));
 		context.disposables.add(hooks.on("beforeRequest", (each) => contextChanged(each, context.settings, skills)));
 		context.disposables.add(hooks.on("beforeRequest", (each) => instructionsChanged(each, context.settings)));
 	},
 };
+
+export default remindersExtension;

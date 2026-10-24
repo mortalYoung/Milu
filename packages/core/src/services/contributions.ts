@@ -55,4 +55,4 @@ export class ContributionService implements Service {
 	}
 }
 
-export const ContributionServiceId = createServiceId<ContributionService>("ContributionService");
+export const IContributionService = createServiceId<ContributionService>("ContributionService");

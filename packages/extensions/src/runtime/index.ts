@@ -1,14 +1,16 @@
-import { type Extension, SessionServiceId } from "@milu/core";
+import { type Extension, ISessionService } from "@milu/core";
 
-import { RuntimeStatsService, RuntimeStatsServiceId } from "./service/index.ts";
+import { RuntimeStatsService, IRuntimeStatsService } from "./service/index.ts";
 
-export { RuntimeStatsServiceId } from "./service/index.ts";
+export { IRuntimeStatsService } from "./service/index.ts";
 
 export type { RuntimeStatsSnapshot, RuntimeSummary } from "./service/index.ts";
 
-export const runtimeExtension: Extension = {
+const runtimeExtension: Extension = {
 	id: "runtime",
 	apiVersion: 1,
 
-	services: [{ id: RuntimeStatsServiceId, create: (container) => new RuntimeStatsService(container.get(SessionServiceId)) }],
+	services: [{ id: IRuntimeStatsService, create: (container) => new RuntimeStatsService(container.get(ISessionService)) }],
 };
+
+export default runtimeExtension;

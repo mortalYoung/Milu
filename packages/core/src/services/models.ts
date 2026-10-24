@@ -5,7 +5,9 @@ import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completio
 import { builtinModels } from "@earendil-works/pi-ai/providers/all";
 import { createServiceId, type Service } from "@milu/di";
 
+import { IConfigService } from "./config.ts";
 import type { ConfigService } from "./config.ts";
+import { ISettingsService } from "./settings.ts";
 import type { CustomProvider, SettingsService } from "./settings.ts";
 
 export interface ModelRef {
@@ -40,8 +42,8 @@ export class ModelsService implements Service {
 	readonly stream: StreamFn;
 
 	constructor(
-		private readonly _configService: ConfigService,
-		private readonly _settingsService: SettingsService,
+		@IConfigService private readonly _configService: ConfigService,
+		@ISettingsService private readonly _settingsService: SettingsService,
 	) {
 		this._models = builtinModels({
 			credentials: {
@@ -107,4 +109,4 @@ export class ModelsService implements Service {
 	dispose(): void {}
 }
 
-export const ModelsServiceId = createServiceId<ModelsService>("ModelsService");
+export const IModelsService = createServiceId<ModelsService>("ModelsService");

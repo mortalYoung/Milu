@@ -365,4 +365,4 @@ async function sceneSummary(dir: string): Promise<string | null> {
 	}
 }
 
-export const MemoryServiceId = createServiceId<MemoryService>("memory.service");
+export const IMemoryService = createServiceId<MemoryService>("memory.service");

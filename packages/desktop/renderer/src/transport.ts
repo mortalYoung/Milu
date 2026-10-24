@@ -1,5 +1,5 @@
-import type { ServerEvent, Transport } from "@milu/extensions/host";
 import type { MethodName, Params, Result, Snapshot } from "@milu/protocol";
+import type { ServerEvent, Transport } from "@milu/window";
 
 interface BridgeFrame {
 	readonly ok: boolean;

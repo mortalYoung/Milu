@@ -182,4 +182,4 @@ export class RuntimeStatsService implements Service {
 	}
 }
 
-export const RuntimeStatsServiceId = createServiceId<RuntimeStatsService>("runtime.stats");
+export const IRuntimeStatsService = createServiceId<RuntimeStatsService>("runtime.stats");

@@ -272,7 +272,7 @@ export class TaskService implements Service {
 	}
 }
 
-export const TaskServiceId = createServiceId<TaskService>("tasks.service");
+export const ITaskService = createServiceId<TaskService>("tasks.service");
 
 function endedText(task: LiveTask): string {
 	const head = task.status === "killed" ? `[task ${task.id}] stopped` : `[task ${task.id}] ended${task.exitCode !== undefined ? ` (exit ${task.exitCode})` : ""}`;

@@ -1,10 +1,10 @@
+import type { Host } from "@milu/window/api";
+import { projectView } from "@milu/window/api";
+import { Tip } from "@milu/window/api/tooltip";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 
-import type { Host } from "../../host/index.ts";
-import { projectView } from "../../host/index.ts";
-import { Tip } from "../../host/tooltip.tsx";
 import { trajectoryNode, stringify } from "../meta.ts";
 import { buildData, type TrajectoryDetail, type TrajectoryRecord, type TrajectoryTone } from "../model.ts";
 import { scan } from "../scan.ts";

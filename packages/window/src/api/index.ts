@@ -1,0 +1,15 @@
+export type { DialogProps } from "../dialogs.ts";
+export type { FrontEndService } from "../extensions.ts";
+export type { Connection } from "../connection.ts";
+export { IConnection } from "../connection.ts";
+export { createServiceId, type Service } from "@milu/di";
+export type { SelectionService } from "../selection.ts";
+export { ISelectionService } from "../selection.ts";
+export type { SlotProps } from "../slots.ts";
+export type { Host, SurfaceProps } from "../surfaces.ts";
+export type { WidgetProps } from "../composer.ts";
+export type { ComposerTriggerProps } from "../composer-triggers.ts";
+export { TooltipProvider, Tip } from "./tooltip.tsx";
+export { useCommand, useExtensionData, useSession, useWidget, type ExtensionWidgetProps } from "./widget.ts";
+export { byPinThenRecency, describeNextRun, formatWorkspacePath, oneLine, previewFor, tildifyPath, workspaceLabel } from "../utils/chat.ts";
+export { formatHistoryTime, projectView, replyRows } from "../view.ts";

@@ -1,9 +1,8 @@
+import { describeNextRun, type DialogProps, type SlotProps } from "@milu/window/api";
+import { Tip } from "@milu/window/api/tooltip";
 import * as Popover from "@radix-ui/react-popover";
 import { AlarmClock } from "lucide-react";
 import { useState } from "react";
-
-import { describeNextRun, type DialogProps, type SlotProps } from "../../host/index.ts";
-import { Tip } from "../../host/tooltip.tsx";
 
 interface ScheduleView {
 	readonly id: string;

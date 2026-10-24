@@ -1,10 +1,17 @@
-import type { Container, DisposableStore, ServiceId, Service } from "@milu/di";
+import type { DisposableStore, IInstantiationService, ServiceId, Service } from "@milu/di";
+import type {
+	Extension as ContractExtension,
+	ExtensionContext as ContractContext,
+	ExtensionServiceDeclaration as ContractServiceDeclaration,
+	ExtensionWidget,
+} from "@milu/extension-types";
 import { SLOT_POINTS, type ComposerCommand, type SlotItem, type WelcomeItem } from "@milu/protocol";
 
 import type { ActionService } from "../services/actions.ts";
 import type { ConfigService } from "../services/config.ts";
 import type { ModelsService } from "../services/models.ts";
 import type { SettingsService } from "../services/settings.ts";
+import type { ToolService } from "../services/tools.ts";
 import type { Session } from "../session/session.ts";
 
 export const SESSION_MENU_POINT = "session.menu";
@@ -64,7 +71,7 @@ export interface ComposerTipItem {
 	readonly when?: "chat" | "shell";
 }
 
-export interface ExtensionContributions {
+export type ExtensionContributions = {
 	readonly "session.menu"?: readonly SessionMenuItem[];
 	readonly "session.header"?: readonly SessionHeaderItem[];
 	readonly "composer.left"?: readonly ComposerWidgetItem[];
@@ -76,28 +83,34 @@ export interface ExtensionContributions {
 	readonly "welcome.timeline"?: readonly SlotItem[];
 	readonly "chat.bar"?: readonly SlotItem[];
 	readonly "chat.panes"?: readonly SlotItem[];
+};
+
+export interface ExtensionServiceProxy {
+	readonly [method: string]: (...args: readonly unknown[]) => Promise<unknown>;
 }
 
-export interface ExtensionContext {
-	readonly id: string;
+export interface ExtensionServices {
+	get(id: string): ExtensionServiceProxy;
+}
+
+export interface ExtensionContext extends ContractContext {
+	readonly services: ExtensionServices;
 	readonly disposables: DisposableStore;
 	readonly get: <T extends Service>(id: ServiceId<T>) => T;
 	readonly config: ConfigService;
 	readonly actions: ActionService;
 	readonly models: ModelsService;
 	readonly settings: SettingsService;
+	readonly tools: ToolService;
 }
 
-export const EXTENSION_API_VERSION = 1;
-
-export interface ExtensionServiceDeclaration<T extends Service = Service> {
+export interface ExtensionServiceDeclaration<T extends Service = Service> extends ContractServiceDeclaration {
 	readonly id: ServiceId<T>;
-	readonly create: (container: Container) => T;
+	create(services: IInstantiationService): T;
 }
 
-export interface Extension {
-	readonly id: string;
-	readonly apiVersion?: number;
+export interface Extension extends ContractExtension {
+	readonly widgets?: readonly ExtensionWidget[];
 	readonly services?: readonly ExtensionServiceDeclaration[];
 	readonly contributions?: ExtensionContributions;
 	activate?(context: ExtensionContext): void | Promise<void>;

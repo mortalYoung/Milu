@@ -1,4 +1,4 @@
-import type { Host } from "@milu/extensions/host";
+import type { Host } from "@milu/window";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { createElement } from "react";

@@ -1,11 +1,12 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { SelectionServiceId, type Extension } from "@milu/core";
+import { ISelectionService, type Extension } from "@milu/core";
 
-export const createExtension: Extension = {
+const createExtension: Extension = {
 	id: "create",
 	apiVersion: 1,
+	widgets: [{ id: "create-session", type: "dialog", entry: "./widget/create.tsx" }],
 
 	contributions: {
 		"session.header": [{ id: "create", title: "Create", icon: "square-pen", action: "create.session" }],
@@ -31,8 +32,10 @@ export const createExtension: Extension = {
 				const profile = { name, createdAt: Date.now(), ...(values.persona ? { persona: values.persona } : {}) };
 				await writeFile(join(dir, "profile.json"), `${JSON.stringify(profile, null, 2)}\n`, "utf8");
 				if (values.workspace) await writeFile(join(dir, "workspace.json"), `${JSON.stringify({ path: values.workspace, kind: null, repo: null }, null, 2)}\n`, "utf8");
-				await context.get(SelectionServiceId).select(name);
+				await context.get(ISelectionService).select(name);
 			},
 		});
 	},
 };
+
+export default createExtension;

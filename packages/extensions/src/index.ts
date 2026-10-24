@@ -1,57 +1,30 @@
-import type { Extension } from "@milu/core";
+import type { Extension } from "@milu/extension-types";
 
-import { bashExtension } from "./bash/index.ts";
-import { chatExtension } from "./chat/index.ts";
-import { copyExtension } from "./copy/index.ts";
-import { createExtension } from "./create/index.ts";
-import { detailsExtension } from "./details/index.ts";
-import { fetchExtension } from "./fetch/index.ts";
-import { filesExtension } from "./files/index.ts";
-import { mcpExtension } from "./mcp/index.ts";
-import { meterExtension } from "./meter/index.ts";
-import { modelsExtension } from "./models/index.ts";
-import { openExtension } from "./open/index.ts";
-import { peerExtension } from "./peer/index.ts";
-import { permissionExtension } from "./permission/index.ts";
-import { pinExtension } from "./pin/index.ts";
-import { promptExtension } from "./prompt/index.ts";
-import { remindersExtension } from "./reminders/index.ts";
-import { repliesExtension } from "./replies/index.ts";
-import { rmExtension } from "./rm/index.ts";
-import { runtimeExtension } from "./runtime/index.ts";
-import { scheduleExtension } from "./schedule/index.ts";
-import { shellExtension } from "./shell/index.ts";
-import { skillsExtension } from "./skills/index.ts";
-import { tasksExtension } from "./tasks/index.ts";
-import { tipsExtension } from "./tips/index.ts";
-import { trajectoryExtension } from "./trajectory/index.ts";
-import { trashExtension } from "./trash/index.ts";
-
-export const extensions: readonly Extension[] = [
-	createExtension,
-	detailsExtension,
-	pinExtension,
-	copyExtension,
-	openExtension,
-	trashExtension,
-	permissionExtension,
-	chatExtension,
-	filesExtension,
-	bashExtension,
-	tasksExtension,
-	rmExtension,
-	mcpExtension,
-	scheduleExtension,
-	peerExtension,
-	fetchExtension,
-	skillsExtension,
-	remindersExtension,
-	repliesExtension,
-	runtimeExtension,
-	modelsExtension,
-	meterExtension,
-	shellExtension,
-	tipsExtension,
-	trajectoryExtension,
-	promptExtension,
-];
+export const BUILTIN: Record<string, () => Promise<{ default: Extension }>> = {
+	create: () => import("./create/index.ts"),
+	details: () => import("./details/index.ts"),
+	pin: () => import("./pin/index.ts"),
+	copy: () => import("./copy/index.ts"),
+	open: () => import("./open/index.ts"),
+	trash: () => import("./trash/index.ts"),
+	permission: () => import("./permission/index.ts"),
+	chat: () => import("./chat/index.ts"),
+	files: () => import("./files/index.ts"),
+	bash: () => import("./bash/index.ts"),
+	tasks: () => import("./tasks/index.ts"),
+	rm: () => import("./rm/index.ts"),
+	mcp: () => import("./mcp/index.ts"),
+	schedule: () => import("./schedule/index.ts"),
+	peer: () => import("./peer/index.ts"),
+	fetch: () => import("./fetch/index.ts"),
+	skills: () => import("./skills/index.ts"),
+	reminders: () => import("./reminders/index.ts"),
+	replies: () => import("./replies/index.ts"),
+	runtime: () => import("./runtime/index.ts"),
+	models: () => import("./models/index.ts"),
+	meter: () => import("./meter/index.ts"),
+	shell: () => import("./shell/index.ts"),
+	tips: () => import("./tips/index.ts"),
+	trajectory: () => import("./trajectory/index.ts"),
+	prompt: () => import("./prompt/index.ts"),
+};

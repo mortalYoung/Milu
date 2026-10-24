@@ -1,127 +1,141 @@
-import { Container, DisposableStore, type Disposable } from "@milu/di";
+import { DisposableStore, type Disposable, IInstantiationService, InstantiationService, ServiceCollection, SyncDescriptor } from "@milu/di";
+import type { Platform, Snapshot, WidgetEntry } from "@milu/protocol";
 import {
 	ActionsService,
-	ActionsServiceId,
+	IActionsService,
 	type BrowserCommands,
-	type DialogComponent,
 	DialogService,
-	DialogServiceId,
-	type FrontEndService,
+	IDialogService,
 	HeaderService,
-	HeaderServiceId,
+	IHeaderService,
 	LayoutService,
-	LayoutServiceId,
+	ILayoutService,
 	HotkeysService,
-	HotkeysServiceId,
+	IHotkeysService,
 	PickerService,
-	PickerServiceId,
+	IPickerService,
 	ColumnsService,
-	ColumnsServiceId,
+	IColumnsService,
 	CommandRegistry,
 	CommandRegistryId,
 	ComposerService,
-	ComposerServiceId,
+	IComposerService,
 	ComposerTriggerRegistry,
 	ComposerTriggerRegistryId,
-	type ComposerTriggerComponent,
-	type WidgetComponent,
 	WidgetRegistry,
 	WidgetRegistryId,
 	Connection,
-	ConnectionId,
+	IConnection,
 	type Host,
 	SlotsService,
-	SlotsServiceId,
-	type SlotComponent,
+	ISlotsService,
 	SessionListService,
-	SessionListServiceId,
+	ISessionListService,
 	SelectionService,
-	SelectionServiceId,
+	ISelectionService,
 	TranscriptService,
-	TranscriptServiceId,
+	ITranscriptService,
 	WelcomeService,
-	WelcomeServiceId,
+	IWelcomeService,
 	WorkbenchService,
-	WorkbenchServiceId,
+	IWorkbenchService,
+	type ComposerTriggerComponent,
 	type Transport,
 	type SurfaceComponent,
 	SurfaceRegistry,
 	SurfaceRegistryId,
-} from "@milu/extensions/host";
-import type { MarkdownPort } from "@milu/extensions/markdown";
-import type { Platform, Snapshot } from "@milu/protocol";
+	loadWidgets,
+	type WidgetFailure,
+} from "@milu/window";
+import type { MarkdownPort } from "@milu/window/markdown";
 
 export interface FrontEndDeps {
 	readonly transport: Transport;
 	readonly components?: readonly SurfaceComponent[];
-	readonly widgets?: readonly WidgetComponent[];
 	readonly triggers?: readonly ComposerTriggerComponent[];
 	readonly commands?: BrowserCommands;
-	readonly dialogs?: readonly DialogComponent[];
-	readonly services?: readonly FrontEndService[];
-	readonly slots?: readonly SlotComponent[];
 	readonly platform: Platform;
 	readonly markdown: MarkdownPort & Disposable;
 }
 
 export interface FrontEnd extends Disposable {
 	readonly host: Host;
+	readonly failures: readonly WidgetFailure[];
 	start(): void;
 }
 
-export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
-	const container = new Container();
-	container.register(ConnectionId, () => new Connection(deps.transport));
-	for (const service of deps.services ?? []) {
-		if (!service.id.name.includes(".")) throw new Error(`front-end service "${service.id.name}" is not namespaced`);
-		container.register(service.id, service.create);
+async function widgetEntries(connection: Connection): Promise<readonly WidgetEntry[]> {
+	try {
+		return await connection.request("widgets", {});
+	} catch (error) {
+		console.error("discovering widgets failed", error);
+		return [];
 	}
-	container.register(DialogServiceId, () => new DialogService(deps.dialogs ?? []));
-	container.register(
-		ActionsServiceId,
-		(c) =>
-			new ActionsService(c.get(ConnectionId), c.get(DialogServiceId), {
+}
+
+export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
+	const connection = new Connection(deps.transport);
+	const set = await loadWidgets(await widgetEntries(connection));
+
+	let container: InstantiationService;
+	const services = new ServiceCollection();
+	services.set(IConnection, connection);
+	for (const service of set.services) {
+		if (!service.id.name.includes(".")) throw new Error(`front-end service "${service.id.name}" is not namespaced`);
+		services.set(service.id, service.create);
+	}
+	services.set(IDialogService, new SyncDescriptor(DialogService, [set.dialogs]));
+	services.set(
+		IActionsService,
+		new SyncDescriptor(ActionsService, [
+			{
 				...deps.commands,
-				shell: (on) => (on === "toggle" ? c.get(ComposerServiceId).toggleShell() : c.get(ComposerServiceId).setShell(on)),
-			}),
+				shell: (on: boolean | "toggle") => {
+					const composer = container.get(IComposerService);
+					if (on === "toggle") composer.toggleShell();
+					else composer.setShell(on);
+				},
+			},
+		]),
 	);
-	container.register(HeaderServiceId, () => new HeaderService());
-	container.register(PickerServiceId, (c) => new PickerService(c.get(ConnectionId)));
-	container.register(SessionListServiceId, (c) => new SessionListService(c.get(ConnectionId)));
-	container.register(SelectionServiceId, (c) => new SelectionService(c.get(ConnectionId)));
-	container.register(TranscriptServiceId, (c) => new TranscriptService(c.get(ConnectionId)));
-	container.register(WelcomeServiceId, () => new WelcomeService());
-	container.register(SlotsServiceId, (c) => new SlotsService(c.get(ConnectionId), deps.slots ?? []));
-	container.register(ColumnsServiceId, () => new ColumnsService());
-	container.register(WorkbenchServiceId, () => new WorkbenchService());
-	container.register(SurfaceRegistryId, () => new SurfaceRegistry(deps.components ?? []));
-	container.register(WidgetRegistryId, () => new WidgetRegistry(deps.widgets ?? []));
-	container.register(HotkeysServiceId, () => new HotkeysService(deps.platform));
-	container.register(ComposerServiceId, (c) => new ComposerService(c.get(ConnectionId), c.get(ActionsServiceId), c.get(HotkeysServiceId)));
-	container.register(ComposerTriggerRegistryId, () => new ComposerTriggerRegistry(deps.triggers ?? []));
-	container.register(CommandRegistryId, () => new CommandRegistry());
-	container.register(LayoutServiceId, () => new LayoutService());
+	services.set(IHeaderService, new SyncDescriptor(HeaderService));
+	services.set(IPickerService, new SyncDescriptor(PickerService));
+	services.set(ISessionListService, new SyncDescriptor(SessionListService));
+	services.set(ISelectionService, new SyncDescriptor(SelectionService));
+	services.set(ITranscriptService, new SyncDescriptor(TranscriptService));
+	services.set(IWelcomeService, new SyncDescriptor(WelcomeService));
+	services.set(ISlotsService, new SyncDescriptor(SlotsService, [set.slots]));
+	services.set(IColumnsService, new SyncDescriptor(ColumnsService));
+	services.set(IWorkbenchService, new SyncDescriptor(WorkbenchService));
+	services.set(SurfaceRegistryId, new SyncDescriptor(SurfaceRegistry, [deps.components ?? []]));
+	services.set(WidgetRegistryId, new SyncDescriptor(WidgetRegistry, [set.widgets]));
+	services.set(IHotkeysService, new SyncDescriptor(HotkeysService, [deps.platform]));
+	services.set(IComposerService, new SyncDescriptor(ComposerService));
+	services.set(ComposerTriggerRegistryId, new SyncDescriptor(ComposerTriggerRegistry, [[...(deps.triggers ?? []), ...set.triggers]]));
+	services.set(CommandRegistryId, new SyncDescriptor(CommandRegistry));
+	services.set(ILayoutService, new SyncDescriptor(LayoutService));
+	container = new InstantiationService(services);
+	services.set(IInstantiationService, container);
 	await container.initialize();
 
-	const connection = container.get(ConnectionId);
-	const actions = container.get(ActionsServiceId);
-	const dialogs = container.get(DialogServiceId);
-	const header = container.get(HeaderServiceId);
-	const picker = container.get(PickerServiceId);
-	const sessions = container.get(SessionListServiceId);
-	const selection = container.get(SelectionServiceId);
-	const transcript = container.get(TranscriptServiceId);
-	const welcome = container.get(WelcomeServiceId);
-	const slots = container.get(SlotsServiceId);
-	const columns = container.get(ColumnsServiceId);
-	const workbench = container.get(WorkbenchServiceId);
+	const actions = container.get(IActionsService);
+	const dialogs = container.get(IDialogService);
+	const header = container.get(IHeaderService);
+	const picker = container.get(IPickerService);
+	const sessions = container.get(ISessionListService);
+	const selection = container.get(ISelectionService);
+	const transcript = container.get(ITranscriptService);
+	const welcome = container.get(IWelcomeService);
+	const slots = container.get(ISlotsService);
+	const columns = container.get(IColumnsService);
+	const workbench = container.get(IWorkbenchService);
 	const surfaces = container.get(SurfaceRegistryId);
-	const composer = container.get(ComposerServiceId);
+	const composer = container.get(IComposerService);
 	const triggers = container.get(ComposerTriggerRegistryId);
 	const commands = container.get(CommandRegistryId);
-	const hotkeys = container.get(HotkeysServiceId);
+	const hotkeys = container.get(IHotkeysService);
 	const widgets = container.get(WidgetRegistryId);
-	const layout = container.get(LayoutServiceId);
+	const layout = container.get(ILayoutService);
 
 	const disposables = new DisposableStore();
 	disposables.add(deps.markdown);
@@ -155,6 +169,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	};
 
 	return {
+		failures: set.failures,
 		host: {
 			connection,
 			sessions,
@@ -194,6 +209,10 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 			disposables.add(connection.onEntry(({ session, entry }) => transcript.append(session, entry)));
 			disposables.add(
 				connection.onLive((event) => {
+					if (event.type === "lifecycle") {
+						connection.phase(event.phase);
+						return;
+					}
 					if (event.type === "layout") {
 						layout.set(event);
 						return;

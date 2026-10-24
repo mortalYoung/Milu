@@ -1,6 +1,6 @@
-import { type ExecutionEnv, type Extension, SessionServiceId, type ToolCall, ToolServiceId, type ToolResult, Type } from "@milu/core";
+import { type ExecutionEnv, type Extension, ISessionService, type ToolCall, IToolService, type ToolResult, Type } from "@milu/core";
 
-import { PeerService, PeerServiceId } from "./service/index.ts";
+import { PeerService, IPeerService } from "./service/index.ts";
 
 const schema = Type.Object({
 	op: Type.Union([Type.Literal("list"), Type.Literal("ask")], {
@@ -20,19 +20,19 @@ function say(text: string, details: Record<string, unknown> = {}): ToolResult {
 	return { content: [{ type: "text", text }], details };
 }
 
-export const peerExtension: Extension = {
+const peerExtension: Extension = {
 	id: "peer",
 	apiVersion: 1,
 
-	services: [{ id: PeerServiceId, create: (container) => new PeerService(container.get(SessionServiceId)) }],
+	services: [{ id: IPeerService, create: (container) => new PeerService(container.get(ISessionService)) }],
 
 	activate(context) {
-		const peer = context.get(PeerServiceId);
+		const peer = context.get(IPeerService);
 
-		context.disposables.add(context.get(SessionServiceId).onLoopEvent(({ session, event }) => peer.observe(session, event)));
+		context.disposables.add(context.get(ISessionService).onLoopEvent(({ session, event }) => peer.observe(session, event)));
 
 		context.disposables.add(
-			context.get(ToolServiceId).register({
+			context.get(IToolService).register({
 				name: "peer",
 				label: "Peer",
 				description:
@@ -66,3 +66,5 @@ export const peerExtension: Extension = {
 		);
 	},
 };
+
+export default peerExtension;

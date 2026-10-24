@@ -1,5 +1,5 @@
-import type { Host } from "@milu/extensions/host";
-import { Tip } from "@milu/extensions/host/tooltip";
+import type { Host } from "@milu/window";
+import { Tip } from "@milu/window/tooltip";
 import { type ReactNode, useEffect, useRef } from "react";
 import { useStore } from "zustand";
 

@@ -16,6 +16,7 @@
 		"format:check": "oxfmt --check",
 		"lint": "oxlint",
 		"lint:fix": "oxlint --fix",
+		"release": "bun scripts/release.ts",
 		"start": "bun run --filter '@milu/desktop' start",
 		"typecheck": "bun run --filter '*' typecheck"
 	},

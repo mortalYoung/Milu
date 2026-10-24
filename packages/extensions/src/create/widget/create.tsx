@@ -1,6 +1,5 @@
+import type { DialogProps } from "@milu/window/api";
 import { useState } from "react";
-
-import type { DialogProps } from "../../host/index.ts";
 
 const NAME_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -152,3 +151,5 @@ export function CreateSessionDialog(props: DialogProps) {
 		</form>
 	);
 }
+
+export default CreateSessionDialog;

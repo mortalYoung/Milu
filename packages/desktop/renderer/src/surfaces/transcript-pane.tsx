@@ -1,7 +1,7 @@
-import { type Host, type SurfaceProps, type StepGroup, type ViewItem, formatHistoryTime, layoutView, oneLine, projectView, stepSummary } from "@milu/extensions/host";
-import type { MarkdownPort } from "@milu/extensions/markdown";
-import { Markdown } from "@milu/extensions/markdown/react";
 import { SLOT_POINTS, type SeqEntry } from "@milu/protocol";
+import { type Host, type SurfaceProps, type StepGroup, type ViewItem, formatHistoryTime, layoutView, oneLine, projectView, stepSummary } from "@milu/window";
+import type { MarkdownPort } from "@milu/window/markdown";
+import { Markdown } from "@milu/window/markdown/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 
@@ -237,6 +237,7 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 	const { host } = props;
 
 	const selected = useStore(host.selection.store, (state) => state.selected);
+	const components = useStore(host.slots.store, (state) => state.components);
 	const loading = useStore(host.transcript.store, (state) => state.loading[selected] ?? false);
 	const entries = useStore(host.transcript.store, (state) => state.logs[selected] ?? NO_ENTRIES);
 	const loadError = useStore(host.transcript.store, (state) => state.errors[selected] ?? "");
@@ -432,7 +433,7 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 			</div>
 
 			{panes.map((item) => {
-				const Component = host.slots.component(item.component);
+				const Component = components.get(item.component);
 				return Component ? <Component key={item.id} host={host} /> : null;
 			})}
 		</div>

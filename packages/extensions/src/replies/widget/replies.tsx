@@ -1,10 +1,10 @@
+import { formatHistoryTime, projectView, replyRows, type SurfaceProps } from "@milu/window/api";
+import { Tip } from "@milu/window/api/tooltip";
 import { List } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 
-import { formatHistoryTime, projectView, replyRows, type SlotComponent, type SurfaceProps } from "../../host/index.ts";
-import { Tip } from "../../host/tooltip.tsx";
-import { RepliesServiceId } from "../service/index.ts";
+import { IRepliesService } from "../service/index.ts";
 
 const NO_ENTRIES: readonly never[] = [];
 
@@ -13,8 +13,8 @@ function label(text: string): string {
 	return line.length > 42 ? `${line.slice(0, 42)}…` : line;
 }
 
-function RepliesButton(props: SurfaceProps) {
-	const service = props.host.get(RepliesServiceId);
+export function RepliesButton(props: SurfaceProps) {
+	const service = props.host.get(IRepliesService);
 	const open = useStore(service.store, (state) => state.open);
 	const selected = useStore(props.host.selection.store, (state) => state.selected);
 	if (selected === "") return null;
@@ -34,9 +34,9 @@ function RepliesButton(props: SurfaceProps) {
 	);
 }
 
-function RepliesPane(props: SurfaceProps) {
+export function RepliesPane(props: SurfaceProps) {
 	const { host } = props;
-	const service = host.get(RepliesServiceId);
+	const service = host.get(IRepliesService);
 	const open = useStore(service.store, (state) => state.open);
 	const selected = useStore(host.selection.store, (state) => state.selected);
 	const entries = useStore(host.transcript.store, (state) => state.logs[selected] ?? NO_ENTRIES);
@@ -108,8 +108,3 @@ function RepliesPane(props: SurfaceProps) {
 		</aside>
 	);
 }
-
-export const slots: readonly SlotComponent[] = [
-	{ id: "replies.bar", component: RepliesButton },
-	{ id: "replies.pane", component: RepliesPane },
-];

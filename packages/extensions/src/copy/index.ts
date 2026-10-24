@@ -1,6 +1,6 @@
 import type { Extension } from "@milu/core";
 
-export const copyExtension: Extension = {
+const copyExtension: Extension = {
 	id: "copy",
 	apiVersion: 1,
 
@@ -43,3 +43,5 @@ export const copyExtension: Extension = {
 		});
 	},
 };
+
+export default copyExtension;

@@ -1,4 +1,4 @@
-import { type Extension, type ExecutionEnv, type ToolCall, ToolServiceId, Type } from "@milu/core";
+import { type Extension, type ExecutionEnv, type ToolCall, IToolService, Type } from "@milu/core";
 
 import { fetchPage, WEB_FETCH_DEFAULTS, WebFetchError, type WebFetchResult } from "./web-fetch.ts";
 
@@ -26,7 +26,7 @@ function render(result: WebFetchResult): string {
 	].join("\n");
 }
 
-export const fetchExtension: Extension = {
+const fetchExtension: Extension = {
 	id: "fetch",
 	apiVersion: 1,
 
@@ -34,7 +34,7 @@ export const fetchExtension: Extension = {
 		const webFetch = context.disposables.add(context.settings.declare({ key: "webFetch", defaults: WEB_FETCH_DEFAULTS }));
 
 		context.disposables.add(
-			context.get(ToolServiceId).register({
+			context.get(IToolService).register({
 				name: "web_fetch",
 				label: "Web Fetch",
 				description:
@@ -61,3 +61,5 @@ export const fetchExtension: Extension = {
 		);
 	},
 };
+
+export default fetchExtension;

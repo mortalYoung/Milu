@@ -8,6 +8,7 @@
 		// in and lets backend code touch it by accident. Browser packages opt in themselves.
 		"lib": ["ESNext"],
 		"allowImportingTsExtensions": true,
+		"experimentalDecorators": true,
 		"verbatimModuleSyntax": true,
 		"noEmit": true,
 		"strict": true,

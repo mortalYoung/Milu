@@ -1,7 +1,7 @@
+import type { WidgetProps } from "@milu/window/api";
+import { Tip } from "@milu/window/api/tooltip";
 import { useEffect, useRef, useState } from "react";
 
-import type { WidgetProps } from "../../host/index.ts";
-import { Tip } from "../../host/tooltip.tsx";
 import type { MeterWidgetData } from "../index.ts";
 
 const RADIUS = 5.5;
@@ -123,3 +123,5 @@ export function MeterWidget(props: WidgetProps) {
 		</span>
 	);
 }
+
+export default MeterWidget;

@@ -1,6 +1,6 @@
-import { type ExecutionEnv, type Extension, type ToolCall, ToolServiceId, Type } from "@milu/core";
+import { type ExecutionEnv, type Extension, type ToolCall, IToolService, Type } from "@milu/core";
 
-import { PermissionServiceId } from "../permission/service/index.ts";
+import { IPermissionService } from "../permission/service/index.ts";
 
 const schema = Type.Object({
 	paths: Type.Array(Type.String(), { description: "Files or directories to delete. Absolute, or relative to the working directory." }),
@@ -27,15 +27,15 @@ async function remove(path: string, dir: boolean, env: ExecutionEnv): Promise<st
 	return removed.ok ? null : removed.error.message;
 }
 
-export const rmExtension: Extension = {
+const rmExtension: Extension = {
 	id: "rm",
 	apiVersion: 1,
 
 	activate(context) {
-		const trash = context.get(PermissionServiceId).trash();
+		const trash = context.get(IPermissionService).trash();
 
 		context.disposables.add(
-			context.get(ToolServiceId).register({
+			context.get(IToolService).register({
 				name: "rm",
 				label: "rm",
 				description: `Irreversibly delete files and directories — no trash, no undo. This is the fallback for when moving a path to the trash did not work (disk full, file too large, permissions). It only runs after a bash call has failed while moving those paths into the trash, and refuses otherwise. For a recoverable delete, use bash instead: \`mv <path> ${trash}/\`.`,
@@ -61,3 +61,5 @@ export const rmExtension: Extension = {
 		);
 	},
 };
+
+export default rmExtension;

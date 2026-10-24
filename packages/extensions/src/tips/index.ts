@@ -1,6 +1,6 @@
 import type { Extension } from "@milu/core";
 
-export const tipsExtension: Extension = {
+const tipsExtension: Extension = {
 	id: "tips",
 	apiVersion: 1,
 
@@ -14,3 +14,5 @@ export const tipsExtension: Extension = {
 		],
 	},
 };
+
+export default tipsExtension;

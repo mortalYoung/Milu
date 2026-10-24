@@ -1,8 +1,9 @@
 import type { Extension } from "@milu/core";
 
-export const shellExtension: Extension = {
+const shellExtension: Extension = {
 	id: "shell",
 	apiVersion: 1,
+	widgets: [{ id: "shell", type: "widget", entry: "./widget/shell.tsx" }],
 
 	contributions: {
 		"composer.left": [{ id: "shell", order: 10, widget: "shell" }],
@@ -31,3 +32,5 @@ export const shellExtension: Extension = {
 		});
 	},
 };
+
+export default shellExtension;

@@ -24,4 +24,4 @@ export class ExecutionService implements Service {
 	}
 }
 
-export const ExecutionServiceId = createServiceId<ExecutionService>("ExecutionService");
+export const IExecutionService = createServiceId<ExecutionService>("ExecutionService");

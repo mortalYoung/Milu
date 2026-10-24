@@ -1,8 +1,7 @@
+import { createServiceId } from "@milu/di";
 import type { SeqEntry } from "@milu/protocol";
+import type { Connection, SelectionService, Service } from "@milu/window/api";
 import { createStore } from "zustand/vanilla";
-
-import type { Connection, FrontEndService, SelectionService, Service } from "../../host/index.ts";
-import { ConnectionId, createServiceId, SelectionServiceId } from "../../host/index.ts";
 
 const PAGE = 20;
 
@@ -140,8 +139,4 @@ function merge(older: readonly SeqEntry[], current: readonly SeqEntry[]): SeqEnt
 	return [...older.filter((entry) => !known.has(entry.seq)), ...current];
 }
 
-export const TrajectoryServiceId = createServiceId<TrajectoryService>("trajectory.state");
-
-export const services: readonly FrontEndService[] = [
-	{ id: TrajectoryServiceId, create: (container) => new TrajectoryService(container.get(ConnectionId), container.get(SelectionServiceId)) },
-];
+export const ITrajectoryService = createServiceId<TrajectoryService>("trajectory.state");

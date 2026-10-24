@@ -69,4 +69,4 @@ export class McpService implements Service {
 	}
 }
 
-export const McpServiceId = createServiceId<McpService>("mcp.servers");
+export const IMcpService = createServiceId<McpService>("mcp.servers");

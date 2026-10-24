@@ -2,12 +2,13 @@ import { createServiceId, type Service } from "@milu/di";
 
 import { SYSTEM_PROMPT_POINT, type PromptSection } from "../extensions/types.ts";
 import type { Session } from "../session/session.ts";
+import { IContributionService } from "./contributions.ts";
 import type { ContributionPoint, ContributionService } from "./contributions.ts";
 
 export class PromptService implements Service {
 	private readonly _point: ContributionPoint<PromptSection>;
 
-	constructor(private readonly _contributionService: ContributionService) {
+	constructor(@IContributionService private readonly _contributionService: ContributionService) {
 		this._point = this._contributionService.declare<PromptSection>(SYSTEM_PROMPT_POINT);
 	}
 
@@ -32,4 +33,4 @@ export class PromptService implements Service {
 	dispose(): void {}
 }
 
-export const PromptServiceId = createServiceId<PromptService>("PromptService");
+export const IPromptService = createServiceId<PromptService>("PromptService");

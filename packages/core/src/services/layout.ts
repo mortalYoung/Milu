@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { createServiceId, Emitter, type Event, type Service } from "@milu/di";
 import type { Layout, LayoutState, SurfaceDeclaration } from "@milu/protocol";
 
+import { IConfigService } from "./config.ts";
 import type { ConfigService } from "./config.ts";
 
 const FILE = "ui.json";
@@ -25,7 +26,7 @@ export class LayoutService implements Service {
 	private readonly _declared = new Map<string, SurfaceDeclaration>();
 	private _layout: Layout = {};
 
-	constructor(private readonly _configService: ConfigService) {
+	constructor(@IConfigService private readonly _configService: ConfigService) {
 		this._file = join(this._configService.root, FILE);
 		this.onChange = this._emitter.event;
 		for (const surface of SURFACES) this._declared.set(surface.id, surface);
@@ -119,4 +120,4 @@ export class LayoutService implements Service {
 	}
 }
 
-export const LayoutServiceId = createServiceId<LayoutService>("LayoutService");
+export const ILayoutService = createServiceId<LayoutService>("LayoutService");

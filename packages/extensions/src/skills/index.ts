@@ -1,7 +1,7 @@
-import { type ExecutionEnv, type Extension, SettingsServiceId, type ToolCall, ToolServiceId, Type } from "@milu/core";
+import { type ExecutionEnv, type Extension, ISettingsService, type ToolCall, IToolService, Type } from "@milu/core";
 
 import { SKILL_NAME_RE, type SkillDefinition } from "./catalog.ts";
-import { SkillsService, SkillsServiceId } from "./service/index.ts";
+import { SkillsService, ISkillsService } from "./service/index.ts";
 
 const schema = Type.Object({ name: Type.String({ description: "Kebab-case skill name to load, exactly as listed in <available_skills>." }) });
 
@@ -10,17 +10,17 @@ function content(def: SkillDefinition): string {
 	return `<skill_content name="${def.name}">\n${resources}\n<skill_instructions>\n${def.content}\n</skill_instructions>\n</skill_content>`;
 }
 
-export const skillsExtension: Extension = {
+const skillsExtension: Extension = {
 	id: "skills",
 	apiVersion: 1,
 
-	services: [{ id: SkillsServiceId, create: (container) => new SkillsService(container.get(SettingsServiceId)) }],
+	services: [{ id: ISkillsService, create: (container) => new SkillsService(container.get(ISettingsService)) }],
 
 	activate(context) {
-		const skills = context.get(SkillsServiceId);
+		const skills = context.get(ISkillsService);
 
 		context.disposables.add(
-			context.get(ToolServiceId).register({
+			context.get(IToolService).register({
 				name: "skill",
 				label: "Skill",
 				description:
@@ -42,3 +42,5 @@ export const skillsExtension: Extension = {
 		);
 	},
 };
+
+export default skillsExtension;

@@ -21,7 +21,7 @@ async function openPath(path: string, args: unknown): Promise<void> {
 	if (!opened.ok) throw new Error(`could not open ${path}`);
 }
 
-export const openExtension: Extension = {
+const openExtension: Extension = {
 	id: "open",
 	apiVersion: 1,
 
@@ -65,3 +65,5 @@ export const openExtension: Extension = {
 		});
 	},
 };
+
+export default openExtension;

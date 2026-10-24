@@ -3,7 +3,9 @@ import { join } from "node:path";
 
 import { createServiceId, Emitter, type Event, type Service } from "@milu/di";
 
+import { IConfigService } from "./config.ts";
 import type { ConfigService } from "./config.ts";
+import { ISessionService } from "./sessions.ts";
 import type { SessionService } from "./sessions.ts";
 
 interface SelectionRecord {
@@ -18,8 +20,8 @@ export class SelectionService implements Service {
 	private _selected: string | null = null;
 
 	constructor(
-		private readonly _sessionService: SessionService,
-		private readonly _configService: ConfigService,
+		@ISessionService private readonly _sessionService: SessionService,
+		@IConfigService private readonly _configService: ConfigService,
 	) {
 		this.onChange = this._emitter.event;
 		this._file = join(this._configService.root, "selection.json");
@@ -72,4 +74,4 @@ export class SelectionService implements Service {
 	}
 }
 
-export const SelectionServiceId = createServiceId<SelectionService>("SelectionService");
+export const ISelectionService = createServiceId<SelectionService>("SelectionService");

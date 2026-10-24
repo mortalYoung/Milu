@@ -1,6 +1,6 @@
-import type { Host } from "@milu/extensions/host";
-import { Tip } from "@milu/extensions/host/tooltip";
 import { SLOT_POINTS } from "@milu/protocol";
+import type { Host } from "@milu/window";
+import { Tip } from "@milu/window/tooltip";
 import { useEffect } from "react";
 import { useStore } from "zustand";
 
@@ -14,6 +14,7 @@ export function ChatBar(props: { host: Host }) {
 	const linked = useStore(host.connection.store, (state) => state.linked);
 	const items = useStore(host.slots.store, (state) => state.points[SLOT_POINTS.chatBar] ?? NO_ITEMS);
 	const nameItems = useStore(host.slots.store, (state) => state.points[SLOT_POINTS.chatName] ?? NO_ITEMS);
+	const components = useStore(host.slots.store, (state) => state.components);
 
 	const name = useStore(host.selection.store, (state) => state.selected);
 
@@ -51,7 +52,7 @@ export function ChatBar(props: { host: Host }) {
 						</span>
 					) : null}
 					{nameItems.map((item) => {
-						const Component = host.slots.component(item.component);
+						const Component = components.get(item.component);
 						return Component ? <Component key={item.id} host={host} data={item.data} /> : null;
 					})}
 				</div>
@@ -59,7 +60,7 @@ export function ChatBar(props: { host: Host }) {
 
 			<div className="chat-bar-tools">
 				{items.map((item) => {
-					const Component = host.slots.component(item.component);
+					const Component = components.get(item.component);
 					return Component ? <Component key={item.id} host={host} data={item.data} /> : null;
 				})}
 				{linked ? null : (

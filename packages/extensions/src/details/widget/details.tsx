@@ -1,10 +1,10 @@
+import { type DialogProps, formatWorkspacePath, tildifyPath } from "@milu/window/api";
+import { Markdown } from "@milu/window/api/markdown/react";
+import { Tip } from "@milu/window/api/tooltip";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 
-import { type DialogProps, formatWorkspacePath, tildifyPath } from "../../host/index.ts";
-import { Tip } from "../../host/tooltip.tsx";
-import { Markdown } from "../../markdown/react.tsx";
 import { CARD, EYEBROW, HEAD_ROW, MENU, MENU_CHECK, MENU_ITEM, MENU_LABEL, SUMMARY } from "../chrome.ts";
 import type { ModelChoiceGroup, SessionDetails, SessionSummary } from "../index.ts";
 import { digits, formatBytes, formatDate, formatSize, formatTokens, percent, seconds, tokensPerSecond } from "../utils.ts";
@@ -368,3 +368,5 @@ export function SessionDetailsDialog(props: DialogProps) {
 		</div>
 	);
 }
+
+export default SessionDetailsDialog;

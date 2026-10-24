@@ -3,8 +3,10 @@ import { join, normalize, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { createBackend } from "@milu/bootstrap";
+import type { WidgetRef } from "@milu/core";
 import { app, BrowserWindow, net, protocol } from "electron";
 
+import { extensionHostFactory } from "./extension-host.ts";
 import { IpcServer } from "./ipc.ts";
 import { DEFAULT_WINDOW_STATE, readWindowState, WINDOW_MIN, writeWindowState } from "./window-state.ts";
 
@@ -16,11 +18,27 @@ const SCHEME = "milu";
 
 protocol.registerSchemesAsPrivileged([{ scheme: SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 
-function serveRenderer(directory: string): void {
+function extensionFile(widgets: readonly WidgetRef[], id: string, rest: string): string | null {
+	const widget = widgets.find((each) => each.extension === id);
+	if (!widget || widget.root === undefined) return null;
+	const root = normalize(widget.root);
+	const path = normalize(join(root, rest));
+	return path.startsWith(root + sep) ? path : null;
+}
+
+function serveRenderer(directory: string, widgets: () => readonly WidgetRef[]): void {
 	protocol.handle(SCHEME, async (request) => {
-		const path = normalize(join(directory, decodeURIComponent(new URL(request.url).pathname)));
-		if (path !== directory && !path.startsWith(directory + sep)) return new Response("forbidden", { status: 403 });
-		const response = await net.fetch(pathToFileURL(path).toString());
+		const pathname = decodeURIComponent(new URL(request.url).pathname);
+		const extension = /^\/extensions\/([^/]+)\/(.+)$/.exec(pathname);
+		const path = extension ? extensionFile(widgets(), extension[1] ?? "", extension[2] ?? "") : normalize(join(directory, pathname));
+		if (path === null) return new Response("not found", { status: 404 });
+		if (!extension && path !== directory && !path.startsWith(directory + sep)) return new Response("forbidden", { status: 403 });
+		let response: Response;
+		try {
+			response = await net.fetch(pathToFileURL(path).toString());
+		} catch {
+			return new Response("not found", { status: 404 });
+		}
 		const headers = new Headers(response.headers);
 		headers.set(
 			"content-security-policy",
@@ -34,8 +52,8 @@ async function main(): Promise<void> {
 	const appDir = app.getAppPath();
 	const icon = join(appDir, "build/icon.png");
 	if (process.platform === "darwin") app.dock?.setIcon(icon);
-	serveRenderer(join(appDir, "renderer/dist"));
-	const backend = await createBackend({ root: CONFIG_ROOT, workspace: WORKSPACE });
+	const backend = await createBackend({ root: CONFIG_ROOT, workspace: WORKSPACE, hosts: extensionHostFactory });
+	serveRenderer(join(appDir, "renderer/dist"), () => backend.extensions.widgets());
 	const ipc = new IpcServer(backend);
 	ipc.start();
 

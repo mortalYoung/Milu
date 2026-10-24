@@ -40,7 +40,7 @@ export class SkillsService implements Service {
 	}
 }
 
-export const SkillsServiceId = createServiceId<SkillsService>("skills.service");
+export const ISkillsService = createServiceId<SkillsService>("skills.service");
 
 async function grantedSkills(session: Session): Promise<string[]> {
 	const text = await readFile(join(session.root, "granted-skills.json"), "utf8").catch(() => null);

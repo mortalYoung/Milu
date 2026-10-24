@@ -18,6 +18,7 @@
         "@milu/core": "workspace:*",
         "@milu/di": "workspace:*",
         "@milu/extensions": "workspace:*",
+        "@milu/window": "workspace:*",
       },
       "devDependencies": {
         "@types/node": "latest",
@@ -30,6 +31,7 @@
         "@earendil-works/pi-agent-core": "0.84.1",
         "@earendil-works/pi-ai": "0.84.1",
         "@milu/di": "workspace:*",
+        "@milu/extension-types": "workspace:*",
         "@milu/protocol": "workspace:*",
         "yaml": "^2.9.0",
       },
@@ -45,6 +47,7 @@
         "@milu/core": "workspace:*",
         "@milu/extensions": "workspace:*",
         "@milu/protocol": "workspace:*",
+        "@milu/window": "workspace:*",
         "@radix-ui/react-dialog": "^1.3.1",
         "@radix-ui/react-dropdown-menu": "^2.2.1",
         "lucide-react": "^1.60.0",
@@ -67,13 +70,24 @@
       "name": "@milu/di",
       "version": "0.0.0",
     },
+    "packages/extension-types": {
+      "name": "@milu/extension-types",
+      "version": "0.1.0",
+      "dependencies": {
+        "@earendil-works/pi-agent-core": "0.84.1",
+        "@earendil-works/pi-ai": "0.84.1",
+        "@milu/protocol": "workspace:^0.1.0",
+      },
+    },
     "packages/extensions": {
       "name": "@milu/extensions",
       "version": "0.0.0",
       "dependencies": {
         "@milu/core": "workspace:*",
         "@milu/di": "workspace:*",
+        "@milu/extension-types": "workspace:*",
         "@milu/protocol": "workspace:*",
+        "@milu/window": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.32.1",
         "@radix-ui/react-dropdown-menu": "^2.2.1",
         "@radix-ui/react-popover": "^1.3.1",
@@ -95,9 +109,27 @@
     },
     "packages/protocol": {
       "name": "@milu/protocol",
-      "version": "0.0.0",
-      "devDependencies": {
+      "version": "0.1.0",
+      "dependencies": {
         "@earendil-works/pi-agent-core": "0.84.1",
+      },
+    },
+    "packages/window": {
+      "name": "@milu/window",
+      "version": "0.0.0",
+      "dependencies": {
+        "@milu/di": "workspace:*",
+        "@milu/protocol": "workspace:*",
+        "@radix-ui/react-tooltip": "^1.4.1",
+        "@shikijs/markdown-it": "^4.5.0",
+        "markdown-it": "^15.0.3",
+        "react": "19.3.0",
+        "shiki": "^4.5.0",
+        "zustand": "5.0.15",
+      },
+      "devDependencies": {
+        "@types/markdown-it": "latest",
+        "@types/react": "19.3.0",
       },
     },
   },
@@ -197,9 +229,13 @@
 
     "@milu/di": ["@milu/di@workspace:packages/di"],
 
+    "@milu/extension-types": ["@milu/extension-types@workspace:packages/extension-types"],
+
     "@milu/extensions": ["@milu/extensions@workspace:packages/extensions"],
 
     "@milu/protocol": ["@milu/protocol@workspace:packages/protocol"],
+
+    "@milu/window": ["@milu/window@workspace:packages/window"],
 
     "@mistralai/mistralai": ["@mistralai/mistralai@2.2.6", "", { "dependencies": { "@opentelemetry/semantic-conventions": "^1.40.0", "ws": "^8.18.0", "zod": "^3.25.0 || ^4.0.0", "zod-to-json-schema": "^3.25.0" }, "peerDependencies": { "@opentelemetry/api": "^1.9.0" }, "optionalPeers": ["@opentelemetry/api"] }, "sha512-W8pX7zHxjJvMIpw8JMxeJEleapXX0Q9NPszdNzqkM3MIEoIGPObdodujj+WHteXEvGfaP/AMwlNyRfEzSY6dQQ=="],
 
@@ -471,7 +507,13 @@
 
     "@types/hast": ["@types/hast@3.0.5", "", { "dependencies": { "@types/unist": "*" } }, "sha512-rp/ezSWaD1m44dPKICGhiskI13nVr7qTloFwDa/IYkhhf5nzwP+zIQcIJh3WIFSBOy/H1PzB40jPjMDksN4F+g=="],
 
+    "@types/linkify-it": ["@types/linkify-it@5.0.0", "", {}, "sha512-sVDA58zAw4eWAffKOaQH5/5j3XeayukzDk+ewSsnv3p4yJEZHCCzMDiZM8e0OUrRvmpGZ85jf4yDHkHsgBNr9Q=="],
+
+    "@types/markdown-it": ["@types/markdown-it@14.2.0", "", { "dependencies": { "@types/linkify-it": "^5", "@types/mdurl": "^2" } }, "sha512-NoQ2yGlLWj4wpxMs+TYmRKk3thDrQ97agr7sFqfLsAlvoS8SNQuTrlObhFqG9iugdTtgOE9jpJ6FNM4ZGsa5xQ=="],
+
     "@types/mdast": ["@types/mdast@4.0.4", "", { "dependencies": { "@types/unist": "*" } }, "sha512-kGaNbPh1k7AFzgpud/gMdvIm5xuECykRR+JnWKQno9TAXVa6WIVCGTPvYGekIDL4uwCZQSYbUxNBSb1aUo79oA=="],
+
+    "@types/mdurl": ["@types/mdurl@2.0.0", "", {}, "sha512-RGdgjQUZba5p6QEFAVx2OGb8rQDL/cPRG7GiedRzMcJ1tYnUANBncjbSB1NRGwbvjcPeikRABz2nshyPk1bhWg=="],
 
     "@types/node": ["@types/node@26.6.5", "", { "dependencies": { "undici-types": "~8.9.0" } }, "sha512-uMzsv9stDdofIZBx4UGh4Z9ZgXnGC9seRDscilBcTHAeOFk67MZg/k9bWVfO+bk4qZmG+l52hRnLwUiH2LnJTg=="],
 

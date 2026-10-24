@@ -1,4 +1,5 @@
-import { Tip } from "../../host/tooltip.tsx";
+import { Tip } from "@milu/window/api/tooltip";
+
 import type { ActivityDay } from "../index.ts";
 import { formatTokens } from "../utils.ts";
 

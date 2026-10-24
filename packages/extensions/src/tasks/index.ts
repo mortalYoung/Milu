@@ -1,7 +1,7 @@
 import {
 	COMPOSER_LEFT_POINT,
 	type ComposerWidgetItem,
-	ContributionServiceId,
+	IContributionService,
 	type ExecutionEnv,
 	type Extension,
 	type Session,
@@ -9,12 +9,12 @@ import {
 	type ToolMiddleware,
 	type ToolNext,
 	type ToolResult,
-	ToolServiceId,
+	IToolService,
 	Type,
 } from "@milu/core";
 import type { DialogDescriptor } from "@milu/protocol";
 
-import { TaskService, TaskServiceId } from "./service/index.ts";
+import { TaskService, ITaskService } from "./service/index.ts";
 
 const backgroundField = {
 	background: Type.Optional(
@@ -46,19 +46,23 @@ function text(value: string, details: Record<string, unknown> = {}): ToolResult 
 	return { content: [{ type: "text", text: value }], details };
 }
 
-export const tasksExtension: Extension = {
+const tasksExtension: Extension = {
 	id: "tasks",
 	apiVersion: 1,
+	widgets: [
+		{ id: "tasks", type: "widget", entry: "./widget/tasks.tsx", export: "TasksWidget" },
+		{ id: "tasks", type: "dialog", entry: "./widget/tasks.tsx", export: "TasksDialog" },
+	],
 
-	services: [{ id: TaskServiceId, create: () => new TaskService() }],
+	services: [{ id: ITaskService, create: () => new TaskService() }],
 
 	activate(context) {
-		const tasks = context.get(TaskServiceId);
-		const tools = context.get(ToolServiceId);
+		const tasks = context.get(ITaskService);
+		const tools = context.get(IToolService);
 
 		context.disposables.add(
 			context
-				.get(ContributionServiceId)
+				.get(IContributionService)
 				.get<ComposerWidgetItem>(COMPOSER_LEFT_POINT)
 				.contribute({
 					id: "tasks",
@@ -141,3 +145,5 @@ export const tasksExtension: Extension = {
 		);
 	},
 };
+
+export default tasksExtension;

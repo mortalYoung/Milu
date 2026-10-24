@@ -131,4 +131,4 @@ export class PeerService implements Service {
 	}
 }
 
-export const PeerServiceId = createServiceId<PeerService>("peer.service");
+export const IPeerService = createServiceId<PeerService>("peer.service");

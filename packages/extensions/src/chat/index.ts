@@ -1,6 +1,6 @@
-import { EVENTS, expandHome, SelectionServiceId, type Extension } from "@milu/core";
+import { EVENTS, expandHome, ISelectionService, type Extension } from "@milu/core";
 
-export const chatExtension: Extension = {
+const chatExtension: Extension = {
 	id: "chat",
 	apiVersion: 1,
 
@@ -37,7 +37,7 @@ export const chatExtension: Extension = {
 			scope: "chat",
 			hotkey: { web: "Option+Shift+W", desktop: "Mod+W" },
 			run: async () => {
-				await context.get(SelectionServiceId).select(null);
+				await context.get(ISelectionService).select(null);
 			},
 		});
 
@@ -71,3 +71,5 @@ export const chatExtension: Extension = {
 		});
 	},
 };
+
+export default chatExtension;

@@ -1,7 +1,7 @@
+import { Tip } from "@milu/window/api/tooltip";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState } from "react";
 
-import { Tip } from "../../host/tooltip.tsx";
 import type { MemoryOverview } from "../../memory/overview.ts";
 import { CARD, EYEBROW, HEAD_ROW, SUMMARY } from "../chrome.ts";
 import { convTime, formatBytes } from "../utils.ts";

@@ -1,6 +1,6 @@
-import { detectComposerTrigger, type ComposerTriggerToken, type Host } from "@milu/extensions/host";
-import { Tip } from "@milu/extensions/host/tooltip";
 import { LOG_EVENTS, type ComposerWidget } from "@milu/protocol";
+import { detectComposerTrigger, type ComposerTriggerToken, type Host } from "@milu/window";
+import { Tip } from "@milu/window/tooltip";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 

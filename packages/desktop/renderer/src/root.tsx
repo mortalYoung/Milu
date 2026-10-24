@@ -1,5 +1,5 @@
-import type { Host } from "@milu/extensions/host";
-import { TooltipProvider } from "@milu/extensions/host/tooltip";
+import type { Host } from "@milu/window";
+import { TooltipProvider } from "@milu/window/tooltip";
 
 import { Workbench } from "./workbench.tsx";
 

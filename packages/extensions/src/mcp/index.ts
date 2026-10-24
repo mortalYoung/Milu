@@ -1,25 +1,25 @@
-import { ConfigServiceId, type ExecutionEnv, type Extension, SettingsServiceId, type ToolCall, type ToolResult, ToolServiceId } from "@milu/core";
+import { IConfigService, type ExecutionEnv, type Extension, ISettingsService, type ToolCall, type ToolResult, IToolService } from "@milu/core";
 
-import { type McpParams, McpService, McpServiceId, schema } from "./service/index.ts";
+import { type McpParams, McpService, IMcpService, schema } from "./service/index.ts";
 
-export { McpServiceId } from "./service/index.ts";
+export { IMcpService } from "./service/index.ts";
 
-export const mcpExtension: Extension = {
+const mcpExtension: Extension = {
 	id: "mcp",
 	apiVersion: 1,
 
 	services: [
 		{
-			id: McpServiceId,
-			create: (container) => new McpService(container.get(SettingsServiceId), container.get(ConfigServiceId)),
+			id: IMcpService,
+			create: (container) => new McpService(container.get(ISettingsService), container.get(IConfigService)),
 		},
 	],
 
 	activate(context) {
-		const mcp = context.get(McpServiceId);
+		const mcp = context.get(IMcpService);
 
 		context.disposables.add(
-			context.get(ToolServiceId).register({
+			context.get(IToolService).register({
 				name: "mcp",
 				label: "MCP",
 				description:
@@ -58,3 +58,5 @@ export const mcpExtension: Extension = {
 function text(value: string, details: Record<string, unknown> = {}): ToolResult {
 	return { content: [{ type: "text", text: value }], details };
 }
+
+export default mcpExtension;

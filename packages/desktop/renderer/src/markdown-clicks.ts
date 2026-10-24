@@ -1,4 +1,4 @@
-import type { Host } from "@milu/extensions/host";
+import type { Host } from "@milu/window";
 
 import { copyPath } from "./clipboard.ts";
 

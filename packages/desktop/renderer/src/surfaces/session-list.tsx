@@ -1,6 +1,6 @@
-import { activityAt, byPinThenRecency, filterSessions, type Host, listTime, previewFor, type SurfaceProps, workspaceLabel } from "@milu/extensions/host";
-import { Tip } from "@milu/extensions/host/tooltip";
 import type { ContributionItem, SessionRow } from "@milu/protocol";
+import { activityAt, byPinThenRecency, filterSessions, type Host, listTime, previewFor, type SurfaceProps, workspaceLabel } from "@milu/window";
+import { Tip } from "@milu/window/tooltip";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 

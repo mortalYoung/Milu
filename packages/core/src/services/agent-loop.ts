@@ -254,4 +254,4 @@ export class AgentLoopService implements Service {
 	}
 }
 
-export const AgentLoopServiceId = createServiceId<AgentLoopService>("AgentLoopService");
+export const IAgentLoopService = createServiceId<AgentLoopService>("AgentLoopService");

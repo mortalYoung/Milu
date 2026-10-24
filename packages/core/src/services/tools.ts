@@ -3,7 +3,9 @@ import type { TSchema } from "@earendil-works/pi-ai";
 import { createServiceId, type Disposable, type Service } from "@milu/di";
 
 import type { Session } from "../session/session.ts";
+import { IConfigService } from "./config.ts";
 import type { ConfigService } from "./config.ts";
+import { IExecutionService } from "./execution.ts";
 import type { ExecutionService } from "./execution.ts";
 import { expandHome } from "./settings.ts";
 
@@ -50,8 +52,8 @@ export class ToolService implements Service {
 	private readonly _fields: ToolFields[] = [];
 
 	constructor(
-		private readonly _configService: ConfigService,
-		private readonly _executionService: ExecutionService,
+		@IConfigService private readonly _configService: ConfigService,
+		@IExecutionService private readonly _executionService: ExecutionService,
 	) {}
 
 	register(tool: Tool): Disposable {
@@ -125,4 +127,4 @@ export class ToolService implements Service {
 	}
 }
 
-export const ToolServiceId = createServiceId<ToolService>("ToolService");
+export const IToolService = createServiceId<ToolService>("ToolService");

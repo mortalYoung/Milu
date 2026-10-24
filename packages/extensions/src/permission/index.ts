@@ -1,6 +1,6 @@
-import { type Extension, HookServiceId, type SandboxMode, SettingsServiceId, ToolServiceId, Type } from "@milu/core";
+import { type Extension, IHookService, type SandboxMode, ISettingsService, IToolService, Type } from "@milu/core";
 
-import { PermissionService, PermissionServiceId } from "./service/index.ts";
+import { PermissionService, IPermissionService } from "./service/index.ts";
 
 const escalationFields = {
 	sandbox_mode: Type.Optional(
@@ -11,20 +11,20 @@ const escalationFields = {
 	justification: Type.Optional(Type.String({ description: "Required when sandbox_mode is set: why the wider permission is needed." })),
 };
 
-export const permissionExtension: Extension = {
+const permissionExtension: Extension = {
 	id: "permission",
 	apiVersion: 1,
 
 	services: [
 		{
-			id: PermissionServiceId,
-			create: (container) => new PermissionService(container.get(SettingsServiceId), container.get(ToolServiceId)),
+			id: IPermissionService,
+			create: (container) => new PermissionService(container.get(ISettingsService), container.get(IToolService)),
 		},
 	],
 
 	activate(context) {
-		const permission = context.get(PermissionServiceId);
-		const tools = context.get(ToolServiceId);
+		const permission = context.get(IPermissionService);
+		const tools = context.get(IToolService);
 
 		context.disposables.add(tools.extend({ tools: ["bash"], properties: escalationFields }));
 		context.disposables.add(tools.use((call, env, next) => permission.intercept(call, env, next)));
@@ -51,9 +51,11 @@ export const permissionExtension: Extension = {
 		});
 
 		context.disposables.add(
-			context.get(HookServiceId).on("beforeRun", async ({ session }) => {
+			context.get(IHookService).on("beforeRun", async ({ session }) => {
 				for (const request of await permission.pending(session)) await permission.settle(session, request, "dropped", false);
 			}),
 		);
 	},
 };
+
+export default permissionExtension;

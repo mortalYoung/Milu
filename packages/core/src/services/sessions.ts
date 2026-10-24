@@ -16,13 +16,21 @@ import {
 import { profileOf } from "../session/files.ts";
 import { Session } from "../session/session.ts";
 import type { AgentLoopEvent } from "./agent-loop.ts";
+import { ICompactionService } from "./compaction.ts";
 import type { CompactionService } from "./compaction.ts";
+import { IContributionService } from "./contributions.ts";
 import type { ContributionPoint, ContributionService } from "./contributions.ts";
+import { IExecutionService } from "./execution.ts";
 import type { ExecutionService } from "./execution.ts";
+import { IHookService } from "./hooks.ts";
 import type { HookService } from "./hooks.ts";
+import { IModelsService } from "./models.ts";
 import type { ModelsService } from "./models.ts";
+import { IPromptService } from "./prompt.ts";
 import type { PromptService } from "./prompt.ts";
+import { ISettingsService } from "./settings.ts";
 import { expandHome, type SettingsService } from "./settings.ts";
+import { IToolService } from "./tools.ts";
 import type { ToolService } from "./tools.ts";
 
 export interface SessionEntry {
@@ -46,14 +54,14 @@ export class SessionService implements Service {
 	private readonly _loopEmitter = new Emitter<SessionLoopEvent>();
 
 	constructor(
-		private readonly _executionService: ExecutionService,
-		private readonly _settingsService: SettingsService,
-		private readonly _modelsService: ModelsService,
-		private readonly _toolService: ToolService,
-		private readonly _contributionService: ContributionService,
-		private readonly _promptService: PromptService,
-		private readonly _hookService: HookService,
-		private readonly _compactionService: CompactionService,
+		@IExecutionService private readonly _executionService: ExecutionService,
+		@ISettingsService private readonly _settingsService: SettingsService,
+		@IModelsService private readonly _modelsService: ModelsService,
+		@IToolService private readonly _toolService: ToolService,
+		@IContributionService private readonly _contributionService: ContributionService,
+		@IPromptService private readonly _promptService: PromptService,
+		@IHookService private readonly _hookService: HookService,
+		@ICompactionService private readonly _compactionService: CompactionService,
 	) {
 		this.onEntry = this._entryEmitter.event;
 		this.onLoopEvent = this._loopEmitter.event;
@@ -174,8 +182,13 @@ export class SessionService implements Service {
 
 	private async _dataOf(item: SlotItem, point: ContributionPoint<SlotItem>, session: Session | null | undefined): Promise<unknown> {
 		if (typeof item.data !== "function") return item.data;
-		if (point.scope === "global") return (item.data as () => unknown)();
-		return session ? (item.data as (session: Session) => unknown)(session) : undefined;
+		try {
+			if (point.scope === "global") return await (item.data as () => unknown)();
+			return session ? await (item.data as (session: Session) => unknown)(session) : undefined;
+		} catch (error) {
+			console.error(`slot "${item.id}" data failed:`, error);
+			return null;
+		}
 	}
 
 	private async _widgetsOf(point: string, session: Session): Promise<ComposerWidget[]> {
@@ -235,4 +248,4 @@ export class SessionService implements Service {
 	}
 }
 
-export const SessionServiceId = createServiceId<SessionService>("SessionService");
+export const ISessionService = createServiceId<SessionService>("SessionService");

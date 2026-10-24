@@ -2,8 +2,9 @@ import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { createServiceId, type Disposable, type Service } from "@milu/di";
+import { createServiceId, type Disposable, Emitter, type Event, type Service } from "@milu/di";
 
+import { IConfigService } from "./config.ts";
 import type { ConfigService } from "./config.ts";
 
 export type ThemeMode = "system" | "light" | "dark";
@@ -112,13 +113,16 @@ function asPatch(value: unknown): Partial<Settings> {
 
 export class SettingsService implements Service {
 	readonly file: string;
+	readonly onChange: Event<Readonly<Record<string, unknown>>>;
 
 	private _settings: Settings;
 	private _loaded = false;
+	private readonly _changed = new Emitter<Readonly<Record<string, unknown>>>();
 	private readonly _declared = new Set<string>();
 
-	constructor(private readonly _configService: ConfigService) {
+	constructor(@IConfigService private readonly _configService: ConfigService) {
 		this.file = join(this._configService.root, "settings.json");
+		this.onChange = this._changed.event;
 		this._settings = defaults(this._configService.root);
 	}
 
@@ -160,11 +164,13 @@ export class SettingsService implements Service {
 		await chmod(tmp, 0o600);
 		await rename(tmp, this.file);
 		this._settings = next;
+		this._changed.fire(next as unknown as Readonly<Record<string, unknown>>);
 	}
 
 	dispose(): void {
 		this._declared.clear();
+		this._changed.dispose();
 	}
 }
 
-export const SettingsServiceId = createServiceId<SettingsService>("SettingsService");
+export const ISettingsService = createServiceId<SettingsService>("SettingsService");

@@ -1,8 +1,7 @@
+import type { DialogProps, WidgetProps } from "@milu/window/api";
+import { Tip } from "@milu/window/api/tooltip";
 import { Terminal } from "lucide-react";
 import { useState } from "react";
-
-import type { DialogProps, WidgetProps } from "../../host/index.ts";
-import { Tip } from "../../host/tooltip.tsx";
 
 interface TaskView {
 	readonly id: string;

@@ -1,4 +1,15 @@
-import type { Extension } from "@milu/core";
-import { extensions } from "@milu/extensions";
+import { join } from "node:path";
 
-export const EXTENSIONS: readonly Extension[] = [...extensions];
+import { diskSource, type ExtensionSource } from "@milu/core";
+import { BUILTIN } from "@milu/extensions";
+
+export function sources(root: string): readonly ExtensionSource[] {
+	return [
+		{
+			id: "builtin",
+			fatal: true,
+			find: async () => Object.entries(BUILTIN).map(([ref, load]) => ({ ref, module: load() })),
+		},
+		diskSource(join(root, "extensions")),
+	];
+}

@@ -28,7 +28,7 @@ async function personaOf(session: Session): Promise<string> {
 	return buildPersona((await session.profile())?.persona);
 }
 
-export const promptExtension: Extension = {
+const promptExtension: Extension = {
 	id: "prompt",
 	apiVersion: 1,
 
@@ -41,3 +41,5 @@ export const promptExtension: Extension = {
 		],
 	},
 };
+
+export default promptExtension;

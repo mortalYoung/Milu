@@ -163,7 +163,8 @@ export type LiveEvent =
 	| { readonly type: "status"; readonly session: string; readonly running: boolean; readonly error?: string }
 	| { readonly type: "selection"; readonly selected: string | null }
 	| ({ readonly type: "layout" } & LayoutState)
-	| { readonly type: "dialog"; readonly id: string; readonly dialog: DialogDescriptor };
+	| { readonly type: "dialog"; readonly id: string; readonly dialog: DialogDescriptor }
+	| { readonly type: "lifecycle"; readonly phase: LifecyclePhase };
 
 export interface Methods {
 	transcript: {
@@ -190,6 +191,9 @@ export interface Methods {
 	slots: { params: { point: string; session?: string }; result: { items: readonly SlotItem[] } };
 	welcome: { params: Record<string, never>; result: { items: readonly WelcomeItem[] } };
 	pickDirectory: { params: { startingFolder?: string }; result: { path?: string } };
+	widgets: { params: Record<string, never>; result: readonly WidgetEntry[] };
+	extensions: { params: Record<string, never>; result: ExtensionsState };
+	extensionData: { params: { extension: string; key: string; session: string | null }; result: { data: unknown } };
 	layout: { params: Record<string, never>; result: LayoutState };
 	layoutSet: { params: { layout: Layout }; result: LayoutState };
 }
@@ -200,7 +204,42 @@ export type Result<K extends MethodName> = Methods[K]["result"];
 
 export type RpcResponse = { readonly ok: true; readonly result: unknown } | { readonly ok: false; readonly error: WireError };
 
+export type WidgetType = "slot" | "widget" | "dialog" | "trigger" | "service";
+
+export type LifecyclePhase = "starting" | "restored" | "ready";
+
+export type ExtensionSource = "builtin" | "package";
+
+export interface ExtensionStatus {
+	readonly id: string;
+	readonly source: ExtensionSource;
+	readonly apiVersion: number;
+	readonly services: readonly string[];
+}
+
+export interface ExtensionFailureText {
+	readonly ref: string;
+	readonly error: string;
+}
+
+export interface ExtensionsState {
+	readonly phase: LifecyclePhase;
+	readonly extensions: readonly ExtensionStatus[];
+	readonly failures: readonly ExtensionFailureText[];
+}
+
+export interface WidgetEntry {
+	readonly extension: string;
+	readonly source: "builtin" | "package";
+	readonly id: string;
+	readonly type: WidgetType;
+	readonly entry?: string;
+	readonly export?: string;
+	readonly url?: string;
+}
+
 export interface Snapshot {
+	readonly lifecycle: LifecyclePhase;
 	readonly layout: LayoutState;
 	readonly commands: readonly ComposerCommand[];
 	readonly sessions: readonly SessionRow[];

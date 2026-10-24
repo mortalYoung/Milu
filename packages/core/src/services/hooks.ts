@@ -65,4 +65,4 @@ export class HookService implements Service {
 	}
 }
 
-export const HookServiceId = createServiceId<HookService>("HookService");
+export const IHookService = createServiceId<HookService>("HookService");

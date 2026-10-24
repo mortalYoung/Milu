@@ -35,4 +35,4 @@ export class CompactionService implements Service {
 	}
 }
 
-export const CompactionServiceId = createServiceId<CompactionService>("CompactionService");
+export const ICompactionService = createServiceId<CompactionService>("CompactionService");
