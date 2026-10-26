@@ -5,16 +5,103 @@
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<title>Milu</title>
 		<style>
-			#boot-drag {
+			@font-face {
+				font-family: "JetBrains Mono";
+				src: url("/fonts/jetbrains-mono.woff2") format("woff2-variations");
+				font-weight: 100 800;
+				font-display: swap;
+			}
+
+			html,
+			body {
+				height: 100%;
+				margin: 0;
+				background: #faf9f5;
+			}
+
+			@media (prefers-color-scheme: dark) {
+				html,
+				body {
+					background: #181715;
+				}
+			}
+
+			#boot {
 				position: fixed;
-				inset: 0 0 auto 0;
-				height: 52px;
+				inset: 0;
+				display: flex;
+				flex-direction: column;
+				align-items: center;
+				justify-content: center;
+				gap: 12px;
 				-webkit-app-region: drag;
+			}
+
+			#boot-mark {
+				font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+				font-size: 15px;
+				font-weight: 600;
+				letter-spacing: 0.14em;
+				text-indent: 0.14em;
+				color: #6c6a64;
+			}
+
+			#boot-dots {
+				display: flex;
+				gap: 4px;
+				color: #8e8b82;
+			}
+
+			#boot-dots i {
+				display: block;
+				width: 5px;
+				height: 5px;
+				border-radius: 50%;
+				background: currentColor;
+				animation: boot-dot 1.2s infinite;
+			}
+
+			#boot-dots i:nth-child(2) {
+				animation-delay: 0.2s;
+			}
+
+			#boot-dots i:nth-child(3) {
+				animation-delay: 0.4s;
+			}
+
+			@keyframes boot-dot {
+				0%,
+				60%,
+				100% {
+					opacity: 0.25;
+				}
+				30% {
+					opacity: 1;
+				}
+			}
+
+			@media (prefers-color-scheme: dark) {
+				#boot-mark {
+					color: #a09d96;
+				}
+				#boot-dots {
+					color: #6e6b64;
+				}
+			}
+
+			@media (prefers-reduced-motion: reduce) {
+				#boot-dots i {
+					animation: none;
+					opacity: 0.6;
+				}
 			}
 		</style>
 	</head>
 	<body>
-		<div id="boot-drag" aria-hidden="true"></div>
+		<div id="boot" role="status" aria-label="Starting">
+			<span id="boot-mark">Milu</span>
+			<span id="boot-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+		</div>
 		<div id="root"></div>
 		<script type="module" src="/src/main.ts"></script>
 	</body>

@@ -47,7 +47,7 @@ export function Workbench(props: { host: Host }) {
 	const row = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
-		document.getElementById("boot-drag")?.remove();
+		document.getElementById("boot")?.remove();
 	}, []);
 
 	const readout = (dragged: "list" | "dock", width: number): string => {

@@ -372,7 +372,16 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 											</button>
 										</div>
 									) : null}
-									{display.length === 0 ? loading ? <TranscriptSkeleton /> : <p className="empty">Send something.</p> : null}
+									{display.length === 0 ? (
+										loading ? (
+											<TranscriptSkeleton />
+										) : working ? null : (
+											<div className="pt-16 text-center">
+												<p className="m-0 font-serif text-[16px] text-ink-soft">— waiting for your first prompt —</p>
+												<p className="mt-3 font-sans text-[11.5px] font-medium tracking-[0.6px] text-muted-soft uppercase">ask it to read a file, run a command, or just talk</p>
+											</div>
+										)
+									) : null}
 									{display.map((row) => {
 										if ("step" in row) {
 											const live = working && tail !== undefined && row.step.rows.some((item) => item.id === tail.id);
@@ -434,6 +443,15 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 											</div>
 										);
 									})}
+									{working ? (
+										<div className="msg-block msg-speaking">
+											<div className="msg-speaking-dots">
+												<span className="work-dot" />
+												<span className="work-dot" />
+												<span className="work-dot" />
+											</div>
+										</div>
+									) : null}
 									{error ? (
 										<div className="sys-error">
 											<span className="sys-error-tag">ERR</span>
