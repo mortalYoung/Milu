@@ -189,7 +189,7 @@ export interface Methods {
 	};
 	slice: { params: { session: string }; result: { items: { id: string; message: unknown }[] } };
 	prompt: { params: { text: string }; result: { accepted: boolean } };
-	abort: { params: Record<string, never>; result: Record<string, never> };
+	abort: { params: Record<string, never>; result: { aborted: boolean } };
 	composer: { params: { session: string }; result: { layout: ComposerLayout; mode: ComposerMode } };
 	hotkeys: { params: Record<string, never>; result: { bindings: readonly ActionBinding[] } };
 	sessions: { params: Record<string, never>; result: { sessions: SessionRow[]; selected: string | null } };

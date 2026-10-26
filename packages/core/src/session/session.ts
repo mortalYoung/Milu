@@ -45,6 +45,16 @@ interface LastVisible {
 	time: number;
 }
 
+function saidAnything(content: unknown): boolean {
+	if (!Array.isArray(content)) return false;
+	return content.some((block) => {
+		const value = block as { type?: unknown; text?: unknown; thinking?: unknown; redacted?: unknown };
+		if (value.type === "text") return String(value.text ?? "").trim() !== "";
+		if (value.type === "thinking") return value.redacted === true || String(value.thinking ?? "").trim() !== "";
+		return false;
+	});
+}
+
 function stampOf(entry: Entry, data: { timestamp?: unknown }): number {
 	return typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0);
 }
@@ -382,8 +392,10 @@ export class Session {
 		});
 	}
 
-	abort(): void {
-		this._loop?.abort();
+	abort(): boolean {
+		if (!this._loop?.isRunning()) return false;
+		this._loop.stop();
+		return true;
 	}
 
 	private _record(loop: AgentLoopService): { dispose(): void } {
@@ -403,6 +415,7 @@ export class Session {
 						if (!this._suspended.has(message.toolCallId)) void this._recordToolResult(message);
 						return;
 					}
+					if (message.role === "assistant" && message.stopReason === "aborted" && !saidAnything(message.content)) return;
 					void this._log.append(message);
 					return;
 				}
@@ -410,10 +423,12 @@ export class Session {
 					this._error = null;
 					record(EVENTS.agentStart, { run: event.run, timestamp });
 					return;
-				case "run_end":
-					this._error = event.error ?? null;
-					record(EVENTS.agentEnd, { run: event.run, reason: event.error ? "error" : "completed", ...(event.error ? { error: event.error } : {}), timestamp });
+				case "run_end": {
+					const reason = event.stopped ? "aborted" : event.error ? "error" : "completed";
+					this._error = event.stopped ? null : (event.error ?? null);
+					record(EVENTS.agentEnd, { run: event.run, reason, ...(reason === "error" && event.error ? { error: event.error } : {}), timestamp });
 					return;
+				}
 				case "reminder":
 					record(event.reminder.type, { ...event.reminder.data, timestamp });
 					return;

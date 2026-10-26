@@ -240,6 +240,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 					sessions.patchStatus(event.session, event.running, event.error);
 					transcript.markRunning(event.session, event.running);
 					if (!event.running) {
+						transcript.setStopping(event.session, false);
 						transcript.clearPartial(event.session);
 						void sessions.refresh();
 						if (event.session === selection.store.getState().selected) void composer.load(event.session);

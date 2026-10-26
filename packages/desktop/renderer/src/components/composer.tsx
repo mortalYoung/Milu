@@ -24,6 +24,7 @@ export function Composer(props: { host: Host }) {
 	const selected = useStore(host.selection.store, (state) => state.selected);
 	const text = useStore(host.transcript.store, (state) => state.drafts[selected] ?? "");
 	const busy = useStore(host.sessions.store, (state) => state.rows.find((row) => row.name === selected)?.running ?? false);
+	const stopping = useStore(host.transcript.store, (state) => state.stopping[selected] === true);
 
 	const area = useRef<HTMLTextAreaElement>(null);
 	const composing = useRef(false);
@@ -280,12 +281,14 @@ export function Composer(props: { host: Host }) {
 							<div className="composer-actions-right">
 								{composerPending ? null : layout.right.map(renderWidget)}
 								{showSend ? (
-									<Tip label={busy ? "Stop" : "Send"}>
+									<Tip label={stopping ? "Stopping" : busy ? "Stop" : "Send"}>
 										<button
 											type="button"
 											className={`composer-send${busy ? " composer-stop" : ""}`}
-											aria-label={busy ? "Stop" : "Send"}
-											onClick={() => (busy ? void host.transcript.abort() : void submit())}
+											aria-label={stopping ? "Stopping" : busy ? "Stop" : "Send"}
+											aria-busy={stopping || undefined}
+											disabled={stopping}
+											onClick={() => (busy ? void host.transcript.abort(selected) : void submit())}
 										>
 											{busy ? <SquareIcon size={12} /> : <ArrowUpIcon size={13} />}
 										</button>

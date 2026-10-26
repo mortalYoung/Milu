@@ -14,9 +14,10 @@ export interface TranscriptState {
 	readonly focused: { readonly id: string; readonly at: number } | null;
 	readonly partials: Readonly<Record<string, PartialMessage>>;
 	readonly started: Readonly<Record<string, number>>;
+	readonly stopping: Readonly<Record<string, boolean>>;
 }
 
-const EMPTY: TranscriptState = { logs: {}, hasMore: {}, loadingOlder: {}, drafts: {}, errors: {}, loading: {}, focused: null, partials: {}, started: {} };
+const EMPTY: TranscriptState = { logs: {}, hasMore: {}, loadingOlder: {}, drafts: {}, errors: {}, loading: {}, focused: null, partials: {}, started: {}, stopping: {} };
 const NO_ENTRIES: readonly SeqEntry[] = [];
 
 function without<T>(record: Readonly<Record<string, T>>, names: readonly string[]): Record<string, T> {
@@ -88,6 +89,7 @@ export class TranscriptService implements Service {
 				loadingOlder: without(current.loadingOlder, dropped),
 				errors: without(current.errors, dropped),
 				partials: without(current.partials, dropped),
+				stopping: without(current.stopping, dropped),
 				drafts: without(current.drafts, replaced),
 			}),
 			true,
@@ -136,8 +138,26 @@ export class TranscriptService implements Service {
 		this.store.setState((state) => ({ ...state, focused: { id, at: Date.now() } }), true);
 	}
 
-	async abort(): Promise<void> {
-		await this._connection.request("abort", {});
+	async abort(session: string): Promise<void> {
+		if (session === "" || this.store.getState().stopping[session] === true) return;
+		this.setStopping(session, true);
+		try {
+			const result = await this._connection.request("abort", {});
+			if (!result.aborted) this.setStopping(session, false);
+		} catch (error) {
+			this.setStopping(session, false);
+			this.fail(session, error instanceof Error ? error.message : String(error));
+		}
+	}
+
+	setStopping(session: string, stopping: boolean): void {
+		this.store.setState((current) => {
+			if ((current.stopping[session] === true) === stopping) return current;
+			const next = { ...current.stopping };
+			if (stopping) next[session] = true;
+			else delete next[session];
+			return { ...current, stopping: next };
+		}, true);
 	}
 
 	markRunning(session: string, running: boolean): void {

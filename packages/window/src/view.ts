@@ -48,6 +48,7 @@ export interface ViewItem {
 	stepMs?: number;
 	say?: true;
 	live?: true;
+	stopped?: true;
 	escalation?: ViewEscalation;
 	shell?: { readonly output: string; readonly exitCode?: number };
 }
@@ -161,21 +162,23 @@ function assistantVisit(entry: LogEntry, out: ViewItem[]): void {
 	const time = entry.message.timestamp ?? entry.timestamp ?? 0;
 	const timing = (entry.message as { timing?: { turnStartTime?: unknown; completedTime?: unknown } }).timing;
 	const step = typeof timing?.turnStartTime === "number" && typeof timing?.completedTime === "number" ? { stepMs: Math.max(0, timing.completedTime - timing.turnStartTime) } : {};
+	const stopped = (entry.message as { stopReason?: unknown }).stopReason === "aborted" ? { stopped: true as const } : {};
 	const words = blocks.findIndex((block) => block.type === "text" && String(block.text ?? "").trim() !== "");
 	blocks.forEach((block, index) => {
 		const id = index === words || (words === -1 && index === 0) ? entry.id : `${entry.id}-${index}`;
 		if (block.type === "text") {
 			const text = String(block.text ?? "").trim();
-			if (text !== "") out.push({ id, kind: "assistant", text, time, ...step });
+			if (text !== "") out.push({ id, kind: "assistant", text, time, ...step, ...stopped });
 			return;
 		}
 		if (block.type === "thinking") {
 			const text = String(block.thinking ?? "").trim();
 			if (text === "" && block.redacted !== true) return;
-			out.push({ id, kind: "assistant", text: "", time, ...step, thinking: { text, ...(block.redacted === true ? { redacted: true } : {}) } });
+			out.push({ id, kind: "assistant", text: "", time, ...step, ...stopped, thinking: { text, ...(block.redacted === true ? { redacted: true } : {}) } });
 			return;
 		}
 		if (block.type === "toolCall") {
+			if (stopped.stopped) return;
 			out.push({
 				id,
 				kind: "assistant",
@@ -243,8 +246,11 @@ function agentEndVisit(entry: LogEntry, out: ViewItem[]): void {
 	if (entry.type !== "custom") return;
 	const data = entry.data as { reason?: unknown; error?: unknown; timestamp?: unknown } | undefined;
 	const time = typeof data?.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0);
-	if (data?.reason === "aborted") out.push({ id: entry.id, kind: "aborted", text: "stopped", time });
-	else if (data?.reason === "error" && typeof data.error === "string") out.push({ id: entry.id, kind: "error", text: data.error, time });
+	if (data?.reason === "aborted") {
+		const previous = out[out.length - 1];
+		if (previous && (previous.tool || previous.thinking || previous.say)) return;
+		out.push({ id: entry.id, kind: "aborted", text: "stopped", time });
+	} else if (data?.reason === "error" && typeof data.error === "string") out.push({ id: entry.id, kind: "error", text: data.error, time });
 }
 
 function escalationVisit(entry: LogEntry, out: ViewItem[]): void {

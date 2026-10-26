@@ -8,7 +8,7 @@ import { useStore } from "zustand";
 import { copyPath } from "../clipboard.ts";
 import { ChatBar } from "../components/chat-bar.tsx";
 import { Composer } from "../components/composer.tsx";
-import { ArrowDownIcon, CheckIcon, CircleStopIcon, CopyIcon } from "../components/icons.tsx";
+import { ArrowDownIcon, CheckIcon, CopyIcon } from "../components/icons.tsx";
 import { TranscriptSkeleton } from "../components/skeletons.tsx";
 import { Welcome } from "../components/welcome.tsx";
 
@@ -155,7 +155,6 @@ const TranscriptRow = memo(function TranscriptRow(props: { host: Host; session: 
 	if (item.kind === "aborted")
 		return (
 			<div className="sys-stopped" data-entry={item.id}>
-				<CircleStopIcon size={12} />
 				<span>{item.text}</span>
 			</div>
 		);

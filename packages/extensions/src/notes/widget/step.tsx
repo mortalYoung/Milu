@@ -11,19 +11,27 @@ interface StepData {
 	readonly header?: boolean;
 }
 
-const CAPSULE = "inline-flex max-w-full items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 py-[3px] font-mono text-[10px] text-muted";
+const CAPSULE = "inline-flex max-w-full items-center gap-1.5 rounded-md border border-line bg-surface px-3 py-1 font-sans text-[15px] leading-[1.5] text-muted";
+const HEAD = "flex min-w-0 items-baseline gap-2";
 
-function time(ms: number): string {
-	const seconds = Math.max(0, Math.round(ms / 1000));
-	if (seconds < 60) return `${seconds}s`;
-	const minutes = Math.floor(seconds / 60);
-	return `${minutes}m ${seconds % 60}s`;
+interface Stamp {
+	readonly label: string;
+	readonly duration: string;
 }
 
-/** "Running for 12s" while it streams, "Completed in 12s" once the last row is in. */
-function useHeaderStamp(group: StepGroup, live: boolean): string {
+/** Zero is not a measurement worth printing: a step that took no time says "Completed", not "Completed in 0s". */
+function span(ms: number): string {
+	const seconds = Math.max(0, Math.round(ms / 1000));
+	if (seconds === 0) return "";
+	if (seconds < 60) return `${seconds}s`;
+	return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
+/** "Running for 12s" while it streams, "Stopped after 12s" when it was cut, "Completed in 12s" once the last row is in. */
+function useHeaderStamp(group: StepGroup, live: boolean): Stamp {
 	const first = group.rows[0]?.time ?? 0;
 	const last = group.rows[group.rows.length - 1]?.time ?? first;
+	const stopped = group.rows.some((row) => row.stopped === true);
 	const [elapsed, setElapsed] = useState(0);
 
 	useEffect(() => {
@@ -34,7 +42,10 @@ function useHeaderStamp(group: StepGroup, live: boolean): string {
 		return () => window.clearInterval(timer);
 	}, [live, first]);
 
-	return live ? `Running for ${time(elapsed)}` : `Completed in ${time(last - first)}`;
+	if (live) return { label: "Running for", duration: span(elapsed) || "0s" };
+	const took = span(last - first);
+	if (stopped) return took === "" ? { label: "Stopped", duration: "" } : { label: "Stopped after", duration: took };
+	return took === "" ? { label: "Completed", duration: "" } : { label: "Completed in", duration: took };
 }
 
 export function StepRow(props: SlotProps) {
@@ -77,24 +88,25 @@ export function StepRow(props: SlotProps) {
 	};
 
 	const head = (
-		<span className="flex min-w-0 items-center gap-2">
-			{live ? <span className="work-dot shrink-0" /> : null}
-			{stamp}
-		</span>
+		<>
+			{live ? <span className="work-dot shrink-0 self-center" /> : null}
+			<span className="shrink-0">{stamp.label}</span>
+			{stamp.duration === "" ? null : <span className="shrink-0 font-mono text-[13px] text-muted">{stamp.duration}</span>}
+		</>
 	);
-	const rows = <div className="mt-1.5 grid gap-1.5">{group.rows.map((item) => renderRow(props, item, openRows.has(item.id), toggleRow))}</div>;
+	const rows = <div className={header ? "mt-2 grid gap-1.5" : "mt-1.5 grid gap-1.5"}>{group.rows.map((item) => renderRow(props, item, openRows.has(item.id), toggleRow))}</div>;
 
 	if (!header) return rows;
 
 	return (
-		<div className="mt-3 min-w-0">
+		<div className="mt-6 min-w-0">
 			{collapsed ? (
 				<button type="button" className={CAPSULE} aria-expanded={open} onClick={() => setOpen(!open)}>
 					<span className="shrink-0 text-muted-soft">{open ? "⌄" : "›"}</span>
-					{head}
+					<span className={HEAD}>{head}</span>
 				</button>
 			) : (
-				<div className="font-mono text-[10px] leading-[1.7] text-muted-soft">{head}</div>
+				<div className={`${HEAD} font-sans text-[15px] leading-[1.714] text-muted-soft`}>{head}</div>
 			)}
 			{folded ? null : rows}
 		</div>

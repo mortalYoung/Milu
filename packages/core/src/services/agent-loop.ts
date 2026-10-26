@@ -23,7 +23,7 @@ export type AgentLoopEvent =
 	| ({ type: "tool_end"; toolCallId: string; toolName: string; isError: boolean } & AgentLoopProgress)
 	| { type: "reminder"; reminder: AgentReminder }
 	| ({ type: "turn_end" } & AgentLoopProgress)
-	| ({ type: "run_end"; error?: string } & AgentLoopProgress);
+	| ({ type: "run_end"; stopped?: boolean; error?: string } & AgentLoopProgress);
 
 export interface AgentLoopRun {
 	error?: string;
@@ -38,6 +38,7 @@ export class AgentLoopService implements Service {
 	private _runs = 0;
 	private _turn = 0;
 	private _running = false;
+	private _stopped = false;
 	private readonly _pending: (string | AgentMessage)[] = [];
 
 	constructor(
@@ -84,6 +85,7 @@ export class AgentLoopService implements Service {
 			this._pending.push(input);
 			return {};
 		}
+		this._stopped = false;
 		this._running = true;
 		try {
 			return await this._execute(input);
@@ -95,6 +97,7 @@ export class AgentLoopService implements Service {
 
 	async continue(): Promise<AgentLoopRun> {
 		if (this._running) throw new Error("the loop is already running");
+		this._stopped = false;
 		this._running = true;
 		try {
 			await this._agent.continue();
@@ -127,6 +130,7 @@ export class AgentLoopService implements Service {
 		while (!this._running && !this._session.hasSuspended?.() && !this._awaitingToolResult() && this._pending.length > 0) {
 			const next = this._pending.shift()!;
 			this._running = true;
+			this._stopped = false;
 			try {
 				await this._execute(next);
 			} catch (error) {
@@ -138,13 +142,10 @@ export class AgentLoopService implements Service {
 		}
 	}
 
-	abort(): void {
-		this._agent.abort();
-	}
-
 	stop(): void {
-		this._agent.abort();
+		this._stopped = true;
 		this._pending.length = 0;
+		this._agent.abort();
 	}
 
 	waitForIdle(): Promise<void> {
@@ -188,6 +189,7 @@ export class AgentLoopService implements Service {
 
 	reset(): void {
 		this._running = false;
+		this._stopped = false;
 		this._pending.length = 0;
 		this._agent.reset();
 	}
@@ -229,6 +231,7 @@ export class AgentLoopService implements Service {
 			case "agent_start":
 				this._runs += 1;
 				this._turn = 0;
+				if (this._stopped) this._agent.abort();
 				this._emitter.fire({ type: "run_start", run: this._runs, turn: 0 });
 				return;
 			case "turn_start":
@@ -251,8 +254,16 @@ export class AgentLoopService implements Service {
 				this._emitter.fire({ type: "turn_end", ...progress });
 				return;
 			case "agent_end": {
-				const error = this._agent.state.errorMessage;
-				this._emitter.fire(error ? { type: "run_end", run: this._runs, turn: this._turn, error } : { type: "run_end", run: this._runs, turn: this._turn });
+				const stopped = this._stopped;
+				const error = stopped ? undefined : this._agent.state.errorMessage;
+				this._stopped = false;
+				this._emitter.fire({
+					type: "run_end",
+					run: this._runs,
+					turn: this._turn,
+					...(stopped ? { stopped: true } : {}),
+					...(error ? { error } : {}),
+				});
 				return;
 			}
 		}

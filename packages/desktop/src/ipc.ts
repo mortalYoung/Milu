@@ -273,8 +273,7 @@ export class IpcServer {
 
 	private async _abort(): Promise<Result<"abort">> {
 		const name = this._backend.selection.selected;
-		if (name) this._backend.sessions.get(name).abort();
-		return {};
+		return { aborted: name ? this._backend.sessions.get(name).abort() : false };
 	}
 
 	private async _hotkeys(): Promise<Result<"hotkeys">> {
