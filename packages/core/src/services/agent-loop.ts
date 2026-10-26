@@ -142,6 +142,11 @@ export class AgentLoopService implements Service {
 		this._agent.abort();
 	}
 
+	stop(): void {
+		this._agent.abort();
+		this._pending.length = 0;
+	}
+
 	waitForIdle(): Promise<void> {
 		return this._agent.waitForIdle();
 	}

@@ -1,8 +1,8 @@
 import { SLOT_POINTS, type SeqEntry } from "@milu/protocol";
-import { type Host, type SurfaceProps, type StepGroup, type ViewItem, formatHistoryTime, layoutView, oneLine, projectView, stepSummary } from "@milu/window";
+import { type DisplayRow, type Host, type SurfaceProps, type ViewItem, formatHistoryTime, layoutView, liveRowsOf, projectView } from "@milu/window";
 import type { MarkdownPort } from "@milu/window/markdown";
 import { Markdown } from "@milu/window/markdown/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { createElement, memo, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 
 import { copyPath } from "../clipboard.ts";
@@ -14,15 +14,7 @@ import { Welcome } from "../components/welcome.tsx";
 
 const NO_ENTRIES: readonly SeqEntry[] = [];
 const NO_PANES: readonly never[] = [];
-
-const hasSelection = (): boolean => window.getSelection()?.isCollapsed === false;
-
-function toggle(set: ReadonlySet<string>, key: string): ReadonlySet<string> {
-	const next = new Set(set);
-	if (next.has(key)) next.delete(key);
-	else next.add(key);
-	return next;
-}
+const NO_ROWS: readonly DisplayRow[] = [];
 
 function CopyButton(props: { text: string }) {
 	const [copied, setCopied] = useState(false);
@@ -115,124 +107,6 @@ function EscalationCard(props: { item: ViewItem; host: Host; session: string }) 
 	);
 }
 
-function NoteRow(props: { row: ViewItem; port: MarkdownPort; open: boolean; working: boolean; onToggle: () => void }) {
-	const { row, port } = props;
-	const tool = row.tool;
-	const thinking = row.thinking;
-	if (row.say) {
-		return (
-			<div className="msg-note is-say">
-				<span className="msg-note-node" />
-				<span className="msg-note-kind">say</span>
-				<div className="msg-note-say md msg-note-md">
-					<Markdown port={port} text={row.text} />
-				</div>
-			</div>
-		);
-	}
-	const failed = tool?.status === "error";
-	const running = tool?.status === "running" && props.working;
-	const line = tool ? tool.summary : thinking?.redacted === true ? "redacted" : oneLine(thinking?.text ?? "");
-	const opens = tool ? (tool.args ?? "") !== "" || (tool.result ?? "") !== "" : thinking != null && thinking.redacted !== true && thinking.text !== "";
-	return (
-		<div
-			className={"msg-note" + (opens ? " is-open" : "")}
-			role={opens ? "button" : undefined}
-			tabIndex={opens ? 0 : undefined}
-			aria-expanded={opens ? props.open : undefined}
-			onClick={
-				opens
-					? () => {
-							if (hasSelection()) return;
-							props.onToggle();
-						}
-					: undefined
-			}
-			onKeyDown={
-				opens
-					? (event) => {
-							if (event.key !== "Enter" && event.key !== " ") return;
-							event.preventDefault();
-							props.onToggle();
-						}
-					: undefined
-			}
-		>
-			<span className={"msg-note-node" + (running ? " is-live" : failed ? " is-fail" : tool ? " is-run" : "")} />
-			<span className="msg-note-kind">{tool ? tool.name : "think"}</span>
-			<span className="msg-note-sep">·</span>
-			<span className="msg-note-line">{line}</span>
-			{opens ? <span className="msg-note-caret">{props.open ? "⌄" : "›"}</span> : null}
-			{opens && props.open ? (
-				<div className="msg-note-card-wrap">
-					<div className="msg-note-card" onClick={(event) => event.stopPropagation()}>
-						{tool ? (
-							<>
-								{tool.args ? (
-									<div className="msg-note-field">
-										<span className="msg-note-label">args</span>
-										<pre className="msg-note-pre">{tool.args}</pre>
-									</div>
-								) : null}
-								{tool.result ? (
-									<div className="msg-note-field">
-										<span className="msg-note-label">{failed ? "result · failed" : "result"}</span>
-										<pre className="msg-note-pre">{tool.result}</pre>
-									</div>
-								) : null}
-							</>
-						) : (
-							<Markdown port={port} text={thinking?.text ?? ""} className="msg-note-md" />
-						)}
-					</div>
-				</div>
-			) : null}
-		</div>
-	);
-}
-
-function StepBlock(props: {
-	group: StepGroup;
-	port: MarkdownPort;
-	working: boolean;
-	live: boolean;
-	open: boolean;
-	onToggle: () => void;
-	openRows: ReadonlySet<string>;
-	onToggleRow: (key: string) => void;
-}) {
-	const { rows } = props.group;
-	const first = rows[0];
-	if (!first) return null;
-	const collapsible = rows.length > 1;
-	const folded = collapsible && !props.live && !props.open;
-	const summary = (
-		<button type="button" className="msg-step-sum" aria-expanded={!folded} onClick={props.onToggle}>
-			<span className="msg-note-caret">{folded ? "›" : "⌄"}</span>
-			{stepSummary(rows).map((part, index) => (
-				<span key={part.text}>
-					{index > 0 ? <span className="msg-note-sep">·</span> : null}
-					<span className={part.fail ? "msg-step-fail" : undefined}>{part.text}</span>
-				</span>
-			))}
-		</button>
-	);
-	return (
-		<div className="msg-step">
-			{collapsible && !props.live ? summary : null}
-			{folded ? null : (
-				<div className="msg-step-scroll">
-					<div className="msg-step-rows">
-						{rows.map((row) => (
-							<NoteRow key={row.id} row={row} port={props.port} open={props.openRows.has(row.id)} working={props.working} onToggle={() => props.onToggleRow(row.id)} />
-						))}
-					</div>
-				</div>
-			)}
-		</div>
-	);
-}
-
 function ShellBlock(props: { item: ViewItem }) {
 	const [open, setOpen] = useState(true);
 	const shell = props.item.shell;
@@ -254,6 +128,75 @@ function ShellBlock(props: { item: ViewItem }) {
 	);
 }
 
+function AssistantBlock(props: { host: Host; item: ViewItem; live?: boolean }) {
+	return (
+		<div className={props.live ? "msg-block msg-block-agent is-live" : "msg-block msg-block-agent"} data-entry={props.item.id}>
+			<Markdown port={props.host.markdown} text={props.item.text} className="msg-body" plain={props.live} />
+			<div className={props.live ? "msg-meta invisible" : "msg-meta"}>
+				<CopyButton text={props.item.text} />
+				<span className="msg-at">{formatHistoryTime(props.item.time)}</span>
+				{props.item.to ? <span className="msg-chip">→ {props.item.to}</span> : null}
+			</div>
+		</div>
+	);
+}
+
+const TranscriptRow = memo(function TranscriptRow(props: { host: Host; session: string; item: ViewItem }) {
+	const { host, session, item } = props;
+	if (item.kind === "sep") return <div className="time-sep">{item.text}</div>;
+	if (item.kind === "escalation") return <EscalationCard item={item} host={host} session={session} />;
+	if (item.kind === "error")
+		return (
+			<div className="sys-error" data-entry={item.id}>
+				<span className="sys-error-tag">ERR</span>
+				<span className="sys-error-text">{item.text}</span>
+			</div>
+		);
+	if (item.kind === "aborted")
+		return (
+			<div className="sys-stopped" data-entry={item.id}>
+				<CircleStopIcon size={12} />
+				<span>{item.text}</span>
+			</div>
+		);
+	if (item.kind === "shell") return <ShellBlock item={item} />;
+	if (item.kind === "user") return item.peerKind === "reply" ? <ReplyCard item={item} port={host.markdown} /> : <UserBubble item={item} />;
+	return <AssistantBlock host={host} item={item} />;
+});
+
+function SpeakingDots() {
+	return (
+		<div className="msg-block msg-speaking">
+			<div className="msg-speaking-dots">
+				<span className="work-dot" />
+				<span className="work-dot" />
+				<span className="work-dot" />
+			</div>
+		</div>
+	);
+}
+
+/** The one component that re-renders while a reply streams; the rows behind it stay put. */
+function StreamTail(props: { host: Host; session: string; working: boolean; headed: boolean }) {
+	const message = useStore(props.host.transcript.store, (state) => state.partials[props.session] ?? null);
+	const started = useStore(props.host.transcript.store, (state) => state.started[props.session] ?? 0);
+	const rows = useMemo(() => (message ? liveRowsOf(message, started) : NO_ROWS), [message, started]);
+	if (!props.working) return null;
+	if (rows.length === 0) return <SpeakingDots />;
+	const Step = props.host.rows.get("step");
+	return (
+		<>
+			{rows.map((row) =>
+				"step" in row ? (
+					Step && <Step key={`s:${row.step.key}`} host={props.host} data={{ group: row.step, live: true, header: props.headed }} />
+				) : (
+					<AssistantBlock key={`i:${row.item.id}`} host={props.host} item={row.item} live />
+				),
+			)}
+		</>
+	);
+}
+
 export function TranscriptPaneSurface(props: SurfaceProps) {
 	const { host } = props;
 
@@ -268,13 +211,10 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 
 	const items = useMemo(() => projectView(entries.map((seq) => seq.entry)), [entries]);
 	const display = useMemo(() => layoutView(items), [items]);
-	const tail = items.length > 0 ? items[items.length - 1] : undefined;
 
 	const panes = useStore(host.slots.store, (state) => state.points[SLOT_POINTS.chatPanes] ?? NO_PANES);
 	const focused = useStore(host.transcript.store, (state) => state.focused);
 
-	const [openSteps, setOpenSteps] = useState<ReadonlySet<string>>(() => new Set());
-	const [openRows, setOpenRows] = useState<ReadonlySet<string>>(() => new Set());
 	const [following, setFollowing] = useState(true);
 	const [followed, setFollowed] = useState(selected);
 	if (followed !== selected) {
@@ -382,76 +322,14 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 											</div>
 										)
 									) : null}
-									{display.map((row) => {
+									{display.map((row, index) => {
 										if ("step" in row) {
-											const live = working && tail !== undefined && row.step.rows.some((item) => item.id === tail.id);
-											return (
-												<StepBlock
-													key={`s:${row.step.key}`}
-													group={row.step}
-													port={host.markdown}
-													working={working}
-													live={live}
-													open={openSteps.has(row.step.key)}
-													onToggle={() => setOpenSteps((previous) => toggle(previous, row.step.key))}
-													openRows={openRows}
-													onToggleRow={(key) => setOpenRows((previous) => toggle(previous, key))}
-												/>
-											);
+											const Step = host.rows.get("step");
+											return Step ? createElement(Step, { key: `s:${row.step.key}`, host, data: { group: row.step, live: working && index === display.length - 1 } }) : null;
 										}
-										const item = row.item;
-										if (item.kind === "sep") {
-											return (
-												<div key={`i:${item.id}`} className="time-sep">
-													{item.text}
-												</div>
-											);
-										}
-										if (item.kind === "escalation") {
-											return <EscalationCard key={`i:${item.id}`} item={item} host={host} session={selected} />;
-										}
-										if (item.kind === "error") {
-											return (
-												<div key={`i:${item.id}`} className="sys-error" data-entry={item.id}>
-													<span className="sys-error-tag">ERR</span>
-													<span className="sys-error-text">{item.text}</span>
-												</div>
-											);
-										}
-										if (item.kind === "aborted") {
-											return (
-												<div key={`i:${item.id}`} className="sys-stopped" data-entry={item.id}>
-													<CircleStopIcon size={12} />
-													<span>{item.text}</span>
-												</div>
-											);
-										}
-										if (item.kind === "shell") {
-											return <ShellBlock key={`i:${item.id}`} item={item} />;
-										}
-										if (item.kind === "user") {
-											return item.peerKind === "reply" ? <ReplyCard key={`i:${item.id}`} item={item} port={host.markdown} /> : <UserBubble key={`i:${item.id}`} item={item} />;
-										}
-										return (
-											<div key={`i:${item.id}`} className="msg-block msg-block-agent" data-entry={item.id}>
-												<Markdown port={host.markdown} text={item.text} className="msg-body" />
-												<div className="msg-meta">
-													<CopyButton text={item.text} />
-													<span className="msg-at">{formatHistoryTime(item.time)}</span>
-													{item.to ? <span className="msg-chip">→ {item.to}</span> : null}
-												</div>
-											</div>
-										);
+										return <TranscriptRow key={`i:${row.item.id}`} host={host} session={selected} item={row.item} />;
 									})}
-									{working ? (
-										<div className="msg-block msg-speaking">
-											<div className="msg-speaking-dots">
-												<span className="work-dot" />
-												<span className="work-dot" />
-												<span className="work-dot" />
-											</div>
-										</div>
-									) : null}
+									<StreamTail host={host} session={selected} working={working} headed={display.length === 0 || !("step" in display[display.length - 1]!)} />
 									{error ? (
 										<div className="sys-error">
 											<span className="sys-error-tag">ERR</span>

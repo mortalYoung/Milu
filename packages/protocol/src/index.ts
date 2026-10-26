@@ -5,6 +5,12 @@ export interface WireError {
 	readonly message: string;
 }
 
+/** The in-flight assistant message as it crosses the wire: enough to render, not pi's whole shape. */
+export interface PartialMessage {
+	readonly role: string;
+	readonly content: unknown;
+}
+
 export interface SeqEntry {
 	readonly seq: number;
 	readonly entry: Entry;
@@ -169,7 +175,8 @@ export type LiveEvent =
 	| ({ readonly type: "layout" } & LayoutState)
 	| { readonly type: "composer"; readonly session: string; readonly mode: ComposerMode }
 	| { readonly type: "dialog"; readonly id: string; readonly dialog: DialogDescriptor }
-	| { readonly type: "lifecycle"; readonly phase: LifecyclePhase };
+	| { readonly type: "lifecycle"; readonly phase: LifecyclePhase }
+	| { readonly type: "settings" };
 
 export interface Methods {
 	transcript: {
@@ -209,7 +216,7 @@ export type Result<K extends MethodName> = Methods[K]["result"];
 
 export type RpcResponse = { readonly ok: true; readonly result: unknown } | { readonly ok: false; readonly error: WireError };
 
-export type WidgetType = "slot" | "widget" | "dialog" | "trigger" | "service";
+export type WidgetType = "slot" | "widget" | "dialog" | "trigger" | "service" | "row";
 
 export type LifecyclePhase = "starting" | "restored" | "ready";
 

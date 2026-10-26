@@ -7,6 +7,7 @@ import type { WidgetComponent, WidgetProps } from "./composer.ts";
 import type { DialogComponent, DialogProps } from "./dialogs.ts";
 import { ExtensionWidget, WidgetBoundary } from "./extension-widget.tsx";
 import type { FrontEndService } from "./extensions.ts";
+import type { RowComponent } from "./rows.ts";
 import type { SlotComponent, SlotProps } from "./slots.ts";
 
 export interface WidgetFailure {
@@ -16,6 +17,7 @@ export interface WidgetFailure {
 
 export interface WidgetSet {
 	readonly slots: readonly SlotComponent[];
+	readonly rows: readonly RowComponent[];
 	readonly widgets: readonly WidgetComponent[];
 	readonly dialogs: readonly DialogComponent[];
 	readonly triggers: readonly ComposerTriggerComponent[];
@@ -57,6 +59,7 @@ function wrap<P extends object>(entry: WidgetEntry, component: ComponentType<P>,
 
 export async function loadWidgets(entries: readonly WidgetEntry[]): Promise<WidgetSet> {
 	const slots: SlotComponent[] = [];
+	const rows: RowComponent[] = [];
 	const widgets: WidgetComponent[] = [];
 	const dialogs: DialogComponent[] = [];
 	const triggers: ComposerTriggerComponent[] = [];
@@ -73,6 +76,7 @@ export async function loadWidgets(entries: readonly WidgetEntry[]): Promise<Widg
 			if (entry.type === "slot")
 				slots.push({ id: entry.id, component: wrap<SlotProps>(entry, asComponent<ExtensionWidgetProps>(value, entry) as unknown as ComponentType<SlotProps>, true) });
 			else if (entry.type === "widget") widgets.push({ id: entry.id, component: wrap<WidgetProps>(entry, asComponent<WidgetProps>(value, entry), true) });
+			else if (entry.type === "row") rows.push({ id: entry.id, component: wrap<SlotProps>(entry, asComponent<SlotProps>(value, entry), true) });
 			else if (entry.type === "dialog") dialogs.push({ id: entry.id, component: wrap<DialogProps>(entry, asComponent<DialogProps>(value, entry), false) });
 			else if (entry.type === "trigger") triggers.push(asTrigger(value, entry));
 			else services.push(asService(value, entry));
@@ -83,5 +87,5 @@ export async function loadWidgets(entries: readonly WidgetEntry[]): Promise<Widg
 		}
 	}
 
-	return { slots, widgets, dialogs, triggers, services, failures };
+	return { slots, rows, widgets, dialogs, triggers, services, failures };
 }

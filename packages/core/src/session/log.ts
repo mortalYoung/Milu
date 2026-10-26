@@ -6,10 +6,16 @@ import type { SeqEntry } from "@milu/protocol";
 import type { ExecutionService } from "../services/execution.ts";
 import { originWindow, projectOrigin, type OriginWindow } from "./origin.ts";
 import { projectSlice, projectSliceItems, type SliceItem } from "./slice.ts";
+import { textOf } from "./text.ts";
 
 function stripUndefined<T>(value: T): T {
 	if (value === undefined) return value;
 	return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function toRecord(message: AgentMessage): AgentMessage {
+	if (message.role !== "user") return message;
+	return { ...message, content: textOf(message.content) } as AgentMessage;
 }
 
 export class SessionLog {
@@ -18,6 +24,7 @@ export class SessionLog {
 	private _session: Session<JsonlSessionMetadata> | null = null;
 	private _opening: Promise<Session<JsonlSessionMetadata>> | null = null;
 	private _queue: Promise<void> = Promise.resolve();
+	private _disposed = false;
 	private readonly _emitter = new Emitter<SeqEntry>();
 
 	constructor(
@@ -28,10 +35,11 @@ export class SessionLog {
 	}
 
 	async open(): Promise<void> {
-		if (this._session) return;
+		if (this._disposed || this._session) return;
 		this._opening ??= this._open();
 		try {
-			this._session = await this._opening;
+			const opened = await this._opening;
+			if (!this._disposed) this._session = opened;
 		} finally {
 			this._opening = null;
 		}
@@ -49,19 +57,29 @@ export class SessionLog {
 	}
 
 	async reset(): Promise<void> {
+		if (this._disposed) return;
 		await this.open();
 		await this._queue;
+		if (this._disposed) return;
 		this._session = await this._repo().create({ cwd: this.root });
 	}
 
 	async append(message: AgentMessage): Promise<string | undefined> {
-		await this.open();
-		return this._enqueue(() => this._sessionOrThrow().appendMessage(stripUndefined(message)));
+		if (this._disposed) return undefined;
+		return this._enqueue(async () => {
+			await this.open();
+			if (this._disposed) return undefined;
+			return this._sessionOrThrow().appendMessage(stripUndefined(toRecord(message)));
+		});
 	}
 
 	async record(type: string, data?: unknown): Promise<string | undefined> {
-		await this.open();
-		return this._enqueue(() => this._sessionOrThrow().appendCustomEntry(type, data === undefined ? undefined : stripUndefined(data)));
+		if (this._disposed) return undefined;
+		return this._enqueue(async () => {
+			await this.open();
+			if (this._disposed) return undefined;
+			return this._sessionOrThrow().appendCustomEntry(type, data === undefined ? undefined : stripUndefined(data));
+		});
 	}
 
 	async flush(): Promise<void> {
@@ -106,6 +124,9 @@ export class SessionLog {
 	}
 
 	dispose(): void {
+		this._disposed = true;
+		this._session = null;
+		this._opening = null;
 		this._emitter.dispose();
 	}
 
@@ -113,10 +134,11 @@ export class SessionLog {
 		return new JsonlSessionRepo({ fs: this._executionService.env(this.root), sessionsRoot: this.root });
 	}
 
-	private _enqueue(run: () => Promise<string>): Promise<string | undefined> {
+	private _enqueue(run: () => Promise<string | undefined>): Promise<string | undefined> {
 		const result = this._queue
-			.then(run)
+			.then(async () => (this._disposed ? undefined : run()))
 			.then(async (id) => {
+				if (id === undefined || this._disposed) return id;
 				const entry = await this._sessionOrThrow()
 					.getEntry(id)
 					.catch(() => undefined);

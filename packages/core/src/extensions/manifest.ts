@@ -5,7 +5,7 @@ import type { WidgetType } from "@milu/protocol";
 
 export const EXTENSION_API_VERSION = 1;
 
-const WIDGET_TYPES: readonly WidgetType[] = ["slot", "widget", "dialog", "trigger", "service"];
+const WIDGET_TYPES: readonly WidgetType[] = ["slot", "widget", "dialog", "trigger", "service", "row"];
 
 export interface ManifestWidget {
 	readonly id: string;

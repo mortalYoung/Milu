@@ -39,9 +39,11 @@ const trashExtension: Extension = {
 				};
 			},
 			run: async ({ session, sessions }) => {
-				if (!session) throw new Error("trash.session needs a session");
-				const forks = (await sessions?.forksOf(session.name)) ?? [];
-				for (const name of [session.name, ...forks]) await moveToTrash(sessions?.get(name).root ?? session.root);
+				if (!session || !sessions) throw new Error("trash.session needs a session");
+				const names = [session.name, ...(await sessions.forksOf(session.name))];
+				const roots = names.map((name) => sessions.get(name).root);
+				for (const name of names) await sessions.close(name);
+				for (const root of roots) await moveToTrash(root);
 			},
 		});
 	},

@@ -29,6 +29,8 @@ import {
 	Connection,
 	IConnection,
 	type Host,
+	RowRegistry,
+	RowRegistryId,
 	SlotsService,
 	ISlotsService,
 	SessionListService,
@@ -96,6 +98,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	services.set(ITranscriptService, new SyncDescriptor(TranscriptService));
 	services.set(IWelcomeService, new SyncDescriptor(WelcomeService));
 	services.set(ISlotsService, new SyncDescriptor(SlotsService, [set.slots]));
+	services.set(RowRegistryId, new SyncDescriptor(RowRegistry, [set.rows]));
 	services.set(IColumnsService, new SyncDescriptor(ColumnsService));
 	services.set(IWorkbenchService, new SyncDescriptor(WorkbenchService));
 	services.set(SurfaceRegistryId, new SyncDescriptor(SurfaceRegistry, [deps.components ?? []]));
@@ -119,6 +122,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	const transcript = container.get(ITranscriptService);
 	const welcome = container.get(IWelcomeService);
 	const slots = container.get(ISlotsService);
+	const rows = container.get(RowRegistryId);
 	const columns = container.get(IColumnsService);
 	const workbench = container.get(IWorkbenchService);
 	const surfaces = container.get(SurfaceRegistryId);
@@ -183,6 +187,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 			picker,
 			surfaces,
 			slots,
+			rows,
 			markdown: deps.markdown,
 			layout,
 			get: (id) => container.get(id),
@@ -198,9 +203,17 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 					if (name) void transcript.open(name);
 				}),
 			});
+			disposables.add({
+				dispose: sessions.store.subscribe(() => {
+					const dropped = transcript.retain(sessions.store.getState().rows);
+					const name = selection.store.getState().selected;
+					if (name !== "" && dropped.includes(name)) void transcript.open(name);
+				}),
+			});
 			disposables.add(connection.onSnapshot(apply));
 			disposables.add(connection.onLink((up) => transcript.setLinked(up)));
 			disposables.add(connection.onEntry(({ session, entry }) => transcript.append(session, entry)));
+			disposables.add(connection.onPartial(({ session, message }) => transcript.setPartial(session, message)));
 			disposables.add(
 				connection.onLive((event) => {
 					if (event.type === "lifecycle") {
@@ -223,8 +236,11 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 						composer.apply(event.session, event.mode);
 						return;
 					}
+					if (event.type !== "status") return;
 					sessions.patchStatus(event.session, event.running, event.error);
+					transcript.markRunning(event.session, event.running);
 					if (!event.running) {
+						transcript.clearPartial(event.session);
 						void sessions.refresh();
 						if (event.session === selection.store.getState().selected) void composer.load(event.session);
 					}

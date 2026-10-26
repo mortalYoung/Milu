@@ -1,5 +1,5 @@
 import { createServiceId, type Service } from "@milu/di";
-import type { SeqEntry } from "@milu/protocol";
+import type { PartialMessage, SeqEntry } from "@milu/protocol";
 import { createStore } from "zustand/vanilla";
 
 import { type Connection, IConnection } from "./connection.ts";
@@ -12,15 +12,24 @@ export interface TranscriptState {
 	readonly errors: Readonly<Record<string, string>>;
 	readonly loading: Readonly<Record<string, boolean>>;
 	readonly focused: { readonly id: string; readonly at: number } | null;
+	readonly partials: Readonly<Record<string, PartialMessage>>;
+	readonly started: Readonly<Record<string, number>>;
 }
 
-const EMPTY: TranscriptState = { logs: {}, hasMore: {}, loadingOlder: {}, drafts: {}, errors: {}, loading: {}, focused: null };
+const EMPTY: TranscriptState = { logs: {}, hasMore: {}, loadingOlder: {}, drafts: {}, errors: {}, loading: {}, focused: null, partials: {}, started: {} };
 const NO_ENTRIES: readonly SeqEntry[] = [];
+
+function without<T>(record: Readonly<Record<string, T>>, names: readonly string[]): Record<string, T> {
+	const next = { ...record };
+	for (const name of names) delete next[name];
+	return next;
+}
 
 export class TranscriptService implements Service {
 	readonly store = createStore<TranscriptState>()(() => EMPTY);
 
 	private readonly _loaded = new Set<string>();
+	private _generations: Readonly<Record<string, number>> = {};
 
 	constructor(@IConnection private readonly _connection: Connection) {}
 
@@ -57,6 +66,33 @@ export class TranscriptService implements Service {
 	async reload(session: string): Promise<void> {
 		this._loaded.delete(session);
 		await this.open(session);
+	}
+
+	retain(rows: readonly { readonly name: string; readonly createdAt: number }[]): readonly string[] {
+		const live = new Map(rows.map((row) => [row.name, row.createdAt] as const));
+		const dropped: string[] = [];
+		const replaced: string[] = [];
+		for (const [name, generation] of Object.entries(this._generations)) {
+			if (live.get(name) === generation) continue;
+			dropped.push(name);
+			if (live.has(name)) replaced.push(name);
+		}
+		this._generations = Object.fromEntries(live);
+		if (dropped.length === 0) return dropped;
+		for (const name of dropped) this._loaded.delete(name);
+		this.store.setState(
+			(current) => ({
+				...current,
+				logs: without(current.logs, dropped),
+				hasMore: without(current.hasMore, dropped),
+				loadingOlder: without(current.loadingOlder, dropped),
+				errors: without(current.errors, dropped),
+				partials: without(current.partials, dropped),
+				drafts: without(current.drafts, replaced),
+			}),
+			true,
+		);
+		return dropped;
 	}
 
 	async loadOlder(session: string): Promise<void> {
@@ -104,7 +140,45 @@ export class TranscriptService implements Service {
 		await this._connection.request("abort", {});
 	}
 
+	markRunning(session: string, running: boolean): void {
+		this.store.setState((current) => {
+			if (!running) {
+				if (!(session in current.started)) return current;
+				const started = { ...current.started };
+				delete started[session];
+				return { ...current, started };
+			}
+			if (session in current.started) return current;
+			return { ...current, started: { ...current.started, [session]: Date.now() } };
+		}, true);
+	}
+
+	partial(session: string): PartialMessage | undefined {
+		return this.store.getState().partials[session];
+	}
+
+	setPartial(session: string, message: PartialMessage): void {
+		this.store.setState(
+			(current) => ({
+				...current,
+				partials: { ...current.partials, [session]: message },
+				started: session in current.started ? current.started : { ...current.started, [session]: Date.now() },
+			}),
+			true,
+		);
+	}
+
+	clearPartial(session: string): void {
+		this.store.setState((current) => {
+			if (!(session in current.partials)) return current;
+			const partials = { ...current.partials };
+			delete partials[session];
+			return { ...current, partials };
+		}, true);
+	}
+
 	append(session: string, entry: SeqEntry): void {
+		if (entry.entry.type === "message") this.clearPartial(session);
 		this.store.setState((current) => {
 			const existing = current.logs[session] ?? NO_ENTRIES;
 			if (existing.some((seen) => seen.seq === entry.seq)) return current;
@@ -124,7 +198,9 @@ export class TranscriptService implements Service {
 		this.store.setState((current) => ({ ...current, errors: { ...current.errors, [session]: message } }), true);
 	}
 
-	dispose(): void {}
+	dispose(): void {
+		this.store.setState({ ...EMPTY }, true);
+	}
 
 	private clearError(session: string): void {
 		this.store.setState((current) => {

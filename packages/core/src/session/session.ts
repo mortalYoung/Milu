@@ -30,6 +30,7 @@ import {
 import { SessionLog } from "./log.ts";
 import type { OriginWindow } from "./origin.ts";
 import { projectSlice, type SliceItem } from "./slice.ts";
+import { textOf } from "./text.ts";
 import { type ContextBreakdown, priceMessages, totalTokens } from "./tokens.ts";
 
 const DEFAULT_THINKING_LEVEL = "high";
@@ -42,14 +43,6 @@ interface LastVisible {
 	text: string;
 	kind: PreviewKind;
 	time: number;
-}
-
-function textOf(content: unknown): string {
-	if (typeof content === "string") return content;
-	if (!Array.isArray(content)) return "";
-	return content
-		.map((block) => (block && typeof block === "object" && (block as { type?: string }).type === "text" ? String((block as { text?: unknown }).text ?? "") : ""))
-		.join("");
 }
 
 function stampOf(entry: Entry, data: { timestamp?: unknown }): number {
@@ -212,6 +205,10 @@ export class Session {
 
 	async rawEntries(): Promise<Entry[]> {
 		return this._log.rawEntries();
+	}
+
+	async flush(): Promise<void> {
+		return this._log.flush();
 	}
 
 	async deliver(
@@ -516,8 +513,9 @@ export class Session {
 	// ——— lifecycle ———
 
 	async close(): Promise<void> {
-		this._disposables.dispose();
+		this._loop?.stop();
 		await this._log.flush();
+		this._disposables.dispose();
 	}
 
 	dispose(): void {

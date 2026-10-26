@@ -1,5 +1,5 @@
 import { DisposableStore, createServiceId, Emitter, type Event, type Service } from "@milu/di";
-import type { LifecyclePhase, LiveEvent, MethodName, Params, Result, SeqEntry, Snapshot } from "@milu/protocol";
+import type { LifecyclePhase, LiveEvent, MethodName, Params, PartialMessage, Result, SeqEntry, Snapshot } from "@milu/protocol";
 import { createStore } from "zustand/vanilla";
 
 import type { ServerEvent, Transport } from "./transport.ts";
@@ -7,12 +7,14 @@ import type { ServerEvent, Transport } from "./transport.ts";
 export class Connection implements Service {
 	readonly store = createStore<{ linked: boolean; phase: LifecyclePhase; pending: Readonly<Record<string, number>> }>()(() => ({ linked: false, phase: "starting", pending: {} }));
 	readonly onEntry: Event<{ session: string; entry: SeqEntry }>;
+	readonly onPartial: Event<{ session: string; message: PartialMessage }>;
 	readonly onLive: Event<LiveEvent>;
 	readonly onSnapshot: Event<Snapshot>;
 	readonly onLink: Event<boolean>;
 
 	private readonly _transport: Transport;
 	private readonly _entry = new Emitter<{ session: string; entry: SeqEntry }>();
+	private readonly _partial = new Emitter<{ session: string; message: PartialMessage }>();
 	private readonly _live = new Emitter<LiveEvent>();
 	private readonly _snapshot = new Emitter<Snapshot>();
 	private readonly _link = new Emitter<boolean>();
@@ -22,10 +24,12 @@ export class Connection implements Service {
 	constructor(transport: Transport) {
 		this._transport = transport;
 		this.onEntry = this._entry.event;
+		this.onPartial = this._partial.event;
 		this.onLive = this._live.event;
 		this.onSnapshot = this._snapshot.event;
 		this.onLink = this._link.event;
 		this._disposables.add(this._entry);
+		this._disposables.add(this._partial);
 		this._disposables.add(this._live);
 		this._disposables.add(this._snapshot);
 		this._disposables.add(this._link);
@@ -86,6 +90,10 @@ export class Connection implements Service {
 		}
 		if (event.type === "entry") {
 			this._entry.fire({ session: event.session, entry: event.entry });
+			return;
+		}
+		if (event.type === "partial") {
+			this._partial.fire({ session: event.session, message: event.message });
 			return;
 		}
 		this._live.fire(event.event);

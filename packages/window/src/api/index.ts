@@ -26,4 +26,4 @@ export {
 	workspaceLabel,
 	type NextRunParts,
 } from "../utils/chat.ts";
-export { formatHistoryTime, projectView, replyRows } from "../view.ts";
+export { formatHistoryTime, liveRowsOf, projectView, replyRows, rowKindOf, type DisplayRow, type StepGroup, type ViewItem } from "../view.ts";

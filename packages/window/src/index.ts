@@ -16,6 +16,7 @@ export { SelectionService, ISelectionService } from "./selection.ts";
 export { SessionListService, ISessionListService } from "./sessions.ts";
 export { PickerService, IPickerService } from "./picker.ts";
 export { SlotsService, ISlotsService, type SlotComponent } from "./slots.ts";
+export { RowRegistry, RowRegistryId, type RowComponent } from "./rows.ts";
 export { createServiceId, type Service, type ServiceId } from "@milu/di";
 export { SurfaceRegistry, SurfaceRegistryId, type Host, type SurfaceComponent, type SurfaceProps } from "./surfaces.ts";
 export { TranscriptService, ITranscriptService, type TranscriptState } from "./transcripts.ts";
@@ -43,13 +44,14 @@ export {
 	formatHistoryTime,
 	layoutView,
 	projectView,
-	replyRows,
-	stepSummary,
+	liveRowsOf,
+	rowKindOf,
 	type DisplayRow,
+	type StepGroup,
+	replyRows,
 	type EscalationStatus,
 	type LogEntry,
 	type ReplyRow,
-	type StepGroup,
 	type ToolStatus,
 	type ViewEscalation,
 	type ViewItem,

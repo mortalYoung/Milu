@@ -17,11 +17,14 @@ import { BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent, type OpenDialo
 import { widgetUrl } from "./widget-url.ts";
 
 const DIALOG_TIMEOUT_MS = 5 * 60_000;
+/** Tokens arrive far faster than a frame; keep the latest partial per session and flush on this beat. */
+const PARTIAL_INTERVAL_MS = 32;
 
 interface ServerEvent {
-	readonly type: "entry" | "live";
+	readonly type: "entry" | "live" | "partial";
 	readonly session?: string;
 	readonly entry?: unknown;
+	readonly message?: unknown;
 	readonly event?: LiveEvent;
 }
 
@@ -34,6 +37,8 @@ function reason(error: unknown): string {
 export class IpcServer {
 	private readonly _windows = new Set<WebContents>();
 	private readonly _askings = new Map<string, { settle: (value: unknown) => void }>();
+	private readonly _partials = new Map<string, unknown>();
+	private _partialTimer: ReturnType<typeof setTimeout> | null = null;
 	private readonly _cleanup: (() => void)[] = [];
 	private readonly _handlers: Handlers;
 	private _started = false;
@@ -73,14 +78,23 @@ export class IpcServer {
 			this._backend.sessions.onEntry(({ session, entry }) => this._broadcast({ type: "entry", session, entry })),
 			this._backend.layout.onChange((state) => this._broadcast({ type: "live", event: { type: "layout", ...state } })),
 			this._backend.sessions.onLoopEvent(({ session, event }) => {
-				if (event.type === "message_update") return;
+				if (event.type === "message_update") {
+					this._queuePartial(session, event.message);
+					return;
+				}
 				if (event.type === "run_start") this._broadcast({ type: "live", event: { type: "status", session, running: true } });
 				if (event.type === "run_end") {
-					this._broadcast({ type: "live", event: { type: "status", session, running: false, ...(event.error ? { error: event.error } : {}) } });
+					this._partials.delete(session);
+					const status = { type: "status" as const, session, running: false, ...(event.error ? { error: event.error } : {}) };
+					void this._backend.sessions
+						.get(session)
+						.flush()
+						.then(() => this._broadcast({ type: "live", event: status }));
 				}
 			}),
 			this._backend.selection.onChange((selected) => this._broadcast({ type: "live", event: { type: "selection", selected } })),
 			this._backend.composer.onModeChange(({ session, mode }) => this._broadcast({ type: "live", event: { type: "composer", session, mode } })),
+			this._backend.settings.onChange(() => this._broadcast({ type: "live", event: { type: "settings" } })),
 			this._backend.lifecycle.onChange((phase) => this._broadcast({ type: "live", event: { type: "lifecycle", phase } })),
 		];
 		for (const subscription of subscriptions) this._cleanup.push(() => subscription.dispose());
@@ -92,6 +106,9 @@ export class IpcServer {
 		ipcMain.removeHandler("milu:connect");
 		ipcMain.removeHandler("milu:request");
 		for (const cleanup of this._cleanup.splice(0)) cleanup();
+		if (this._partialTimer) clearTimeout(this._partialTimer);
+		this._partialTimer = null;
+		this._partials.clear();
 		for (const asking of this._askings.values()) asking.settle(null);
 		this._askings.clear();
 		this._windows.clear();
@@ -117,6 +134,16 @@ export class IpcServer {
 			return { ok: false, error: { code: "handler_failed", message: reason(error) } };
 		}
 	};
+
+	private _queuePartial(session: string, message: unknown): void {
+		this._partials.set(session, message);
+		if (this._partialTimer) return;
+		this._partialTimer = setTimeout(() => {
+			this._partialTimer = null;
+			for (const [name, latest] of this._partials) this._broadcast({ type: "partial", session: name, message: latest });
+			this._partials.clear();
+		}, PARTIAL_INTERVAL_MS);
+	}
 
 	private _send(sender: WebContents, message: ServerEvent): void {
 		if (sender.isDestroyed()) return;

@@ -55,6 +55,17 @@ const FIELDS: readonly Field[] = [
 		description: "Workspace file read into the reminders of every run.",
 		mono: true,
 	},
+	{
+		id: "workStepsDisplay",
+		category: "general",
+		kind: "select",
+		title: "Work steps display",
+		description: "Flat shows every thought and tool call; collapsed folds the whole step behind its header.",
+		options: [
+			{ value: "flat", label: "flat" },
+			{ value: "collapsed", label: "collapsed" },
+		],
+	},
 	{ id: "rememberSession", category: "general", kind: "switch", title: "Remember Last Session", description: "Reopen the last chat and window size on launch." },
 	{
 		id: "shellContinuous",

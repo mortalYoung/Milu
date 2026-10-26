@@ -1,8 +1,8 @@
-import { LOG_EVENTS, type SeqEntry } from "@milu/protocol";
+import { LOG_EVENTS, type PartialMessage, type SeqEntry } from "@milu/protocol";
 
 export type LogEntry = SeqEntry["entry"];
 
-export type ToolStatus = "running" | "success" | "error";
+export type ToolStatus = "pending" | "running" | "success" | "error";
 export type EscalationStatus = "pending" | "approved" | "rejected" | "dropped";
 
 export interface ViewTool {
@@ -45,18 +45,12 @@ export interface ViewItem {
 	schedule?: ViewSchedule;
 	thinking?: { text: string; redacted?: boolean };
 	tool?: ViewTool;
-	say?: true;
 	stepMs?: number;
+	say?: true;
+	live?: true;
 	escalation?: ViewEscalation;
 	shell?: { readonly output: string; readonly exitCode?: number };
 }
-
-export interface StepGroup {
-	readonly key: string;
-	readonly rows: readonly ViewItem[];
-}
-
-export type DisplayRow = { readonly item: ViewItem } | { readonly step: StepGroup };
 
 const WEEKDAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
 const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
@@ -319,6 +313,80 @@ function rewindVisit(entry: LogEntry, out: ViewItem[]): void {
 	}
 }
 
+function attachPeerPosts(entries: readonly LogEntry[], out: ViewItem[]): void {
+	for (const entry of entries) {
+		if (entry.type !== "custom" || entry.customType !== LOG_EVENTS.sendMessage) continue;
+		if (sendMessageVia(entry) !== "harness") continue;
+		const data = entry.data as { to?: unknown; text?: unknown } | undefined;
+		if (typeof data?.to !== "string") continue;
+		const spoken = typeof data.text === "string" ? data.text : "";
+		const target = findLast(out, (item) => item.kind === "assistant" && item.text === spoken) ?? findLast(out, (item) => item.kind === "assistant" && item.text !== "");
+		if (target) target.to = data.to;
+	}
+}
+
+const VISITORS: Readonly<Record<string, (entry: LogEntry, out: ViewItem[]) => void>> = {
+	"role:user": userVisit,
+	"role:assistant": assistantVisit,
+	[LOG_EVENTS.toolResult]: toolResultVisit,
+	[LOG_EVENTS.sendMessage]: sendMessageVisit,
+	[LOG_EVENTS.agentEnd]: agentEndVisit,
+	[LOG_EVENTS.shellDone]: shellDoneVisit,
+	[LOG_EVENTS.escalationRequest]: escalationVisit,
+	[LOG_EVENTS.escalationDecision]: escalationDecisionVisit,
+	[LOG_EVENTS.compaction]: compactionVisit,
+	[LOG_EVENTS.scheduleRun]: scheduleRunVisit,
+	[LOG_EVENTS.rewind]: rewindVisit,
+};
+
+export function rowKindOf(item: ViewItem): string {
+	if (item.tool) return "tool";
+	if (item.thinking) return "thinking";
+	if (item.say) return "say";
+	return item.kind;
+}
+
+/** The in-flight assistant message, laid out exactly as the finished rows will be: steps above, the words last. */
+export function liveRowsOf(message: PartialMessage, time: number): DisplayRow[] {
+	if (message.role !== "assistant") return [];
+	const blocks = Array.isArray(message.content) ? (message.content as AssistantBlock[]) : [];
+	const items: ViewItem[] = [];
+	let words = -1;
+	blocks.forEach((block, index) => {
+		const id = `live-${index}`;
+		if (block.type === "text") {
+			const text = String(block.text ?? "").trim();
+			if (text === "") return;
+			items.push({ id, kind: "assistant", text, time, live: true });
+			words = items.length - 1;
+			return;
+		}
+		if (block.type === "thinking") {
+			const text = String(block.thinking ?? "").trim();
+			if (text === "" && block.redacted !== true) return;
+			items.push({ id, kind: "assistant", text: "", time, live: true, thinking: { text, ...(block.redacted === true ? { redacted: true } : {}) } });
+			return;
+		}
+		if (block.type === "toolCall") {
+			const name = String(block.name ?? "");
+			if (name === "") return;
+			const args = stringifyArgs(block.arguments);
+			items.push({
+				id,
+				kind: "assistant",
+				text: "",
+				time,
+				live: true,
+				tool: { callId: String(block.id ?? ""), name, summary: args === "{}" ? "" : oneLine(args), args, status: "pending" },
+			});
+		}
+	});
+	items.forEach((item, index) => {
+		if (index !== words && item.text !== "") item.say = true;
+	});
+	return layoutView(items);
+}
+
 function markProcessText(entries: readonly LogEntry[], out: readonly ViewItem[]): void {
 	const textItems = new Map<string, number[]>();
 	out.forEach((item, index) => {
@@ -349,32 +417,6 @@ function markProcessText(entries: readonly LogEntry[], out: readonly ViewItem[])
 	flush();
 }
 
-function attachPeerPosts(entries: readonly LogEntry[], out: ViewItem[]): void {
-	for (const entry of entries) {
-		if (entry.type !== "custom" || entry.customType !== LOG_EVENTS.sendMessage) continue;
-		if (sendMessageVia(entry) !== "harness") continue;
-		const data = entry.data as { to?: unknown; text?: unknown } | undefined;
-		if (typeof data?.to !== "string") continue;
-		const spoken = typeof data.text === "string" ? data.text : "";
-		const target = findLast(out, (item) => item.kind === "assistant" && item.text === spoken) ?? findLast(out, (item) => item.kind === "assistant" && item.text !== "");
-		if (target) target.to = data.to;
-	}
-}
-
-const VISITORS: Readonly<Record<string, (entry: LogEntry, out: ViewItem[]) => void>> = {
-	"role:user": userVisit,
-	"role:assistant": assistantVisit,
-	[LOG_EVENTS.toolResult]: toolResultVisit,
-	[LOG_EVENTS.sendMessage]: sendMessageVisit,
-	[LOG_EVENTS.agentEnd]: agentEndVisit,
-	[LOG_EVENTS.shellDone]: shellDoneVisit,
-	[LOG_EVENTS.escalationRequest]: escalationVisit,
-	[LOG_EVENTS.escalationDecision]: escalationDecisionVisit,
-	[LOG_EVENTS.compaction]: compactionVisit,
-	[LOG_EVENTS.scheduleRun]: scheduleRunVisit,
-	[LOG_EVENTS.rewind]: rewindVisit,
-};
-
 export function projectView(entries: readonly LogEntry[]): ViewItem[] {
 	const out: ViewItem[] = [];
 	for (const entry of entries) VISITORS[entryKey(entry)]?.(entry, out);
@@ -383,7 +425,12 @@ export function projectView(entries: readonly LogEntry[]): ViewItem[] {
 	return out;
 }
 
-const stepKeyOf = (item: ViewItem): string | null => (item.tool || item.thinking || item.say ? item.id.replace(/-\d{1,2}$/, "") : null);
+export interface StepGroup {
+	readonly key: string;
+	readonly rows: readonly ViewItem[];
+}
+
+export type DisplayRow = { readonly item: ViewItem } | { readonly step: StepGroup };
 
 function foldSteps(items: readonly ViewItem[]): DisplayRow[] {
 	const out: DisplayRow[] = [];
@@ -404,24 +451,6 @@ function foldSteps(items: readonly ViewItem[]): DisplayRow[] {
 	}
 	flush();
 	return out;
-}
-
-export function stepSummary(rows: readonly ViewItem[]): readonly { text: string; fail?: boolean }[] {
-	const tools = rows.filter((row) => row.tool).length;
-	const failed = rows.filter((row) => row.tool?.status === "error").length;
-	const perStep = new Map<string, number>();
-	for (const row of rows) {
-		const key = stepKeyOf(row);
-		if (key == null || row.stepMs == null || perStep.has(key)) continue;
-		perStep.set(key, row.stepMs);
-	}
-	const ms = [...perStep.values()].reduce((total, value) => total + value, 0);
-	const parts: { text: string; fail?: boolean }[] = [];
-	if (ms >= 1000) parts.push({ text: `${(ms / 1000).toFixed(1)}s` });
-	if (tools > 0) parts.push({ text: `${tools} tool${tools === 1 ? "" : "s"}` });
-	if (failed > 0) parts.push({ text: `${failed} failed`, fail: true });
-	if (parts.length === 0) parts.push({ text: `${rows.length} thought${rows.length === 1 ? "" : "s"}` });
-	return parts;
 }
 
 export function layoutView(items: readonly ViewItem[]): DisplayRow[] {
