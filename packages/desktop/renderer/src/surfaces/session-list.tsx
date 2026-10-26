@@ -1,5 +1,5 @@
 import type { ContributionItem, SessionRow } from "@milu/protocol";
-import { activityAt, byPinThenRecency, filterSessions, formatHotkey, type Host, listTime, previewFor, type SurfaceProps, workspaceLabel } from "@milu/window";
+import { activityAt, byPinThenRecency, filterSessions, formatHotkey, type Host, Kbd, KbdGroup, listTime, previewFor, type SurfaceProps, workspaceLabel } from "@milu/window";
 import { Tip } from "@milu/window/tooltip";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
@@ -353,16 +353,11 @@ export function SessionListSurface(props: SurfaceProps) {
 								>
 									<IconByName name={item.icon} size={15} />
 									{keys === "" ? null : (
-										<span className="ml-auto flex items-center gap-1">
+										<KbdGroup className="ml-auto">
 											{keys.split("").map((key, index) => (
-												<kbd
-													key={index}
-													className="grid h-4 min-w-4 place-items-center rounded-[3px] border border-line bg-surface px-1 font-sans text-[10px] leading-none text-muted"
-												>
-													{key}
-												</kbd>
+												<Kbd key={index}>{key}</Kbd>
 											))}
-										</span>
+										</KbdGroup>
 									)}
 								</button>
 							</Tip>

@@ -1,4 +1,4 @@
-import type { DialogProps } from "@milu/window/api";
+import { Kbd, KbdGroup, type DialogProps } from "@milu/window/api";
 import { useState } from "react";
 
 const NAME_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
@@ -7,7 +7,6 @@ const FIELD =
 	"h-10 w-full rounded-md border border-line bg-surface px-3 py-2 font-sans text-[14px] text-ink transition-colors duration-[120ms] placeholder:text-muted focus-visible:border-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ink/20 aria-invalid:border-signal";
 const BUTTON =
 	"inline-flex h-9 cursor-pointer items-center justify-center rounded-lg px-3 font-sans text-[12px] font-medium whitespace-nowrap transition-[background-color,transform] duration-150 focus-visible:outline-2 focus-visible:outline-ink focus-visible:[outline-offset:2px] active:scale-[0.97]";
-const KBD = "inline-flex h-5 min-w-5 items-center justify-center rounded-[4px] bg-hover px-1 font-sans text-[12px] font-medium text-muted";
 
 export function CreateSessionDialog(props: DialogProps) {
 	const [name, setName] = useState("");
@@ -136,10 +135,10 @@ export function CreateSessionDialog(props: DialogProps) {
 			</div>
 
 			<footer className="flex items-center gap-2 border-t border-line px-5 py-3.5">
-				<span className="inline-flex items-center gap-1">
-					<kbd className={KBD}>⌘</kbd>
-					<kbd className={KBD}>↵</kbd>
-				</span>
+				<KbdGroup>
+					<Kbd>⌘</Kbd>
+					<Kbd>↵</Kbd>
+				</KbdGroup>
 				<span className="flex-1" />
 				<button type="button" className={`${BUTTON} border-0 bg-transparent text-ink hover:bg-hover`} onClick={() => props.close(null)}>
 					{dirty ? "Discard" : "Cancel"}

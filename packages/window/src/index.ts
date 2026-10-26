@@ -22,6 +22,7 @@ export { TranscriptService, ITranscriptService, type TranscriptState } from "./t
 export { WelcomeService, IWelcomeService } from "./welcome.ts";
 export { loadWidgets, type WidgetFailure, type WidgetSet } from "./widgets.tsx";
 export { WorkbenchService, IWorkbenchService } from "./workbench.ts";
+export { Kbd, KbdGroup } from "./api/kbd.tsx";
 export {
 	activityAt,
 	byPinThenRecency,

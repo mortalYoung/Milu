@@ -1,8 +1,7 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { type AgentHookContext, type AgentReminder, EVENTS, type Extension, expandHome, IHookService, reminderText, type SettingsService } from "@milu/core";
+import { type AgentHookContext, type AgentReminder, EVENTS, type Extension, expandHome, IHookService, reminderText } from "@milu/core";
 
 import { IPermissionService } from "../permission/index.ts";
 import { type SkillsService, ISkillsService } from "../skills/service/index.ts";
@@ -57,19 +56,6 @@ async function contextChanged(context: AgentHookContext, skills: SkillsService, 
 	});
 }
 
-async function instructionsChanged(context: AgentHookContext, settings: SettingsService): Promise<void> {
-	const workspace = await context.session.workspace();
-	let agentMd: string | null = null;
-	if (workspace) {
-		try {
-			agentMd = await readFile(join(expandHome(workspace.path), settings.get().detect_instructions_file || "AGENTS.md"), "utf8");
-		} catch {
-			agentMd = null;
-		}
-	}
-	injectUnlessCarried(context, { type: EVENTS.instructionsChanged, data: { agentMd } });
-}
-
 const remindersExtension: Extension = {
 	id: "reminders",
 	apiVersion: 1,
@@ -80,7 +66,6 @@ const remindersExtension: Extension = {
 		const permission = context.get(IPermissionService);
 		context.disposables.add(hooks.on("beforeRun", timeGap));
 		context.disposables.add(hooks.on("beforeRequest", (each) => contextChanged(each, skills, permission.mode())));
-		context.disposables.add(hooks.on("beforeRequest", (each) => instructionsChanged(each, context.settings)));
 	},
 };
 

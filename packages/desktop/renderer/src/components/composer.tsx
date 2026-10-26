@@ -1,5 +1,5 @@
 import { LOG_EVENTS, type ComposerWidget } from "@milu/protocol";
-import { detectComposerTrigger, type ComposerTriggerToken, type Host } from "@milu/window";
+import { detectComposerTrigger, type ComposerTriggerToken, type Host, Kbd } from "@milu/window";
 import { Tip } from "@milu/window/tooltip";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
@@ -313,8 +313,4 @@ export function Composer(props: { host: Host }) {
 			</div>
 		</form>
 	);
-}
-
-function Kbd(props: { children: string }) {
-	return <kbd className="composer-kbd">{props.children}</kbd>;
 }

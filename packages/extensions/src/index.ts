@@ -20,6 +20,7 @@ export const BUILTIN: Record<string, () => Promise<{ default: Extension }>> = {
 	fetch: () => import("./fetch/index.ts"),
 	skills: () => import("./skills/index.ts"),
 	reminders: () => import("./reminders/index.ts"),
+	instructions: () => import("./instructions/index.ts"),
 	replies: () => import("./replies/index.ts"),
 	runtime: () => import("./runtime/index.ts"),
 	models: () => import("./models/index.ts"),

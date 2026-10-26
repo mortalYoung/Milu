@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @source "../../../extensions/src";
+@source "../../../window/src";
 
 @theme {
 	--color-canvas: var(--canvas);
@@ -1752,22 +1753,6 @@ body.pane-dragging {
 	gap: 5px;
 }
 
-.composer-kbd {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	min-width: 20px;
-	height: 20px;
-	padding: 0 4px;
-	border-radius: 4px;
-	background: var(--hover);
-	font-family: var(--sans);
-	font-size: 12px;
-	font-weight: 500;
-	color: var(--muted);
-	user-select: none;
-}
-
 /* ——— welcome: the page you land on when no chat is open ——— */
 .chat-main {
 	display: flex;
@@ -2055,21 +2040,6 @@ body.pane-dragging {
 	background: color-mix(in srgb, var(--ink) 90%, transparent);
 }
 
-.welcome-kbd {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	height: 16px;
-	min-width: 0;
-	padding: 0 4px;
-	border-radius: var(--r4);
-	background: color-mix(in srgb, var(--canvas) 15%, transparent);
-	color: color-mix(in srgb, var(--canvas) 75%, transparent);
-	font-family: var(--sans);
-	font-size: 10px;
-	font-weight: 500;
-}
-
 .welcome-keys {
 	display: flex;
 	flex-direction: column;
@@ -2101,27 +2071,6 @@ body.pane-dragging {
 .welcome-key > span:first-child {
 	border-bottom: 1px dotted var(--muted-soft);
 	padding-bottom: 1px;
-}
-
-.welcome-kbds {
-	display: inline-flex;
-	align-items: center;
-	gap: 4px;
-}
-
-.welcome-kbds kbd {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	height: 20px;
-	min-width: 20px;
-	padding: 0 4px;
-	border-radius: var(--r4);
-	background: var(--hover);
-	font-family: var(--sans);
-	font-size: 12px;
-	font-weight: 500;
-	color: var(--muted);
 }
 
 @keyframes welcome-in {

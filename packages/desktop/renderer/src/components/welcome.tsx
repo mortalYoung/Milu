@@ -1,5 +1,5 @@
 import { SLOT_POINTS, type WelcomeItem } from "@milu/protocol";
-import { formatHotkey, type Host } from "@milu/window";
+import { formatHotkey, type Host, Kbd, KbdGroup } from "@milu/window";
 import { useEffect, useState } from "react";
 import { useStore } from "zustand";
 
@@ -92,7 +92,7 @@ export function Welcome(props: { host: Host }) {
 							<button key={item.id} type="button" className={item.variant === "primary" ? "welcome-btn is-primary" : "welcome-btn"} onClick={() => invoke(item)}>
 								{item.icon ? <IconByName name={item.icon} size={13} /> : null}
 								<span>{item.title}</span>
-								{keysOf(item) ? <span className="welcome-kbd">{keysOf(item)}</span> : null}
+								{keysOf(item) ? <Kbd tone="on-ink">{keysOf(item)}</Kbd> : null}
 							</button>
 						))}
 					</div>
@@ -102,11 +102,11 @@ export function Welcome(props: { host: Host }) {
 						{keys.map((item) => (
 							<button key={item.id} type="button" className="welcome-key" onClick={() => invoke(item)}>
 								<span>{item.title}</span>
-								<span className="welcome-kbds">
+								<KbdGroup>
 									{(item.keys ?? []).map((key, index) => (
-										<kbd key={index}>{key}</kbd>
+										<Kbd key={index}>{key}</Kbd>
 									))}
-								</span>
+								</KbdGroup>
 							</button>
 						))}
 					</div>

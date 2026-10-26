@@ -27,7 +27,6 @@ export interface CustomProvider {
 
 export interface Settings {
 	partner_profile_path: string;
-	detect_instructions_file: string;
 	providers?: string[];
 	customProviders?: CustomProvider[];
 	theme?: ThemeMode;
@@ -56,7 +55,6 @@ export function expandHome(value: string): string {
 function defaults(root: string): Settings {
 	return {
 		partner_profile_path: "~/.partner/",
-		detect_instructions_file: "AGENTS.md",
 		commands_path: join(root, "commands"),
 		theme: "system",
 		toastPlacement: "bottomcenter",
