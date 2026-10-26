@@ -8,6 +8,7 @@ import type {
 import { SLOT_POINTS, type ComposerCommand, type SlotItem, type WelcomeItem } from "@milu/protocol";
 
 import type { ActionService } from "../services/actions.ts";
+import type { ComposerService } from "../services/composer.ts";
 import type { ConfigService } from "../services/config.ts";
 import type { ModelsService } from "../services/models.ts";
 import type { SettingsService } from "../services/settings.ts";
@@ -103,6 +104,7 @@ export interface ExtensionContext extends ContractContext {
 	readonly actions: ActionService;
 	readonly models: ModelsService;
 	readonly settings: SettingsService;
+	readonly composer: ComposerService;
 	readonly tools: ToolService;
 }
 

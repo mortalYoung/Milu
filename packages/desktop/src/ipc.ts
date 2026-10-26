@@ -80,6 +80,7 @@ export class IpcServer {
 				}
 			}),
 			this._backend.selection.onChange((selected) => this._broadcast({ type: "live", event: { type: "selection", selected } })),
+			this._backend.composer.onModeChange(({ session, mode }) => this._broadcast({ type: "live", event: { type: "composer", session, mode } })),
 			this._backend.lifecycle.onChange((phase) => this._broadcast({ type: "live", event: { type: "lifecycle", phase } })),
 		];
 		for (const subscription of subscriptions) this._cleanup.push(() => subscription.dispose());
@@ -254,7 +255,8 @@ export class IpcServer {
 	}
 
 	private async _composer(params: Params<"composer">): Promise<Result<"composer">> {
-		return this._backend.sessions.composer(await this._backend.sessions.ensure(params.session));
+		const session = await this._backend.sessions.ensure(params.session);
+		return { layout: await this._backend.sessions.composer(session), mode: this._backend.composer.mode(session) };
 	}
 
 	private async _sessions(): Promise<Result<"sessions">> {
@@ -280,7 +282,7 @@ export class IpcServer {
 				if (confirm) return { ok: true, confirm };
 			}
 			const outcome = await this._backend.actions.run(params.action, context);
-			if (outcome && "kind" in outcome && (outcome.kind === "copy" || outcome.kind === "shell")) return { ok: true, command: outcome };
+			if (outcome && "kind" in outcome && outcome.kind === "copy") return { ok: true, command: outcome };
 			if (outcome && "data" in outcome) return { ok: true, data: outcome.data };
 			return { ok: true };
 		} catch (error) {

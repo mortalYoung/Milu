@@ -87,19 +87,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 		services.set(service.id, service.create);
 	}
 	services.set(IDialogService, new SyncDescriptor(DialogService, [set.dialogs]));
-	services.set(
-		IActionsService,
-		new SyncDescriptor(ActionsService, [
-			{
-				...deps.commands,
-				shell: (on: boolean | "toggle") => {
-					const composer = container.get(IComposerService);
-					if (on === "toggle") composer.toggleShell();
-					else composer.setShell(on);
-				},
-			},
-		]),
-	);
+	services.set(IActionsService, new SyncDescriptor(ActionsService, [{ ...deps.commands }]));
 	services.set(IHeaderService, new SyncDescriptor(HeaderService));
 	services.set(IFooterService, new SyncDescriptor(FooterService));
 	services.set(IPickerService, new SyncDescriptor(PickerService));
@@ -229,6 +217,10 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 					}
 					if (event.type === "selection") {
 						selection.apply(event.selected);
+						return;
+					}
+					if (event.type === "composer") {
+						composer.apply(event.session, event.mode);
 						return;
 					}
 					sessions.patchStatus(event.session, event.running, event.error);

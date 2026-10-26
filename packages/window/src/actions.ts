@@ -5,7 +5,6 @@ import { IDialogService, type DialogService } from "./dialogs.ts";
 
 export interface BrowserCommands {
 	readonly copy?: (text: string) => void | Promise<void>;
-	readonly shell?: (on: boolean | "toggle") => void | Promise<void>;
 }
 
 export class ActionsService implements Service {
@@ -38,11 +37,6 @@ export class ActionsService implements Service {
 
 		const command = result.command;
 		if (!command) return;
-
-		if (command.kind === "shell") {
-			await this._commands.shell?.(command.on);
-			return;
-		}
 
 		await this._commands.copy?.(command.text);
 	}

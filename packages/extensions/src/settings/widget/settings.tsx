@@ -56,6 +56,13 @@ const FIELDS: readonly Field[] = [
 		mono: true,
 	},
 	{ id: "rememberSession", category: "general", kind: "switch", title: "Remember Last Session", description: "Reopen the last chat and window size on launch." },
+	{
+		id: "shellContinuous",
+		category: "general",
+		kind: "switch",
+		title: "Continuous Shell Input",
+		description: "Keep shell mode active after sending a command; off leaves shell mode as soon as one is sent.",
+	},
 
 	{
 		id: "bash.timeoutSec",

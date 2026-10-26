@@ -1,5 +1,5 @@
 import { createServiceId, type Service } from "@milu/di";
-import type { ComposerLayout } from "@milu/protocol";
+import type { ComposerLayout, ComposerMode } from "@milu/protocol";
 import type { ComponentType } from "react";
 import { createStore } from "zustand/vanilla";
 
@@ -9,6 +9,8 @@ import { IConnection } from "./connection.ts";
 import type { Connection } from "./connection.ts";
 import { IHotkeysService } from "./hotkeys.ts";
 import type { ComposerKey, HotkeysService } from "./hotkeys.ts";
+import { ISelectionService } from "./selection.ts";
+import type { SelectionService } from "./selection.ts";
 import type { Host } from "./surfaces.ts";
 
 export interface WidgetProps {
@@ -57,16 +59,17 @@ export class ComposerService implements Service {
 		@IConnection private readonly _connection: Connection,
 		@IActionsService private readonly _actionsService: ActionsService,
 		@IHotkeysService private readonly _hotkeysService: HotkeysService,
+		@ISelectionService private readonly _selectionService: SelectionService,
 	) {}
 
 	async load(session: string): Promise<void> {
 		if (!session) {
-			this.store.setState((state) => ({ ...state, layout: EMPTY }), true);
+			this.store.setState((state) => ({ ...state, layout: EMPTY, shellMode: false }), true);
 			return;
 		}
 		try {
-			const layout = await this._connection.request("composer", { session });
-			this.store.setState((state) => ({ ...state, layout }), true);
+			const { layout, mode } = await this._connection.request("composer", { session });
+			this.store.setState((state) => ({ ...state, layout, shellMode: mode === "shell" }), true);
 		} catch {
 			this.store.setState((state) => ({ ...state, layout: EMPTY }), true);
 		}
@@ -87,13 +90,14 @@ export class ComposerService implements Service {
 		return active;
 	}
 
+	apply(session: string, mode: ComposerMode): void {
+		if (this._selectionService.store.getState().selected !== session) return;
+		this.setShell(mode === "shell");
+	}
+
 	setShell(on: boolean): void {
 		if (this.store.getState().shellMode === on) return;
 		this.store.setState((state) => ({ ...state, shellMode: on }), true);
-	}
-
-	toggleShell(): void {
-		this.store.setState((state) => ({ ...state, shellMode: !state.shellMode }), true);
 	}
 
 	dispose(): void {}

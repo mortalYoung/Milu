@@ -31,6 +31,8 @@ import {
 import type { Session } from "../session/session.ts";
 import { IActionService } from "./actions.ts";
 import type { ActionService } from "./actions.ts";
+import { IComposerService } from "./composer.ts";
+import type { ComposerService } from "./composer.ts";
 import { IConfigService } from "./config.ts";
 import type { ConfigService } from "./config.ts";
 import { IContributionService } from "./contributions.ts";
@@ -75,6 +77,7 @@ export class ExtensionService implements Service {
 		@IModelsService private readonly _modelsService: ModelsService,
 		@IHookService private readonly _hookService: HookService,
 		@ISettingsService private readonly _settingsService: SettingsService,
+		@IComposerService private readonly _composerService: ComposerService,
 		@IToolService private readonly _toolService: ToolService,
 		@IInstantiationService private readonly _services: IInstantiationService,
 		deps: ExtensionDeps,
@@ -126,6 +129,7 @@ export class ExtensionService implements Service {
 			actions: this._actionService,
 			models: this._modelsService,
 			settings: this._settingsService,
+			composer: this._composerService,
 			tools: this._toolService,
 			services: this.services,
 		};

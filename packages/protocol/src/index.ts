@@ -37,6 +37,8 @@ export const LOG_EVENTS = {
 	taskStart: "task/start",
 	taskEnd: "task/end",
 	scheduleRun: "schedule/run",
+	shellRun: "shell/run",
+	shellDone: "shell/done",
 } as const;
 
 export interface SessionRow {
@@ -144,7 +146,9 @@ export interface ComposerLayout {
 	readonly tips: readonly ComposerTip[];
 }
 
-export type BrowserCommand = { readonly kind: "copy"; readonly text: string } | { readonly kind: "shell"; readonly on: boolean | "toggle" };
+export type BrowserCommand = { readonly kind: "copy"; readonly text: string };
+
+export type ComposerMode = "chat" | "shell";
 
 export interface SurfaceDeclaration {
 	readonly id: string;
@@ -163,6 +167,7 @@ export type LiveEvent =
 	| { readonly type: "status"; readonly session: string; readonly running: boolean; readonly error?: string }
 	| { readonly type: "selection"; readonly selected: string | null }
 	| ({ readonly type: "layout" } & LayoutState)
+	| { readonly type: "composer"; readonly session: string; readonly mode: ComposerMode }
 	| { readonly type: "dialog"; readonly id: string; readonly dialog: DialogDescriptor }
 	| { readonly type: "lifecycle"; readonly phase: LifecyclePhase };
 
@@ -178,7 +183,7 @@ export interface Methods {
 	slice: { params: { session: string }; result: { items: { id: string; message: unknown }[] } };
 	prompt: { params: { text: string }; result: { accepted: boolean } };
 	abort: { params: Record<string, never>; result: Record<string, never> };
-	composer: { params: { session: string }; result: ComposerLayout };
+	composer: { params: { session: string }; result: { layout: ComposerLayout; mode: ComposerMode } };
 	hotkeys: { params: Record<string, never>; result: { bindings: readonly ActionBinding[] } };
 	sessions: { params: Record<string, never>; result: { sessions: SessionRow[]; selected: string | null } };
 	select: { params: { session: string | null }; result: { selected: string | null } };

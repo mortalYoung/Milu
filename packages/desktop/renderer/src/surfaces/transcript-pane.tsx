@@ -233,6 +233,27 @@ function StepBlock(props: {
 	);
 }
 
+function ShellBlock(props: { item: ViewItem }) {
+	const [open, setOpen] = useState(true);
+	const shell = props.item.shell;
+	const failed = shell?.exitCode !== undefined && shell.exitCode !== 0;
+	return (
+		<div className="msg-block" data-entry={props.item.id}>
+			<button type="button" className="flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent p-0 text-left" aria-expanded={open} onClick={() => setOpen(!open)}>
+				<span className={`rounded px-1.5 py-0.5 font-sans text-[10px] font-medium uppercase ${failed ? "bg-signal/10 text-signal" : "bg-hover text-muted"}`}>shell</span>
+				<span className="min-w-0 flex-1 truncate font-mono text-[12px] text-ink">$ {props.item.text}</span>
+				{failed ? <span className="shrink-0 font-mono text-[10px] text-signal">exit {shell?.exitCode}</span> : null}
+				<span className="shrink-0 font-mono text-[10px] text-muted">{open ? "−" : "+"}</span>
+			</button>
+			{open && shell && shell.output !== "" ? (
+				<pre className="mt-1.5 mb-0 max-h-[320px] overflow-auto rounded-md border border-line bg-code-block-bg px-3 py-2 font-mono text-[12px] leading-[1.5] whitespace-pre-wrap break-words text-ink">
+					{shell.output}
+				</pre>
+			) : null}
+		</div>
+	);
+}
+
 export function TranscriptPaneSurface(props: SurfaceProps) {
 	const { host } = props;
 
@@ -395,6 +416,9 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 													<span>{item.text}</span>
 												</div>
 											);
+										}
+										if (item.kind === "shell") {
+											return <ShellBlock key={`i:${item.id}`} item={item} />;
 										}
 										if (item.kind === "user") {
 											return item.peerKind === "reply" ? <ReplyCard key={`i:${item.id}`} item={item} port={host.markdown} /> : <UserBubble key={`i:${item.id}`} item={item} />;

@@ -35,7 +35,7 @@ export interface ViewEscalation {
 
 export interface ViewItem {
 	id: string;
-	kind: "user" | "assistant" | "escalation" | "error" | "aborted" | "sep";
+	kind: "user" | "assistant" | "escalation" | "error" | "aborted" | "shell" | "sep";
 	text: string;
 	time: number;
 	from?: string;
@@ -48,6 +48,7 @@ export interface ViewItem {
 	say?: true;
 	stepMs?: number;
 	escalation?: ViewEscalation;
+	shell?: { readonly output: string; readonly exitCode?: number };
 }
 
 export interface StepGroup {
@@ -231,6 +232,19 @@ function sendMessageVisit(entry: LogEntry, out: ViewItem[]): void {
 	out.push({ id: entry.id, kind: "assistant", text: data.text, time: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0) });
 }
 
+function shellDoneVisit(entry: LogEntry, out: ViewItem[]): void {
+	if (entry.type !== "custom") return;
+	const data = entry.data as { command?: unknown; text?: unknown; exitCode?: unknown; timestamp?: unknown } | undefined;
+	if (typeof data?.command !== "string") return;
+	out.push({
+		id: entry.id,
+		kind: "shell",
+		text: data.command,
+		time: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
+		shell: { output: typeof data.text === "string" ? data.text : "", ...(typeof data.exitCode === "number" ? { exitCode: data.exitCode } : {}) },
+	});
+}
+
 function agentEndVisit(entry: LogEntry, out: ViewItem[]): void {
 	if (entry.type !== "custom") return;
 	const data = entry.data as { reason?: unknown; error?: unknown; timestamp?: unknown } | undefined;
@@ -353,6 +367,7 @@ const VISITORS: Readonly<Record<string, (entry: LogEntry, out: ViewItem[]) => vo
 	[LOG_EVENTS.toolResult]: toolResultVisit,
 	[LOG_EVENTS.sendMessage]: sendMessageVisit,
 	[LOG_EVENTS.agentEnd]: agentEndVisit,
+	[LOG_EVENTS.shellDone]: shellDoneVisit,
 	[LOG_EVENTS.escalationRequest]: escalationVisit,
 	[LOG_EVENTS.escalationDecision]: escalationDecisionVisit,
 	[LOG_EVENTS.compaction]: compactionVisit,

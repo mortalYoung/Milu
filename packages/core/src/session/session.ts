@@ -37,7 +37,6 @@ const DEFAULT_THINKING_LEVEL = "high";
 const SEND_MESSAGE = "send_message";
 const COMMAND_RUN = "command/run";
 const SKILL_RUN = "skill/run";
-const SHELL_RUN = "shell/run";
 
 interface LastVisible {
 	text: string;
@@ -69,14 +68,23 @@ function lastVisible(entries: readonly Entry[]): LastVisible | null {
 			continue;
 		}
 		if (entry.type !== "custom") continue;
-		const data = (entry.data ?? {}) as { text?: unknown; name?: unknown; command?: unknown; commandId?: unknown; skillId?: unknown; shellId?: unknown; timestamp?: unknown };
-		if (entry.customType === SEND_MESSAGE && typeof data.text === "string") {
+		const data = (entry.data ?? {}) as {
+			text?: unknown;
+			name?: unknown;
+			command?: unknown;
+			commandId?: unknown;
+			skillId?: unknown;
+			shellId?: unknown;
+			via?: unknown;
+			timestamp?: unknown;
+		};
+		if (entry.customType === SEND_MESSAGE && typeof data.text === "string" && data.via !== "shell") {
 			last = { text: data.text, kind: "send_message", time: stampOf(entry, data) };
 		} else if (entry.customType === COMMAND_RUN && data.commandId != null) {
 			last = { text: String(data.name ?? ""), kind: "command", time: stampOf(entry, data) };
 		} else if (entry.customType === SKILL_RUN && data.skillId != null) {
 			last = { text: String(data.name ?? ""), kind: "skill", time: stampOf(entry, data) };
-		} else if (entry.customType === SHELL_RUN && data.shellId != null) {
+		} else if (entry.customType === EVENTS.shellRun && data.shellId != null) {
 			last = { text: String(data.command ?? ""), kind: "shell", time: stampOf(entry, data) };
 		}
 	}

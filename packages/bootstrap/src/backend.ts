@@ -3,6 +3,8 @@ import {
 	type BackendConfig,
 	ActionService,
 	CommandsService,
+	ComposerService,
+	IComposerService,
 	CompactionService,
 	ConfigService,
 	ContributionService,
@@ -55,6 +57,7 @@ export async function createBackend(config: BackendConfig): Promise<Backend> {
 	services.set(IHookService, new SyncDescriptor(HookService));
 	services.set(IActionService, new SyncDescriptor(ActionService));
 	services.set(ICommandsService, new SyncDescriptor(CommandsService));
+	services.set(IComposerService, new SyncDescriptor(ComposerService));
 	services.set(ICompactionService, new SyncDescriptor(CompactionService));
 	services.set(IExtensionService, new SyncDescriptor(ExtensionService, [discovered, config.hosts]));
 	services.set(ISessionService, new SyncDescriptor(SessionService));
@@ -81,6 +84,7 @@ export async function createBackend(config: BackendConfig): Promise<Backend> {
 		contributions: instantiation.get(IContributionService),
 		actions: instantiation.get(IActionService),
 		commands: instantiation.get(ICommandsService),
+		composer: instantiation.get(IComposerService),
 		tools: instantiation.get(IToolService),
 		settings: instantiation.get(ISettingsService),
 		layout: instantiation.get(ILayoutService),
