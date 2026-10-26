@@ -21,6 +21,7 @@ export const BUILTIN: Record<string, () => Promise<{ default: Extension }>> = {
 	skills: () => import("./skills/index.ts"),
 	reminders: () => import("./reminders/index.ts"),
 	instructions: () => import("./instructions/index.ts"),
+	palette: () => import("./palette/index.ts"),
 	replies: () => import("./replies/index.ts"),
 	runtime: () => import("./runtime/index.ts"),
 	models: () => import("./models/index.ts"),

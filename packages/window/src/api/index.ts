@@ -12,5 +12,18 @@ export type { ComposerTriggerProps } from "../composer-triggers.ts";
 export { Kbd, KbdGroup } from "./kbd.tsx";
 export { TooltipProvider, Tip } from "./tooltip.tsx";
 export { useCommand, useExtensionData, useSession, useWidget, type ExtensionWidgetProps } from "./widget.ts";
-export { byPinThenRecency, describeNextRun, formatWorkspacePath, oneLine, previewFor, tildifyPath, workspaceLabel } from "../utils/chat.ts";
+export {
+	activityAt,
+	byPinThenRecency,
+	describeNextRun,
+	filterSessions,
+	formatWorkspacePath,
+	fuzzyScore,
+	listTime,
+	oneLine,
+	previewFor,
+	tildifyPath,
+	workspaceLabel,
+	type NextRunParts,
+} from "../utils/chat.ts";
 export { formatHistoryTime, projectView, replyRows } from "../view.ts";

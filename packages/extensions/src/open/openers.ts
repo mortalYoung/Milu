@@ -93,3 +93,16 @@ export async function openInCodeEditor(path: string, editorId?: string): Promise
 	if (!editorId && (await run(["/usr/bin/open", target]))) return { ok: true, via: "default opener" };
 	return { ok: false, reason: pick ? "open-failed" : "no-editor" };
 }
+
+export async function openFileInEditor(path: string, line?: number): Promise<OpenOutcome> {
+	const real = expandTilde(path);
+	if (!existsSync(real)) return { ok: false, reason: "missing-path" };
+	const installed = listInstalledEditors();
+	const pick = installed.find((editor) => editor.id === "code") ?? installed[0];
+	const target = line === undefined ? real : `${real}:${line}`;
+
+	if (pick?.cli && which(pick.cli) && (await run(line === undefined ? [pick.cli, real] : [pick.cli, "-g", target]))) return { ok: true, via: `${pick.name} cli` };
+	if (pick?.app && (await run(["/usr/bin/open", "-a", pick.app, real]))) return { ok: true, via: `${pick.name} app` };
+	if (await run(["/usr/bin/open", real])) return { ok: true, via: "default opener" };
+	return { ok: false, reason: pick ? "open-failed" : "no-editor" };
+}

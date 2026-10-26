@@ -43,10 +43,7 @@ export interface Settings {
 	};
 	explorer?: { lineGap?: number; fold?: { braces?: boolean; markdown?: boolean } };
 	highlight?: { tokenizeMaxLineLength?: number; tokenizeTimeLimit?: number };
-	palette?: { searchIgnoreDirs?: string[] };
 }
-
-export const DEFAULT_PALETTE_IGNORE_DIRS = [".git", ".DS_Store", "node_modules", "dist", "build", ".next", "out", "target", ".cache", "__pycache__", ".venv", "venv"];
 
 export function expandHome(value: string): string {
 	return value.startsWith("~") ? join(homedir(), value.slice(1)) : value;

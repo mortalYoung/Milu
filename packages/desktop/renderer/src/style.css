@@ -424,6 +424,46 @@ body.pane-dragging {
 	overflow: hidden;
 }
 
+.palette-anchor {
+	position: fixed;
+	top: 88px;
+	left: 50%;
+	z-index: 61;
+	width: fit-content;
+	transform: translateX(-50%);
+	outline: none;
+}
+
+.palette-anchor[data-state="open"] {
+	animation: palette-in 160ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+.palette-anchor[data-state="closed"] {
+	animation: palette-out 120ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+@keyframes palette-in {
+	from {
+		opacity: 0;
+		transform: translate(-50%, -6px) scale(0.995);
+	}
+	to {
+		opacity: 1;
+		transform: translate(-50%, 0) scale(1);
+	}
+}
+
+@keyframes palette-out {
+	from {
+		opacity: 1;
+		transform: translate(-50%, 0) scale(1);
+	}
+	to {
+		opacity: 0;
+		transform: translate(-50%, -6px) scale(0.995);
+	}
+}
+
 .conv-dialog-close {
 	position: absolute;
 	top: 16px;

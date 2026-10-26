@@ -9,12 +9,13 @@ export function DialogHost(props: { host: Host }) {
 	const pending = useStore(host.dialogs.store, (state) => state.pending);
 
 	const custom = pending?.dialog.kind === "custom" ? host.dialogs.get(pending.dialog.id) : undefined;
+	const palette = pending?.dialog.kind === "custom" && pending.dialog.presentation === "palette";
 
 	return (
-		<Dialog.Root open={pending !== null} onOpenChange={(open) => (open ? undefined : host.dialogs.resolve(null))}>
+		<Dialog.Root open={pending !== null} modal={!palette} onOpenChange={(open) => (open ? undefined : host.dialogs.resolve(null))}>
 			<Dialog.Portal>
-				<Dialog.Overlay className="conv-dialog-overlay" />
-				<Dialog.Content className={`conv-dialog${custom ? " wide" : ""}`} aria-describedby={undefined}>
+				{palette ? null : <Dialog.Overlay className="conv-dialog-overlay" />}
+				<Dialog.Content className={palette ? "palette-anchor" : `conv-dialog${custom ? " wide" : ""}`} aria-describedby={undefined}>
 					{pending?.dialog.kind === "confirm" ? (
 						<>
 							<Dialog.Title className="conv-dialog-title">{pending.dialog.copy.title}</Dialog.Title>
@@ -31,9 +32,11 @@ export function DialogHost(props: { host: Host }) {
 					) : custom ? (
 						<>
 							<Dialog.Title className="conv-dialog-hidden">{pending?.dialog.kind === "custom" ? (pending.dialog.title ?? pending.dialog.id) : ""}</Dialog.Title>
-							<Dialog.Close className="conv-dialog-close" aria-label="Close">
-								<X size={16} />
-							</Dialog.Close>
+							{palette ? null : (
+								<Dialog.Close className="conv-dialog-close" aria-label="Close">
+									<X size={16} />
+								</Dialog.Close>
+							)}
 							{createElement(custom, {
 								host,
 								data: pending?.dialog.kind === "custom" ? pending.dialog.data : undefined,
