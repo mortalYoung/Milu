@@ -18,13 +18,14 @@ import {
 	type Extension,
 	type ExtensionContext,
 	SESSION_HEADER_POINT,
+	SESSION_FOOTER_POINT,
 	CHAT_BAR_POINT,
 	CHAT_NAME_POINT,
 	CHAT_PANES_POINT,
 	WELCOME_TIMELINE_POINT,
 	SESSION_MENU_POINT,
 	WELCOME_ITEMS_POINT,
-	type SessionHeaderItem,
+	type SessionBarItem,
 	type SessionMenuItem,
 } from "../extensions/types.ts";
 import type { Session } from "../session/session.ts";
@@ -92,7 +93,8 @@ export class ExtensionService implements Service {
 
 	async initialize(): Promise<void> {
 		this._contributionService.declare<SessionMenuItem>(SESSION_MENU_POINT);
-		this._contributionService.declare<SessionHeaderItem>(SESSION_HEADER_POINT);
+		this._contributionService.declare<SessionBarItem>(SESSION_HEADER_POINT);
+		this._contributionService.declare<SessionBarItem>(SESSION_FOOTER_POINT);
 		this._contributionService.declare<ComposerWidgetItem>(COMPOSER_LEFT_POINT);
 		this._contributionService.declare<ComposerWidgetItem>(COMPOSER_RIGHT_POINT);
 		this._contributionService.declare<ComposerTipItem>(COMPOSER_TIPS_POINT);

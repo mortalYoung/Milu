@@ -1,4 +1,5 @@
-import { join } from "node:path";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 import { ConfigService, type Session, type SettingsPoint, type SettingsService, Type } from "@milu/core";
 import { createServiceId, type Service } from "@milu/di";
@@ -6,7 +7,19 @@ import { createServiceId, type Service } from "@milu/di";
 import { configPath, loadConfig } from "../config.ts";
 import { grantedServers } from "../grants.ts";
 import { McpManager } from "../manager.ts";
-import type { McpServerStatus } from "../types.ts";
+import type { McpOptions, McpServerStatus } from "../types.ts";
+
+const DEFAULT_IDLE_TIMEOUT_SEC = 60;
+const DEFAULT_MAX_BUFFER_SIZE = 10 * 1024 * 1024;
+
+async function rawConfig(file: string): Promise<Record<string, unknown>> {
+	try {
+		const parsed = JSON.parse(await readFile(file, "utf8")) as unknown;
+		return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
+	} catch {
+		return {};
+	}
+}
 
 export const schema = Type.Object({
 	op: Type.Union([Type.Literal("list"), Type.Literal("call")], { description: 'What to do: "list" the authorized servers and their tools, or "call" one tool.' }),
@@ -33,7 +46,32 @@ export class McpService implements Service {
 
 	async initialize(): Promise<void> {
 		this._config = this._settingsService.declare({ key: "mcp_config_path", defaults: join(this._configService.root, "mcp.json") });
-		await this._manager.load(await loadConfig(configPath(this._config.get())));
+		await this._manager.load(await loadConfig(this._file()));
+	}
+
+	async options(): Promise<McpOptions> {
+		const file = this._file();
+		const config = await loadConfig(file);
+		return {
+			configFile: file,
+			idleTimeoutSec: config.idleTimeoutSec ?? DEFAULT_IDLE_TIMEOUT_SEC,
+			defaultLifecycle: config.defaultLifecycle ?? "lazy",
+			maxBufferSize: config.maxBufferSize ?? DEFAULT_MAX_BUFFER_SIZE,
+		};
+	}
+
+	async saveOptions(options: McpOptions): Promise<void> {
+		const file = configPath(options.configFile);
+		const next = {
+			...(await rawConfig(file)),
+			idleTimeoutSec: options.idleTimeoutSec,
+			defaultLifecycle: options.defaultLifecycle,
+			maxBufferSize: options.maxBufferSize,
+		};
+		await mkdir(dirname(file), { recursive: true });
+		await writeFile(file, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+		if (file !== this._file()) await this._settingsService.update({ mcp_config_path: file });
+		await this._manager.load(await loadConfig(file));
 	}
 
 	async list(session: Session): Promise<{ name: string; tools: { name: string; description?: string }[]; error?: string }[]> {
@@ -66,6 +104,11 @@ export class McpService implements Service {
 
 	dispose(): void {
 		void this._manager.dispose();
+	}
+
+	private _file(): string {
+		if (!this._config) throw new Error("McpService is not initialized");
+		return configPath(this._config.get());
 	}
 }
 

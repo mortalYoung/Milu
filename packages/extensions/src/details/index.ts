@@ -6,6 +6,8 @@ import { type Entry, type Extension, type ModelsService, type Session, type Sett
 import { IMcpService } from "../mcp/index.ts";
 import type { McpServerStatus } from "../mcp/types.ts";
 import { buildMemoryOverview, type MemoryOverview } from "../memory/overview.ts";
+import { IPermissionService } from "../permission/index.ts";
+import type { SandboxMode } from "../permission/types.ts";
 import { IRuntimeStatsService, type RuntimeSummary } from "../runtime/index.ts";
 import { IScheduleService } from "../schedule/index.ts";
 import type { RunRecord, ScheduleDefinition } from "../schedule/store.ts";
@@ -80,6 +82,7 @@ export interface DetailsSources {
 	readonly mcp: { statuses(session: Session): Promise<readonly McpServerStatus[]> } | null;
 	readonly runtime: { summary(session: Session): Promise<RuntimeSummary> } | null;
 	readonly settings: SettingsService;
+	readonly permission: { mode(): SandboxMode } | null;
 }
 
 function midnight(ts: number): number {
@@ -228,7 +231,7 @@ export async function collectDetails(session: Session, sources: DetailsSources):
 		models: groups,
 		efforts,
 		effort: session.thinkingLevel(),
-		sandbox: sources.settings.get().defaultSandboxMode ?? "workspace-write",
+		sandbox: sources.permission?.mode() ?? "workspace-write",
 		skills: skills.map((skill) => ({ name: skill.name, scope: skill.scope })),
 		mcp,
 		memory,
@@ -254,6 +257,7 @@ const detailsExtension: Extension = {
 			mcp: context.get(IMcpService),
 			runtime: context.get(IRuntimeStatsService),
 			settings: context.settings,
+			permission: context.get(IPermissionService),
 		};
 
 		context.actions.register({

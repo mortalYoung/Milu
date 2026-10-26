@@ -1,4 +1,4 @@
-import type { SandboxMode } from "@milu/core";
+export type SandboxMode = "read-only" | "workspace-write" | "danger-full-access";
 
 export interface PermissionPolicy {
 	readonly mode: SandboxMode;

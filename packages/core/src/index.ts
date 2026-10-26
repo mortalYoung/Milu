@@ -51,6 +51,7 @@ export {
 	COMPOSER_TIPS_POINT,
 	COMPOSER_COMMANDS_POINT,
 	SESSION_HEADER_POINT,
+	SESSION_FOOTER_POINT,
 	SESSION_MENU_POINT,
 	CHAT_BAR_POINT,
 	CHAT_NAME_POINT,
@@ -65,7 +66,7 @@ export {
 	type ExtensionContext,
 	type ExtensionServiceDeclaration,
 	type PromptSection,
-	type SessionHeaderItem,
+	type SessionBarItem,
 	type SessionMenuItem,
 	type SessionValue,
 	type SlotItem,
@@ -92,7 +93,7 @@ export {
 	type ReminderType,
 } from "./session/events.ts";
 export type { SessionModel, SessionProfile, WorkspaceFacts } from "./session/files.ts";
-export { SettingsService, ISettingsService, type SandboxMode, type Settings, type SettingsPoint } from "./services/settings.ts";
+export { SettingsService, ISettingsService, type CustomModel, type CustomProvider, type Settings, type SettingsPoint, type ThemeMode } from "./services/settings.ts";
 export { ToolService, IToolService, type Tool, type ToolCall, type ToolFields, type ToolMiddleware, type ToolNext, type ToolResult } from "./services/tools.ts";
 export {
 	bindEnv,

@@ -1,5 +1,5 @@
 import type { ContributionItem, SessionRow } from "@milu/protocol";
-import { activityAt, byPinThenRecency, filterSessions, type Host, listTime, previewFor, type SurfaceProps, workspaceLabel } from "@milu/window";
+import { activityAt, byPinThenRecency, filterSessions, formatHotkey, type Host, listTime, previewFor, type SurfaceProps, workspaceLabel } from "@milu/window";
 import { Tip } from "@milu/window/tooltip";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
@@ -130,6 +130,8 @@ export function SessionListSurface(props: SurfaceProps) {
 	const selected = useStore(host.selection.store, (state) => state.selected);
 	const searchOpen = useStore(host.workbench.store, (state) => state.searchOpen);
 	const headerItems = useStore(host.header.store, (state) => state.items);
+	const footerItems = useStore(host.footer.store, (state) => state.items);
+	const bindings = useStore(host.hotkeys.store, (state) => state.bindings);
 
 	const [query, setQuery] = useState("");
 	const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
@@ -335,6 +337,39 @@ export function SessionListSurface(props: SurfaceProps) {
 					}
 				</div>
 			</div>
+
+			{footerItems.length === 0 ? null : (
+				<div className="shrink-0 pt-1 pb-2">
+					{footerItems.map((item) => {
+						const binding = bindings.find((each) => each.id === item.action);
+						const keys = binding ? formatHotkey(binding.hotkey, host.hotkeys.platform) : "";
+						return (
+							<Tip key={item.id} label={item.title}>
+								<button
+									type="button"
+									className="flex h-[34px] w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2 text-left text-ink transition-colors duration-100 hover:bg-hover [-webkit-app-region:no-drag]"
+									aria-label={item.title}
+									onClick={() => void host.actions.invoke(item.action ?? "")}
+								>
+									<IconByName name={item.icon} size={15} />
+									{keys === "" ? null : (
+										<span className="ml-auto flex items-center gap-1">
+											{keys.split("").map((key, index) => (
+												<kbd
+													key={index}
+													className="grid h-4 min-w-4 place-items-center rounded-[3px] border border-line bg-surface px-1 font-sans text-[10px] leading-none text-muted"
+												>
+													{key}
+												</kbd>
+											))}
+										</span>
+									)}
+								</button>
+							</Tip>
+						);
+					})}
+				</div>
+			)}
 		</div>
 	);
 }

@@ -245,6 +245,7 @@ export interface Snapshot {
 	readonly sessions: readonly SessionRow[];
 	readonly selected: string | null;
 	readonly header: readonly ContributionItem[];
+	readonly footer: readonly ContributionItem[];
 	readonly hotkeys: readonly ActionBinding[];
 	readonly welcome: readonly WelcomeItem[];
 	readonly slots: Readonly<Record<string, readonly SlotItem[]>>;

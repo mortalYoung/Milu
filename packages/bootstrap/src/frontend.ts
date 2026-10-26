@@ -6,6 +6,8 @@ import {
 	type BrowserCommands,
 	DialogService,
 	IDialogService,
+	FooterService,
+	IFooterService,
 	HeaderService,
 	IHeaderService,
 	LayoutService,
@@ -99,6 +101,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 		]),
 	);
 	services.set(IHeaderService, new SyncDescriptor(HeaderService));
+	services.set(IFooterService, new SyncDescriptor(FooterService));
 	services.set(IPickerService, new SyncDescriptor(PickerService));
 	services.set(ISessionListService, new SyncDescriptor(SessionListService));
 	services.set(ISelectionService, new SyncDescriptor(SelectionService));
@@ -121,6 +124,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	const actions = container.get(IActionsService);
 	const dialogs = container.get(IDialogService);
 	const header = container.get(IHeaderService);
+	const footer = container.get(IFooterService);
 	const picker = container.get(IPickerService);
 	const sessions = container.get(ISessionListService);
 	const selection = container.get(ISelectionService);
@@ -158,6 +162,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 			sessions.apply(snapshot.sessions);
 			selection.apply(snapshot.selected);
 			header.apply(snapshot.header);
+			footer.apply(snapshot.footer);
 			hotkeys.apply(snapshot.hotkeys);
 			welcome.apply(snapshot.welcome);
 			commands.apply(snapshot.commands);
@@ -181,6 +186,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 			actions,
 			dialogs,
 			header,
+			footer,
 			composer,
 			triggers,
 			commands,

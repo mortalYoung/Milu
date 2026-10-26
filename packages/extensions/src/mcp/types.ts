@@ -1,5 +1,7 @@
 export type McpLifecycle = "lazy" | "eager" | "keep-alive" | "lazy-keep-alive";
 
+export const MCP_LIFECYCLES: readonly McpLifecycle[] = ["lazy", "eager", "keep-alive", "lazy-keep-alive"];
+
 export interface McpStdioTransport {
 	readonly type: "stdio";
 	readonly command: string;
@@ -19,6 +21,13 @@ export interface McpConfig {
 	readonly idleTimeoutSec?: number;
 	readonly defaultLifecycle?: McpLifecycle;
 	readonly maxBufferSize?: number;
+}
+
+export interface McpOptions {
+	readonly configFile: string;
+	readonly idleTimeoutSec: number;
+	readonly defaultLifecycle: McpLifecycle;
+	readonly maxBufferSize: number;
 }
 
 export interface McpToolSummary {

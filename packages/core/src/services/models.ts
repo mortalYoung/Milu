@@ -2,8 +2,8 @@ import type { StreamFn } from "@earendil-works/pi-agent-core";
 import type { Api, Model, ModelThinkingLevel, MutableModels } from "@earendil-works/pi-ai";
 import { createProvider, envApiKeyAuth, getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
-import { builtinModels } from "@earendil-works/pi-ai/providers/all";
-import { createServiceId, type Service } from "@milu/di";
+import { builtinModels, getBuiltinProviders } from "@earendil-works/pi-ai/providers/all";
+import { createServiceId, DisposableStore, type Service } from "@milu/di";
 
 import { IConfigService } from "./config.ts";
 import type { ConfigService } from "./config.ts";
@@ -38,6 +38,9 @@ function customModel(def: CustomProvider, model: CustomProvider["models"][number
 
 export class ModelsService implements Service {
 	private readonly _models: MutableModels;
+	private readonly _custom = new Set<string>();
+	private readonly _disposables = new DisposableStore();
+	private _signature = "";
 
 	readonly stream: StreamFn;
 
@@ -71,18 +74,16 @@ export class ModelsService implements Service {
 	}
 
 	initialize(): void {
-		for (const def of this._settingsService.get().customProviders ?? []) {
-			this._models.setProvider(
-				createProvider({
-					id: def.id,
-					name: def.name ?? def.id,
-					baseUrl: def.baseUrl,
-					auth: { apiKey: envApiKeyAuth("API key", []) },
-					models: def.models.map((model) => customModel(def, model)),
-					api: openAICompletionsApi(),
-				}),
-			);
-		}
+		this._sync();
+		this._disposables.add(this._settingsService.onChange(() => this._sync()));
+	}
+
+	known(): readonly string[] {
+		return getBuiltinProviders();
+	}
+
+	baseUrl(provider: string): string | undefined {
+		return this._models.getProvider(provider)?.baseUrl;
 	}
 
 	supportedThinkingLevels(model: Model<Api>): readonly ModelThinkingLevel[] {
@@ -106,7 +107,31 @@ export class ModelsService implements Service {
 		return this._models.getModels(provider);
 	}
 
-	dispose(): void {}
+	private _sync(): void {
+		const defs = this._settingsService.get().customProviders ?? [];
+		const signature = JSON.stringify(defs);
+		if (signature === this._signature) return;
+		this._signature = signature;
+		for (const id of this._custom) this._models.deleteProvider(id);
+		this._custom.clear();
+		for (const def of defs) {
+			this._models.setProvider(
+				createProvider({
+					id: def.id,
+					name: def.name ?? def.id,
+					baseUrl: def.baseUrl,
+					auth: { apiKey: envApiKeyAuth("API key", []) },
+					models: def.models.map((model) => customModel(def, model)),
+					api: openAICompletionsApi(),
+				}),
+			);
+			this._custom.add(def.id);
+		}
+	}
+
+	dispose(): void {
+		this._disposables.dispose();
+	}
 }
 
 export const IModelsService = createServiceId<ModelsService>("ModelsService");

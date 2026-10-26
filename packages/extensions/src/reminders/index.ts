@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { type AgentHookContext, type AgentReminder, EVENTS, type Extension, expandHome, IHookService, reminderText, type SettingsService } from "@milu/core";
 
+import { IPermissionService } from "../permission/index.ts";
 import { type SkillsService, ISkillsService } from "../skills/service/index.ts";
 
 const HOUR = 60 * 60 * 1000;
@@ -43,14 +44,14 @@ function digestOf(name: string, description: string): string {
 	return createHash("sha256").update(`${name}\n${description}`).digest("hex");
 }
 
-async function contextChanged(context: AgentHookContext, settings: SettingsService, skills: SkillsService): Promise<void> {
+async function contextChanged(context: AgentHookContext, skills: SkillsService, sandbox: string): Promise<void> {
 	const workspace = await context.session.workspace();
 	injectUnlessCarried(context, {
 		type: EVENTS.contextChanged,
 		data: {
 			workspace: workspace ? expandHome(workspace.path) : null,
 			storage: join(context.session.root, "storage"),
-			sandbox: settings.get().defaultSandboxMode ?? "workspace-write",
+			sandbox,
 			skills: (await skills.list(context.session)).map((skill) => ({ name: skill.name, description: skill.description, digest: digestOf(skill.name, skill.description) })),
 		},
 	});
@@ -76,8 +77,9 @@ const remindersExtension: Extension = {
 	activate(context) {
 		const hooks = context.get(IHookService);
 		const skills = context.get(ISkillsService);
+		const permission = context.get(IPermissionService);
 		context.disposables.add(hooks.on("beforeRun", timeGap));
-		context.disposables.add(hooks.on("beforeRequest", (each) => contextChanged(each, context.settings, skills)));
+		context.disposables.add(hooks.on("beforeRequest", (each) => contextChanged(each, skills, permission.mode())));
 		context.disposables.add(hooks.on("beforeRequest", (each) => instructionsChanged(each, context.settings)));
 	},
 };

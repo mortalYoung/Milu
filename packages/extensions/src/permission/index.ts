@@ -1,6 +1,9 @@
-import { type Extension, IHookService, type SandboxMode, ISettingsService, IToolService, Type } from "@milu/core";
+import { type Extension, IHookService, ISettingsService, IToolService, Type } from "@milu/core";
 
 import { PermissionService, IPermissionService } from "./service/index.ts";
+import type { SandboxMode } from "./types.ts";
+
+export { IPermissionService } from "./service/index.ts";
 
 const escalationFields = {
 	sandbox_mode: Type.Optional(
@@ -34,7 +37,7 @@ const permissionExtension: Extension = {
 			run: async ({ args }) => {
 				const mode = (args as { mode?: SandboxMode } | undefined)?.mode;
 				if (mode !== "read-only" && mode !== "workspace-write" && mode !== "danger-full-access") throw new Error("permission.sandbox needs a mode");
-				await context.settings.update({ defaultSandboxMode: mode });
+				await permission.setMode(mode);
 			},
 		});
 

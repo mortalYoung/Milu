@@ -1,6 +1,8 @@
-import type { SandboxMode, Session } from "@milu/core";
+import type { Session } from "@milu/core";
 import { EVENTS } from "@milu/core";
 import type { SeqEntry } from "@milu/protocol";
+
+import type { SandboxMode } from "./types.ts";
 
 export interface EscalationRequest {
 	readonly escalationId: string;

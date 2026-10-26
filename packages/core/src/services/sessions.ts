@@ -78,8 +78,7 @@ export class SessionService implements Service {
 	async list(): Promise<readonly SessionRow[]> {
 		const rows: SessionRow[] = [];
 		for (const name of await this._names()) {
-			const session = this.get(name);
-			rows.push({ ...(await session.row()), menu: await this._menuOf(session) });
+			rows.push(await this._rowOf(this.get(name)));
 		}
 		return rows.sort((left, right) => (right.lastMessageAt ?? 0) - (left.lastMessageAt ?? 0) || left.name.localeCompare(right.name));
 	}
@@ -241,11 +240,37 @@ export class SessionService implements Service {
 		return { ...base, action: item.action, ...(item.args === undefined ? {} : { args: item.args }) };
 	}
 
+	private async _rowOf(session: Session): Promise<SessionRow> {
+		const menu = await this._menuOf(session);
+		try {
+			return { ...(await session.row()), menu };
+		} catch (error) {
+			console.error(`session "${session.name}" did not open:`, error);
+			const profile = await profileOf(session.root);
+			return {
+				name: session.name,
+				path: session.path,
+				storage: session.storage,
+				createdAt: profile?.createdAt ?? 0,
+				...(profile?.persona ? { persona: profile.persona } : {}),
+				...(profile?.forkedFrom ? { forkedFrom: profile.forkedFrom } : {}),
+				...(profile?.pinned ? { pinned: true } : {}),
+				running: session.running,
+				error: reason(error),
+				menu,
+			};
+		}
+	}
+
 	private async _names(): Promise<string[]> {
 		const listed = await this._executionService.env(this._partnerRoot).listDir(".");
 		if (!listed.ok) return [];
 		return listed.value.filter((entry) => entry.kind === "directory").map((entry) => entry.name);
 	}
+}
+
+function reason(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
 }
 
 export const ISessionService = createServiceId<SessionService>("SessionService");

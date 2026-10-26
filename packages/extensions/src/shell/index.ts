@@ -10,6 +10,8 @@ const shellExtension: Extension = {
 	},
 
 	activate(context) {
+		context.disposables.add(context.settings.declare({ key: "shellContinuous", defaults: true }));
+
 		context.actions.register({
 			id: "shell.toggle",
 			scope: ["composer.focus", "composer.empty"],

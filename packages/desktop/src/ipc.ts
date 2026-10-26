@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { type Backend, SESSION_HEADER_POINT, WELCOME_ITEMS_POINT, type WelcomeItem } from "@milu/core";
+import { type Backend, SESSION_FOOTER_POINT, SESSION_HEADER_POINT, WELCOME_ITEMS_POINT, type WelcomeItem } from "@milu/core";
 import {
 	type ContributionItem,
 	type DialogDescriptor,
@@ -188,6 +188,7 @@ export class IpcServer {
 			sessions,
 			selected: this._backend.selection.selected,
 			header: this._ordered<ContributionItem>(SESSION_HEADER_POINT),
+			footer: this._ordered<ContributionItem>(SESSION_FOOTER_POINT),
 			hotkeys: this._backend.actions.bindings(),
 			commands: this._backend.commands.list(),
 			welcome: this._ordered<WelcomeItem>(WELCOME_ITEMS_POINT),

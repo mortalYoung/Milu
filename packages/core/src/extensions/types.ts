@@ -16,6 +16,7 @@ import type { Session } from "../session/session.ts";
 
 export const SESSION_MENU_POINT = "session.menu";
 export const SESSION_HEADER_POINT = "session.header";
+export const SESSION_FOOTER_POINT = "session.footer";
 export const COMPOSER_LEFT_POINT = "composer.left";
 export const COMPOSER_RIGHT_POINT = "composer.right";
 export const COMPOSER_TIPS_POINT = "composer.tips";
@@ -31,7 +32,7 @@ export type { ComposerCommand, SlotItem, WelcomeItem };
 
 export type SessionValue<T> = T | ((session: Session) => T | null | Promise<T | null>);
 
-export interface SessionHeaderItem {
+export interface SessionBarItem {
 	readonly id: string;
 	readonly title: string;
 	readonly icon?: string;
@@ -73,7 +74,8 @@ export interface ComposerTipItem {
 
 export type ExtensionContributions = {
 	readonly "session.menu"?: readonly SessionMenuItem[];
-	readonly "session.header"?: readonly SessionHeaderItem[];
+	readonly "session.header"?: readonly SessionBarItem[];
+	readonly "session.footer"?: readonly SessionBarItem[];
 	readonly "composer.left"?: readonly ComposerWidgetItem[];
 	readonly "composer.right"?: readonly ComposerWidgetItem[];
 	readonly "composer.tips"?: readonly ComposerTipItem[];
