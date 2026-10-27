@@ -8,7 +8,6 @@ import { IConfigService } from "./config.ts";
 import type { ConfigService } from "./config.ts";
 
 export type ThemeMode = "system" | "light" | "dark";
-export type ToastPlacement = "topcenter" | "topright" | "bottomcenter" | "bottomright";
 
 export interface CustomModel {
 	id: string;
@@ -30,8 +29,6 @@ export interface Settings {
 	providers?: string[];
 	customProviders?: CustomProvider[];
 	theme?: ThemeMode;
-	toastPlacement?: ToastPlacement;
-	toastDurationMs?: number;
 	rememberSession?: boolean;
 	commands_path?: string;
 	retry?: { maxRetries?: number; baseDelayMs?: number };
@@ -54,8 +51,6 @@ function defaults(root: string): Settings {
 		partner_profile_path: "~/.partner/",
 		commands_path: join(root, "commands"),
 		theme: "system",
-		toastPlacement: "bottomcenter",
-		toastDurationMs: 4000,
 		rememberSession: true,
 		explorer: { lineGap: 0.2, fold: { braces: true, markdown: true } },
 		highlight: { tokenizeMaxLineLength: 3000, tokenizeTimeLimit: 500 },

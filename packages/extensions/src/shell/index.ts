@@ -30,7 +30,7 @@ const shellExtension: Extension = {
 			await session.record(EVENTS.shellRun, { shellId, command, timestamp: started });
 
 			const workspace = await session.workspace();
-			const env = permission.env(session, workspace ? expandHome(workspace.path) : null);
+			const env = await permission.env(session, workspace ? expandHome(workspace.path) : null);
 			const result = await env.exec(command, {});
 			const exitCode = result.ok ? result.value.exitCode : undefined;
 			const output = result.ok

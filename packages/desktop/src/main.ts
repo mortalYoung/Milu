@@ -117,6 +117,9 @@ async function main(): Promise<void> {
 	console.log(`[milu] partners=${backend.sessions.partnerRoot}`);
 }
 
+app.setName("Milu");
+app.setAboutPanelOptions({ applicationName: "Milu", applicationVersion: app.getVersion() });
+
 const singleInstance = HIDDEN || app.requestSingleInstanceLock();
 
 if (!singleInstance) {

@@ -3,6 +3,7 @@ import type { PartialMessage, SeqEntry } from "@milu/protocol";
 import { createStore } from "zustand/vanilla";
 
 import { type Connection, IConnection } from "./connection.ts";
+import { INotificationService, type NotificationService } from "./notifications.ts";
 
 export interface TranscriptState {
 	readonly logs: Readonly<Record<string, readonly SeqEntry[]>>;
@@ -32,7 +33,10 @@ export class TranscriptService implements Service {
 	private readonly _loaded = new Set<string>();
 	private _generations: Readonly<Record<string, number>> = {};
 
-	constructor(@IConnection private readonly _connection: Connection) {}
+	constructor(
+		@IConnection private readonly _connection: Connection,
+		@INotificationService private readonly _notifications: NotificationService,
+	) {}
 
 	entries(session: string): readonly SeqEntry[] {
 		return this.store.getState().logs[session] ?? NO_ENTRIES;
@@ -146,7 +150,7 @@ export class TranscriptService implements Service {
 			if (!result.aborted) this.setStopping(session, false);
 		} catch (error) {
 			this.setStopping(session, false);
-			this.fail(session, error instanceof Error ? error.message : String(error));
+			this._notifications.push({ title: "Couldn't stop the run", body: error instanceof Error ? error.message : String(error), tone: "error" });
 		}
 	}
 

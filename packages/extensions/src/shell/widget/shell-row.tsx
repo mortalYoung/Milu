@@ -15,7 +15,7 @@ export function ShellRow(props: SlotProps) {
 	const shell = item.shell;
 	const failed = shell?.exitCode !== undefined && shell.exitCode !== 0;
 	const foldable = shell !== undefined && shell.output !== "";
-	const tone = failed ? "border-signal/45 bg-signal-soft/40 text-ink" : "border-line bg-hover text-ink";
+	const tone = failed ? "border-signal/45 bg-signal/10 text-ink" : "border-line bg-hover text-ink";
 
 	return (
 		<div className={`${CARD} ${tone}`} data-entry={item.id}>

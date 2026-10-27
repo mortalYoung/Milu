@@ -12,7 +12,7 @@ import {
 	SLOT_POINTS,
 	type Snapshot,
 } from "@milu/protocol";
-import { BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent, type OpenDialogOptions, type WebContents } from "electron";
+import { BrowserWindow, dialog, ipcMain, Menu, type MenuItemConstructorOptions, type IpcMainInvokeEvent, type OpenDialogOptions, Notification, type WebContents } from "electron";
 
 import { widgetUrl } from "./widget-url.ts";
 
@@ -54,6 +54,7 @@ export class IpcServer {
 			composer: (params) => this._composer(params),
 			sessions: () => this._sessions(),
 			select: (params) => this._select(params),
+			read: (params) => this._read(params),
 			invoke: (params, sender) => this._invoke(params, sender),
 			answer: (params) => this._answer(params),
 			slots: (params) => this._slots(params),
@@ -75,7 +76,12 @@ export class IpcServer {
 		ipcMain.handle("milu:request", this._request);
 
 		const subscriptions = [
-			this._backend.sessions.onEntry(({ session, entry }) => this._broadcast({ type: "entry", session, entry })),
+			this._backend.sessions.onEntry(({ session, entry }) => {
+				this._broadcast({ type: "entry", session, entry });
+				if (entry.entry.type !== "custom" || entry.entry.customType !== "escalation/request" || this._looking(session)) return;
+				const request = entry.entry.data as { command?: unknown; from?: unknown; to?: unknown } | undefined;
+				this._notify(`${session} · sandbox escalation`, String(request?.command ?? "").slice(0, 140), `${String(request?.from ?? "")} → ${String(request?.to ?? "")}`);
+			}),
 			this._backend.layout.onChange((state) => this._broadcast({ type: "live", event: { type: "layout", ...state } })),
 			this._backend.sessions.onLoopEvent(({ session, event }) => {
 				if (event.type === "message_update") {
@@ -85,6 +91,7 @@ export class IpcServer {
 				if (event.type === "run_start") this._broadcast({ type: "live", event: { type: "status", session, running: true } });
 				if (event.type === "run_end") {
 					this._partials.delete(session);
+					if (!this._looking(session)) void this._notifyRunEnd(session, event.error);
 					const status = { type: "status" as const, session, running: false, ...(event.error ? { error: event.error } : {}) };
 					void this._backend.sessions
 						.get(session)
@@ -92,12 +99,16 @@ export class IpcServer {
 						.then(() => this._broadcast({ type: "live", event: status }));
 				}
 			}),
-			this._backend.selection.onChange((selected) => this._broadcast({ type: "live", event: { type: "selection", selected } })),
+			this._backend.selection.onChange((selected) => {
+				this._broadcast({ type: "live", event: { type: "selection", selected } });
+				this._installMenu();
+			}),
 			this._backend.composer.onModeChange(({ session, mode }) => this._broadcast({ type: "live", event: { type: "composer", session, mode } })),
 			this._backend.settings.onChange(() => this._broadcast({ type: "live", event: { type: "settings" } })),
 			this._backend.lifecycle.onChange((phase) => this._broadcast({ type: "live", event: { type: "lifecycle", phase } })),
 		];
 		for (const subscription of subscriptions) this._cleanup.push(() => subscription.dispose());
+		this._installMenu();
 	}
 
 	stop(): void {
@@ -289,6 +300,107 @@ export class IpcServer {
 		const sessions = [...(await this._backend.sessions.list())];
 		await this._backend.selection.reconcile(sessions.map((row) => row.name));
 		return { sessions, selected: this._backend.selection.selected };
+	}
+
+	/** The chat on screen in a focused window — the same test v1 used before raising a system notification. */
+	private _looking(session: string): boolean {
+		if (this._backend.selection.selected !== session) return false;
+		for (const sender of this._windows) {
+			if (!sender.isDestroyed() && (BrowserWindow.fromWebContents(sender)?.isFocused() ?? false)) return true;
+		}
+		return false;
+	}
+
+	/** v1's menu, with the items v2 actually has; each one asks the window to run the action it names. */
+	private _installMenu(): void {
+		const hasSession = this._backend.selection.selected !== null;
+		const command = (action: string) => () => this._broadcast({ type: "live", event: { type: "command", action } });
+		const template: MenuItemConstructorOptions[] = [
+			{
+				label: "Milu",
+				submenu: [
+					{ role: "about", label: "About Milu" },
+					{ type: "separator" },
+					{ label: "Settings…", accelerator: "Command+,", click: command("settings.open") },
+					{ type: "separator" },
+					{ role: "hide" },
+					{ role: "hideOthers" },
+					{ role: "unhide" },
+					{ type: "separator" },
+					{ role: "quit", label: "Quit Milu" },
+				],
+			},
+			{
+				label: "Chat",
+				submenu: [
+					{ label: "New Chat", accelerator: "Command+N", click: command("create.session") },
+					{ label: "Close Chat", enabled: hasSession, click: command("chat.close") },
+					{ label: "Chat Detail", enabled: hasSession, click: command("details.session") },
+					{ type: "separator" },
+					{ label: "Clear Chat", enabled: hasSession, click: command("chat.clear") },
+					{ label: "Pin to Top", enabled: hasSession, click: command("pin.toggle") },
+				],
+			},
+			{
+				label: "View",
+				submenu: [
+					{ label: "Command Palette…", accelerator: "Command+P", click: command("palette.open") },
+					{ type: "separator" },
+					{ label: "Tasks", enabled: hasSession, click: command("tasks.open") },
+					{ label: "Schedules", enabled: hasSession, click: command("schedule.open") },
+					{ type: "separator" },
+					{ role: "togglefullscreen" },
+				],
+			},
+			{
+				label: "Edit",
+				submenu: [
+					{ role: "undo" },
+					{ role: "redo" },
+					{ type: "separator" },
+					{ role: "cut" },
+					{ role: "copy" },
+					{ role: "paste" },
+					{ role: "pasteAndMatchStyle" },
+					{ type: "separator" },
+					{ role: "selectAll" },
+				],
+			},
+			{ label: "Window", submenu: [{ role: "minimize" }, { role: "zoom" }, { type: "separator" }, { role: "front" }] },
+		];
+		Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+	}
+
+	/** A system banner, or the in-app toast when the platform refuses it — a dev Electron build has no notification authorization. */
+	private _notify(title: string, body: string, subtitle?: string, tone: "plain" | "error" = "plain"): void {
+		if (!Notification.isSupported()) {
+			this._broadcast({ type: "live", event: { type: "notify", title, body, tone } });
+			return;
+		}
+		const notification = new Notification({ title, body, ...(subtitle === undefined ? {} : { subtitle }) });
+		notification.on("failed", (_event, error) => {
+			console.error(`system notification refused (${error}):`, title);
+			this._broadcast({ type: "live", event: { type: "notify", title, body, tone } });
+		});
+		notification.show();
+	}
+
+	private async _notifyRunEnd(session: string, error?: string): Promise<void> {
+		try {
+			const row = await this._backend.sessions.get(session).row();
+			const spoken = row.lastMessageKind === "assistant" || row.lastMessageKind === "send_message" ? (row.lastMessage ?? "") : "";
+			const body = error || spoken || "Click to view the conversation";
+			this._notify(`${session} · ${error ? "run ended with an error" : "finished"}`, body.slice(0, 140));
+		} catch (failure) {
+			console.error("run-end notification failed:", failure);
+		}
+	}
+
+	private async _read(params: Params<"read">): Promise<Result<"read">> {
+		const session = await this._backend.sessions.ensure(params.session);
+		const readAt = (await session.row()).lastMessageAt ?? Date.now();
+		await session.markRead(readAt);
+		return { readAt };
 	}
 
 	private async _select(params: Params<"select">): Promise<Result<"select">> {

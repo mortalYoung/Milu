@@ -89,12 +89,24 @@ export class TranscriptScroll {
 		};
 
 		scroller.addEventListener("scroll", onScroll, { passive: true });
+		/** The scroller itself changed height — the composer grew, a column was dragged, the window moved. Pin now, in this frame. */
+		const rejudge = () => {
+			if (this._paused?.current === true) return;
+			if (this.following) {
+				this._pinNow(false);
+				return;
+			}
+			this._anchor = anchorOf(scroller, content);
+		};
+		const frame = new ResizeObserver(rejudge);
+		frame.observe(scroller);
+
 		scroller.addEventListener("scroll", remember, { passive: true });
 		scroller.addEventListener("wheel", markIntent, { passive: true });
 		scroller.addEventListener("pointerdown", markIntent, { passive: true });
 		scroller.addEventListener("touchmove", markIntent, { passive: true });
 		window.addEventListener("keydown", onKey, true);
-		window.addEventListener("resize", remember);
+		window.addEventListener("resize", rejudge);
 
 		const rows = new ResizeObserver(settle);
 		rows.observe(content);
@@ -109,7 +121,8 @@ export class TranscriptScroll {
 			scroller.removeEventListener("pointerdown", markIntent);
 			scroller.removeEventListener("touchmove", markIntent);
 			window.removeEventListener("keydown", onKey, true);
-			window.removeEventListener("resize", remember);
+			window.removeEventListener("resize", rejudge);
+			frame.disconnect();
 			rows.disconnect();
 			mutations.disconnect();
 		};

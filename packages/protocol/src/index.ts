@@ -176,7 +176,9 @@ export type LiveEvent =
 	| { readonly type: "composer"; readonly session: string; readonly mode: ComposerMode }
 	| { readonly type: "dialog"; readonly id: string; readonly dialog: DialogDescriptor }
 	| { readonly type: "lifecycle"; readonly phase: LifecyclePhase }
-	| { readonly type: "settings" };
+	| { readonly type: "settings" }
+	| { readonly type: "notify"; readonly title: string; readonly body: string; readonly tone: "plain" | "error" }
+	| { readonly type: "command"; readonly action: string };
 
 export interface Methods {
 	transcript: {
@@ -194,6 +196,7 @@ export interface Methods {
 	hotkeys: { params: Record<string, never>; result: { bindings: readonly ActionBinding[] } };
 	sessions: { params: Record<string, never>; result: { sessions: SessionRow[]; selected: string | null } };
 	select: { params: { session: string | null }; result: { selected: string | null } };
+	read: { params: { session: string }; result: { readAt: number } };
 	invoke: {
 		params: { action: string; session?: string; args?: unknown; confirmed?: boolean };
 		result: { ok: boolean; error?: string; command?: BrowserCommand; confirm?: ConfirmCopy; data?: unknown };

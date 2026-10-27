@@ -39,6 +39,8 @@ import {
 	ISelectionService,
 	TranscriptService,
 	ITranscriptService,
+	NotificationService,
+	INotificationService,
 	WelcomeService,
 	IWelcomeService,
 	WorkbenchService,
@@ -95,6 +97,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	services.set(IPickerService, new SyncDescriptor(PickerService));
 	services.set(ISessionListService, new SyncDescriptor(SessionListService));
 	services.set(ISelectionService, new SyncDescriptor(SelectionService));
+	services.set(INotificationService, new SyncDescriptor(NotificationService));
 	services.set(ITranscriptService, new SyncDescriptor(TranscriptService));
 	services.set(IWelcomeService, new SyncDescriptor(WelcomeService));
 	services.set(ISlotsService, new SyncDescriptor(SlotsService, [set.slots]));
@@ -119,6 +122,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	const picker = container.get(IPickerService);
 	const sessions = container.get(ISessionListService);
 	const selection = container.get(ISelectionService);
+	const notifications = container.get(INotificationService);
 	const transcript = container.get(ITranscriptService);
 	const welcome = container.get(IWelcomeService);
 	const slots = container.get(ISlotsService);
@@ -188,6 +192,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 			surfaces,
 			slots,
 			rows,
+			notifications,
 			markdown: deps.markdown,
 			layout,
 			get: (id) => container.get(id),
@@ -203,11 +208,21 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 					if (name) void transcript.open(name);
 				}),
 			});
+			const marking = new Set<string>();
 			disposables.add({
 				dispose: sessions.store.subscribe(() => {
 					const dropped = transcript.retain(sessions.store.getState().rows);
 					const name = selection.store.getState().selected;
 					if (name !== "" && dropped.includes(name)) void transcript.open(name);
+					if (name === "" || marking.has(name)) return;
+					const row = sessions.get(name);
+					if (row === undefined || (row.lastMessageAt ?? 0) <= (row.readAt ?? 0)) return;
+					marking.add(name);
+					void connection
+						.request("read", { session: name })
+						.then(({ readAt }) => sessions.patchRead(name, readAt))
+						.catch(() => undefined)
+						.finally(() => marking.delete(name));
 				}),
 			});
 			disposables.add(connection.onSnapshot(apply));
@@ -234,6 +249,16 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 					}
 					if (event.type === "composer") {
 						composer.apply(event.session, event.mode);
+						return;
+					}
+					if (event.type === "command") {
+						void actions.invoke(event.action, selection.store.getState().selected || undefined).catch((error: unknown) => {
+							notifications.push({ title: `Couldn't run ${event.action}`, body: error instanceof Error ? error.message : String(error), tone: "error" });
+						});
+						return;
+					}
+					if (event.type === "notify") {
+						notifications.push({ title: event.title, body: event.body, tone: event.tone });
 						return;
 					}
 					if (event.type !== "status") return;

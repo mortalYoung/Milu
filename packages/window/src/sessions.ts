@@ -28,6 +28,10 @@ export class SessionListService implements Service {
 		return this.store.getState().rows.find((row) => row.name === session);
 	}
 
+	patchRead(session: string, readAt: number): void {
+		this.store.setState((state) => ({ ...state, rows: state.rows.map((row) => (row.name === session ? { ...row, readAt } : row)) }), true);
+	}
+
 	patchStatus(session: string, running: boolean, error?: string): void {
 		this.store.setState((state) => ({ ...state, rows: state.rows.map((row) => (row.name === session ? { ...row, running, error: error ?? undefined } : row)) }), true);
 	}

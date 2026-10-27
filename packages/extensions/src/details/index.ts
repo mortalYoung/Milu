@@ -82,7 +82,7 @@ export interface DetailsSources {
 	readonly mcp: { statuses(session: Session): Promise<readonly McpServerStatus[]> } | null;
 	readonly runtime: { summary(session: Session): Promise<RuntimeSummary> } | null;
 	readonly settings: SettingsService;
-	readonly permission: { mode(): SandboxMode } | null;
+	readonly permission: { mode(session: Session): Promise<SandboxMode> } | null;
 }
 
 function midnight(ts: number): number {
@@ -231,7 +231,7 @@ export async function collectDetails(session: Session, sources: DetailsSources):
 		models: groups,
 		efforts,
 		effort: session.thinkingLevel(),
-		sandbox: sources.permission?.mode() ?? "workspace-write",
+		sandbox: (await sources.permission?.mode(session)) ?? "workspace-write",
 		skills: skills.map((skill) => ({ name: skill.name, scope: skill.scope })),
 		mcp,
 		memory,

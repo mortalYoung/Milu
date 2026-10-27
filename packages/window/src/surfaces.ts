@@ -13,6 +13,7 @@ import type { HeaderService } from "./header.ts";
 import type { HotkeysService } from "./hotkeys.ts";
 import type { LayoutService } from "./layout.ts";
 import type { MarkdownPort } from "./markdown/types.ts";
+import type { NotificationService } from "./notifications.ts";
 import type { PickerService } from "./picker.ts";
 import type { RowRegistry } from "./rows.ts";
 import type { SelectionService } from "./selection.ts";
@@ -53,6 +54,7 @@ export interface Host {
 	readonly surfaces: SurfaceRegistry;
 	readonly slots: SlotsService;
 	readonly rows: RowRegistry;
+	readonly notifications: NotificationService;
 	readonly layout: LayoutService;
 	readonly get: <T extends Service>(id: ServiceId<T>) => T;
 }

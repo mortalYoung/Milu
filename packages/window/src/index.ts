@@ -38,6 +38,7 @@ export {
 	previewFor,
 	workspaceLabel,
 } from "./utils/chat.ts";
+export { INotificationService, NotificationService, type Notification, type NotificationInput, type NotificationTone } from "./notifications.ts";
 export { detectComposerTrigger, type ComposerTriggerToken } from "./utils/trigger.ts";
 export {
 	dayOf,

@@ -71,8 +71,8 @@ export function TextField(props: { value: string; onCommit: (next: string) => vo
 
 export function NumberField(props: { value: number | undefined; onCommit: (next: number) => void; min?: number; max?: number; step?: number; ariaLabel: string }) {
 	const fallback = props.value ?? 0;
-	const commit = (input: HTMLInputElement) => {
-		const parsed = Number(input.value);
+	const settle = (input: HTMLInputElement) => {
+		const parsed = Number.parseInt(input.value, 10);
 		const next = Number.isFinite(parsed) ? Math.max(props.min ?? 0, parsed) : fallback;
 		input.value = String(next);
 		if (next !== fallback) props.onCommit(next);
@@ -80,20 +80,14 @@ export function NumberField(props: { value: number | undefined; onCommit: (next:
 	return (
 		<input
 			key={fallback}
-			type="number"
+			type="text"
+			inputMode="numeric"
 			defaultValue={String(fallback)}
-			className={`${FIELD} w-[200px]`}
-			min={props.min}
-			max={props.max}
-			step={props.step}
+			className={`${FIELD} w-[120px] tabular-nums`}
 			aria-label={props.ariaLabel}
-			onBlur={(event) => commit(event.currentTarget)}
+			onBlur={(event) => settle(event.currentTarget)}
 			onKeyDown={(event) => {
-				if (event.key === "Enter") event.currentTarget.blur();
-				if (event.key === "Escape") {
-					event.currentTarget.value = String(fallback);
-					event.currentTarget.blur();
-				}
+				if (event.key === "Enter" || event.key === "Escape") event.currentTarget.blur();
 			}}
 		/>
 	);

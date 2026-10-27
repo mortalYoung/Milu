@@ -12,6 +12,10 @@ import { isStrictlyWider } from "../modes.ts";
 import type { ConfinedArgv, PermissionPolicy, SandboxBackend, SandboxMode } from "../types.ts";
 
 const DELETE_DEFAULTS = { strict: true };
+function isMode(value: unknown): value is SandboxMode {
+	return value === "read-only" || value === "workspace-write" || value === "danger-full-access";
+}
+
 const SANDBOX_KEY = "defaultSandboxMode";
 const SANDBOX_DEFAULT: SandboxMode = "workspace-write";
 
@@ -29,6 +33,7 @@ export class PermissionService implements Service {
 	private _backend: SandboxBackend | null | undefined;
 	private _delete: SettingsPoint<{ strict: boolean }> | null = null;
 	private _sandbox: SettingsPoint<SandboxMode> | null = null;
+	private readonly _modes = new Map<string, SandboxMode>();
 	private readonly _nonce = Date.now().toString(36);
 	private _seq = 0;
 	private readonly _failures = new Map<string, string[]>();
@@ -43,13 +48,19 @@ export class PermissionService implements Service {
 		this._sandbox = this._settingsService.declare({ key: SANDBOX_KEY, defaults: SANDBOX_DEFAULT });
 	}
 
-	mode(): SandboxMode {
-		if (!this._sandbox) throw new Error("PermissionService is not initialized");
-		return this._sandbox.get();
+	/** v1's rule: the chat's own `sandbox.json` wins, `defaultSandboxMode` is only the fallback. */
+	async mode(session: Session): Promise<SandboxMode> {
+		const cached = this._modes.get(session.name);
+		if (cached) return cached;
+		const saved = await session.sandbox();
+		const mode = isMode(saved) ? saved : (this._sandbox?.get() ?? SANDBOX_DEFAULT);
+		this._modes.set(session.name, mode);
+		return mode;
 	}
 
-	async setMode(mode: SandboxMode): Promise<void> {
-		await this._settingsService.update({ [SANDBOX_KEY]: mode });
+	async setMode(session: Session, mode: SandboxMode): Promise<void> {
+		await session.setSandbox(mode);
+		this._modes.set(session.name, mode);
 	}
 
 	isConfining(): boolean {
@@ -60,9 +71,9 @@ export class PermissionService implements Service {
 		return join(homedir(), ".Trash");
 	}
 
-	env(session: Session, workspace: string | null, mode?: SandboxMode): ExecutionEnv {
+	async env(session: Session, workspace: string | null, mode?: SandboxMode): Promise<ExecutionEnv> {
 		return createEnv(
-			{ mode: mode ?? this.mode(), workspace, storage: join(session.root, "storage"), trash: this.trash() },
+			{ mode: mode ?? (await this.mode(session)), workspace, storage: join(session.root, "storage"), trash: this.trash() },
 			{
 				sandboxed: this.isConfining(),
 				strictDelete: this._delete ? this._delete.get().strict !== false : true,
@@ -85,14 +96,14 @@ export class PermissionService implements Service {
 
 		const { sandbox_mode: requested, justification } = (call.params ?? {}) as { sandbox_mode?: SandboxMode; justification?: string };
 
-		if (!requested) return next(call, this.env(call.session, call.workspace));
+		if (!requested) return next(call, await this.env(call.session, call.workspace));
 
 		const existing = await this._requestOf(call.session, call.toolCallId);
 		if (existing) {
 			const decision = await this._decisionOf(call.session, existing.escalationId);
 			if (!decision) return stopResult();
 			if (!decision.approved) return decision.dropped ? droppedResult(existing) : rejectedResult(existing);
-			return next(call, this.env(call.session, call.workspace, existing.to));
+			return next(call, await this.env(call.session, call.workspace, existing.to));
 		}
 
 		const outcome = await this._request(call, requested, justification ?? "");
@@ -185,7 +196,7 @@ export class PermissionService implements Service {
 	}
 
 	private async _request(call: ToolCall, to: SandboxMode, justification: string): Promise<EscalationOutcome> {
-		const from = this.mode();
+		const from = await this.mode(call.session);
 		if (!this.isConfining()) return { requested: false, code: "sandbox_unavailable", reason: ESCALATION_UNAVAILABLE_TEXT };
 		if (!isStrictlyWider(from, to)) return { requested: false, code: "escalation_not_wider", reason: `[sandbox: escalation rejected — ${to} is not strictly wider than ${from}]` };
 		if (justification.trim() === "") return { requested: false, code: "escalation_no_justification", reason: "[sandbox: escalation rejected — justification is required]" };

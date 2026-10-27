@@ -34,10 +34,11 @@ const permissionExtension: Extension = {
 
 		context.actions.register({
 			id: "permission.sandbox",
-			run: async ({ args }) => {
+			run: async ({ session, args }) => {
+				if (!session) throw new Error("permission.sandbox needs a session");
 				const mode = (args as { mode?: SandboxMode } | undefined)?.mode;
 				if (mode !== "read-only" && mode !== "workspace-write" && mode !== "danger-full-access") throw new Error("permission.sandbox needs a mode");
-				await permission.setMode(mode);
+				await permission.setMode(session, mode);
 			},
 		});
 

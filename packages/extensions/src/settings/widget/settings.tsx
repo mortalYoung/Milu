@@ -31,6 +31,7 @@ interface Field {
 	readonly min?: number;
 	readonly mono?: boolean;
 	readonly options?: readonly { value: string; label: string }[];
+	readonly preview?: boolean;
 }
 
 const SANDBOX: readonly { value: string; label: string }[] = [
@@ -65,6 +66,26 @@ const FIELDS: readonly Field[] = [
 			{ value: "flat", label: "flat" },
 			{ value: "collapsed", label: "collapsed" },
 		],
+	},
+	{
+		id: "toastPlacement",
+		category: "general",
+		kind: "select",
+		title: "Notification Placement",
+		description: "Where notifications appear. Only the right-hand corners are supported.",
+		options: [
+			{ value: "topright", label: "TopRight" },
+			{ value: "bottomright", label: "BottomRight" },
+		],
+		preview: true,
+	},
+	{
+		id: "toastDurationMs",
+		category: "general",
+		kind: "number",
+		title: "Notification Duration",
+		description: "How long a notification stays before dismissing itself, in milliseconds. 0 keeps it until dismissed.",
+		min: 0,
 	},
 	{ id: "rememberSession", category: "general", kind: "switch", title: "Remember Last Session", description: "Reopen the last chat and window size on launch." },
 	{
@@ -339,7 +360,20 @@ export function SettingsDialog(props: DialogProps) {
 			case "switch":
 				return <Switch checked={value === true} ariaLabel={field.title} onChange={(next) => saveField(field.id, next)} />;
 			case "select":
-				return <Select value={String(value ?? "")} ariaLabel={field.title} options={field.options ?? []} onChange={(next) => saveField(field.id, next)} />;
+				return (
+					<div className="flex items-center gap-2">
+						<Select value={String(value ?? "")} ariaLabel={field.title} options={field.options ?? []} onChange={(next) => saveField(field.id, next)} />
+						{field.preview ? (
+							<button
+								type="button"
+								className={`${BUTTON_GHOST} h-8`}
+								onClick={() => props.host.notifications.push({ title: "Notification", body: "This is how a notification looks." })}
+							>
+								Test
+							</button>
+						) : null}
+					</div>
+				);
 			case "number":
 				return <NumberField value={typeof value === "number" ? value : undefined} ariaLabel={field.title} min={field.min} onCommit={(next) => saveField(field.id, next)} />;
 			case "path":

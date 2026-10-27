@@ -17,6 +17,7 @@ import {
 	profileOf,
 	readAtOf,
 	recordPrompt,
+	sandboxOf,
 	type SessionModel,
 	tildify,
 	type SessionProfile,
@@ -26,6 +27,7 @@ import {
 	writeModel,
 	writePinned,
 	writeReadAt,
+	writeSandbox,
 } from "./files.ts";
 import { SessionLog } from "./log.ts";
 import type { OriginWindow } from "./origin.ts";
@@ -452,6 +454,14 @@ export class Session {
 
 	async workspace(): Promise<WorkspaceFacts | null> {
 		return this._workspaceOf();
+	}
+
+	async sandbox(): Promise<string | null> {
+		return sandboxOf(this.root);
+	}
+
+	async setSandbox(mode: string): Promise<void> {
+		await writeSandbox(this.root, mode);
 	}
 
 	async setWorkspace(path: string | null): Promise<void> {

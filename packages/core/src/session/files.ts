@@ -8,6 +8,7 @@ export const READ_FILE = "read.json";
 export const WORKSPACE_FILE = "workspace.json";
 export const MODEL_FILE = "model.json";
 export const LAST_PROMPT_FILE = "last-prompt.json";
+export const SANDBOX_FILE = "sandbox.json";
 
 const promptHash = (prompt: string) => createHash("sha256").update(prompt).digest("hex");
 
@@ -92,6 +93,16 @@ export function writeReadAt(dir: string, readAt: number): Promise<void> {
 
 export async function writeWorkspace(dir: string, path: string | null): Promise<void> {
 	await writeJson(join(dir, WORKSPACE_FILE), { path, kind: null, repo: null });
+}
+
+/** v1's per-chat sandbox file: `{ "mode": "…" }`, absent when the chat never had one. */
+export async function sandboxOf(dir: string): Promise<string | null> {
+	const data = await readJson<{ mode?: unknown }>(join(dir, SANDBOX_FILE));
+	return typeof data?.mode === "string" ? data.mode : null;
+}
+
+export function writeSandbox(dir: string, mode: string): Promise<void> {
+	return writeJson(join(dir, SANDBOX_FILE), { mode });
 }
 
 export async function workspaceOf(dir: string): Promise<WorkspaceFacts | null> {

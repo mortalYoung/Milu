@@ -65,7 +65,7 @@ const remindersExtension: Extension = {
 		const skills = context.get(ISkillsService);
 		const permission = context.get(IPermissionService);
 		context.disposables.add(hooks.on("beforeRun", timeGap));
-		context.disposables.add(hooks.on("beforeRequest", (each) => contextChanged(each, skills, permission.mode())));
+		context.disposables.add(hooks.on("beforeRequest", async (each) => contextChanged(each, skills, await permission.mode(each.session))));
 	},
 };
 
