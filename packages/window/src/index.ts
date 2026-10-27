@@ -54,6 +54,7 @@ export {
 	type LogEntry,
 	type ReplyRow,
 	type ToolStatus,
+	type ViewCommand,
 	type ViewEscalation,
 	type ViewItem,
 	type ViewSchedule,

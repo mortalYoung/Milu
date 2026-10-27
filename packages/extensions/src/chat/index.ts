@@ -1,8 +1,10 @@
-import { EVENTS, expandHome, ISelectionService, type Extension } from "@milu/core";
+import { EVENTS, expandHome, ICommandsService, ISelectionService, type Extension } from "@milu/core";
 
 const chatExtension: Extension = {
 	id: "chat",
 	apiVersion: 1,
+
+	widgets: [{ id: "command", type: "row", entry: "./widget/command-row.tsx", export: "CommandRow" }],
 
 	contributions: {
 		"composer.commands": [
@@ -33,6 +35,15 @@ const chatExtension: Extension = {
 
 	activate(context) {
 		context.actions.register({
+			id: "chat.command",
+			run: ({ session, args }) => {
+				if (!session) throw new Error("chat.command needs a session");
+				const value = args as { name?: unknown; args?: unknown } | undefined;
+				return context.get(ICommandsService).run(session, String(value?.name ?? ""), typeof value?.args === "string" ? value.args : "");
+			},
+		});
+
+		context.actions.register({
 			id: "chat.close",
 			scope: "chat",
 			hotkey: { web: "Option+Shift+W", desktop: "Mod+W" },
@@ -56,6 +67,7 @@ const chatExtension: Extension = {
 				if (!session) throw new Error("chat.compact needs a session");
 				const result = await session.compact();
 				if (!result) throw new Error("nothing to compact yet");
+				return { data: `compacted ${result.shadowed} ${result.shadowed === 1 ? "entry" : "entries"}` };
 			},
 		});
 

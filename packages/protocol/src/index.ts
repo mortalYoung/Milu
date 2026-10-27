@@ -43,6 +43,8 @@ export const LOG_EVENTS = {
 	taskStart: "task/start",
 	taskEnd: "task/end",
 	scheduleRun: "schedule/run",
+	commandRun: "command/run",
+	commandDone: "command/done",
 	shellRun: "shell/run",
 	shellDone: "shell/done",
 } as const;
@@ -193,6 +195,7 @@ export interface Methods {
 	prompt: { params: { text: string }; result: { accepted: boolean } };
 	abort: { params: Record<string, never>; result: { aborted: boolean } };
 	composer: { params: { session: string }; result: { layout: ComposerLayout; mode: ComposerMode } };
+	commands: { params: { session: string }; result: { commands: readonly ComposerCommand[] } };
 	hotkeys: { params: Record<string, never>; result: { bindings: readonly ActionBinding[] } };
 	sessions: { params: Record<string, never>; result: { sessions: SessionRow[]; selected: string | null } };
 	select: { params: { session: string | null }; result: { selected: string | null } };

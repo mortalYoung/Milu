@@ -33,9 +33,17 @@ export interface ViewEscalation {
 	status: EscalationStatus;
 }
 
+export interface ViewCommand {
+	commandId: string;
+	name: string;
+	args?: string;
+	text?: string;
+	status: "running" | "success" | "error";
+}
+
 export interface ViewItem {
 	id: string;
-	kind: "user" | "assistant" | "escalation" | "error" | "aborted" | "shell" | "sep";
+	kind: "user" | "assistant" | "escalation" | "error" | "aborted" | "shell" | "sep" | "command";
 	text: string;
 	time: number;
 	from?: string;
@@ -45,6 +53,7 @@ export interface ViewItem {
 	schedule?: ViewSchedule;
 	thinking?: { text: string; redacted?: boolean };
 	tool?: ViewTool;
+	command?: ViewCommand;
 	stepMs?: number;
 	say?: true;
 	live?: true;
@@ -229,6 +238,34 @@ function sendMessageVisit(entry: LogEntry, out: ViewItem[]): void {
 	out.push({ id: entry.id, kind: "assistant", text: data.text, time: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0) });
 }
 
+function commandVisit(entry: LogEntry, out: ViewItem[]): void {
+	if (entry.type !== "custom") return;
+	const data = entry.data as { commandId?: unknown; name?: unknown; args?: unknown; timestamp?: unknown } | undefined;
+	if (data?.commandId == null) return;
+	out.push({
+		id: entry.id,
+		kind: "command",
+		text: String(data.name ?? ""),
+		time: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
+		command: {
+			commandId: String(data.commandId),
+			name: String(data.name ?? ""),
+			status: "running",
+			...(typeof data.args === "string" && data.args !== "" ? { args: data.args } : {}),
+		},
+	});
+}
+
+function commandDoneVisit(entry: LogEntry, out: ViewItem[]): void {
+	if (entry.type !== "custom") return;
+	const data = entry.data as { commandId?: unknown; kind?: unknown; text?: unknown } | undefined;
+	if (data?.commandId == null) return;
+	const item = findLast(out, (row) => row.command?.commandId === String(data.commandId));
+	if (!item?.command) return;
+	item.command.status = data.kind === "error" ? "error" : "success";
+	if (typeof data.text === "string" && data.text !== "") item.command.text = data.text;
+}
+
 function shellDoneVisit(entry: LogEntry, out: ViewItem[]): void {
 	if (entry.type !== "custom") return;
 	const data = entry.data as { command?: unknown; text?: unknown; exitCode?: unknown; timestamp?: unknown } | undefined;
@@ -284,12 +321,6 @@ function escalationDecisionVisit(entry: LogEntry, out: ViewItem[]): void {
 
 const isRunStatus = (value: unknown): value is NonNullable<ViewSchedule["status"]> => value === "dispatched" || value === "skipped" || value === "missed";
 
-function compactionVisit(entry: LogEntry, out: ViewItem[]): void {
-	if (entry.type !== "custom") return;
-	const data = entry.data as { timestamp?: unknown } | undefined;
-	out.push({ id: entry.id, kind: "assistant", text: "context compacted", time: typeof data?.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0) });
-}
-
 function scheduleRunVisit(entry: LogEntry, out: ViewItem[]): void {
 	if (entry.type !== "custom") return;
 	const data = entry.data as { scheduleId?: unknown; scheduleTitle?: unknown; runId?: unknown; trigger?: unknown; status?: unknown; error?: unknown } | undefined;
@@ -340,9 +371,10 @@ const VISITORS: Readonly<Record<string, (entry: LogEntry, out: ViewItem[]) => vo
 	[LOG_EVENTS.shellDone]: shellDoneVisit,
 	[LOG_EVENTS.escalationRequest]: escalationVisit,
 	[LOG_EVENTS.escalationDecision]: escalationDecisionVisit,
-	[LOG_EVENTS.compaction]: compactionVisit,
 	[LOG_EVENTS.scheduleRun]: scheduleRunVisit,
 	[LOG_EVENTS.rewind]: rewindVisit,
+	[LOG_EVENTS.commandRun]: commandVisit,
+	[LOG_EVENTS.commandDone]: commandDoneVisit,
 };
 
 export function rowKindOf(item: ViewItem): string {

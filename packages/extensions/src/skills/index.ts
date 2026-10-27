@@ -2,7 +2,7 @@ import { readFile, mkdir, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { type ExecutionEnv, type Extension, ISessionService, ISettingsService, type ToolCall, IToolService, Type } from "@milu/core";
+import { type ComposerCommand, type ExecutionEnv, type Extension, ICommandsService, ISessionService, ISettingsService, type ToolCall, IToolService, Type } from "@milu/core";
 
 import { SKILL_NAME_RE, type SkillDefinition } from "./catalog.ts";
 import { grantedSkills, setGrantedSkill } from "./grants.ts";
@@ -33,6 +33,42 @@ const skillsExtension: Extension = {
 
 		context.actions.register({ id: "skills.open", run: () => ({ kind: "view", view: "skills" }) });
 		context.actions.register({ id: "workspace.close", scope: "view", hotkey: "Mod+W", run: () => ({ kind: "view", view: null }) });
+		context.disposables.add(
+			context.get(ICommandsService).register({
+				id: "skills",
+				list: async (session) => {
+					if (!session) return [];
+					return (await skills.list(session))
+						.filter((skill) => skill.invocation.userInvocable)
+						.map((skill): ComposerCommand => ({
+							id: `skill:${skill.name}`,
+							name: `skill:${skill.name}`,
+							description: skill.description,
+							kind: "leadingInput",
+							hint: "[<request>]",
+							action: "skills.run",
+							category: "skill",
+						}));
+				},
+			}),
+		);
+
+		context.actions.register({
+			id: "skills.run",
+			run: async ({ session, args }) => {
+				if (!session) throw new Error("skills.run needs a session");
+				const input = (args ?? {}) as { name?: unknown; args?: unknown };
+				const name = String(input.name ?? "").replace(/^skill:/, "");
+				if (!SKILL_NAME_RE.test(name)) throw new Error(`invalid skill name "${name}"`);
+				if (session.running) throw new Error(`"${session.name}" is running — stop it before running a skill`);
+				const hint = typeof input.args === "string" ? input.args.trim() : "";
+				const def = await skills.get(session, name);
+				if (!def) throw new Error(`skill "${name}" is unknown or not granted`);
+				if (!def.invocation.userInvocable) throw new Error(`skill "${name}" is not user-invocable`);
+				await session.deliver(`The user invoked skill "${name}"${hint === "" ? "" : ` with the request: ${hint}`}:\n\n${content(def)}`, { skill: name });
+			},
+		});
+
 		context.actions.register({
 			id: "skills.global",
 			run: async () => {

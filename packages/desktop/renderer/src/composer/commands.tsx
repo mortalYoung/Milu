@@ -77,7 +77,7 @@ export const commandsTrigger: ComposerTriggerComponent = {
 		const command = item as ComposerCommand;
 		if (command.kind === "leadingInput") return false;
 		void host.actions
-			.invoke(command.action, session)
+			.invoke("chat.command", session, { name: command.name })
 			.then(() => host.transcript.reload(session))
 			.then(() => host.sessions.refresh())
 			.catch((error: unknown) => host.transcript.fail(session, error instanceof Error ? error.message : String(error)));

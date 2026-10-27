@@ -268,6 +268,8 @@ export const EVENT_META: Record<string, EventMeta> = {
 	[LOG_EVENTS.taskStart]: dataNode("custom", { chip: "TASK", caption: (record) => recordText(record, "data.title") || recordText(record, "data.taskId") }),
 	[LOG_EVENTS.taskEnd]: dataNode("custom", { chip: "TASK", caption: (record) => recordText(record, "data.status") }),
 	[LOG_EVENTS.scheduleRun]: dataNode("custom", { chip: "SCHED", caption: (record) => recordText(record, "data.scheduleTitle") }),
+	[LOG_EVENTS.commandRun]: dataNode("custom", { chip: "CMD", caption: (record) => firstLine(recordText(record, "data.name")) }),
+	[LOG_EVENTS.commandDone]: dataNode("custom", { chip: "CMD", caption: (record) => firstLine(recordText(record, "data.text")) || recordText(record, "data.kind") }),
 	[LOG_EVENTS.shellRun]: dataNode("custom", { chip: "SHLL", caption: (record) => firstLine(recordText(record, "data.command")) }),
 	[LOG_EVENTS.shellDone]: dataNode("custom", { chip: "SHLL", caption: (record) => firstLine(recordText(record, "data.command")) }),
 };

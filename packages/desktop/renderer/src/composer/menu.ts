@@ -1,7 +1,7 @@
 export const MENU =
 	"absolute bottom-[calc(100%+8px)] left-1/2 z-50 max-h-[240px] w-[calc(100%_-_2rem)] max-w-[var(--transcript-measure)] -translate-x-1/2 overflow-y-auto rounded-md border border-line bg-surface py-1 animate-[command-menu-in_180ms_var(--ease-out)] motion-reduce:animate-none";
 
-export const ITEM = "flex w-full cursor-pointer items-center gap-2 bg-transparent px-3 py-1.5 text-left font-mono text-[12px] text-ink hover:bg-hover";
+export const ITEM = "flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-left font-mono text-[12px] text-ink hover:bg-hover";
 
 export const NAME = "shrink-0 text-signal";
 

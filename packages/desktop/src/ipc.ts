@@ -52,6 +52,7 @@ export class IpcServer {
 			abort: () => this._abort(),
 			hotkeys: () => this._hotkeys(),
 			composer: (params) => this._composer(params),
+			commands: (params) => this._commands(params),
 			sessions: () => this._sessions(),
 			select: (params) => this._select(params),
 			read: (params) => this._read(params),
@@ -86,6 +87,10 @@ export class IpcServer {
 			this._backend.sessions.onLoopEvent(({ session, event }) => {
 				if (event.type === "message_update") {
 					this._queuePartial(session, event.message);
+					return;
+				}
+				if (event.type === "message_end") {
+					this._partials.delete(session);
 					return;
 				}
 				if (event.type === "run_start") this._broadcast({ type: "live", event: { type: "status", session, running: true } });
@@ -229,7 +234,7 @@ export class IpcServer {
 			header: this._ordered<ContributionItem>(SESSION_HEADER_POINT),
 			footer: this._ordered<ContributionItem>(SESSION_FOOTER_POINT),
 			hotkeys: this._backend.actions.bindings(),
-			commands: this._backend.commands.list(),
+			commands: await this._backend.commands.list(selected),
 			welcome: this._ordered<WelcomeItem>(WELCOME_ITEMS_POINT),
 			slots: {
 				[SLOT_POINTS.chatBar]: await this._backend.sessions.slots(SLOT_POINTS.chatBar, selected),
@@ -295,6 +300,11 @@ export class IpcServer {
 	private async _composer(params: Params<"composer">): Promise<Result<"composer">> {
 		const session = await this._backend.sessions.ensure(params.session);
 		return { layout: await this._backend.sessions.composer(session), mode: this._backend.composer.mode(session) };
+	}
+
+	private async _commands(params: Params<"commands">): Promise<Result<"commands">> {
+		const session = await this._backend.sessions.ensure(params.session);
+		return { commands: await this._backend.commands.list(session) };
 	}
 
 	private async _sessions(): Promise<Result<"sessions">> {
@@ -370,7 +380,24 @@ export class IpcServer {
 					{ role: "selectAll" },
 				],
 			},
-			{ label: "Window", submenu: [{ role: "minimize" }, { role: "zoom" }, { type: "separator" }, { role: "front" }] },
+			{
+				label: "Window",
+				submenu: [
+					{ role: "minimize" },
+					{ role: "zoom" },
+					{ type: "separator" },
+					{ role: "front" },
+					{ type: "separator" },
+					{
+						label: "Toggle Developer Tools",
+						accelerator: "Alt+Command+I",
+						click: (_item, window) => {
+							const target = window instanceof BrowserWindow ? window : BrowserWindow.getAllWindows()[0];
+							target?.webContents.toggleDevTools();
+						},
+					},
+				],
+			},
 		];
 		Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 	}

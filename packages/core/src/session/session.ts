@@ -38,7 +38,6 @@ import { type ContextBreakdown, priceMessages, totalTokens } from "./tokens.ts";
 const DEFAULT_THINKING_LEVEL = "high";
 
 const SEND_MESSAGE = "send_message";
-const COMMAND_RUN = "command/run";
 const SKILL_RUN = "skill/run";
 
 interface LastVisible {
@@ -67,6 +66,7 @@ function lastVisible(entries: readonly Entry[]): LastVisible | null {
 		if (entry.type === "message") {
 			const message = entry.message;
 			if (!("content" in message) || (message.role !== "user" && message.role !== "assistant")) continue;
+			if (typeof (message as { skill?: unknown }).skill === "string") continue;
 			const text = textOf(message.content).trim();
 			if (text === "") continue;
 			last = { text, kind: message.role, time: message.timestamp ?? 0 };
@@ -85,7 +85,7 @@ function lastVisible(entries: readonly Entry[]): LastVisible | null {
 		};
 		if (entry.customType === SEND_MESSAGE && typeof data.text === "string" && data.via !== "shell") {
 			last = { text: data.text, kind: "send_message", time: stampOf(entry, data) };
-		} else if (entry.customType === COMMAND_RUN && data.commandId != null) {
+		} else if (entry.customType === EVENTS.commandRun && data.commandId != null) {
 			last = { text: String(data.name ?? ""), kind: "command", time: stampOf(entry, data) };
 		} else if (entry.customType === SKILL_RUN && data.skillId != null) {
 			last = { text: String(data.name ?? ""), kind: "skill", time: stampOf(entry, data) };
@@ -228,6 +228,7 @@ export class Session {
 		meta: {
 			schedule?: { scheduleId: string; runId: string; title: string };
 			peer?: { from: string; kind: "ask" | "reply"; requestId: string; hop: number };
+			skill?: string;
 		} = {},
 	): Promise<void> {
 		const loop = await this.open();
@@ -235,6 +236,7 @@ export class Session {
 			role: "user",
 			content: text,
 			timestamp: Date.now(),
+			...(meta.skill ? { skill: meta.skill } : {}),
 			...(meta.schedule ? { scheduleId: meta.schedule.scheduleId, scheduleRunId: meta.schedule.runId, scheduleTitle: meta.schedule.title } : {}),
 			...(meta.peer ? { from: meta.peer.from, peerKind: meta.peer.kind, requestId: meta.peer.requestId, hop: meta.peer.hop } : {}),
 		} as AgentMessage;

@@ -8,7 +8,7 @@ import { ArrowUpIcon, SquareIcon } from "./icons.tsx";
 
 const MAX_HEIGHT = 120;
 const NO_ITEMS: readonly unknown[] = [];
-const COMMAND_LINE = /^\/([a-z][a-z0-9_-]*)(?:\s+(.*))?$/s;
+const COMMAND_LINE = /^\/([a-z][a-z0-9_:-]*)(?:\s+(.*))?$/s;
 
 function parseCommandLine(value: string): { name: string; args: string } | null {
 	const match = COMMAND_LINE.exec(value.trim());
@@ -47,6 +47,7 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 
 	useEffect(() => {
 		void host.composer.load(selected);
+		void host.commands.load(selected);
 	}, [host, selected]);
 
 	useEffect(() => {
@@ -94,7 +95,7 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 				return;
 			}
 			try {
-				await host.actions.invoke(command.action, selected, { args: parsed.args });
+				await host.actions.invoke("chat.command", selected, { name: command.name, args: parsed.args });
 				host.transcript.setDraft(selected, "");
 				void host.sessions.refresh();
 				await host.transcript.reload(selected);
@@ -117,6 +118,7 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 			return;
 		}
 		const key = `${selected}:${token.trigger}:${token.query}:${token.span.start}`;
+		if (lastTrigger.current === null) void host.commands.load(selected);
 		if (lastTrigger.current !== key) {
 			lastTrigger.current = key;
 			setMenuIndex(0);
