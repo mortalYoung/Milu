@@ -635,9 +635,14 @@ export class Session {
 	}
 
 	private async _facts(): Promise<{ startedAt?: number; last: LastVisible | null }> {
+		const peek = await this._log.peek();
+		const last = lastVisible(peek.tail) ?? (await this._lastVisible());
+		return { ...(peek.createdAt ? { startedAt: peek.createdAt } : {}), last };
+	}
+
+	/** The tail missed (a long run of tool records at the end): fall back to the whole log, the slow but exact read. */
+	private async _lastVisible(): Promise<LastVisible | null> {
 		await this._log.open();
-		const startedAt = await this._log.startedAt();
-		const entries = await this._log.entries();
-		return { ...(startedAt ? { startedAt } : {}), last: lastVisible(entries.map((each) => each.entry)) };
+		return lastVisible((await this._log.entries()).map((each) => each.entry));
 	}
 }

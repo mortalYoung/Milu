@@ -4,6 +4,7 @@ import { Tip } from "@milu/window/tooltip";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 
+import { mark } from "../boot.ts";
 import { ChevronDownIcon, ChevronRightIcon, FolderTreeIcon, IconByName, MoreVerticalIcon, PanelLeftCloseIcon, SearchIcon } from "../components/icons.tsx";
 import { MiluWordmark } from "../components/MiluWordmark.tsx";
 import { Menu, MenuContent, MenuItems, MenuTrigger } from "../components/row-menu.tsx";
@@ -129,6 +130,11 @@ export function SessionListSurface(props: SurfaceProps) {
 	const rows = useStore(host.sessions.store, (state) => state.rows);
 	const selected = useStore(host.selection.store, (state) => state.selected);
 	const searchOpen = useStore(host.workbench.store, (state) => state.searchOpen);
+	const hasData = rows.length > 0 && selected === "";
+	useEffect(() => {
+		if (!hasData) return;
+		mark("list");
+	}, [hasData]);
 	const headerItems = useStore(host.header.store, (state) => state.items);
 	const footerItems = useStore(host.footer.store, (state) => state.items);
 	const bindings = useStore(host.hotkeys.store, (state) => state.bindings);

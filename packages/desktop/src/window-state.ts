@@ -35,6 +35,16 @@ function isFrame(value: unknown): value is WindowFrame {
 	return (frame["width"] as number) >= SAVED_MIN.width && (frame["height"] as number) >= SAVED_MIN.height;
 }
 
+export function readRememberSession(root: string): boolean {
+	try {
+		const raw: unknown = JSON.parse(readFileSync(join(root, "settings.json"), "utf8"));
+		const value = typeof raw === "object" && raw !== null ? (raw as { rememberSession?: unknown }).rememberSession : undefined;
+		return value !== false;
+	} catch {
+		return true;
+	}
+}
+
 export function readWindowState(root: string): WindowState | null {
 	try {
 		const value: unknown = JSON.parse(readFileSync(statePath(root), "utf8"));

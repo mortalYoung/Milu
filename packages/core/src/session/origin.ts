@@ -43,6 +43,13 @@ export interface OriginWindow {
 	readonly reset: boolean;
 }
 
+/** The newest conversations from a tail of the log; null when the tail does not hold enough of them. */
+export function tailWindow(entries: readonly Entry[], conversations: number, whole: boolean): OriginWindow | null {
+	const origin = whole ? projectOrigin(entries) : entries.filter((entry) => usable(entry) && !isRequestHeader(entry));
+	if (!whole && conversationStarts(origin).length <= conversations) return null;
+	return originWindow(origin, { conversations });
+}
+
 export function originWindow(origin: readonly Entry[], options: { mode?: "older" | "newer"; cursor?: string; conversations: number }): OriginWindow {
 	const { mode, cursor, conversations } = options;
 	const total = origin.length;

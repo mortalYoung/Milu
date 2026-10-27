@@ -4,6 +4,7 @@ import { Tip } from "@milu/window/tooltip";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 
+import { mark } from "../boot.ts";
 import { ArrowUpIcon, SquareIcon } from "./icons.tsx";
 
 const MAX_HEIGHT = 120;
@@ -72,6 +73,7 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 		element.focus();
 		const end = element.value.length;
 		element.setSelectionRange(end, end);
+		mark("interactive");
 	}, [selected]);
 
 	const submit = async (): Promise<void> => {

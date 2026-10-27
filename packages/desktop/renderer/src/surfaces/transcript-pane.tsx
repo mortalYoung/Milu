@@ -5,6 +5,7 @@ import { Markdown } from "@milu/window/markdown/react";
 import { createElement, memo, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 
+import { mark } from "../boot.ts";
 import { copyPath } from "../clipboard.ts";
 import { ChatBar } from "../components/chat-bar.tsx";
 import { Composer } from "../components/composer.tsx";
@@ -220,6 +221,12 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 		setFollowed(selected);
 		follower.pin(true);
 	}
+
+	const hasData = display.length > 0;
+	useEffect(() => {
+		if (!hasData) return;
+		mark("data");
+	}, [hasData]);
 
 	const hasMore = useStore(host.transcript.store, (state) => state.hasMore[selected] ?? false);
 	const loadingOlder = useStore(host.transcript.store, (state) => state.loadingOlder[selected] ?? false);

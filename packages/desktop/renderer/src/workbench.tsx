@@ -3,6 +3,7 @@ import { Tip } from "@milu/window/tooltip";
 import { type ReactNode, useEffect, useRef } from "react";
 import { useStore } from "zustand";
 
+import { mark } from "./boot.ts";
 import { DialogHost } from "./components/dialog-host.tsx";
 import { Grip } from "./components/grip.tsx";
 import { SessionListSkeleton, TranscriptSkeleton } from "./components/skeletons.tsx";
@@ -50,6 +51,7 @@ export function Workbench(props: { host: Host }) {
 
 	useEffect(() => {
 		document.getElementById("boot")?.remove();
+		mark("mounted");
 	}, []);
 
 	const readout = (dragged: "list" | "dock", width: number): string => {

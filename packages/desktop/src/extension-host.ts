@@ -27,7 +27,7 @@ class UtilityExtensionHost implements ExtensionHost {
 		readonly id: string,
 		private readonly _sink: HostSink,
 	) {
-		this._child = utilityProcess.fork(join(app.getAppPath(), "dist-electron/ext-host.js"), [], { stdio: "inherit" });
+		this._child = utilityProcess.fork(join(app.getAppPath(), "dist-electron/ext-host.cjs"), [], { stdio: "inherit" });
 		this._spawned = new Promise((resolve) => this._child.once("spawn", () => resolve()));
 		this._child.on("message", (message: HostResponse | { id: number; method: string; params: unknown }) => {
 			if ("ok" in message) {

@@ -3,6 +3,7 @@ import { createMarkdown, DEFAULT_PLUGINS } from "@milu/window/markdown";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 
+import { mark, reportBootTo } from "./boot.ts";
 import { installWindowBridge } from "./bridge.ts";
 import { copyPath } from "./clipboard.ts";
 import { commandsTrigger } from "./composer/commands.tsx";
@@ -16,12 +17,17 @@ import { IpcTransport } from "./transport.ts";
 import "./style.css";
 
 async function main(): Promise<void> {
+	const transport = new IpcTransport();
+	reportBootTo((marks) => void transport.request("boot", { marks }));
+	mark("script");
+
 	installWindowBridge();
 
 	const front = await createFrontEnd({
-		transport: new IpcTransport(),
+		transport,
 		markdown: createMarkdown([...DEFAULT_PLUGINS]),
 		platform: "desktop",
+		mark,
 		commands: { copy: (text) => copyPath(text) },
 		triggers: [commandsTrigger, partnersTrigger],
 		components: [
@@ -30,10 +36,13 @@ async function main(): Promise<void> {
 		],
 	});
 
+	mark("front");
+
 	const root = document.getElementById("root");
 	if (!root) throw new Error("#root is missing from index.html");
 
 	installMarkdownClicks(front.host);
+	front.host.connection.onSnapshot(() => mark("snapshot"));
 	createRoot(root).render(createElement(Root, { host: front.host }));
 	front.start();
 }

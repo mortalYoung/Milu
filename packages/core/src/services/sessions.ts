@@ -76,10 +76,7 @@ export class SessionService implements Service {
 	}
 
 	async list(): Promise<readonly SessionRow[]> {
-		const rows: SessionRow[] = [];
-		for (const name of await this._names()) {
-			rows.push(await this._rowOf(this.get(name)));
-		}
+		const rows = await Promise.all((await this._names()).map((name) => this._rowOf(this.get(name))));
 		return rows.sort((left, right) => (right.lastMessageAt ?? 0) - (left.lastMessageAt ?? 0) || left.name.localeCompare(right.name));
 	}
 

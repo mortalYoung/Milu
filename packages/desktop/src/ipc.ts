@@ -12,8 +12,9 @@ import {
 	SLOT_POINTS,
 	type Snapshot,
 } from "@milu/protocol";
-import { BrowserWindow, dialog, ipcMain, Menu, type MenuItemConstructorOptions, type IpcMainInvokeEvent, type OpenDialogOptions, Notification, type WebContents } from "electron";
+import { BrowserWindow, dialog, Menu, type MenuItemConstructorOptions, type IpcMainInvokeEvent, type OpenDialogOptions, Notification, type WebContents } from "electron";
 
+import { recordBootMarks } from "./boot.ts";
 import { widgetUrl } from "./widget-url.ts";
 
 const DIALOG_TIMEOUT_MS = 5 * 60_000;
@@ -53,6 +54,8 @@ export class IpcServer {
 			hotkeys: () => this._hotkeys(),
 			composer: (params) => this._composer(params),
 			commands: (params) => this._commands(params),
+			boot: (params) => this._boot(params),
+			hello: () => this._hello(),
 			sessions: () => this._sessions(),
 			select: (params) => this._select(params),
 			read: (params) => this._read(params),
@@ -73,9 +76,6 @@ export class IpcServer {
 	start(): void {
 		if (this._started) return;
 		this._started = true;
-		ipcMain.handle("milu:connect", this._connect);
-		ipcMain.handle("milu:request", this._request);
-
 		const subscriptions = [
 			this._backend.sessions.onEntry(({ session, entry }) => {
 				this._broadcast({ type: "entry", session, entry });
@@ -119,8 +119,6 @@ export class IpcServer {
 	stop(): void {
 		if (!this._started) return;
 		this._started = false;
-		ipcMain.removeHandler("milu:connect");
-		ipcMain.removeHandler("milu:request");
 		for (const cleanup of this._cleanup.splice(0)) cleanup();
 		if (this._partialTimer) clearTimeout(this._partialTimer);
 		this._partialTimer = null;
@@ -130,7 +128,7 @@ export class IpcServer {
 		this._windows.clear();
 	}
 
-	private readonly _connect = async (event: IpcMainInvokeEvent): Promise<Snapshot> => {
+	readonly connect = async (event: IpcMainInvokeEvent): Promise<Snapshot> => {
 		const sender = event.sender;
 		const snapshot = await this._snapshot();
 		if (!this._windows.has(sender)) {
@@ -140,7 +138,7 @@ export class IpcServer {
 		return snapshot;
 	};
 
-	private readonly _request = async (event: IpcMainInvokeEvent, method: string, params: unknown) => {
+	readonly request = async (event: IpcMainInvokeEvent, method: string, params: unknown) => {
 		const handler = this._handlers[method as MethodName];
 		if (!handler) return { ok: false, error: { code: "unknown_method", message: `no method "${method}"` } };
 		try {
@@ -305,6 +303,15 @@ export class IpcServer {
 	private async _commands(params: Params<"commands">): Promise<Result<"commands">> {
 		const session = await this._backend.sessions.ensure(params.session);
 		return { commands: await this._backend.commands.list(session) };
+	}
+
+	private async _boot(params: Params<"boot">): Promise<Result<"boot">> {
+		recordBootMarks(params.marks);
+		return {};
+	}
+
+	private async _hello(): Promise<Result<"hello">> {
+		return { lifecycle: this._backend.lifecycle.phase, selected: this._backend.selection.selected };
 	}
 
 	private async _sessions(): Promise<Result<"sessions">> {

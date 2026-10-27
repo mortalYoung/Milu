@@ -1,5 +1,5 @@
 import { DisposableStore, type Disposable, IInstantiationService, InstantiationService, ServiceCollection, SyncDescriptor } from "@milu/di";
-import type { Platform, Snapshot, WidgetEntry } from "@milu/protocol";
+import type { Platform, SessionRow, Snapshot, WidgetEntry } from "@milu/protocol";
 import {
 	ActionsService,
 	IActionsService,
@@ -62,6 +62,7 @@ export interface FrontEndDeps {
 	readonly commands?: BrowserCommands;
 	readonly platform: Platform;
 	readonly markdown: MarkdownPort & Disposable;
+	readonly mark?: (name: string) => void;
 }
 
 export interface FrontEnd extends Disposable {
@@ -150,12 +151,12 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	);
 	let started = false;
 	let applying = false;
+	let hydrated = false;
 
 	const apply = (snapshot: Snapshot): void => {
 		applying = true;
 		try {
 			layout.set(snapshot.layout);
-			sessions.apply(snapshot.sessions);
 			selection.apply(snapshot.selected);
 			header.apply(snapshot.header);
 			footer.apply(snapshot.footer);
@@ -167,6 +168,29 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 			applying = false;
 		}
 		if (snapshot.selected) void transcript.open(snapshot.selected);
+		hydrated = true;
+		shell(snapshot.sessions);
+	};
+
+	/** The session list is the biggest commit at boot: hold it until the chat has painted. */
+	const shell = (rows: readonly SessionRow[]): void => {
+		const name = selection.store.getState().selected;
+		let applied = false;
+		let off: (() => void) | null = null;
+		const paint = (): void => {
+			if (applied) return;
+			applied = true;
+			if (off !== null) off();
+			setTimeout(() => sessions.apply(rows), 0);
+		};
+		if (name === "" || (transcript.store.getState().logs[name] ?? []).length > 0) {
+			paint();
+			return;
+		}
+		off = transcript.store.subscribe((state) => {
+			if ((state.logs[name] ?? []).length > 0) paint();
+		});
+		setTimeout(paint, 300);
 	};
 
 	return {
@@ -203,8 +227,12 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 			disposables.add({
 				dispose: selection.store.subscribe(() => {
 					if (applying) return;
-					workbench.showView(null);
 					const name = selection.store.getState().selected;
+					if (!hydrated) {
+						if (name) void transcript.open(name);
+						return;
+					}
+					workbench.showView(null);
 					void sessions.refresh();
 					if (name) void transcript.open(name);
 				}),
@@ -273,7 +301,17 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 					}
 				}),
 			);
-			void connection.connect().catch((error: unknown) => console.error("connection failed", error));
+			void connection
+				.request("hello", {})
+				.then((hello) => {
+					deps.mark?.("hello");
+					connection.phase(hello.lifecycle);
+					if (hello.selected !== null) selection.apply(hello.selected);
+				})
+				.catch(() => undefined)
+				.finally(() => {
+					void connection.connect().catch((error: unknown) => console.error("connection failed", error));
+				});
 		},
 		dispose() {
 			disposables.dispose();

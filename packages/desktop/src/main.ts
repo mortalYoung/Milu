@@ -4,11 +4,12 @@ import { pathToFileURL } from "node:url";
 
 import { createBackend } from "@milu/bootstrap";
 import type { WidgetRef } from "@milu/core";
-import { app, BrowserWindow, net, protocol } from "electron";
+import { app, BrowserWindow, ipcMain, net, protocol } from "electron";
 
+import { bootMark } from "./boot.ts";
 import { extensionHostFactory } from "./extension-host.ts";
 import { IpcServer } from "./ipc.ts";
-import { DEFAULT_WINDOW_STATE, readWindowState, WINDOW_MIN, writeWindowState } from "./window-state.ts";
+import { DEFAULT_WINDOW_STATE, readRememberSession, readWindowState, WINDOW_MIN, writeWindowState } from "./window-state.ts";
 
 const DEV_URL = process.env["MILU_DEV_URL"];
 const CONFIG_ROOT = process.env["MILU_CONFIG"] ?? join(homedir(), ".config", "milu");
@@ -49,15 +50,21 @@ function serveRenderer(directory: string, widgets: () => readonly WidgetRef[]): 
 }
 
 async function main(): Promise<void> {
+	bootMark("wake");
 	const appDir = app.getAppPath();
 	const icon = join(appDir, "build/icon.png");
-	if (process.platform === "darwin") app.dock?.setIcon(icon);
-	const backend = await createBackend({ root: CONFIG_ROOT, workspace: WORKSPACE, hosts: extensionHostFactory });
-	serveRenderer(join(appDir, "renderer/dist"), () => backend.extensions.widgets());
-	const ipc = new IpcServer(backend);
-	ipc.start();
+	let backend: Awaited<ReturnType<typeof createBackend>> | null = null;
+	let ipc: IpcServer | null = null;
+	serveRenderer(join(appDir, "renderer/dist"), () => backend?.extensions.widgets() ?? []);
+	const creating = createBackend({ root: CONFIG_ROOT, workspace: WORKSPACE, hosts: extensionHostFactory });
+	let attach!: (server: IpcServer) => void;
+	const listening = new Promise<IpcServer>((resolve) => {
+		attach = resolve;
+	});
+	ipcMain.handle("milu:connect", (event) => listening.then((server) => server.connect(event)));
+	ipcMain.handle("milu:request", (event, method: string, params: unknown) => listening.then((server) => server.request(event, method, params)));
 
-	const rememberSession = backend.settings.get().rememberSession !== false;
+	const rememberSession = readRememberSession(CONFIG_ROOT);
 	const state = (rememberSession ? readWindowState(CONFIG_ROOT) : null) ?? DEFAULT_WINDOW_STATE;
 	const window = new BrowserWindow({
 		title: "Milu",
@@ -73,15 +80,20 @@ async function main(): Promise<void> {
 		backgroundColor: "#faf9f5",
 		show: false,
 		webPreferences: {
-			preload: join(appDir, "dist-electron/preload.js"),
+			preload: join(appDir, "dist-electron/preload.cjs"),
 			contextIsolation: true,
 			nodeIntegration: false,
 			sandbox: true,
 		},
 	});
 
+	bootMark("window");
 	if (state.maximized) window.maximize();
-	if (!HIDDEN) window.once("ready-to-show", () => window.show());
+	if (!HIDDEN)
+		window.once("ready-to-show", () => {
+			window.show();
+			bootMark("shown");
+		});
 
 	let frameTimer: ReturnType<typeof setTimeout> | undefined;
 	const remember = (): void => {
@@ -107,14 +119,31 @@ async function main(): Promise<void> {
 
 	window.on("closed", () => {
 		app.off("before-quit", flush);
-		ipc.stop();
-		void backend.close();
+		ipcMain.removeHandler("milu:connect");
+		ipcMain.removeHandler("milu:request");
+		ipc?.stop();
+		void backend?.close();
 	});
 
-	if (DEV_URL) await window.loadURL(DEV_URL);
-	else await window.loadURL(`${SCHEME}://app/index.html`);
+	const loading = (DEV_URL ? window.loadURL(DEV_URL) : window.loadURL(`${SCHEME}://app/index.html`)).catch((error: unknown) =>
+		console.error("[milu] the renderer did not load", error),
+	);
+	if (process.platform === "darwin") app.dock?.setIcon(icon);
 
-	console.log(`[milu] partners=${backend.sessions.partnerRoot}`);
+	const started = await creating;
+	backend = started;
+	bootMark("backend");
+	started.lifecycle.onChange((phase) => {
+		if (phase === "ready") bootMark("ready");
+	});
+	if (started.lifecycle.phase === "ready") bootMark("ready");
+	ipc = new IpcServer(started);
+	ipc.start();
+	attach(ipc);
+	await loading;
+	bootMark("loaded");
+
+	console.log(`[milu] partners=${started.sessions.partnerRoot}`);
 }
 
 app.setName("Milu");

@@ -1,10 +1,12 @@
+import { open, type FileHandle } from "node:fs/promises";
+
 import type { AgentMessage, Entry, JsonlSessionMetadata } from "@earendil-works/pi-agent-core";
 import { JsonlSessionRepo, type Session } from "@earendil-works/pi-agent-core";
 import { Emitter, type Event } from "@milu/di";
 import type { SeqEntry } from "@milu/protocol";
 
 import type { ExecutionService } from "../services/execution.ts";
-import { originWindow, projectOrigin, type OriginWindow } from "./origin.ts";
+import { originWindow, projectOrigin, tailWindow, type OriginWindow } from "./origin.ts";
 import { projectSlice, projectSliceItems, type SliceItem } from "./slice.ts";
 import { textOf } from "./text.ts";
 
@@ -17,6 +19,9 @@ function toRecord(message: AgentMessage): AgentMessage {
 	if (message.role !== "user") return message;
 	return { ...message, content: textOf(message.content) } as AgentMessage;
 }
+
+const TAIL_BYTES = 256 * 1024;
+const WINDOW_TAIL_BYTES = 2 * 1024 * 1024;
 
 export class SessionLog {
 	readonly onEntry: Event<SeqEntry>;
@@ -47,13 +52,50 @@ export class SessionLog {
 
 	private async _open(): Promise<Session<JsonlSessionMetadata>> {
 		const repo = this._repo();
-		const latest = (await repo.list({ cwd: this.root }))[0];
+		const latest = await this._latest();
 		return latest ? repo.open(latest) : repo.create({ cwd: this.root });
 	}
 
-	async startedAt(): Promise<number | undefined> {
-		await this.open();
-		return (await this._sessionOrThrow().getMetadata()).createdAt;
+	private async _latest(): Promise<JsonlSessionMetadata | null> {
+		return (await this._repo().list({ cwd: this.root }))[0] ?? null;
+	}
+
+	/** The newest log's header and its last bytes — a preview without opening (and parsing) the whole file. */
+	async peek(bytes = TAIL_BYTES): Promise<{ createdAt?: number; tail: Entry[] }> {
+		const latest = await this._latest();
+		if (latest === null) return { tail: [] };
+		const tail = await this._readTail(latest.path, bytes);
+		return { ...(latest.createdAt ? { createdAt: latest.createdAt } : {}), tail: tail?.entries ?? [] };
+	}
+
+	private async _readTail(path: string, bytes: number): Promise<{ entries: Entry[]; whole: boolean } | null> {
+		let handle: FileHandle;
+		try {
+			handle = await open(path, "r");
+		} catch {
+			return null;
+		}
+		try {
+			const { size } = await handle.stat();
+			const length = Math.min(size, bytes);
+			const whole = length === size;
+			if (length === 0) return { entries: [], whole: true };
+			const buffer = Buffer.alloc(length);
+			await handle.read(buffer, 0, length, size - length);
+			const lines = buffer.toString("utf8").split("\n");
+			if (!whole) lines.shift();
+			const entries: Entry[] = [];
+			for (const line of lines) {
+				if (line === "") continue;
+				try {
+					const record = JSON.parse(line) as { kind?: unknown };
+					if (record.kind === "entry") entries.push(record as Entry);
+				} catch {}
+			}
+			return { entries, whole };
+		} finally {
+			await handle.close();
+		}
 	}
 
 	async reset(): Promise<void> {
@@ -120,7 +162,24 @@ export class SessionLog {
 	}
 
 	async window(options: { mode?: "older" | "newer"; cursor?: string; conversations: number }): Promise<OriginWindow> {
+		if (options.mode === undefined && options.cursor === undefined) {
+			const fast = await this._tailWindow(options.conversations);
+			if (fast !== null) return fast;
+		}
 		return originWindow(await this.origin(), options);
+	}
+
+	/** The first window is the newest conversations: read only the end of the log and grow until they fit. */
+	private async _tailWindow(conversations: number): Promise<OriginWindow | null> {
+		const latest = await this._latest();
+		if (latest === null) return null;
+		for (let bytes = WINDOW_TAIL_BYTES; ; bytes *= 2) {
+			const tail = await this._readTail(latest.path, bytes);
+			if (tail === null) return null;
+			const window = tailWindow(tail.entries, conversations, tail.whole);
+			if (window !== null) return window;
+			if (tail.whole) return null;
+		}
 	}
 
 	dispose(): void {

@@ -2,11 +2,12 @@
 	"name": "@milu/desktop",
 	"version": "0.0.0",
 	"private": true,
+	"type": "module",
 	"main": "dist-electron/main.js",
 	"scripts": {
 		"dev:renderer": "vite",
 		"build:renderer": "vite build",
-		"build:main": "bun build src/main.ts src/preload.ts src/ext-host.ts --outdir dist-electron --target node --format cjs --external electron",
+		"build:main": "bun build src/main.ts --outdir dist-electron --target node --format esm --splitting --external electron --entry-naming=\"[name].js\" && bun build src/preload.ts src/ext-host.ts --outdir dist-electron --target node --format cjs --external electron --entry-naming=\"[name].cjs\"",
 		"build": "bun run build:main && bun run build:renderer",
 		"start": "bun scripts/start.ts",
 		"typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p renderer/tsconfig.json"
