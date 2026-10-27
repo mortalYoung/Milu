@@ -203,6 +203,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 			disposables.add({
 				dispose: selection.store.subscribe(() => {
 					if (applying) return;
+					workbench.showView(null);
 					const name = selection.store.getState().selected;
 					void sessions.refresh();
 					if (name) void transcript.open(name);

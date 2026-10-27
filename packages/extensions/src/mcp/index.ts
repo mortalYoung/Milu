@@ -1,5 +1,7 @@
-import { IConfigService, type ExecutionEnv, type Extension, ISettingsService, type ToolCall, type ToolResult, IToolService } from "@milu/core";
+import { IConfigService, type ExecutionEnv, type Extension, ISessionService, ISettingsService, type ToolCall, type ToolResult, IToolService } from "@milu/core";
 
+import { loadConfig, configPath } from "./config.ts";
+import { grantedServers, setGrantedServer } from "./grants.ts";
 import { type McpParams, McpService, IMcpService, schema } from "./service/index.ts";
 
 export { IMcpService } from "./service/index.ts";
@@ -17,6 +19,68 @@ const mcpExtension: Extension = {
 
 	activate(context) {
 		const mcp = context.get(IMcpService);
+		const sessions = context.get(ISessionService);
+
+		context.actions.register({
+			id: "mcp.servers",
+			run: async () => {
+				const options = await mcp.options();
+				const config = await loadConfig(configPath(options.configFile));
+				const partners = await sessions.names();
+				const grants = new Map<string, readonly string[]>();
+				for (const partner of partners) grants.set(partner, await grantedServers(sessions.get(partner)));
+				const statuses = new Map(mcp.allStatuses().map((status) => [status.name, status]));
+				return {
+					data: {
+						partners,
+						servers: config.servers.map((server) => {
+							const status = statuses.get(server.name);
+							return {
+								name: server.name,
+								lifecycle: server.lifecycle ?? config.defaultLifecycle ?? options.defaultLifecycle,
+								state: status?.state ?? "stopped",
+								toolCount: status?.toolCount ?? 0,
+								...(status?.error === undefined ? {} : { error: status.error }),
+								grantedPartners: partners.filter((partner) => grants.get(partner)?.includes(server.name) === true),
+							};
+						}),
+					},
+				};
+			},
+		});
+
+		context.actions.register({
+			id: "mcp.access",
+			run: async ({ session }) => {
+				if (!session) throw new Error("mcp.access needs a session");
+				const options = await mcp.options();
+				const config = await loadConfig(configPath(options.configFile));
+				const granted = await grantedServers(session);
+				const statuses = new Map(mcp.allStatuses().map((status) => [status.name, status]));
+				const rows = config.servers.map((server) => {
+					const status = statuses.get(server.name);
+					return {
+						group: "mcp",
+						name: server.name,
+						detail: status?.error ?? (status?.state === "connected" ? `${status.toolCount} tools` : undefined),
+						meta: server.lifecycle ?? config.defaultLifecycle ?? options.defaultLifecycle,
+						granted: granted.includes(server.name),
+						alwaysOn: false,
+					};
+				});
+				return { data: { rows } };
+			},
+		});
+
+		context.actions.register({
+			id: "mcp.partners",
+			run: async ({ args }) => {
+				const { name, partners } = (args ?? {}) as { name?: unknown; partners?: unknown };
+				if (typeof name !== "string" || name === "" || !Array.isArray(partners)) throw new Error("mcp.partners needs a server name and a partner list");
+				const wanted = new Set(partners.filter((partner): partner is string => typeof partner === "string"));
+				for (const partner of await sessions.names()) await setGrantedServer(sessions.get(partner), name, wanted.has(partner));
+			},
+		});
 
 		context.disposables.add(
 			context.get(IToolService).register({

@@ -222,7 +222,10 @@ export function SessionListSurface(props: SurfaceProps) {
 					unread={(root.lastMessageAt ?? 0) > (root.readAt ?? 0)}
 					childCount={leaves.length}
 					expanded={isExpanded}
-					onSelect={() => void host.selection.select(root.name)}
+					onSelect={() => {
+						host.workbench.showView(null);
+						void host.selection.select(root.name);
+					}}
 					onToggle={() => toggle(root.name)}
 					onRun={(item) => start(item, root.name)}
 				/>
@@ -236,7 +239,10 @@ export function SessionListSurface(props: SurfaceProps) {
 								writing={leaf.running}
 								unread={(leaf.lastMessageAt ?? 0) > (leaf.readAt ?? 0)}
 								leaf
-								onSelect={() => void host.selection.select(leaf.name)}
+								onSelect={() => {
+									host.workbench.showView(null);
+									void host.selection.select(leaf.name);
+								}}
 								onRun={(item) => start(item, leaf.name)}
 							/>
 						))

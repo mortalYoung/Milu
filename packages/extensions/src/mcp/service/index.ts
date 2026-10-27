@@ -82,6 +82,11 @@ export class McpService implements Service {
 		}));
 	}
 
+	/** Every server the manager knows, granted or not — what the access surface lists. */
+	allStatuses(): readonly McpServerStatus[] {
+		return this._manager.statuses();
+	}
+
 	async statuses(session: Session): Promise<McpServerStatus[]> {
 		const byName = new Map(this._manager.statuses().map((status) => [status.name, status]));
 		return (await grantedServers(session)).map((name) => {

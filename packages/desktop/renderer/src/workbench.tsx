@@ -9,6 +9,7 @@ import { SessionListSkeleton, TranscriptSkeleton } from "./components/skeletons.
 
 const WELCOME_SCOPES: ReadonlySet<string> = new Set(["welcome", "app"]);
 const CHAT_SCOPES: ReadonlySet<string> = new Set(["chat", "app"]);
+const VIEW_SCOPES: ReadonlySet<string> = new Set(["view", "app"]);
 
 export function Workbench(props: { host: Host }) {
 	const { host } = props;
@@ -16,9 +17,10 @@ export function Workbench(props: { host: Host }) {
 	useEffect(() => {
 		const onKey = (event: KeyboardEvent) => {
 			const selected = host.selection.store.getState().selected;
+			const view = host.workbench.store.getState().view;
 			const binding = host.hotkeys.match(
 				{ key: event.key, code: event.code, shift: event.shiftKey, meta: event.metaKey, ctrl: event.ctrlKey, alt: event.altKey, isComposing: event.isComposing },
-				selected === "" ? WELCOME_SCOPES : CHAT_SCOPES,
+				view !== null ? VIEW_SCOPES : selected === "" ? WELCOME_SCOPES : CHAT_SCOPES,
 			);
 			if (binding) {
 				event.preventDefault();

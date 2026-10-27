@@ -235,6 +235,7 @@ export class IpcServer {
 				[SLOT_POINTS.chatBar]: await this._backend.sessions.slots(SLOT_POINTS.chatBar, selected),
 				[SLOT_POINTS.chatName]: await this._backend.sessions.slots(SLOT_POINTS.chatName, selected),
 				[SLOT_POINTS.chatPanes]: await this._backend.sessions.slots(SLOT_POINTS.chatPanes, selected),
+				[SLOT_POINTS.workspaceViews]: await this._backend.sessions.slots(SLOT_POINTS.workspaceViews, selected),
 				[SLOT_POINTS.welcomeTimeline]: await this._backend.sessions.slots(SLOT_POINTS.welcomeTimeline),
 			},
 		};
@@ -346,6 +347,9 @@ export class IpcServer {
 				submenu: [
 					{ label: "Command Palette…", accelerator: "Command+P", click: command("palette.open") },
 					{ type: "separator" },
+					{ label: "Skills & MCP", click: command("skills.open") },
+					{ label: "Manage Access…", accelerator: "Command+Shift+P", click: command("palette.access") },
+					{ type: "separator" },
 					{ label: "Tasks", enabled: hasSession, click: command("tasks.open") },
 					{ label: "Schedules", enabled: hasSession, click: command("schedule.open") },
 					{ type: "separator" },
@@ -420,7 +424,7 @@ export class IpcServer {
 				if (confirm) return { ok: true, confirm };
 			}
 			const outcome = await this._backend.actions.run(params.action, context);
-			if (outcome && "kind" in outcome && outcome.kind === "copy") return { ok: true, command: outcome };
+			if (outcome && "kind" in outcome) return { ok: true, command: outcome };
 			if (outcome && "data" in outcome) return { ok: true, data: outcome.data };
 			return { ok: true };
 		} catch (error) {

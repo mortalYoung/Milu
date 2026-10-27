@@ -27,6 +27,7 @@ import {
 	WELCOME_ITEMS_POINT,
 	type SessionBarItem,
 	type SessionMenuItem,
+	WORKSPACE_VIEWS_POINT,
 } from "../extensions/types.ts";
 import type { Session } from "../session/session.ts";
 import { IActionService } from "./actions.ts";
@@ -35,7 +36,7 @@ import { IComposerService } from "./composer.ts";
 import type { ComposerService } from "./composer.ts";
 import { IConfigService } from "./config.ts";
 import type { ConfigService } from "./config.ts";
-import { IContributionService } from "./contributions.ts";
+import { ContributionPoint, IContributionService } from "./contributions.ts";
 import type { ContributionService } from "./contributions.ts";
 import { IHookService } from "./hooks.ts";
 import type { HookService } from "./hooks.ts";
@@ -107,6 +108,7 @@ export class ExtensionService implements Service {
 		this._contributionService.declare<SlotItem>(CHAT_BAR_POINT);
 		this._contributionService.declare<SlotItem>(CHAT_NAME_POINT);
 		this._contributionService.declare<SlotItem>(CHAT_PANES_POINT);
+		this._contributionService.declare<SlotItem>(WORKSPACE_VIEWS_POINT);
 		for (const extension of this._pending) this._register(extension);
 		this._activation = this._activateAll();
 	}
@@ -136,7 +138,15 @@ export class ExtensionService implements Service {
 
 		this._loaded.push({ extension, disposables, context });
 		for (const [point, values] of Object.entries(extension.contributions ?? {})) {
-			const target = this._contributionService.get<unknown>(point);
+			let target: ContributionPoint<unknown>;
+			try {
+				target = this._contributionService.get<unknown>(point);
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				console.error(`extension "${extension.id}" contributes to an undeclared point "${point}":`, message);
+				this._failures.push({ ref: `contribute:${extension.id}/${point}`, error: message });
+				continue;
+			}
 			for (const value of values) disposables.add(target.contribute(this._bind(extension.id, value)));
 		}
 	}

@@ -1,10 +1,17 @@
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { Session } from "@milu/core";
 
 function grantsPath(session: Session): string {
 	return join(session.root, "mcp-grants.json");
+}
+
+export async function setGrantedServer(session: Session, name: string, granted: boolean): Promise<void> {
+	const current = await grantedServers(session);
+	const next = granted ? (current.includes(name) ? current : [...current, name]) : current.filter((each) => each !== name);
+	if (granted && next.length === current.length) return;
+	await writeFile(grantsPath(session), `${JSON.stringify({ servers: next }, null, 2)}\n`, "utf8");
 }
 
 export async function grantedServers(session: Session): Promise<string[]> {

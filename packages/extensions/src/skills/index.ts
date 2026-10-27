@@ -1,6 +1,11 @@
-import { type ExecutionEnv, type Extension, ISettingsService, type ToolCall, IToolService, Type } from "@milu/core";
+import { readFile, mkdir, rm, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
+import { type ExecutionEnv, type Extension, ISessionService, ISettingsService, type ToolCall, IToolService, Type } from "@milu/core";
 
 import { SKILL_NAME_RE, type SkillDefinition } from "./catalog.ts";
+import { grantedSkills, setGrantedSkill } from "./grants.ts";
 import { SkillsService, ISkillsService } from "./service/index.ts";
 
 const schema = Type.Object({ name: Type.String({ description: "Kebab-case skill name to load, exactly as listed in <available_skills>." }) });
@@ -13,11 +18,119 @@ function content(def: SkillDefinition): string {
 const skillsExtension: Extension = {
 	id: "skills",
 	apiVersion: 1,
+	widgets: [{ id: "skills.view", type: "slot", entry: "./widget/view.tsx", export: "SkillsView" }],
+
+	contributions: {
+		"workspace.views": [{ id: "skills", order: 10, component: "skills.view" }],
+		"welcome.items": [{ id: "skills", order: 5, title: "skills & mcp", variant: "primary", action: "skills.open" }],
+	},
 
 	services: [{ id: ISkillsService, create: (container) => new SkillsService(container.get(ISettingsService)) }],
 
 	activate(context) {
 		const skills = context.get(ISkillsService);
+		const sessions = context.get(ISessionService);
+
+		context.actions.register({ id: "skills.open", run: () => ({ kind: "view", view: "skills" }) });
+		context.actions.register({ id: "workspace.close", scope: "view", hotkey: "Mod+W", run: () => ({ kind: "view", view: null }) });
+		context.actions.register({
+			id: "skills.global",
+			run: async () => {
+				const listed = await skills.global();
+				const partners = await sessions.names();
+				const grants = new Map<string, readonly string[]>();
+				for (const partner of partners) grants.set(partner, await grantedSkills(sessions.get(partner)));
+				return {
+					data: {
+						partners,
+						skills: listed.map((skill) => ({
+							name: skill.name,
+							description: skill.description,
+							scope: skill.scope,
+							modelInvocable: skill.invocation.modelInvocable,
+							grantedPartners: partners.filter((partner) => grants.get(partner)?.includes(skill.name) === true),
+						})),
+					},
+				};
+			},
+		});
+
+		const globalFile = async (name: string): Promise<string | null> => {
+			for (const dir of skills.dirs()) {
+				for (const candidate of [join(homedir(), dir, name, "SKILL.md"), join(homedir(), dir, `${name}.md`)]) {
+					const text = await readFile(candidate, "utf8").catch(() => null);
+					if (text !== null) return candidate;
+				}
+			}
+			return null;
+		};
+
+		context.actions.register({
+			id: "skills.read",
+			run: async ({ args }) => {
+				const name = String((args as { name?: unknown } | undefined)?.name ?? "");
+				if (!SKILL_NAME_RE.test(name)) throw new Error(`invalid skill name "${name}"`);
+				const file = await globalFile(name);
+				if (!file) throw new Error(`skill "${name}" is not installed globally`);
+				return { data: { content: await readFile(file, "utf8") } };
+			},
+		});
+
+		context.actions.register({
+			id: "skills.create",
+			run: async ({ args }) => {
+				const { name, description } = (args ?? {}) as { name?: unknown; description?: unknown };
+				const skill = String(name ?? "").trim();
+				const body = String(description ?? "").trim();
+				if (!SKILL_NAME_RE.test(skill)) throw new Error("invalid skill name (use kebab-case)");
+				if (body === "") throw new Error("a description is required");
+				const dir = join(homedir(), skills.dirs()[0]!, skill);
+				await mkdir(dir, { recursive: true });
+				const file = join(dir, "SKILL.md");
+				await writeFile(file, `---\nname: ${skill}\ndescription: ${body.replace(/\n/g, " ")}\n---\n\n# ${skill}\n\nInstructions body for ${skill}.\n`, "utf8");
+				return { data: { path: file } };
+			},
+		});
+
+		context.actions.register({
+			id: "skills.delete",
+			run: async ({ args }) => {
+				const name = String((args as { name?: unknown } | undefined)?.name ?? "");
+				if (!SKILL_NAME_RE.test(name)) throw new Error(`invalid skill name "${name}"`);
+				for (const dir of skills.dirs()) {
+					await rm(join(homedir(), dir, name), { recursive: true, force: true });
+					await rm(join(homedir(), dir, `${name}.md`), { force: true });
+				}
+			},
+		});
+
+		context.actions.register({
+			id: "skills.access",
+			run: async ({ session }) => {
+				if (!session) throw new Error("skills.access needs a session");
+				const listed = await skills.candidates(session);
+				const granted = await grantedSkills(session);
+				const rows = listed.map((skill) => ({
+					group: "skills",
+					name: skill.name,
+					detail: skill.description,
+					meta: skill.scope,
+					granted: skill.scope === "project" || granted.includes(skill.name),
+					alwaysOn: skill.scope === "project",
+				}));
+				return { data: { rows } };
+			},
+		});
+
+		context.actions.register({
+			id: "skills.partners",
+			run: async ({ args }) => {
+				const { name, partners } = (args ?? {}) as { name?: unknown; partners?: unknown };
+				if (typeof name !== "string" || name === "" || !Array.isArray(partners)) throw new Error("skills.partners needs a skill name and a partner list");
+				const wanted = new Set(partners.filter((partner): partner is string => typeof partner === "string"));
+				for (const partner of await sessions.names()) await setGrantedSkill(sessions.get(partner), name, wanted.has(partner));
+			},
+		});
 
 		context.disposables.add(
 			context.get(IToolService).register({

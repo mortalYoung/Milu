@@ -1,11 +1,10 @@
-import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
 
 import { expandHome, type Session, type SettingsPoint, type SettingsService } from "@milu/core";
 import { createServiceId, type Service } from "@milu/di";
 
-import { getSkill, listSkills, type SkillDefinition, type SkillLookup, type SkillSummary } from "../catalog.ts";
+import { getSkill, listAllSkills, listGlobalSkills, listSkills, type SkillDefinition, type SkillLookup, type SkillSummary } from "../catalog.ts";
+import { grantedSkills } from "../grants.ts";
 
 const DEFAULT_SKILLS_DIRS = [".agents/skills"];
 
@@ -20,6 +19,21 @@ export class SkillsService implements Service {
 
 	async list(session: Session): Promise<readonly SkillSummary[]> {
 		return listSkills(await this._lookup(session));
+	}
+
+	dirs(): readonly string[] {
+		if (!this._dirs) throw new Error("SkillsService is not initialized");
+		const dirs = this._dirs.get();
+		return dirs.length > 0 ? dirs : [".agents/skills"];
+	}
+
+	async candidates(session: Session): Promise<readonly SkillSummary[]> {
+		return listAllSkills(await this._lookup(session));
+	}
+
+	async global(): Promise<readonly SkillSummary[]> {
+		if (!this._dirs) throw new Error("SkillsService is not initialized");
+		return listGlobalSkills({ home: homedir(), skillsDirs: this._dirs.get() });
 	}
 
 	async get(session: Session, name: string): Promise<SkillDefinition | undefined> {
@@ -41,14 +55,3 @@ export class SkillsService implements Service {
 }
 
 export const ISkillsService = createServiceId<SkillsService>("skills.service");
-
-async function grantedSkills(session: Session): Promise<string[]> {
-	const text = await readFile(join(session.root, "granted-skills.json"), "utf8").catch(() => null);
-	if (text === null) return [];
-	try {
-		const saved = JSON.parse(text) as { skills?: unknown };
-		return Array.isArray(saved.skills) ? saved.skills.filter((name): name is string => typeof name === "string") : [];
-	} catch {
-		return [];
-	}
-}

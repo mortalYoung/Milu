@@ -174,6 +174,21 @@ function visible(candidate: SkillSummary, granted: readonly string[]): boolean {
 	return candidate.scope === "project" || granted.includes(candidate.name);
 }
 
+/** v1's Skills page listed the global roots only: what every chat can be granted. */
+export async function listGlobalSkills(lookup: { readonly home: string; readonly skillsDirs: readonly string[] }): Promise<SkillSummary[]> {
+	const dirs = lookup.skillsDirs.length > 0 ? lookup.skillsDirs : [".agents/skills"];
+	const candidates: SkillCandidate[] = [];
+	for (let at = 0; at < dirs.length; at += 1) candidates.push(...(await scanSkillsRoot(join(lookup.home, dirs[at]!), "global", "global", 200 + at * 10)));
+	const byName = new Map<string, SkillCandidate>();
+	for (const candidate of [...candidates].sort((left, right) => left.rank - right.rank)) if (!byName.has(candidate.name)) byName.set(candidate.name, candidate);
+	return [...byName.values()].sort((left, right) => left.name.localeCompare(right.name));
+}
+
+/** Every candidate, granted or not — what the Access palette lists so a grant can be made. */
+export async function listAllSkills(lookup: SkillLookup): Promise<SkillSummary[]> {
+	return listCandidates(lookup);
+}
+
 export async function listSkills(lookup: SkillLookup): Promise<SkillSummary[]> {
 	return (await listCandidates(lookup)).filter((candidate) => visible(candidate, lookup.granted));
 }

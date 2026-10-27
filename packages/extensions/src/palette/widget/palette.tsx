@@ -1,6 +1,6 @@
 import type { SessionRow } from "@milu/protocol";
 import { activityAt, type DialogProps, Kbd, KbdGroup, filterSessions, fuzzyScore, listTime, previewFor, Tip } from "@milu/window/api";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 
 import type { PaletteFile, PaletteFiles } from "../search.ts";
@@ -9,11 +9,23 @@ import { fileGlyph } from "./file-glyph.tsx";
 const MODES = [
 	{ id: "sessions", label: "Sessions" },
 	{ id: "files", label: "Files" },
+	{ id: "access", label: "Access" },
 ] as const;
 
 type Mode = (typeof MODES)[number]["id"];
 
-type Row = { readonly kind: "session"; readonly row: SessionRow } | { readonly kind: "file"; readonly file: PaletteFile };
+interface GrantRow {
+	readonly group: "skills" | "mcp";
+	readonly name: string;
+	readonly detail?: string;
+	readonly meta?: string;
+	readonly granted: boolean;
+	readonly alwaysOn: boolean;
+}
+
+type Row = { readonly kind: "session"; readonly row: SessionRow } | { readonly kind: "file"; readonly file: PaletteFile } | { readonly kind: "grant"; readonly grant: GrantRow };
+
+const GRANT = "shrink-0 font-mono text-[10px] text-muted-soft";
 
 const DEBOUNCE_MS = 150;
 
@@ -53,7 +65,9 @@ export function PaletteDialog(props: DialogProps) {
 	const sessions = useStore(host.sessions.store, (state) => state.rows);
 	const selected = useStore(host.selection.store, (state) => state.selected);
 
-	const [mode, setMode] = useState<Mode>("sessions");
+	const [mode, setMode] = useState<Mode>(() => (props.data as { mode?: Mode } | undefined)?.mode ?? "sessions");
+	const [grants, setGrants] = useState<readonly GrantRow[]>([]);
+	const [loaded, setLoaded] = useState(false);
 	const [query, setQuery] = useState("");
 	const [cursor, setCursor] = useState({ stamp: "", at: 0 });
 	const [files, setFiles] = useState<{ query: string; result: PaletteFiles } | null>(null);
@@ -99,7 +113,39 @@ export function PaletteDialog(props: DialogProps) {
 		return () => clearTimeout(timer);
 	}, [host, activeMode, filesAvailable, selected, parsed.path]);
 
+	const loadAccess = useCallback(() => {
+		const nothing = Promise.resolve(undefined);
+		void Promise.all([
+			selected === "" ? nothing : host.actions.request<{ rows: readonly GrantRow[] }>("skills.access", selected),
+			selected === "" ? nothing : host.actions.request<{ rows: readonly GrantRow[] }>("mcp.access", selected),
+		])
+			.then(([skills, servers]) => {
+				setGrants([...(skills?.rows ?? []), ...(servers?.rows ?? [])]);
+				setLoaded(true);
+			})
+			.catch((failure: unknown) => {
+				console.error("access list failed:", failure);
+				setLoaded(true);
+				setError(failure instanceof Error ? failure.message : String(failure));
+			});
+	}, [host, selected]);
+
+	useEffect(() => {
+		if (activeMode === "access") loadAccess();
+	}, [activeMode, loadAccess]);
+
+	const grant = (row: GrantRow): void => {
+		if (row.alwaysOn || selected === "") return;
+		const action = row.group === "skills" ? "skills.partners" : "mcp.partners";
+		const next = row.granted ? [] : [selected];
+		void host.actions.invoke(action, undefined, { name: row.name, partners: next }).then(loadAccess);
+	};
+
 	const rows = useMemo<readonly Row[]>(() => {
+		if (activeMode === "access") {
+			const needle = query.trim().toLowerCase();
+			return grants.filter((grant) => needle === "" || `${grant.name} ${grant.detail ?? ""}`.toLowerCase().includes(needle)).map((grant) => ({ kind: "grant" as const, grant }));
+		}
 		if (activeMode === "sessions") return filterSessions(sessions, query).map((row) => ({ kind: "session" as const, row }));
 		const items = files?.query === parsed.path ? files.result.items : [];
 		const ranked = items
@@ -107,13 +153,17 @@ export function PaletteDialog(props: DialogProps) {
 			.filter((hit): hit is { file: PaletteFile; score: number } => hit.score !== null)
 			.sort((left, right) => right.score - left.score || left.file.path.length - right.file.path.length || left.file.path.localeCompare(right.file.path));
 		return ranked.map(({ file }) => ({ kind: "file" as const, file }));
-	}, [activeMode, sessions, query, files, needle, parsed.path]);
+	}, [activeMode, sessions, grants, query, files, needle, parsed.path]);
 
 	const stamp = `${activeMode}\u0000${query}`;
 	const index = cursor.stamp === stamp ? Math.min(cursor.at, Math.max(0, rows.length - 1)) : 0;
 
 	const activate = (row: Row | undefined): void => {
 		if (!row) return;
+		if (row.kind === "grant") {
+			grant(row.grant);
+			return;
+		}
 		if (row.kind === "session") {
 			props.close(undefined);
 			void host.selection.select(row.row.name);
@@ -130,10 +180,15 @@ export function PaletteDialog(props: DialogProps) {
 		setCursor({ stamp, at: (index + delta + rows.length) % rows.length });
 	};
 
+	const pickMode = (next: Mode): void => {
+		setMode(next);
+		setQuery("");
+	};
+
 	const cycle = (): void => {
 		const available = MODES.filter((candidate) => candidate.id !== "files" || filesAvailable);
 		const at = available.findIndex((candidate) => candidate.id === activeMode);
-		setMode(available[(at + 1) % available.length]?.id ?? "sessions");
+		pickMode(available[(at + 1) % available.length]?.id ?? "sessions");
 	};
 
 	const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>): void => {
@@ -165,6 +220,7 @@ export function PaletteDialog(props: DialogProps) {
 	};
 
 	const empty = (() => {
+		if (activeMode === "access") return selected === "" ? "open a chat to grant" : loaded ? "no skills or mcp servers" : "loading…";
 		if (activeMode === "sessions") return "no chat found";
 		if (!filesAvailable) return "open a chat with a workspace to search files";
 		if (searching) return "searching…";
@@ -190,7 +246,7 @@ export function PaletteDialog(props: DialogProps) {
 								className={`${CHIP} ${activeMode === candidate.id ? "bg-ink text-canvas" : "bg-transparent text-muted hover:bg-hover"}${available ? "" : " cursor-default opacity-50"}`}
 								disabled={!available}
 								aria-pressed={activeMode === candidate.id}
-								onClick={() => setMode(candidate.id)}
+								onClick={() => pickMode(candidate.id)}
 							>
 								{candidate.label}
 							</button>
@@ -225,12 +281,44 @@ export function PaletteDialog(props: DialogProps) {
 			</div>
 
 			{rows.length === 0 ? (
-				<div className={NOTE}>{empty}</div>
+				<div className={`${NOTE}${error ? " text-signal" : ""}`}>{error ?? empty}</div>
 			) : (
 				<div className="max-h-[48vh] min-h-0 flex-1 overflow-y-auto py-1" role="listbox" aria-label="Results">
 					{rows.map((row, at) => {
 						const picked = at === index;
 						const className = `${ROW}${picked ? " bg-hover" : " bg-transparent"}`;
+						if (row.kind === "grant") {
+							const glyph = <span className={`shrink-0 font-mono text-[12px] ${row.grant.granted ? "text-ink" : "text-muted-soft"}`}>{row.grant.granted ? "✓" : "·"}</span>;
+							const name = <span className={`shrink-0 font-mono text-[13px] ${row.grant.granted ? "text-ink" : "text-muted"}`}>{row.grant.name}</span>;
+							const detail = row.grant.detail ? <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted">{row.grant.detail}</span> : null;
+							const meta = row.grant.meta ? <span className={GRANT}>{row.grant.meta}</span> : null;
+							if (row.grant.alwaysOn) {
+								return (
+									<div key={`g:${row.grant.group}:${row.grant.name}`} className={`${className} cursor-default`} role="presentation">
+										{glyph}
+										{name}
+										{detail}
+										{meta}
+									</div>
+								);
+							}
+							return (
+								<button
+									key={`g:${row.grant.group}:${row.grant.name}`}
+									type="button"
+									className={className}
+									role="option"
+									aria-selected={picked}
+									onMouseEnter={() => setCursor({ stamp, at })}
+									onClick={() => activate(row)}
+								>
+									{glyph}
+									{name}
+									{detail}
+									{meta}
+								</button>
+							);
+						}
 						if (row.kind === "session") {
 							const unread = (row.row.lastMessageAt ?? 0) > (row.row.readAt ?? 0);
 							const dir = row.row.workspace ? splitPath(row.row.workspace).name : "";
@@ -299,7 +387,7 @@ export function PaletteDialog(props: DialogProps) {
 					</span>
 					<span className={KEY_ITEM}>
 						<Kbd>↵</Kbd>
-						{activeMode === "files" ? "open in editor" : "open"}
+						{activeMode === "files" ? "open in editor" : activeMode === "access" ? "toggle" : "open"}
 					</span>
 					<span className={KEY_ITEM}>
 						<Kbd>esc</Kbd>close

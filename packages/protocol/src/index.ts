@@ -91,7 +91,7 @@ export interface ContributionItem {
 	readonly items?: readonly ContributionItem[];
 }
 
-export const SLOT_POINTS = { chatBar: "chat.bar", chatName: "chat.name", chatPanes: "chat.panes", welcomeTimeline: "welcome.timeline" } as const;
+export const SLOT_POINTS = { chatBar: "chat.bar", chatName: "chat.name", chatPanes: "chat.panes", workspaceViews: "workspace.views", welcomeTimeline: "welcome.timeline" } as const;
 
 export interface SlotItem {
 	readonly id: string;
@@ -152,7 +152,7 @@ export interface ComposerLayout {
 	readonly tips: readonly ComposerTip[];
 }
 
-export type BrowserCommand = { readonly kind: "copy"; readonly text: string };
+export type BrowserCommand = { readonly kind: "copy"; readonly text: string } | { readonly kind: "view"; readonly view: string | null };
 
 export type ComposerMode = "chat" | "shell";
 

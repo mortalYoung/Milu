@@ -195,6 +195,10 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 	const panes = useStore(host.slots.store, (state) => state.points[SLOT_POINTS.chatPanes] ?? NO_PANES);
 	const focused = useStore(host.transcript.store, (state) => state.focused);
 
+	const view = useStore(host.workbench.store, (state) => state.view);
+	const viewItems = useStore(host.slots.store, (state) => state.points[SLOT_POINTS.workspaceViews] ?? NO_PANES);
+	const viewComponents = useStore(host.slots.store, (state) => state.components);
+
 	const scroll = useRef<HTMLDivElement>(null);
 	const inner = useRef<HTMLDivElement>(null);
 	const locating = useRef(false);
@@ -205,7 +209,12 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 		const content = inner.current;
 		if (scroller && content) follower.attach(scroller, content, locating);
 		return () => follower.detach();
-	}, [follower, selected]);
+	}, [follower, selected, view]);
+
+	useEffect(() => {
+		if (view !== null) return;
+		follower.pin(true);
+	}, [follower, view]);
 	const [followed, setFollowed] = useState(selected);
 	if (followed !== selected) {
 		setFollowed(selected);
@@ -240,6 +249,14 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 			for (const timer of timers) window.clearTimeout(timer);
 		};
 	}, [focused, follower]);
+
+	if (view !== null) {
+		const item = viewItems.find((each) => each.id === view);
+		const View = item ? viewComponents.get(item.component) : undefined;
+		return (
+			<div className="transcript-pane">{View ? createElement(View, { host, data: item?.data }) : <div className="surface-missing">view "{view}" is not contributed</div>}</div>
+		);
+	}
 
 	return (
 		<div className="transcript-pane">

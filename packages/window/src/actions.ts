@@ -2,6 +2,7 @@ import { createServiceId, type Service } from "@milu/di";
 
 import { type Connection, IConnection } from "./connection.ts";
 import { IDialogService, type DialogService } from "./dialogs.ts";
+import { IWorkbenchService, type WorkbenchService } from "./workbench.ts";
 
 export interface BrowserCommands {
 	readonly copy?: (text: string) => void | Promise<void>;
@@ -11,6 +12,7 @@ export class ActionsService implements Service {
 	constructor(
 		@IConnection private readonly _connection: Connection,
 		@IDialogService private readonly _dialogService: DialogService,
+		@IWorkbenchService private readonly _workbench: WorkbenchService,
 		private readonly _commands: BrowserCommands,
 	) {}
 
@@ -37,6 +39,10 @@ export class ActionsService implements Service {
 
 		const command = result.command;
 		if (!command) return;
+		if (command.kind === "view") {
+			this._workbench.showView(command.view);
+			return;
+		}
 
 		await this._commands.copy?.(command.text);
 	}

@@ -1,15 +1,18 @@
 import type { Host } from "@milu/window";
 import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
-import { createElement } from "react";
+import { createElement, useState } from "react";
 import { useStore } from "zustand";
 
 export function DialogHost(props: { host: Host }) {
 	const { host } = props;
 	const pending = useStore(host.dialogs.store, (state) => state.pending);
+	const [last, setLast] = useState(pending);
+	if (pending !== null && pending !== last) setLast(pending);
+	const shown = pending ?? last;
 
-	const custom = pending?.dialog.kind === "custom" ? host.dialogs.get(pending.dialog.id) : undefined;
-	const palette = pending?.dialog.kind === "custom" && pending.dialog.presentation === "palette";
+	const custom = shown?.dialog.kind === "custom" ? host.dialogs.get(shown.dialog.id) : undefined;
+	const palette = shown?.dialog.kind === "custom" && shown.dialog.presentation === "palette";
 
 	return (
 		<Dialog.Root open={pending !== null} modal={!palette} onOpenChange={(open) => (open ? undefined : host.dialogs.resolve(null))}>
@@ -39,12 +42,12 @@ export function DialogHost(props: { host: Host }) {
 							)}
 							{createElement(custom, {
 								host,
-								data: pending?.dialog.kind === "custom" ? pending.dialog.data : undefined,
+								data: shown?.dialog.kind === "custom" ? shown.dialog.data : undefined,
 								close: (value: unknown) => host.dialogs.resolve(value),
 							})}
 						</>
 					) : (
-						<Dialog.Title className="conv-dialog-title">No such dialog: {pending?.dialog.kind === "custom" ? pending.dialog.id : ""}</Dialog.Title>
+						<Dialog.Title className="conv-dialog-title">No such dialog: {shown?.dialog.kind === "custom" ? shown.dialog.id : ""}</Dialog.Title>
 					)}
 				</Dialog.Content>
 			</Dialog.Portal>

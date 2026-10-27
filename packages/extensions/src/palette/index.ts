@@ -30,6 +30,15 @@ const paletteExtension: Extension = {
 		});
 
 		context.actions.register({
+			id: "palette.access",
+			scope: "app",
+			hotkey: "Mod+Shift+P",
+			run: async ({ dialog }) => {
+				await dialog?.({ kind: "custom", id: "palette", title: "Manage Access", data: { mode: "access" }, presentation: "palette" });
+			},
+		});
+
+		context.actions.register({
 			id: "palette.files",
 			run: async ({ session, args }) => {
 				if (!session) throw new Error("palette.files needs a session");
