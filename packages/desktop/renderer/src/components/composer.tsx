@@ -15,7 +15,7 @@ function parseCommandLine(value: string): { name: string; args: string } | null 
 	return match ? { name: match[1] ?? "", args: match[2] ?? "" } : null;
 }
 
-export function Composer(props: { host: Host }) {
+export function Composer(props: { host: Host; onSent?: () => void }) {
 	const { host } = props;
 	const linked = useStore(host.connection.store, (state) => state.linked);
 	const composerPending = useStore(host.connection.store, (state) => (state.pending["composer"] ?? 0) > 0);
@@ -76,6 +76,7 @@ export function Composer(props: { host: Host }) {
 	const submit = async (): Promise<void> => {
 		const value = text.trim();
 		if (!value || !selected) return;
+		props.onSent?.();
 		if (shellMode) {
 			host.transcript.setDraft(selected, "");
 			try {

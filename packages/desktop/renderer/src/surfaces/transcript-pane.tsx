@@ -11,6 +11,7 @@ import { Composer } from "../components/composer.tsx";
 import { ArrowDownIcon, CheckIcon, CopyIcon } from "../components/icons.tsx";
 import { TranscriptSkeleton } from "../components/skeletons.tsx";
 import { Welcome } from "../components/welcome.tsx";
+import { TranscriptScroll } from "../scroll-follower.ts";
 
 const NO_ENTRIES: readonly SeqEntry[] = [];
 const NO_PANES: readonly never[] = [];
@@ -107,27 +108,6 @@ function EscalationCard(props: { item: ViewItem; host: Host; session: string }) 
 	);
 }
 
-function ShellBlock(props: { item: ViewItem }) {
-	const [open, setOpen] = useState(true);
-	const shell = props.item.shell;
-	const failed = shell?.exitCode !== undefined && shell.exitCode !== 0;
-	return (
-		<div className="msg-block" data-entry={props.item.id}>
-			<button type="button" className="flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent p-0 text-left" aria-expanded={open} onClick={() => setOpen(!open)}>
-				<span className={`rounded px-1.5 py-0.5 font-sans text-[10px] font-medium uppercase ${failed ? "bg-signal/10 text-signal" : "bg-hover text-muted"}`}>shell</span>
-				<span className="min-w-0 flex-1 truncate font-mono text-[12px] text-ink">$ {props.item.text}</span>
-				{failed ? <span className="shrink-0 font-mono text-[10px] text-signal">exit {shell?.exitCode}</span> : null}
-				<span className="shrink-0 font-mono text-[10px] text-muted">{open ? "−" : "+"}</span>
-			</button>
-			{open && shell && shell.output !== "" ? (
-				<pre className="mt-1.5 mb-0 max-h-[320px] overflow-auto rounded-md border border-line bg-code-block-bg px-3 py-2 font-mono text-[12px] leading-[1.5] whitespace-pre-wrap break-words text-ink">
-					{shell.output}
-				</pre>
-			) : null}
-		</div>
-	);
-}
-
 function AssistantBlock(props: { host: Host; item: ViewItem; live?: boolean }) {
 	return (
 		<div className={props.live ? "msg-block msg-block-agent is-live" : "msg-block msg-block-agent"} data-entry={props.item.id}>
@@ -158,8 +138,9 @@ const TranscriptRow = memo(function TranscriptRow(props: { host: Host; session: 
 				<span>{item.text}</span>
 			</div>
 		);
-	if (item.kind === "shell") return <ShellBlock item={item} />;
 	if (item.kind === "user") return item.peerKind === "reply" ? <ReplyCard item={item} port={host.markdown} /> : <UserBubble item={item} />;
+	const Row = host.rows.get(item.kind);
+	if (Row) return createElement(Row, { host, data: { item } });
 	return <AssistantBlock host={host} item={item} />;
 });
 
@@ -214,57 +195,35 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 	const panes = useStore(host.slots.store, (state) => state.points[SLOT_POINTS.chatPanes] ?? NO_PANES);
 	const focused = useStore(host.transcript.store, (state) => state.focused);
 
-	const [following, setFollowing] = useState(true);
+	const scroll = useRef<HTMLDivElement>(null);
+	const inner = useRef<HTMLDivElement>(null);
+	const locating = useRef(false);
+	const [follower] = useState(() => new TranscriptScroll());
+	const following = useStore(follower.store, (state) => state.following);
+	useEffect(() => {
+		const scroller = scroll.current;
+		const content = inner.current;
+		if (scroller && content) follower.attach(scroller, content, locating);
+		return () => follower.detach();
+	}, [follower, selected]);
 	const [followed, setFollowed] = useState(selected);
 	if (followed !== selected) {
 		setFollowed(selected);
-		setFollowing(true);
+		follower.pin(true);
 	}
-
-	const scroll = useRef<HTMLDivElement>(null);
-	const locating = useRef(false);
-
-	useEffect(() => {
-		if (!following) return;
-		const element = scroll.current;
-		if (!element) return;
-		const pin = () => {
-			element.scrollTop = element.scrollHeight;
-		};
-		pin();
-		const frame = requestAnimationFrame(pin);
-		const settle = window.setTimeout(pin, 160);
-		const resize = new ResizeObserver(pin);
-		resize.observe(element);
-		for (const child of Array.from(element.children)) resize.observe(child);
-		const mutations = new MutationObserver(pin);
-		mutations.observe(element, { subtree: true, childList: true, characterData: true });
-		void document.fonts?.ready.then(pin);
-		return () => {
-			cancelAnimationFrame(frame);
-			window.clearTimeout(settle);
-			resize.disconnect();
-			mutations.disconnect();
-		};
-	}, [display, following, selected]);
 
 	const hasMore = useStore(host.transcript.store, (state) => state.hasMore[selected] ?? false);
 	const loadingOlder = useStore(host.transcript.store, (state) => state.loadingOlder[selected] ?? false);
 	const loadOlder = () => {
-		setFollowing(false);
-		const element = scroll.current;
-		const before = element?.scrollHeight ?? 0;
-		void host.transcript.loadOlder(selected).then(() => {
-			if (!element) return;
-			element.scrollTop += element.scrollHeight - before;
-		});
+		follower.hold();
+		void host.transcript.loadOlder(selected);
 	};
 
 	useEffect(() => {
 		if (!focused) return;
 		const element = scroll.current?.querySelector(`[data-entry="${CSS.escape(focused.id)}"]`);
 		if (!element) return;
-		setFollowing(false);
+		follower.hold();
 		locating.current = true;
 		element.scrollIntoView({ block: "center", behavior: "smooth" });
 		element.classList.add("is-located");
@@ -280,15 +239,7 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 			scroller?.removeEventListener("scrollend", release);
 			for (const timer of timers) window.clearTimeout(timer);
 		};
-	}, [focused]);
-
-	const onScroll = () => {
-		if (locating.current) return;
-		const element = scroll.current;
-		if (!element) return;
-		const atBottom = element.scrollHeight - element.clientHeight - element.scrollTop < 24;
-		setFollowing((previous) => (previous === atBottom ? previous : atBottom));
-	};
+	}, [focused, follower]);
 
 	return (
 		<div className="transcript-pane">
@@ -302,8 +253,8 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 				) : (
 					<div className="chat-column">
 						<div className="transcript-view">
-							<div className="transcript" ref={scroll} onScroll={onScroll}>
-								<div className="transcript-inner">
+							<div className="transcript" ref={scroll}>
+								<div className="transcript-inner" ref={inner}>
 									{hasMore ? (
 										<div className="load-earlier-wrap">
 											<button type="button" className="load-earlier" onClick={loadOlder} disabled={loadingOlder}>
@@ -338,14 +289,14 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 								</div>
 							</div>
 							{following ? null : (
-								<button type="button" className="back-to-bottom" aria-label="Back to latest" onClick={() => setFollowing(true)}>
+								<button type="button" className="back-to-bottom" aria-label="Back to latest" onClick={() => follower.pin(true)}>
 									<ArrowDownIcon size={13} />
 								</button>
 							)}
 						</div>
 
 						<div className="composer-slot">
-							<Composer host={host} />
+							<Composer host={host} onSent={() => follower.pin(true)} />
 						</div>
 					</div>
 				)}

@@ -100,7 +100,6 @@ export function RepliesPane(props: SurfaceProps) {
 								<span className="shrink-0 font-mono text-[10px] text-muted">{formatHistoryTime(row.time)}</span>
 							</span>
 							<span className="truncate font-sans text-[13px] leading-[1.45] text-ink">{label(row.text)}</span>
-							{row.count > 1 ? <span className="self-start font-mono text-[10px] text-line/80">stack · {row.count}</span> : null}
 						</button>
 					))
 				)}

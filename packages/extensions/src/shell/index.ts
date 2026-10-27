@@ -11,7 +11,10 @@ function tail(text: string): string {
 const shellExtension: Extension = {
 	id: "shell",
 	apiVersion: 1,
-	widgets: [{ id: "shell", type: "widget", entry: "./widget/shell.tsx" }],
+	widgets: [
+		{ id: "shell", type: "widget", entry: "./widget/shell.tsx" },
+		{ id: "shell", type: "row", entry: "./widget/shell-row.tsx", export: "ShellRow" },
+	],
 
 	contributions: {
 		"composer.left": [{ id: "shell", order: 10, widget: "shell" }],
