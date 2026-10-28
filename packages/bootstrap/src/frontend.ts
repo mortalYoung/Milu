@@ -306,6 +306,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 				.then((hello) => {
 					deps.mark?.("hello");
 					connection.phase(hello.lifecycle);
+					layout.set(hello.layout);
 					if (hello.selected !== null) selection.apply(hello.selected);
 				})
 				.catch(() => undefined)

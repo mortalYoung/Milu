@@ -311,7 +311,7 @@ export class IpcServer {
 	}
 
 	private async _hello(): Promise<Result<"hello">> {
-		return { lifecycle: this._backend.lifecycle.phase, selected: this._backend.selection.selected };
+		return { lifecycle: this._backend.lifecycle.phase, selected: this._backend.selection.selected, layout: this._backend.layout.state() };
 	}
 
 	private async _sessions(): Promise<Result<"sessions">> {

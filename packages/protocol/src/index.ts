@@ -201,7 +201,7 @@ export interface Methods {
 	abort: { params: Record<string, never>; result: { aborted: boolean } };
 	composer: { params: { session: string }; result: { layout: ComposerLayout; mode: ComposerMode } };
 	boot: { params: { marks: readonly BootMark[] }; result: Record<string, never> };
-	hello: { params: Record<string, never>; result: { lifecycle: LifecyclePhase; selected: string | null } };
+	hello: { params: Record<string, never>; result: { lifecycle: LifecyclePhase; selected: string | null; layout: LayoutState } };
 	commands: { params: { session: string }; result: { commands: readonly ComposerCommand[] } };
 	hotkeys: { params: Record<string, never>; result: { bindings: readonly ActionBinding[] } };
 	sessions: { params: Record<string, never>; result: { sessions: SessionRow[]; selected: string | null } };

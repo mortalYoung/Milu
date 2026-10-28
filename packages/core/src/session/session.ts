@@ -203,8 +203,7 @@ export class Session {
 	}
 
 	async seqsOf(entries: readonly Entry[]): Promise<SeqEntry[]> {
-		const seqs = new Map((await this._log.entries()).map((each) => [each.entry.id, each.seq] as const));
-		return entries.map((entry) => ({ seq: seqs.get(entry.id) ?? 0, entry })).filter((each) => each.seq > 0);
+		return entries.map((entry) => ({ seq: entry.seq, entry })).filter((each) => each.seq > 0);
 	}
 
 	async transcript(options?: { keepDangling?: boolean }): Promise<AgentMessage[]> {
