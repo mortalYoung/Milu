@@ -1,5 +1,5 @@
-import { composerDataKey } from "@milu/protocol";
-import { useComposerData, type WidgetProps } from "@milu/window/api";
+import { composerDataKey, LOG_EVENTS } from "@milu/protocol";
+import { useComposerData, useComposerRefresh, type WidgetProps } from "@milu/window/api";
 import { Tip } from "@milu/window/api/tooltip";
 import { useEffect, useRef, useState } from "react";
 
@@ -39,9 +39,18 @@ function MeterPlaceholder(props: { readonly error: boolean }) {
 }
 
 export function MeterWidget(props: WidgetProps) {
-	const { data, status } = useComposerData<MeterWidgetData | null>(props.host, composerDataKey("composer.right", "meter"));
+	const { data, status, session, refresh } = useComposerData<MeterWidgetData | null>(props.host, composerDataKey("composer.right", "meter"));
 	const [open, setOpen] = useState(false);
 	const root = useRef<HTMLSpanElement>(null);
+
+	useComposerRefresh(
+		props.host,
+		session,
+		refresh,
+		(entry) =>
+			(entry.type === "message" && entry.message.role === "assistant" && entry.message.usage !== undefined) ||
+			(entry.type === "custom" && entry.customType === LOG_EVENTS.compaction),
+	);
 
 	useEffect(() => {
 		if (!open) return;

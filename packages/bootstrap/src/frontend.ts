@@ -1,5 +1,5 @@
 import { DisposableStore, type Disposable, IInstantiationService, InstantiationService, ServiceCollection, SyncDescriptor } from "@milu/di";
-import { LOG_EVENTS, type Platform, type SessionRow, type Snapshot, type WidgetEntry } from "@milu/protocol";
+import type { Platform, SessionRow, Snapshot, WidgetEntry } from "@milu/protocol";
 import {
 	ActionsService,
 	IActionsService,
@@ -272,15 +272,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 					void composerData.refresh(selected);
 				}),
 			);
-			disposables.add(
-				connection.onEntry(({ session, entry }) => {
-					transcript.append(session, entry);
-					if (entry.entry.type !== "custom") return;
-					const type = entry.entry.customType;
-					if (type !== LOG_EVENTS.taskStart && type !== LOG_EVENTS.taskEnd && type !== LOG_EVENTS.compaction) return;
-					composerData.invalidate(session);
-				}),
-			);
+			disposables.add(connection.onEntry(({ session, entry }) => transcript.append(session, entry)));
 			disposables.add(connection.onPartial(({ session, message }) => transcript.setPartial(session, message)));
 			disposables.add(
 				connection.onLive((event) => {
@@ -330,7 +322,6 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 						transcript.setStopping(event.session, false);
 						transcript.clearPartial(event.session);
 						void sessions.refresh();
-						composerData.invalidate(event.session);
 					}
 				}),
 			);

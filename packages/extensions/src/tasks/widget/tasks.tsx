@@ -1,4 +1,5 @@
-import type { DialogProps, WidgetProps } from "@milu/window/api";
+import { composerDataKey, LOG_EVENTS } from "@milu/protocol";
+import { useComposerData, useComposerRefresh, type DialogProps, type WidgetProps } from "@milu/window/api";
 import { Tip } from "@milu/window/api/tooltip";
 import { Terminal } from "lucide-react";
 import { useState } from "react";
@@ -54,7 +55,8 @@ function detailOf(task: TaskView, now: number): string {
 }
 
 export function TasksWidget(props: WidgetProps) {
-	const data = props.data as WidgetData | null;
+	const { data, session, refresh } = useComposerData<WidgetData | null>(props.host, composerDataKey("composer.left", "tasks"));
+	useComposerRefresh(props.host, session, refresh, (entry) => entry.type === "custom" && (entry.customType === LOG_EVENTS.taskStart || entry.customType === LOG_EVENTS.taskEnd));
 	if (!data) return null;
 	return (
 		<span className="relative inline-flex">
