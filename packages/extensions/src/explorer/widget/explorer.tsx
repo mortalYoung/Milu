@@ -1,5 +1,22 @@
 import type { Host, SlotProps } from "@milu/window/api";
-import { ChevronLeft, ChevronRight, Copy, File, FileCode2, FileImage, FileJson, FileText, Folder, FolderOpen, MessageSquareQuote, Pilcrow, WrapText, X } from "lucide-react";
+import { Tip } from "@milu/window/api/tooltip";
+import {
+	ChevronLeft,
+	ChevronRight,
+	Copy,
+	File,
+	FileCode2,
+	FileImage,
+	FileJson,
+	FileText,
+	Folder,
+	FolderOpen,
+	FolderTree,
+	MessageSquareQuote,
+	Pilcrow,
+	WrapText,
+	X,
+} from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 
@@ -84,6 +101,51 @@ interface RowMenu {
 	readonly entry: ExplorerEntry;
 	readonly x: number;
 	readonly y: number;
+}
+
+export function ExplorerButton(props: SlotProps) {
+	const { host } = props;
+	const visible = useStore(host.dock.store, (state) => state.visible);
+	const active = useStore(host.dock.store, (state) => state.active);
+	const open = visible && active === "explorer";
+	return (
+		<>
+			<span aria-hidden className="mx-0.5 h-4 w-px shrink-0 bg-line" />
+			<Tip label="Explorer (⌘J)">
+				<button
+					type="button"
+					className={`flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full border-0 text-ink transition-colors duration-150 hover:bg-hover ${open ? "bg-hover" : "bg-transparent"}`}
+					aria-label="Toggle explorer"
+					aria-pressed={open}
+					onClick={() => host.dock.toggleView("explorer")}
+				>
+					<FolderTree size={15} />
+				</button>
+			</Tip>
+		</>
+	);
+}
+
+export function ExplorerHead(props: SlotProps) {
+	const { host } = props;
+	const tree = host.get(IExplorerTreeService);
+	const state = useStore(tree.store);
+	const mode = useStore(host.columns.store, (current) => current.columns.dock.mode);
+	const dockWidth = useStore(host.columns.store, (current) => current.columns.dock.width);
+
+	const root = state.dirs[""];
+	const rootName = state.root === "" ? "workspace" : (state.root.split("/").filter(Boolean).pop() ?? state.root);
+	const fits = mode === "overlay" || dockWidth >= PANE_MIN;
+	const detailOpen = state.activeFile !== null;
+
+	return (
+		<>
+			<span className="dock-bar-title">
+				{rootName} · {root?.entries?.length ?? 0}
+			</span>
+			{detailOpen && fits ? <ListToggle open={state.listOpen} onToggle={() => tree.toggleList()} /> : null}
+		</>
+	);
 }
 
 export function ExplorerPane(props: SlotProps) {
@@ -182,17 +244,10 @@ export function ExplorerPane(props: SlotProps) {
 	};
 
 	const root = state.dirs[""];
-	const rootName = state.root === "" ? "workspace" : (state.root.split("/").filter(Boolean).pop() ?? state.root);
 
 	return (
 		<div className={`explorer-dock${floating ? " floating" : ""}`}>
 			<div className={`explorer-list${collapsed ? " collapsed" : ""}`} style={both ? { width: LIST_PANE } : undefined} inert={collapsed}>
-				<div className="dock-list-head">
-					<span className="dock-list-title">
-						{rootName} · {root?.entries?.length ?? 0}
-					</span>
-					{detailOpen && fits ? <ListToggle open={state.listOpen} onToggle={() => tree.toggleList()} /> : null}
-				</div>
 				<div className="explorer-tree" ref={rows}>
 					{root === undefined || root.status === "loading" ? (
 						<p className="explorer-note">loading workspace…</p>

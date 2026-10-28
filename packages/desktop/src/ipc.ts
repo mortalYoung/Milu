@@ -243,6 +243,7 @@ export class IpcServer {
 				[SLOT_POINTS.chatPanes]: await this._backend.sessions.slots(SLOT_POINTS.chatPanes, selected),
 				[SLOT_POINTS.workspaceViews]: await this._backend.sessions.slots(SLOT_POINTS.workspaceViews, selected),
 				[SLOT_POINTS.dockViews]: await this._backend.sessions.slots(SLOT_POINTS.dockViews, selected),
+				[SLOT_POINTS.dockBar]: await this._backend.sessions.slots(SLOT_POINTS.dockBar, selected),
 				[SLOT_POINTS.welcomeTimeline]: await this._backend.sessions.slots(SLOT_POINTS.welcomeTimeline),
 				[SLOT_POINTS.overlay]: await this._backend.sessions.slots(SLOT_POINTS.overlay),
 			},

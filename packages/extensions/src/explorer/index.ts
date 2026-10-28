@@ -56,11 +56,15 @@ const explorerExtension: Extension = {
 	apiVersion: 1,
 
 	widgets: [
+		{ id: "explorer.bar", type: "slot", entry: "./widget/explorer.tsx", export: "ExplorerButton" },
+		{ id: "explorer.head", type: "slot", entry: "./widget/explorer.tsx", export: "ExplorerHead" },
 		{ id: "explorer.pane", type: "slot", entry: "./widget/explorer.tsx", export: "ExplorerPane" },
 		{ id: "explorer.tree", type: "service", entry: "./widget/service.ts" },
 	],
 
 	contributions: {
+		"chat.bar": [{ id: "explorer", order: 40, component: "explorer.bar" }],
+		"dock.bar": [{ id: "explorer", order: 10, component: "explorer.head" }],
 		"dock.views": [{ id: "explorer", order: 20, component: "explorer.pane", title: "Explorer", icon: "folder-tree" }],
 	},
 

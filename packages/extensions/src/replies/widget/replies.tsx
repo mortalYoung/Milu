@@ -18,7 +18,7 @@ export function RepliesButton(props: SurfaceProps) {
 	const open = useStore(service.store, (state) => state.open);
 	const selected = useStore(props.host.selection.store, (state) => state.selected);
 	if (selected === "") return null;
-	const wording = open ? "Hide replies" : "Show replies";
+	const wording = open ? "Hide Replies" : "Show Replies";
 	return (
 		<Tip label={wording}>
 			<button

@@ -99,6 +99,7 @@ export const SLOT_POINTS = {
 	chatPanes: "chat.panes",
 	workspaceViews: "workspace.views",
 	dockViews: "dock.views",
+	dockBar: "dock.bar",
 	welcomeTimeline: "welcome.timeline",
 	overlay: "shell.overlay",
 } as const;
