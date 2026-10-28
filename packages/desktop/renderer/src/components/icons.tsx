@@ -7,6 +7,7 @@ import {
 	CircleStop,
 	Copy,
 	EllipsisVertical,
+	FileText,
 	Folder,
 	FolderTree,
 	Info,
@@ -37,6 +38,7 @@ export const PanelLeftOpenIcon = sized(PanelLeftOpen);
 export const ChevronRightIcon = sized(ChevronRight);
 export const ChevronDownIcon = sized(ChevronDown);
 export const FolderTreeIcon = sized(FolderTree);
+export const FileTextIcon = sized(FileText);
 export const MoreVerticalIcon = sized(EllipsisVertical);
 export const CheckIcon = sized(Check);
 export const ArrowDownIcon = sized(ArrowDown);
@@ -60,6 +62,8 @@ const NAMED: Record<string, (props: { size?: number; className?: string }) => Re
 	trash: TrashIcon,
 	pin: PinIcon,
 	"pin-off": PinOffIcon,
+	"folder-tree": FolderTreeIcon,
+	"file-text": FileTextIcon,
 	copy: CopyIcon,
 };
 

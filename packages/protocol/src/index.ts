@@ -98,6 +98,7 @@ export const SLOT_POINTS = {
 	chatName: "chat.name",
 	chatPanes: "chat.panes",
 	workspaceViews: "workspace.views",
+	dockViews: "dock.views",
 	welcomeTimeline: "welcome.timeline",
 	overlay: "shell.overlay",
 } as const;
@@ -105,6 +106,8 @@ export const SLOT_POINTS = {
 export interface SlotItem {
 	readonly id: string;
 	readonly component: string;
+	readonly title?: string;
+	readonly icon?: string;
 	readonly order?: number;
 	readonly data?: unknown;
 }
@@ -191,7 +194,8 @@ export type LiveEvent =
 	| { readonly type: "lifecycle"; readonly phase: LifecyclePhase }
 	| { readonly type: "settings" }
 	| { readonly type: "notify"; readonly title: string; readonly body: string; readonly tone: "plain" | "error" }
-	| { readonly type: "command"; readonly action: string };
+	| { readonly type: "command"; readonly action: string }
+	| { readonly type: "file"; readonly path: string };
 
 export interface BootMark {
 	readonly name: string;

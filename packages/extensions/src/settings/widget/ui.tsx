@@ -127,3 +127,27 @@ export function Select(props: { value: string; options: readonly { value: string
 		</span>
 	);
 }
+
+export function Segments(props: { value: string; options: readonly { value: string; label: string; hint?: string }[]; onChange: (value: string) => void }) {
+	return (
+		<div className="grid grid-cols-3 gap-2">
+			{props.options.map((option) => {
+				const on = props.value === option.value;
+				return (
+					<button
+						key={option.value}
+						type="button"
+						className={`flex h-[38px] cursor-pointer flex-col items-start justify-center gap-0.5 rounded-[8px] border px-2.5 py-1.5 text-left transition-colors duration-100 ${
+							on ? "border-line-strong bg-selected" : "border-line bg-canvas hover:border-ink-soft hover:bg-hover"
+						}`}
+						aria-pressed={on}
+						onClick={() => props.onChange(option.value)}
+					>
+						<span className={`font-sans text-[13px] leading-tight ${on ? "font-medium text-ink" : "text-ink"}`}>{option.label}</span>
+						{option.hint === undefined ? null : <span className="font-sans text-[10px] leading-tight text-muted">{option.hint}</span>}
+					</button>
+				);
+			})}
+		</div>
+	);
+}

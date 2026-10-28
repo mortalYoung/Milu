@@ -9,6 +9,8 @@ import type { ComposerTriggerRegistry } from "./composer-triggers.ts";
 import type { ComposerService, WidgetRegistry } from "./composer.ts";
 import type { Connection } from "./connection.ts";
 import type { DialogService } from "./dialogs.ts";
+import type { DockService } from "./dock.ts";
+import type { FileEventsService } from "./files.ts";
 import type { FooterService } from "./footer.ts";
 import type { HeaderService } from "./header.ts";
 import type { HotkeysService } from "./hotkeys.ts";
@@ -43,6 +45,7 @@ export interface Host {
 	readonly actions: ActionsService;
 	readonly dialogs: DialogService;
 	readonly columns: ColumnsService;
+	readonly dock: DockService;
 	readonly header: HeaderService;
 	readonly footer: FooterService;
 	readonly composer: ComposerService;
@@ -58,6 +61,7 @@ export interface Host {
 	readonly rows: RowRegistry;
 	readonly notifications: NotificationService;
 	readonly layout: LayoutService;
+	readonly files: FileEventsService;
 	readonly get: <T extends Service>(id: ServiceId<T>) => T;
 }
 

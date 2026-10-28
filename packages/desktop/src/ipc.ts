@@ -86,6 +86,7 @@ export class IpcServer {
 				this._notify(`${session} · sandbox escalation`, String(request?.command ?? "").slice(0, 140), `${String(request?.from ?? "")} → ${String(request?.to ?? "")}`);
 			}),
 			this._backend.layout.onChange((state) => this._broadcast({ type: "live", event: { type: "layout", ...state } })),
+			this._backend.watch.onChange((path: string) => this._broadcast({ type: "live", event: { type: "file", path } })),
 			this._backend.sessions.onLoopEvent(({ session, event }) => {
 				if (event.type === "message_update") {
 					this._queuePartial(session, event.message);
@@ -241,6 +242,7 @@ export class IpcServer {
 				[SLOT_POINTS.chatName]: await this._backend.sessions.slots(SLOT_POINTS.chatName, selected),
 				[SLOT_POINTS.chatPanes]: await this._backend.sessions.slots(SLOT_POINTS.chatPanes, selected),
 				[SLOT_POINTS.workspaceViews]: await this._backend.sessions.slots(SLOT_POINTS.workspaceViews, selected),
+				[SLOT_POINTS.dockViews]: await this._backend.sessions.slots(SLOT_POINTS.dockViews, selected),
 				[SLOT_POINTS.welcomeTimeline]: await this._backend.sessions.slots(SLOT_POINTS.welcomeTimeline),
 				[SLOT_POINTS.overlay]: await this._backend.sessions.slots(SLOT_POINTS.overlay),
 			},

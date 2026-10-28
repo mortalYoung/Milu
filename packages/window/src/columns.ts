@@ -41,7 +41,16 @@ function stored(key: string, fallback: number, min: number, max: number): number
 
 const inFlow = (width: number) => (width > 0 ? width + GRIP_WIDTH : 0);
 
-export function shellLayout(input: { row: number; listWidth: number; listOpen: boolean; listOverride: boolean; dockOpen: boolean; dockWidth: number }): Columns {
+export function shellLayout(input: {
+	row: number;
+	listWidth: number;
+	listOpen: boolean;
+	listOverride: boolean;
+	dockOpen: boolean;
+	dockWidth: number;
+	/** A flow width to hold on to while it still fits — the dock must not move when the sidebar opens or closes. */
+	dockKeep?: number;
+}): Columns {
 	const row = input.row;
 	const listPref = clamp(input.listWidth, LIST_MIN, LIST_MAX);
 	const dockPref = Math.max(DOCK_MIN, input.dockWidth);
@@ -54,24 +63,31 @@ export function shellLayout(input: { row: number; listWidth: number; listOpen: b
 		};
 	}
 
-	const listCanFlow = input.listOpen && row >= LIST_MIN + GRIP_WIDTH + WORKBENCH_MIN;
+	/* The sidebar only stays in flow while every column can keep its minimum; below that it folds first. */
+	const listCanFlow = input.listOpen && row >= LIST_MIN + GRIP_WIDTH + WORKBENCH_MIN + (input.dockOpen ? DOCK_MIN + GRIP_WIDTH : 0);
+	const list = listCanFlow ? listPref : 0;
 	const dockCanFlow = input.dockOpen && row >= DOCK_MIN + GRIP_WIDTH + WORKBENCH_MIN + (listCanFlow ? LIST_MIN + GRIP_WIDTH : 0);
 
-	const workbenchWith = (list: number, dock: number) => row - inFlow(list) - inFlow(dock);
-	const squeeze = (list: number, dock: number) => {
-		let l = list;
-		let d = dock;
-		if (l > 0 && workbenchWith(l, d) < WORKBENCH_MIN) l = Math.max(LIST_MIN, l - (WORKBENCH_MIN - workbenchWith(l, d)));
-		if (d > 0 && workbenchWith(l, d) < WORKBENCH_MIN) d = Math.max(DOCK_MIN, d - (WORKBENCH_MIN - workbenchWith(l, d)));
-		return { list: l, dock: d };
-	};
-	const placed = squeeze(input.listOpen ? listPref : 0, input.dockOpen ? dockPref : 0);
+	const workbenchWith = (listWidth: number, dockWidth: number) => row - inFlow(listWidth) - inFlow(dockWidth);
+	/* Shrink order: the transcript gives way first, then the dock down to its minimum, then the sidebar. */
+	const placed = (() => {
+		let dock = dockCanFlow ? dockPref : 0;
+		if (dock > 0 && workbenchWith(list, dock) < WORKBENCH_MIN) dock = Math.max(DOCK_MIN, dock - (WORKBENCH_MIN - workbenchWith(list, dock)));
+		let sidebar = list;
+		if (sidebar > 0 && workbenchWith(sidebar, dock) < WORKBENCH_MIN) sidebar = Math.max(LIST_MIN, sidebar - (WORKBENCH_MIN - workbenchWith(sidebar, dock)));
+		return { list: sidebar, dock };
+	})();
+	const kept = input.dockKeep;
+	if (kept !== undefined && placed.dock > 0) {
+		const ceiling = workbenchWith(placed.list, 0) - GRIP_WIDTH - WORKBENCH_MIN;
+		if (kept >= DOCK_MIN && kept <= ceiling) placed.dock = kept;
+	}
 
 	const listMode: ListMode = !input.listOpen ? "collapsed" : listCanFlow ? "flow" : input.listOverride ? "overlay" : "collapsed";
 	const dockMode: DockMode = !input.dockOpen ? "closed" : dockCanFlow ? "flow" : "overlay";
-	const list = listMode === "flow" ? placed.list : 0;
-	const dock = dockMode === "flow" ? placed.dock : 0;
-	const workbench = Math.max(WORKBENCH_MIN, workbenchWith(list, dock));
+	const listWidthNow = listMode === "flow" ? placed.list : 0;
+	const dockWidthNow = dockMode === "flow" ? placed.dock : 0;
+	const workbench = Math.max(WORKBENCH_MIN, workbenchWith(listWidthNow, dockWidthNow));
 	const sheet = (own: number, floor: number) => {
 		const width = Math.min(own, Math.max(floor, workbench - GRIP_WIDTH));
 		return width + WORKBENCH_MIN > workbench ? workbench : width;
@@ -128,20 +144,20 @@ export class ColumnsService implements Service {
 		const open = state.columns.list.mode !== "collapsed";
 		this.store.setState((current) => ({ ...current, listOpen: !open }), true);
 		this.store.setState((current) => ({ ...current, listOverride: current.listOpen && !this._fitsList() }), true);
-		this._apply();
+		this._apply(true);
 	}
 
 	closeList(): void {
 		this.store.setState((current) => ({ ...current, listOpen: false, listOverride: false }), true);
 		localStorage.setItem(LIST_OPEN_KEY, "0");
-		this._apply();
+		this._apply(true);
 	}
 
 	setListWidth(width: number): void {
 		const listWidth = clamp(width, LIST_MIN, LIST_MAX);
 		this.store.setState((current) => ({ ...current, listWidth }), true);
 		localStorage.setItem(LIST_WIDTH_KEY, String(Math.round(listWidth)));
-		this._apply();
+		this._apply(true);
 	}
 
 	resetListWidth(): number {
@@ -177,8 +193,8 @@ export class ColumnsService implements Service {
 	gripLimits(kind: "list" | "dock"): { readonly min: number; readonly max: number } {
 		const state = this.store.getState();
 		const laid = state.columns;
-		const listFlow = laid.list.mode === "flow" ? LIST_MIN + GRIP_WIDTH : 0;
-		const dockFlow = laid.dock.mode === "flow" ? DOCK_MIN + GRIP_WIDTH : 0;
+		const listFlow = laid.list.mode === "flow" ? laid.list.width + GRIP_WIDTH : 0;
+		const dockFlow = laid.dock.mode === "flow" ? laid.dock.width + GRIP_WIDTH : 0;
 		const room = state.row - GRIP_WIDTH - WORKBENCH_MIN;
 
 		if (kind === "list") {
@@ -198,9 +214,10 @@ export class ColumnsService implements Service {
 		);
 	}
 
-	private _apply(): void {
+	private _apply(keepDock = false): void {
 		const state = this.store.getState();
 		localStorage.setItem(LIST_OPEN_KEY, state.listOpen ? "1" : "0");
+		const held = keepDock && state.columns.dock.mode === "flow" ? state.columns.dock.width : undefined;
 		const columns = shellLayout({
 			row: state.row,
 			listWidth: state.listWidth,
@@ -208,6 +225,7 @@ export class ColumnsService implements Service {
 			listOverride: state.listOverride,
 			dockOpen: state.dockOpen,
 			dockWidth: state.dockWidth,
+			...(held === undefined ? {} : { dockKeep: held }),
 		});
 		this.store.setState((current) => ({ ...current, columns }), true);
 	}

@@ -49,6 +49,7 @@
 	font-display: swap;
 }
 
+/* Follow the system unless the settings page pinned a theme: light-dark() resolves by color-scheme. */
 :root {
 	color-scheme: light dark;
 
@@ -91,6 +92,14 @@
 	--ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+:root[data-theme="light"] {
+	color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+	color-scheme: dark;
+}
+
 html,
 body,
 #root {
@@ -126,6 +135,16 @@ body {
 	min-width: 0;
 }
 
+/* The widths come from shellLayout: the sidebar and the dock sit at exactly the width it computed,
+   and the transcript takes the rest. Without this every column shrinks by its content. */
+.layout-row > .column {
+	flex: none;
+}
+
+.layout-row > .column.main {
+	flex: 1 1 0;
+}
+
 .column {
 	display: flex;
 	flex-direction: column;
@@ -139,6 +158,89 @@ body {
 
 .column.sidebar {
 	background: var(--chrome);
+}
+
+.column.dock {
+	width: var(--dock-width);
+	background: var(--chrome);
+}
+
+.column.dock.closed {
+	pointer-events: none;
+}
+
+.column.dock.floating {
+	left: auto;
+	right: 0;
+}
+
+.dock-tabs {
+	display: flex;
+	align-items: stretch;
+	gap: 2px;
+	flex: none;
+	padding: 6px 6px 0;
+	border-bottom: 0.5px solid var(--line);
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+.dock-tab {
+	display: flex;
+	align-items: center;
+	border-radius: var(--r6) var(--r6) 0 0;
+	color: var(--muted);
+}
+
+.dock-tab.is-active {
+	background: var(--surface);
+	color: var(--ink);
+}
+
+.dock-tab-label,
+.dock-tab-close,
+.dock-hide {
+	display: flex;
+	align-items: center;
+	gap: 5px;
+	border: 0;
+	background: transparent;
+	padding: 5px 8px;
+	font: inherit;
+	font-size: 12px;
+	color: inherit;
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.dock-tab-close {
+	gap: 0;
+	padding: 5px 6px 5px 0;
+	color: var(--muted-soft);
+}
+
+.dock-tab-close:hover,
+.dock-hide:hover {
+	color: var(--ink);
+}
+
+.dock-hide {
+	margin-left: auto;
+	color: var(--muted-soft);
+}
+
+.dock-body {
+	flex: 1;
+	min-height: 0;
+	overflow: auto;
+	background: var(--surface);
+}
+
+.dock-empty {
+	margin: 0;
+	padding: 16px;
+	font-size: 13px;
+	color: var(--muted);
 }
 
 .column.collapsed {
@@ -377,6 +479,9 @@ body.pane-dragging {
 }
 
 @media (prefers-reduced-motion: reduce) {
+	.column {
+		transition: none;
+	}
 	.sidebar,
 	.sidebar.collapsed {
 		transition: none;
@@ -619,7 +724,7 @@ body.pane-dragging {
 	display: flex;
 	align-items: center;
 	min-width: 0;
-	max-width: 46%;
+	max-width: min(46%, calc(100% - 288px));
 	transform: translate(-50%, -50%);
 }
 
@@ -684,19 +789,6 @@ body.pane-dragging {
 	flex: none;
 }
 
-/* a narrow bar can't carry a centred name — the tools would sit on top of it */
-@container (max-width: 699px) {
-	.chat-bar-name {
-		position: relative;
-		left: auto;
-		top: auto;
-		transform: none;
-		flex: 1 1 auto;
-		min-width: 0;
-		max-width: none;
-	}
-}
-
 .bar-icon {
 	display: flex;
 	align-items: center;
@@ -716,6 +808,11 @@ body.pane-dragging {
 	background: var(--hover);
 }
 
+.bar-icon.on {
+	background: var(--selected);
+	color: var(--ink);
+}
+
 .bar-icon:disabled {
 	opacity: 0.4;
 	cursor: default;
@@ -723,10 +820,6 @@ body.pane-dragging {
 
 .bar-icon:disabled:hover {
 	background: transparent;
-}
-
-.bar-icon.on {
-	background: var(--selected);
 }
 
 .dot {
@@ -2172,4 +2265,415 @@ body.pane-dragging {
 	.msg-block-user.is-located {
 		animation: none;
 	}
+}
+
+/* ——— explorer: the tree and the reader are two panes of one view ——— */
+
+.explorer-dock {
+	display: flex;
+	height: 100%;
+	min-height: 0;
+	background: var(--surface);
+}
+
+.explorer-list {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	background: var(--surface);
+	transition:
+		width 120ms var(--ease-out),
+		opacity 90ms var(--ease-out);
+}
+
+.explorer-list.collapsed {
+	width: 0;
+	opacity: 0;
+}
+
+.explorer-dock .explorer-list + .explorer-reader {
+	border-left: 0.5px solid var(--line);
+}
+
+.dock-list-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex: none;
+	height: 34px;
+	padding: 0 8px;
+	border-bottom: 0.5px solid var(--line);
+}
+
+.dock-list-title {
+	min-width: 0;
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-family: var(--mono);
+	font-size: 10px;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--muted);
+}
+
+.explorer-tree {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+	padding: 8px 0 12px;
+	user-select: none;
+}
+
+.explorer-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	border: 0;
+	background: transparent;
+	padding: 5px 8px 5px 0;
+	font-family: var(--mono);
+	font-size: 13px;
+	text-align: left;
+	color: var(--ink);
+	cursor: pointer;
+	transition: background-color 120ms var(--ease-out);
+}
+
+.explorer-row:hover {
+	background: var(--hover);
+}
+
+.explorer-row.selected {
+	background: var(--selected);
+	color: var(--ink);
+}
+
+.explorer-row.ignored .explorer-name,
+.explorer-row.ignored .explorer-row-icon {
+	color: var(--muted-soft);
+	opacity: 0.6;
+}
+
+.explorer-chevron {
+	flex: none;
+	color: var(--muted-soft);
+	transition: transform 120ms var(--ease-out);
+}
+
+.explorer-chevron.open {
+	transform: rotate(90deg);
+}
+
+.explorer-chevron-space {
+	flex: none;
+	width: 11px;
+}
+
+.explorer-row-icon {
+	flex: none;
+	color: var(--muted-soft);
+}
+
+.explorer-row.selected .explorer-row-icon {
+	color: var(--ink);
+}
+
+.explorer-name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.explorer-note {
+	margin: 0;
+	padding: 3px 10px;
+	font-family: var(--mono);
+	font-size: 10px;
+	color: var(--muted);
+}
+
+.explorer-menu {
+	position: fixed;
+	z-index: 70;
+	min-width: 180px;
+	padding: 4px;
+	border: 0.5px solid var(--line);
+	border-radius: var(--r6);
+	background: var(--surface);
+	box-shadow: 0 8px 24px color-mix(in srgb, var(--ink) 12%, transparent);
+}
+
+.explorer-menu-item {
+	display: block;
+	width: 100%;
+	border: 0;
+	background: transparent;
+	padding: 5px 8px;
+	border-radius: 4px;
+	font-family: var(--sans);
+	font-size: 12px;
+	text-align: left;
+	color: var(--ink-soft);
+	cursor: pointer;
+}
+
+.explorer-menu-item:hover {
+	background: var(--hover);
+	color: var(--ink);
+}
+
+.explorer-menu-sep {
+	height: 0.5px;
+	margin: 4px 6px;
+	background: var(--line);
+}
+
+.explorer-reader {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+	min-width: 0;
+	min-height: 0;
+	background: var(--surface);
+}
+
+.explorer-reader-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	flex: none;
+	height: 34px;
+	padding: 0 8px;
+}
+
+.explorer-tabs {
+	display: flex;
+	min-width: 0;
+	flex: 1;
+	align-items: center;
+	gap: 4px;
+	overflow-x: auto;
+	scrollbar-width: none;
+}
+
+.explorer-tabs::-webkit-scrollbar {
+	height: 0;
+}
+
+.explorer-tab {
+	display: flex;
+	height: 26px;
+	flex: none;
+	align-items: center;
+	border-radius: 6px;
+	padding: 0 4px 0 8px;
+	color: var(--muted);
+}
+
+.explorer-tab:hover {
+	background: var(--hover);
+}
+
+.explorer-tab.on {
+	background: var(--selected);
+	color: var(--ink);
+}
+
+.explorer-tab-main {
+	display: flex;
+	min-width: 0;
+	align-items: center;
+	gap: 6px;
+	border: 0;
+	background: transparent;
+	padding: 0;
+	font-family: var(--sans);
+	font-size: 12px;
+	color: inherit;
+	cursor: pointer;
+}
+
+.explorer-tab-icon {
+	flex: none;
+	color: var(--muted-soft);
+}
+
+.explorer-tab.on .explorer-tab-icon {
+	color: var(--ink);
+}
+
+.explorer-tab-name {
+	max-width: 150px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.explorer-tab-close {
+	display: grid;
+	place-items: center;
+	width: 18px;
+	height: 18px;
+	flex: none;
+	border: 0;
+	border-radius: 999px;
+	background: transparent;
+	color: var(--muted-soft);
+	opacity: 0;
+	cursor: pointer;
+}
+
+.explorer-tab:hover .explorer-tab-close,
+.explorer-tab.on .explorer-tab-close {
+	opacity: 1;
+}
+
+.explorer-tab-close:hover {
+	background: var(--hover);
+	color: var(--ink);
+}
+
+.explorer-reader-actions {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex: none;
+}
+
+.explorer-dir-row {
+	display: flex;
+	align-items: center;
+	height: 24px;
+	flex: none;
+	overflow-x: auto;
+	padding: 0 12px;
+	border-bottom: 0.5px solid var(--line);
+	scrollbar-width: none;
+}
+
+.explorer-dir-row::-webkit-scrollbar {
+	height: 0;
+}
+
+.explorer-dir {
+	display: flex;
+	min-width: 0;
+	flex: 1;
+	align-items: center;
+	overflow: hidden;
+}
+
+.explorer-dir-seg {
+	min-width: 0;
+	border: 0;
+	background: transparent;
+	padding: 0;
+	font-family: var(--mono);
+	font-size: 10px;
+	color: var(--muted);
+	cursor: pointer;
+	white-space: nowrap;
+}
+
+.explorer-dir-seg:hover {
+	color: var(--ink);
+}
+
+.explorer-dir-file {
+	flex: none;
+	padding-left: 2px;
+	font-family: var(--mono);
+	font-size: 10px;
+	color: var(--muted);
+	white-space: nowrap;
+}
+
+.explorer-btn {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 19px;
+	height: 19px;
+	flex: none;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
+	color: var(--muted-soft);
+	cursor: pointer;
+}
+
+.explorer-btn:hover {
+	background: var(--hover);
+	color: var(--ink);
+}
+
+.explorer-btn.on,
+.explorer-btn.on:hover {
+	background: var(--ink);
+	color: var(--canvas);
+}
+
+.explorer-tag {
+	display: flex;
+	align-items: center;
+	gap: 3px;
+	flex: none;
+	border: 1px solid var(--muted-soft);
+	border-radius: 6px;
+	padding: 1px 6px;
+	font-family: var(--mono);
+	font-size: 10px;
+	font-weight: 600;
+	color: var(--muted);
+	background: color-mix(in srgb, var(--muted) 8%, var(--surface));
+	cursor: copy;
+}
+
+.explorer-body {
+	flex: 1;
+	min-height: 0;
+	overflow: auto;
+	padding: 8px 0 24px;
+	font-family: var(--mono);
+	font-size: 11.5px;
+	line-height: 1.55;
+	color: var(--ink);
+}
+
+.explorer-body.md {
+	padding: 14px 18px 24px;
+	font-family: var(--sans);
+	font-size: 13px;
+}
+
+.explorer-line {
+	display: grid;
+	grid-template-columns: 46px minmax(0, 1fr);
+}
+
+.explorer-ln {
+	padding-right: 12px;
+	text-align: right;
+	color: var(--muted-soft);
+	user-select: none;
+}
+
+.explorer-code {
+	white-space: pre;
+	tab-size: 2;
+}
+
+.explorer-body.wrap .explorer-code {
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.explorer-body .explorer-note {
+	padding-left: 58px;
 }

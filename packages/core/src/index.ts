@@ -13,6 +13,7 @@ import type { SelectionService } from "./services/selection.ts";
 import type { SessionService } from "./services/sessions.ts";
 import type { SettingsService } from "./services/settings.ts";
 import type { ToolService } from "./services/tools.ts";
+import type { WatchService } from "./services/watch.ts";
 
 export { Agent } from "@earendil-works/pi-agent-core";
 export type { Entry, StreamFn } from "@earendil-works/pi-agent-core";
@@ -76,6 +77,7 @@ export {
 	type WelcomeItem,
 } from "./extensions/types.ts";
 export { LayoutService, ILayoutService } from "./services/layout.ts";
+export { WatchService, IWatchService } from "./services/watch.ts";
 export { ILifecycleService, LifecycleService } from "./services/lifecycle.ts";
 export { ModelsService, IModelsService, type ModelRef } from "./services/models.ts";
 export { PromptService, IPromptService } from "./services/prompt.ts";
@@ -141,5 +143,6 @@ export interface Backend extends Disposable {
 	readonly settings: SettingsService;
 	readonly layout: LayoutService;
 	readonly selection: SelectionService;
+	readonly watch: WatchService;
 	close(): Promise<void>;
 }

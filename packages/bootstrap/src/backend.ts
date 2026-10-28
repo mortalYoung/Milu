@@ -23,6 +23,8 @@ import {
 	IHookService,
 	ILayoutService,
 	ILifecycleService,
+	IWatchService,
+	WatchService,
 	IModelsService,
 	IPromptService,
 	ISelectionService,
@@ -63,6 +65,7 @@ export async function createBackend(config: BackendConfig): Promise<Backend> {
 	services.set(ISessionService, new SyncDescriptor(SessionService));
 	services.set(ISelectionService, new SyncDescriptor(SelectionService));
 	services.set(ILifecycleService, new SyncDescriptor(LifecycleService));
+	services.set(IWatchService, new SyncDescriptor(WatchService));
 
 	declareExtensionServices(services, discovered.extensions);
 
@@ -90,6 +93,7 @@ export async function createBackend(config: BackendConfig): Promise<Backend> {
 		layout: instantiation.get(ILayoutService),
 		lifecycle,
 		selection: instantiation.get(ISelectionService),
+		watch: instantiation.get(IWatchService),
 		dispose: () => instantiation.dispose(),
 		async close() {
 			instantiation.dispose();

@@ -154,7 +154,14 @@ export class SessionService implements Service {
 		for (const item of source.all()) {
 			const data = await this._dataOf(item, source, session);
 			if (data === null) continue;
-			items.push({ id: item.id, component: item.component, ...(item.order === undefined ? {} : { order: item.order }), ...(data === undefined ? {} : { data }) });
+			items.push({
+				id: item.id,
+				component: item.component,
+				...(item.title === undefined ? {} : { title: item.title }),
+				...(item.icon === undefined ? {} : { icon: item.icon }),
+				...(item.order === undefined ? {} : { order: item.order }),
+				...(data === undefined ? {} : { data }),
+			});
 		}
 		return items.sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.id.localeCompare(right.id));
 	}

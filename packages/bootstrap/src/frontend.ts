@@ -18,6 +18,10 @@ import {
 	IPickerService,
 	ColumnsService,
 	IColumnsService,
+	DockService,
+	IDockService,
+	FileEventsService,
+	IFileEventsService,
 	CommandRegistry,
 	CommandRegistryId,
 	ComposerService,
@@ -106,6 +110,8 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	services.set(ISlotsService, new SyncDescriptor(SlotsService, [set.slots]));
 	services.set(RowRegistryId, new SyncDescriptor(RowRegistry, [set.rows]));
 	services.set(IColumnsService, new SyncDescriptor(ColumnsService));
+	services.set(IDockService, new SyncDescriptor(DockService));
+	services.set(IFileEventsService, new SyncDescriptor(FileEventsService));
 	services.set(IWorkbenchService, new SyncDescriptor(WorkbenchService));
 	services.set(SurfaceRegistryId, new SyncDescriptor(SurfaceRegistry, [deps.components ?? []]));
 	services.set(WidgetRegistryId, new SyncDescriptor(WidgetRegistry, [set.widgets]));
@@ -132,6 +138,8 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	const slots = container.get(ISlotsService);
 	const rows = container.get(RowRegistryId);
 	const columns = container.get(IColumnsService);
+	const dock = container.get(IDockService);
+	const files = container.get(IFileEventsService);
 	const workbench = container.get(IWorkbenchService);
 	const surfaces = container.get(SurfaceRegistryId);
 	const composer = container.get(IComposerService);
@@ -207,6 +215,8 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 			welcome,
 			workbench,
 			columns,
+			dock,
+			files,
 			actions,
 			dialogs,
 			header,
@@ -274,6 +284,13 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 			);
 			disposables.add(connection.onEntry(({ session, entry }) => transcript.append(session, entry)));
 			disposables.add(connection.onPartial(({ session, message }) => transcript.setPartial(session, message)));
+			const applyTheme = async (): Promise<void> => {
+				const theme = await actions.request<string>("settings.theme").catch(() => undefined);
+				if (theme === undefined) return;
+				if (theme === "system") delete document.documentElement.dataset["theme"];
+				else document.documentElement.dataset["theme"] = theme;
+			};
+
 			disposables.add(
 				connection.onLive((event) => {
 					if (event.type === "lifecycle") {
@@ -281,6 +298,8 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 						if (event.phase === "ready") {
 							composerData.clear();
 							void composer.loadLayout(true);
+							void dock.refresh();
+							void applyTheme();
 							deps.markdown.warm();
 						}
 						return;
@@ -313,6 +332,11 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 					}
 					if (event.type === "settings") {
 						composerData.clear();
+						void applyTheme();
+						return;
+					}
+					if (event.type === "file") {
+						files.mark(event.path);
 						return;
 					}
 					if (event.type !== "status") return;

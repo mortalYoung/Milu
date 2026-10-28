@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { MCP_LIFECYCLES, type McpOptions } from "../../mcp/types.ts";
 import type { Settings, SettingsSnapshot } from "../index.ts";
 import { ProvidersPanel } from "./providers.tsx";
-import { BUTTON_GHOST, FIELD, LINK, NumberField, Row, Select, Switch, TextField } from "./ui.tsx";
+import { BUTTON_GHOST, FIELD, LINK, NumberField, Row, Segments, Select, Switch, TextField } from "./ui.tsx";
 
 const CATEGORIES = [
 	{ id: "general", label: "General" },
@@ -20,7 +20,7 @@ const CATEGORIES = [
 
 type CategoryId = (typeof CATEGORIES)[number]["id"];
 
-type FieldKind = "text" | "number" | "switch" | "select" | "path" | "dirs";
+type FieldKind = "text" | "number" | "switch" | "select" | "path" | "dirs" | "segment";
 
 interface Field {
 	readonly id: string;
@@ -30,7 +30,7 @@ interface Field {
 	readonly kind: FieldKind;
 	readonly min?: number;
 	readonly mono?: boolean;
-	readonly options?: readonly { value: string; label: string }[];
+	readonly options?: readonly { value: string; label: string; hint?: string }[];
 	readonly preview?: boolean;
 }
 
@@ -41,6 +41,18 @@ const SANDBOX: readonly { value: string; label: string }[] = [
 ];
 
 const FIELDS: readonly Field[] = [
+	{
+		id: "theme",
+		category: "general",
+		kind: "segment",
+		title: "Theme",
+		description: "Follow the system, or force light or dark.",
+		options: [
+			{ value: "system", label: "System", hint: "Follow OS" },
+			{ value: "light", label: "Light", hint: "Always light" },
+			{ value: "dark", label: "Dark", hint: "Always dark" },
+		],
+	},
 	{
 		id: "partner_profile_path",
 		category: "general",
@@ -359,6 +371,8 @@ export function SettingsDialog(props: DialogProps) {
 		switch (field.kind) {
 			case "switch":
 				return <Switch checked={value === true} ariaLabel={field.title} onChange={(next) => saveField(field.id, next)} />;
+			case "segment":
+				return <Segments value={String(value ?? "")} options={field.options ?? []} onChange={(next) => saveField(field.id, next)} />;
 			case "select":
 				return (
 					<div className="flex items-center gap-2">

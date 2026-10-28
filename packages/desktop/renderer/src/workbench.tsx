@@ -5,6 +5,7 @@ import { useStore } from "zustand";
 
 import { mark } from "./boot.ts";
 import { DialogHost } from "./components/dialog-host.tsx";
+import { DockColumn } from "./components/dock.tsx";
 import { Grip } from "./components/grip.tsx";
 import { SessionListSkeleton, TranscriptSkeleton } from "./components/skeletons.tsx";
 
@@ -37,16 +38,19 @@ export function Workbench(props: { host: Host }) {
 			if (event.key === "b") {
 				event.preventDefault();
 				host.columns.toggleList();
+				return;
+			}
+			if (event.key === "j") {
+				event.preventDefault();
+				host.dock.toggle();
 			}
 		};
 		window.addEventListener("keydown", onKey);
 		return () => window.removeEventListener("keydown", onKey);
 	}, [host]);
 
-	const layout = useStore(host.layout.store);
 	const columns = useStore(host.columns.store, (state) => state.columns);
 	const arrived = useStore(host.sessions.store, (state) => state.arrived);
-	const dockIds = layout.layout["dock"] ?? [];
 	const row = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
@@ -62,10 +66,6 @@ export function Workbench(props: { host: Host }) {
 		if (laid.dock.mode === "flow") parts.push(laid.dock.width);
 		return parts.map((value) => Math.round(value)).join(" / ");
 	};
-
-	useEffect(() => {
-		host.columns.setDockAvailable(dockIds.length > 0);
-	}, [host, dockIds.length]);
 
 	useEffect(() => {
 		const element = row.current;
@@ -113,7 +113,6 @@ export function Workbench(props: { host: Host }) {
 			<Column
 				host={host}
 				slot="main"
-				min={columns.workbench || undefined}
 				onBackground={columns.list.mode === "overlay" ? () => host.columns.closeList() : undefined}
 				fallback={
 					!arrived ? (
@@ -140,7 +139,7 @@ export function Workbench(props: { host: Host }) {
 				/>
 			) : null}
 
-			{columns.dock.mode !== "closed" ? <Column host={host} slot="dock" width={columns.dock.width} mode={columns.dock.mode === "overlay" ? "overlay" : "flow"} /> : null}
+			<DockColumn host={host} />
 
 			<DialogHost host={host} />
 		</div>

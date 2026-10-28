@@ -1,6 +1,8 @@
 export { ActionsService, IActionsService, type BrowserCommands } from "./actions.ts";
 export { ColumnsService, IColumnsService, GRIP_WIDTH, type Columns, type DockMode, type ListMode } from "./columns.ts";
 export { type ComposerKey, formatHotkey, HotkeysService, IHotkeysService } from "./hotkeys.ts";
+export { FileEventsService, IFileEventsService, type FilesState } from "./files.ts";
+export { DockService, IDockService, DOCK_VIEWS_POINT, dockTabs, type DockState, type DockTab } from "./dock.ts";
 export { ComposerService, IComposerService, type ComposerKeyState, WidgetRegistry, WidgetRegistryId, type WidgetComponent, type WidgetProps } from "./composer.ts";
 export { ComposerDataService, IComposerDataService, type ComposerDataEntry, type ComposerDataState } from "./composer-data.ts";
 export { CommandRegistry, CommandRegistryId, type ComposerCommand } from "./commands.ts";

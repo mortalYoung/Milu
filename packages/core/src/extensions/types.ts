@@ -29,6 +29,7 @@ export const CHAT_NAME_POINT = SLOT_POINTS.chatName;
 export const CHAT_PANES_POINT = SLOT_POINTS.chatPanes;
 export const WELCOME_TIMELINE_POINT = SLOT_POINTS.welcomeTimeline;
 export const WORKSPACE_VIEWS_POINT = SLOT_POINTS.workspaceViews;
+export const DOCK_VIEWS_POINT = SLOT_POINTS.dockViews;
 export const OVERLAY_POINT = SLOT_POINTS.overlay;
 
 export type { ComposerCommand, SlotItem, WelcomeItem };
@@ -89,6 +90,7 @@ export type ExtensionContributions = {
 	readonly "chat.bar"?: readonly SlotItem[];
 	readonly "chat.panes"?: readonly SlotItem[];
 	readonly "workspace.views"?: readonly SlotItem[];
+	readonly "dock.views"?: readonly SlotItem[];
 	readonly "shell.overlay"?: readonly SlotItem[];
 };
 

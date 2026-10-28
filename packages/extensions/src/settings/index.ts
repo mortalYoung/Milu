@@ -92,6 +92,11 @@ const settingsExtension: Extension = {
 		});
 
 		context.actions.register({
+			id: "settings.theme",
+			run: () => ({ data: context.settings.get().theme ?? "system" }),
+		});
+
+		context.actions.register({
 			id: "settings.collect",
 			run: async () => ({ data: await collect(context) }),
 		});

@@ -26,9 +26,10 @@ import {
 	WELCOME_TIMELINE_POINT,
 	SESSION_MENU_POINT,
 	WELCOME_ITEMS_POINT,
+	DOCK_VIEWS_POINT,
+	WORKSPACE_VIEWS_POINT,
 	type SessionBarItem,
 	type SessionMenuItem,
-	WORKSPACE_VIEWS_POINT,
 } from "../extensions/types.ts";
 import type { Session } from "../session/session.ts";
 import { IActionService } from "./actions.ts";
@@ -110,6 +111,7 @@ export class ExtensionService implements Service {
 		this._contributionService.declare<SlotItem>(CHAT_NAME_POINT);
 		this._contributionService.declare<SlotItem>(CHAT_PANES_POINT);
 		this._contributionService.declare<SlotItem>(WORKSPACE_VIEWS_POINT);
+		this._contributionService.declare<SlotItem>(DOCK_VIEWS_POINT);
 		this._contributionService.declare<SlotItem>(OVERLAY_POINT, "global");
 		for (const extension of this._pending) this._register(extension);
 		this._activation = this._activateAll();
