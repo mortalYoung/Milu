@@ -9,6 +9,7 @@ export interface MarkdownEnv {
 export interface MarkdownPort {
 	render(text: string, env?: MarkdownEnv): string;
 	renderFull(text: string, env?: MarkdownEnv): Promise<string>;
+	warm(): void;
 }
 
 export type MarkdownTier = "both" | "full";

@@ -289,6 +289,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 						if (event.phase === "ready") {
 							composerData.clear();
 							void composer.loadLayout(true);
+							deps.markdown.warm();
 						}
 						return;
 					}

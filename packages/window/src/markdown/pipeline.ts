@@ -2,6 +2,7 @@ import MarkdownIt, { type MarkdownIt as MarkdownItType } from "markdown-it";
 
 import { RenderCache } from "./cache.ts";
 import { DEFAULT_PLUGINS } from "./defaults/index.ts";
+import { ensureLanguages, warmLanguages } from "./highlighter.ts";
 import type { MarkdownEnv, MarkdownPort } from "./types.ts";
 import type { MarkdownPlugin, MarkdownTier } from "./types.ts";
 
@@ -10,6 +11,35 @@ export interface Markdown extends MarkdownPort {
 }
 
 const CACHE_LIMIT = 200;
+/** Every fence's language, read by markdown-it itself: indented, nested and metad fence info all land the same way. */
+function fenceLanguages(md: MarkdownItType, source: string): string[] {
+	const out: string[] = [];
+	for (const token of md.parse(source, {})) {
+		if (token.type !== "fence") continue;
+		out.push(token.info.trim().split(/\s+/)[0] ?? "");
+	}
+	return out;
+}
+
+function idle(): Promise<void> {
+	return new Promise((resolve) => {
+		if (typeof requestIdleCallback === "function") requestIdleCallback(() => resolve(), { timeout: 200 });
+		else setTimeout(resolve, 16);
+	});
+}
+
+/** One highlight at a time, each starting in its own idle slot: a transcript of code blocks never lands as one long task. */
+function queue(): <T>(job: () => Promise<T>) => Promise<T> {
+	let tail: Promise<unknown> = Promise.resolve();
+	return (job) => {
+		const next = tail.then(async () => {
+			await idle();
+			return job();
+		});
+		tail = next.catch(() => undefined);
+		return next;
+	};
+}
 
 function ordered(plugins: readonly MarkdownPlugin[]): readonly MarkdownPlugin[] {
 	const sorted = [...plugins].sort((left, right) => left.order - right.order || left.id.localeCompare(right.id));
@@ -55,10 +85,12 @@ async function installFull(plugins: readonly MarkdownPlugin[]): Promise<Markdown
 
 export function createMarkdown(plugins: readonly MarkdownPlugin[] = DEFAULT_PLUGINS): Markdown {
 	const rules = ordered(plugins);
+	const fenceOnly = rules.every((plugin) => plugin.tier !== "full" || plugin.id === "shiki");
 	const plain = instance();
 	install(plain, rules, "both");
 
 	const caches = { plain: new RenderCache(CACHE_LIMIT), full: new RenderCache(CACHE_LIMIT) };
+	const enqueue = queue();
 	let full: Promise<MarkdownItType> | null = null;
 
 	const sourceOf = (text: string, env: MarkdownEnv, tier: MarkdownTier): string => {
@@ -98,7 +130,19 @@ export function createMarkdown(plugins: readonly MarkdownPlugin[] = DEFAULT_PLUG
 			return paint(plain, caches.plain, "both", text, env);
 		},
 		async renderFull(text, env = {}) {
-			return paint(await fullInstance(), caches.full, "full", text, env);
+			const cacheable = Object.keys(env).length === 0;
+			const hit = cacheable ? caches.full.get(text) : undefined;
+			if (hit !== undefined) return hit;
+			const source = sourceOf(text, env, "full");
+			const fences = fenceLanguages(plain, source);
+			if (fenceOnly && fences.length === 0) return paint(plain, caches.plain, "both", text, env);
+			await ensureLanguages(fences);
+			return enqueue(async () => paint(await fullInstance(), caches.full, "full", text, env));
+		},
+		warm() {
+			const run = () => void warmLanguages().catch(() => undefined);
+			if (typeof requestIdleCallback === "function") requestIdleCallback(run, { timeout: 3000 });
+			else setTimeout(run, 1500);
 		},
 		dispose() {
 			caches.plain.clear();

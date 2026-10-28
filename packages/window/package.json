@@ -20,7 +20,6 @@
 		"@milu/di": "workspace:*",
 		"@milu/protocol": "workspace:*",
 		"@radix-ui/react-tooltip": "^1.4.1",
-		"@shikijs/markdown-it": "^4.5.0",
 		"markdown-it": "^15.0.3",
 		"react": "19.3.0",
 		"shiki": "^4.5.0",

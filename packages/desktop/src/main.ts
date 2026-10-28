@@ -43,7 +43,7 @@ function serveRenderer(directory: string, widgets: () => readonly WidgetRef[]): 
 		const headers = new Headers(response.headers);
 		headers.set(
 			"content-security-policy",
-			"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'",
+			"default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self'",
 		);
 		return new Response(response.body, { status: response.status, headers });
 	});

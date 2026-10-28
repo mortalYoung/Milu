@@ -19,7 +19,6 @@
 		"@radix-ui/react-dropdown-menu": "^2.2.1",
 		"@radix-ui/react-popover": "^1.3.1",
 		"@radix-ui/react-tooltip": "^1.4.1",
-		"@shikijs/markdown-it": "^4.5.0",
 		"@tanstack/react-virtual": "^3.14.13",
 		"croner": "^10.0.1",
 		"lucide-react": "^1.60.0",
