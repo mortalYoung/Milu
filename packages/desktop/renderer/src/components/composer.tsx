@@ -1,7 +1,7 @@
-import { LOG_EVENTS, type ComposerWidget } from "@milu/protocol";
+import type { ComposerTip, ComposerWidget } from "@milu/protocol";
 import { detectComposerTrigger, type ComposerTriggerToken, type Host, Kbd } from "@milu/window";
 import { Tip } from "@milu/window/tooltip";
-import { type KeyboardEvent, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent, memo, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 
 import { mark } from "../boot.ts";
@@ -16,13 +16,44 @@ function parseCommandLine(value: string): { name: string; args: string } | null 
 	return match ? { name: match[1] ?? "", args: match[2] ?? "" } : null;
 }
 
+const ComposerActions = memo(function ComposerActions(props: { readonly host: Host; readonly items: readonly ComposerWidget[] }) {
+	return (
+		<>
+			{props.items.map((item) => {
+				const Widget = props.host.widgets.get(item.widget);
+				return Widget ? <Widget key={item.id} host={props.host} data={item.data} /> : null;
+			})}
+		</>
+	);
+});
+
+const ComposerTips = memo(function ComposerTips(props: { readonly tips: readonly ComposerTip[]; readonly shellMode: boolean }) {
+	const tips = props.tips.filter((tip) => (tip.when ?? "chat") === (props.shellMode ? "shell" : "chat"));
+	if (tips.length === 0) return null;
+	return (
+		<div className="composer-tip">
+			<div className={`composer-tip-row ${props.shellMode ? "shell" : "chat"}`} key={props.shellMode ? "shell" : "chat"}>
+				{tips.map((tip) => (
+					<span className="composer-tip-item" key={tip.id}>
+						{tip.keys?.map((key, index) => (
+							<Kbd key={`${tip.id}-${index}`}>{key}</Kbd>
+						))}
+						{tip.label}
+					</span>
+				))}
+			</div>
+		</div>
+	);
+});
+
 export function Composer(props: { host: Host; onSent?: () => void }) {
 	const { host } = props;
 	const linked = useStore(host.connection.store, (state) => state.linked);
-	const composerPending = useStore(host.connection.store, (state) => (state.pending["composer"] ?? 0) > 0);
-	const { layout, shellMode } = useStore(host.composer.store);
+	const { layout, shellMode, modeSession, loaded } = useStore(host.composer.store);
 
 	const selected = useStore(host.selection.store, (state) => state.selected);
+	const shownShell = modeSession === selected ? shellMode : false;
+	const awaiting = !loaded;
 	const text = useStore(host.transcript.store, (state) => state.drafts[selected] ?? "");
 	const busy = useStore(host.sessions.store, (state) => state.rows.find((row) => row.name === selected)?.running ?? false);
 	const stopping = useStore(host.transcript.store, (state) => state.stopping[selected] === true);
@@ -34,7 +65,7 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 	const [menu, setMenu] = useState<{ readonly session: string; readonly token: ComposerTriggerToken } | null>(null);
 	const [menuIndex, setMenuIndex] = useState(0);
 	const lastTrigger = useRef<string | null>(null);
-	const active = menu && menu.session === selected && !shellMode ? menu.token : null;
+	const active = menu && menu.session === selected && !shownShell ? menu.token : null;
 	const contribution = active ? host.triggers.get(active.trigger) : undefined;
 	const items = active && contribution ? contribution.items(host, active.query) : NO_ITEMS;
 	const menuSelected = items.length === 0 ? 0 : Math.min(menuIndex, items.length - 1);
@@ -47,18 +78,9 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 	};
 
 	useEffect(() => {
-		void host.composer.load(selected);
+		void host.composer.loadLayout();
+		void host.composer.loadMode(selected);
 		void host.commands.load(selected);
-	}, [host, selected]);
-
-	useEffect(() => {
-		const dispose = host.connection.onEntry(({ session: name, entry: framed }) => {
-			const entry = framed.entry;
-			if (name !== selected || entry.type !== "custom") return;
-			if (entry.customType !== LOG_EVENTS.taskStart && entry.customType !== LOG_EVENTS.taskEnd && entry.customType !== LOG_EVENTS.compaction) return;
-			void host.composer.load(selected);
-		});
-		return () => dispose.dispose();
 	}, [host, selected]);
 
 	useEffect(() => {
@@ -80,7 +102,7 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 		const value = text.trim();
 		if (!value || !selected) return;
 		props.onSent?.();
-		if (shellMode) {
+		if (shownShell) {
 			host.transcript.setDraft(selected, "");
 			try {
 				await host.actions.invoke("shell.run", selected, { command: value });
@@ -101,6 +123,7 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 				host.transcript.setDraft(selected, "");
 				void host.sessions.refresh();
 				await host.transcript.reload(selected);
+				host.composerData.invalidate(selected);
 			} catch (error) {
 				host.transcript.fail(selected, error instanceof Error ? error.message : String(error));
 			}
@@ -112,7 +135,7 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 
 	const syncTrigger = (value: string, caret: number): void => {
 		const chars = new Set(host.triggers.all().map((trigger) => trigger.trigger));
-		const token = shellMode || composing.current ? null : detectComposerTrigger(value, caret, chars);
+		const token = shownShell || composing.current ? null : detectComposerTrigger(value, caret, chars);
 		const found = token ? host.triggers.get(token.trigger) : undefined;
 		if (!token || !found || (found.leading === true && token.span.start !== 0)) {
 			lastTrigger.current = null;
@@ -204,15 +227,8 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 		void submit();
 	};
 
-	const renderWidget = (item: ComposerWidget) => {
-		const Widget = host.widgets.get(item.widget);
-		if (!Widget) return null;
-		return <Widget key={item.id} host={host} data={item.data} />;
-	};
-
-	const tips = composerPending ? [] : layout.tips.filter((tip) => (tip.when ?? "chat") === (shellMode ? "shell" : "chat"));
 	const showSend = text.trim() !== "" || busy;
-	const hasActions = composerPending || layout.left.length > 0 || layout.right.length > 0 || showSend;
+	const hasActions = awaiting || layout.left.length > 0 || layout.right.length > 0 || showSend;
 	const commandHint = (() => {
 		if (active) return null;
 		const parsed = parseCommandLine(text);
@@ -240,7 +256,7 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 				</div>
 			) : null}
 			<div className="composer-row">
-				<div className={`composer-box${shellMode ? " shell" : ""}`}>
+				<div className={`composer-box${shownShell ? " shell" : ""}`}>
 					<div className="composer-input-layer">
 						<textarea
 							id="prompt-input"
@@ -248,7 +264,7 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 							value={text}
 							className="composer-input"
 							rows={1}
-							placeholder={shellMode ? "Run a shell command…" : "Type a message…"}
+							placeholder={shownShell ? "Run a shell command…" : "Type a message…"}
 							autoComplete="off"
 							spellCheck={false}
 							aria-label="Message"
@@ -275,16 +291,16 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 
 					{hasActions ? (
 						<div className="composer-actions">
-							{composerPending ? (
+							{awaiting ? (
 								<span className="composer-skeleton" aria-hidden="true">
 									<span className="composer-skeleton-pill" />
 									<span className="composer-skeleton-pill wide" />
 								</span>
 							) : (
-								layout.left.map(renderWidget)
+								<ComposerActions host={host} items={layout.left} />
 							)}
 							<div className="composer-actions-right">
-								{composerPending ? null : layout.right.map(renderWidget)}
+								{awaiting ? null : <ComposerActions host={host} items={layout.right} />}
 								{showSend ? (
 									<Tip label={stopping ? "Stopping" : busy ? "Stop" : "Send"}>
 										<button
@@ -304,20 +320,7 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 					) : null}
 				</div>
 
-				{tips.length > 0 ? (
-					<div className="composer-tip">
-						<div className={`composer-tip-row ${shellMode ? "shell" : "chat"}`} key={shellMode ? "shell" : "chat"}>
-							{tips.map((tip) => (
-								<span className="composer-tip-item" key={tip.id}>
-									{tip.keys?.map((key, index) => (
-										<Kbd key={`${tip.id}-${index}`}>{key}</Kbd>
-									))}
-									{tip.label}
-								</span>
-							))}
-						</div>
-					</div>
-				) : null}
+				{awaiting ? null : <ComposerTips tips={layout.tips} shellMode={shownShell} />}
 			</div>
 		</form>
 	);

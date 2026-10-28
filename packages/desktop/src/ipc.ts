@@ -52,7 +52,9 @@ export class IpcServer {
 			prompt: (params) => this._prompt(params),
 			abort: () => this._abort(),
 			hotkeys: () => this._hotkeys(),
-			composer: (params) => this._composer(params),
+			composer: () => this._composer(),
+			composerMode: (params) => this._composerMode(params),
+			composerData: (params) => this._composerData(params),
 			commands: (params) => this._commands(params),
 			boot: (params) => this._boot(params),
 			hello: () => this._hello(),
@@ -296,9 +298,18 @@ export class IpcServer {
 		return { bindings: this._backend.actions.bindings() };
 	}
 
-	private async _composer(params: Params<"composer">): Promise<Result<"composer">> {
+	private async _composer(): Promise<Result<"composer">> {
+		return { layout: await this._backend.sessions.composer() };
+	}
+
+	private async _composerMode(params: Params<"composerMode">): Promise<Result<"composerMode">> {
 		const session = await this._backend.sessions.ensure(params.session);
-		return { layout: await this._backend.sessions.composer(session), mode: this._backend.composer.mode(session) };
+		return { mode: this._backend.composer.mode(session) };
+	}
+
+	private async _composerData(params: Params<"composerData">): Promise<Result<"composerData">> {
+		const session = await this._backend.sessions.ensure(params.session);
+		return { data: await this._backend.sessions.composerData(session) };
 	}
 
 	private async _commands(params: Params<"commands">): Promise<Result<"commands">> {

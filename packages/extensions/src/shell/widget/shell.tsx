@@ -5,8 +5,8 @@ import { useStore } from "zustand";
 
 export function ShellWidget(props: WidgetProps) {
 	const { host } = props;
-	const shellMode = useStore(host.composer.store, (state) => state.shellMode);
 	const selected = useStore(host.selection.store, (state) => state.selected);
+	const shellMode = useStore(host.composer.store, (state) => state.modeSession === selected && state.shellMode);
 
 	return (
 		<Tip label="Shell mode (⇥)">

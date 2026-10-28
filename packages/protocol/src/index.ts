@@ -161,6 +161,10 @@ export interface ComposerLayout {
 	readonly tips: readonly ComposerTip[];
 }
 
+export function composerDataKey(point: string, id: string): string {
+	return `${point}:${id}`;
+}
+
 export type BrowserCommand = { readonly kind: "copy"; readonly text: string } | { readonly kind: "view"; readonly view: string | null };
 
 export type ComposerMode = "chat" | "shell";
@@ -206,7 +210,9 @@ export interface Methods {
 	slice: { params: { session: string }; result: { items: { id: string; message: unknown }[] } };
 	prompt: { params: { text: string }; result: { accepted: boolean } };
 	abort: { params: Record<string, never>; result: { aborted: boolean } };
-	composer: { params: { session: string }; result: { layout: ComposerLayout; mode: ComposerMode } };
+	composer: { params: Record<string, never>; result: { layout: ComposerLayout } };
+	composerMode: { params: { session: string }; result: { mode: ComposerMode } };
+	composerData: { params: { session: string }; result: { data: Readonly<Record<string, unknown>> } };
 	boot: { params: { marks: readonly BootMark[] }; result: Record<string, never> };
 	hello: { params: Record<string, never>; result: { lifecycle: LifecyclePhase; selected: string | null; layout: LayoutState } };
 	commands: { params: { session: string }; result: { commands: readonly ComposerCommand[] } };

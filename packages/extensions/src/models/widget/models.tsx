@@ -1,4 +1,5 @@
-import type { WidgetProps } from "@milu/window/api";
+import { composerDataKey } from "@milu/protocol";
+import { useComposerData, type WidgetProps } from "@milu/window/api";
 import { Tip } from "@milu/window/api/tooltip";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -12,11 +13,25 @@ const ITEM =
 	"flex cursor-pointer items-center gap-1.5 rounded-[4px] px-2 py-1 font-mono text-[10px] whitespace-nowrap text-ink-soft outline-none transition-colors duration-[120ms] data-[highlighted]:bg-[color-mix(in_srgb,var(--ink)_10%,transparent)] data-[state=open]:bg-[color-mix(in_srgb,var(--ink)_10%,transparent)] motion-reduce:transition-none";
 const CHECK = "ml-auto text-ink";
 
+function ModelsPlaceholder(props: { readonly error: boolean }) {
+	const label = props.error ? "Model unavailable" : "Loading model";
+	return (
+		<Tip label={label}>
+			<span className="grid h-[26px] w-[26px] shrink-0 place-items-center" aria-busy={props.error ? undefined : true} aria-label={label}>
+				<span className={`size-[14px] rounded-full border-2 ${props.error ? "border-dashed border-line" : "animate-pulse border-line motion-reduce:animate-none"}`} />
+			</span>
+		</Tip>
+	);
+}
+
 export function ModelsWidget(props: WidgetProps) {
-	const data = props.data as ModelWidgetData | null;
+	const { data, status } = useComposerData<ModelWidgetData | null>(props.host, composerDataKey("composer.right", "models"));
 	const [expanded, setExpanded] = useState(false);
 	const [menuOpen, setMenuOpen] = useState(false);
-	if (!data) return null;
+	if (!data) {
+		if (status === "ready") return null;
+		return <ModelsPlaceholder error={status === "error"} />;
+	}
 
 	const { host } = props;
 
@@ -25,7 +40,7 @@ export function ModelsWidget(props: WidgetProps) {
 		setMenuOpen(false);
 		await host.actions.invoke(args && typeof args === "object" && "level" in args ? "model.effort" : "model.set", session, args);
 		await host.sessions.refresh();
-		await host.composer.load(session);
+		await host.composerData.refresh(session);
 	};
 
 	return (

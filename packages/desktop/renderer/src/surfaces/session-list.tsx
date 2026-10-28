@@ -8,6 +8,7 @@ import { mark } from "../boot.ts";
 import { ChevronDownIcon, ChevronRightIcon, FolderTreeIcon, IconByName, MoreVerticalIcon, PanelLeftCloseIcon, SearchIcon } from "../components/icons.tsx";
 import { MiluWordmark } from "../components/MiluWordmark.tsx";
 import { Menu, MenuContent, MenuItems, MenuTrigger } from "../components/row-menu.tsx";
+import { SessionListSkeleton } from "../components/skeletons.tsx";
 
 function Row(props: {
 	host: Host;
@@ -128,6 +129,7 @@ function Row(props: {
 export function SessionListSurface(props: SurfaceProps) {
 	const { host } = props;
 	const rows = useStore(host.sessions.store, (state) => state.rows);
+	const arrived = useStore(host.sessions.store, (state) => state.arrived);
 	const selected = useStore(host.selection.store, (state) => state.selected);
 	const searchOpen = useStore(host.workbench.store, (state) => state.searchOpen);
 	const hasData = rows.length > 0 && selected === "";
@@ -181,7 +183,7 @@ export function SessionListSurface(props: SurfaceProps) {
 			element.removeEventListener("scroll", measure);
 			observer.disconnect();
 		};
-	}, [rows, query, expanded]);
+	}, [rows, query, expanded, arrived]);
 
 	const roots = useMemo(() => rows.filter((session) => !session.forkedFrom || !rows.some((each) => each.name === session.forkedFrom)).sort(byPinThenRecency), [rows]);
 	const leavesByRoot = useMemo(() => {
@@ -325,29 +327,37 @@ export function SessionListSurface(props: SurfaceProps) {
 			</div>
 
 			<div className="flex min-h-0 flex-1 flex-col pt-2">
-				{rows.length === 0 ? <div className="px-2 py-1 text-[13px] text-muted">no sessions yet</div> : null}
-
-				{searching && rows.length > 0 && visibleRoots.length === 0 ? (
-					<div className="px-1 py-3">
-						<p className="m-0 text-[13px] text-ink-soft">No sessions match</p>
-						<p className="m-0 mt-1 font-mono text-[10px] text-muted">
-							<button type="button" className="cursor-pointer border-0 bg-transparent p-0 font-[inherit] text-[inherit] hover:text-ink" onClick={() => setQuery("")}>
-								clear the filter
-							</button>
-						</p>
+				{!arrived ? (
+					<div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-hidden">
+						<SessionListSkeleton />
 					</div>
-				) : null}
+				) : (
+					<>
+						{rows.length === 0 ? <div className="px-2 py-1 text-[13px] text-muted">no sessions yet</div> : null}
 
-				<div className={`flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto edge-fade${edges.above ? " has-above" : ""}${edges.below ? " has-below" : ""}`} ref={rowsRef}>
-					{
-						<>
-							{pinnedRoots.length > 0 ? <div className="px-2 pt-4 pb-1.5 font-sans text-[10px] font-semibold tracking-[0.16em] text-muted-soft uppercase">Pinned</div> : null}
-							{pinnedRoots.map(renderRoot)}
-							{pinnedRoots.length > 0 && restRoots.length > 0 ? <div className="h-2.5 shrink-0" aria-hidden="true" /> : null}
-							{restRoots.map(renderRoot)}
-						</>
-					}
-				</div>
+						{searching && rows.length > 0 && visibleRoots.length === 0 ? (
+							<div className="px-1 py-3">
+								<p className="m-0 text-[13px] text-ink-soft">No sessions match</p>
+								<p className="m-0 mt-1 font-mono text-[10px] text-muted">
+									<button type="button" className="cursor-pointer border-0 bg-transparent p-0 font-[inherit] text-[inherit] hover:text-ink" onClick={() => setQuery("")}>
+										clear the filter
+									</button>
+								</p>
+							</div>
+						) : null}
+
+						<div className={`flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto edge-fade${edges.above ? " has-above" : ""}${edges.below ? " has-below" : ""}`} ref={rowsRef}>
+							{
+								<>
+									{pinnedRoots.length > 0 ? <div className="px-2 pt-4 pb-1.5 font-sans text-[10px] font-semibold tracking-[0.16em] text-muted-soft uppercase">Pinned</div> : null}
+									{pinnedRoots.map(renderRoot)}
+									{pinnedRoots.length > 0 && restRoots.length > 0 ? <div className="h-2.5 shrink-0" aria-hidden="true" /> : null}
+									{restRoots.map(renderRoot)}
+								</>
+							}
+						</div>
+					</>
+				)}
 			</div>
 
 			{footerItems.length === 0 ? null : (

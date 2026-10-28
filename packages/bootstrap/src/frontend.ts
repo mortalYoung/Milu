@@ -1,5 +1,5 @@
 import { DisposableStore, type Disposable, IInstantiationService, InstantiationService, ServiceCollection, SyncDescriptor } from "@milu/di";
-import type { Platform, SessionRow, Snapshot, WidgetEntry } from "@milu/protocol";
+import { LOG_EVENTS, type Platform, type SessionRow, type Snapshot, type WidgetEntry } from "@milu/protocol";
 import {
 	ActionsService,
 	IActionsService,
@@ -22,6 +22,8 @@ import {
 	CommandRegistryId,
 	ComposerService,
 	IComposerService,
+	ComposerDataService,
+	IComposerDataService,
 	ComposerTriggerRegistry,
 	ComposerTriggerRegistryId,
 	WidgetRegistry,
@@ -109,6 +111,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	services.set(WidgetRegistryId, new SyncDescriptor(WidgetRegistry, [set.widgets]));
 	services.set(IHotkeysService, new SyncDescriptor(HotkeysService, [deps.platform]));
 	services.set(IComposerService, new SyncDescriptor(ComposerService));
+	services.set(IComposerDataService, new SyncDescriptor(ComposerDataService));
 	services.set(ComposerTriggerRegistryId, new SyncDescriptor(ComposerTriggerRegistry, [[...(deps.triggers ?? []), ...set.triggers]]));
 	services.set(CommandRegistryId, new SyncDescriptor(CommandRegistry));
 	services.set(ILayoutService, new SyncDescriptor(LayoutService));
@@ -132,6 +135,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	const workbench = container.get(IWorkbenchService);
 	const surfaces = container.get(SurfaceRegistryId);
 	const composer = container.get(IComposerService);
+	const composerData = container.get(IComposerDataService);
 	const triggers = container.get(ComposerTriggerRegistryId);
 	const commands = container.get(CommandRegistryId);
 	const hotkeys = container.get(IHotkeysService);
@@ -208,6 +212,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 			header,
 			footer,
 			composer,
+			composerData,
 			triggers,
 			commands,
 			hotkeys,
@@ -241,6 +246,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 			disposables.add({
 				dispose: sessions.store.subscribe(() => {
 					const dropped = transcript.retain(sessions.store.getState().rows);
+					for (const name of dropped) composerData.drop(name);
 					const name = selection.store.getState().selected;
 					if (name !== "" && dropped.includes(name)) void transcript.open(name);
 					if (name === "" || marking.has(name)) return;
@@ -255,13 +261,35 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 				}),
 			});
 			disposables.add(connection.onSnapshot(apply));
-			disposables.add(connection.onLink((up) => transcript.setLinked(up)));
-			disposables.add(connection.onEntry(({ session, entry }) => transcript.append(session, entry)));
+			disposables.add(
+				connection.onLink((up) => {
+					transcript.setLinked(up);
+					if (!up) return;
+					composerData.clear();
+					const selected = selection.store.getState().selected;
+					if (selected === "") return;
+					void composer.loadMode(selected);
+					void composerData.refresh(selected);
+				}),
+			);
+			disposables.add(
+				connection.onEntry(({ session, entry }) => {
+					transcript.append(session, entry);
+					if (entry.entry.type !== "custom") return;
+					const type = entry.entry.customType;
+					if (type !== LOG_EVENTS.taskStart && type !== LOG_EVENTS.taskEnd && type !== LOG_EVENTS.compaction) return;
+					composerData.invalidate(session);
+				}),
+			);
 			disposables.add(connection.onPartial(({ session, message }) => transcript.setPartial(session, message)));
 			disposables.add(
 				connection.onLive((event) => {
 					if (event.type === "lifecycle") {
 						connection.phase(event.phase);
+						if (event.phase === "ready") {
+							composerData.clear();
+							void composer.loadLayout(true);
+						}
 						return;
 					}
 					if (event.type === "layout") {
@@ -290,6 +318,10 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 						notifications.push({ title: event.title, body: event.body, tone: event.tone });
 						return;
 					}
+					if (event.type === "settings") {
+						composerData.clear();
+						return;
+					}
 					if (event.type !== "status") return;
 					sessions.patchStatus(event.session, event.running, event.error);
 					transcript.markRunning(event.session, event.running);
@@ -297,7 +329,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 						transcript.setStopping(event.session, false);
 						transcript.clearPartial(event.session);
 						void sessions.refresh();
-						if (event.session === selection.store.getState().selected) void composer.load(event.session);
+						composerData.invalidate(event.session);
 					}
 				}),
 			);

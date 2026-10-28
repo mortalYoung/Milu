@@ -1,7 +1,7 @@
 import { join } from "node:path";
 
 import { createServiceId, DisposableStore, Emitter, type Event, type Service } from "@milu/di";
-import type { ComposerTip, ComposerWidget, ContributionItem, SeqEntry, SessionRow, SlotItem } from "@milu/protocol";
+import { composerDataKey, type ComposerTip, type ComposerWidget, type ContributionItem, type SeqEntry, type SessionRow, type SlotItem } from "@milu/protocol";
 
 import {
 	COMPOSER_LEFT_POINT,
@@ -159,10 +159,10 @@ export class SessionService implements Service {
 		return items.sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.id.localeCompare(right.id));
 	}
 
-	async composer(session: Session): Promise<{ left: ComposerWidget[]; right: ComposerWidget[]; tips: ComposerTip[] }> {
+	async composer(): Promise<{ left: ComposerWidget[]; right: ComposerWidget[]; tips: ComposerTip[] }> {
 		return {
-			left: await this._widgetsOf(COMPOSER_LEFT_POINT, session),
-			right: await this._widgetsOf(COMPOSER_RIGHT_POINT, session),
+			left: this._widgetsOf(COMPOSER_LEFT_POINT),
+			right: this._widgetsOf(COMPOSER_RIGHT_POINT),
 			tips: this._contributionService
 				.get<ComposerTipItem>(COMPOSER_TIPS_POINT)
 				.all()
@@ -188,14 +188,34 @@ export class SessionService implements Service {
 		}
 	}
 
-	private async _widgetsOf(point: string, session: Session): Promise<ComposerWidget[]> {
-		const resolved: ComposerWidget[] = [];
-		for (const item of this._contributionService.get<ComposerWidgetItem>(point).all()) {
-			const data = typeof item.data === "function" ? await (item.data as (session: Session) => unknown)(session) : item.data;
-			if (data === null) continue;
-			resolved.push({ id: item.id, widget: item.widget, ...(data === undefined ? {} : { data }), ...(item.order === undefined ? {} : { order: item.order }) });
+	async composerData(session: Session): Promise<Record<string, unknown>> {
+		const data: Record<string, unknown> = {};
+		for (const point of [COMPOSER_LEFT_POINT, COMPOSER_RIGHT_POINT]) {
+			for (const item of this._contributionService.get<ComposerWidgetItem>(point).all()) {
+				if (typeof item.data !== "function") continue;
+				const key = composerDataKey(point, item.id);
+				try {
+					data[key] = await item.data(session);
+				} catch (error) {
+					console.error(`composer data "${key}" failed:`, error);
+					data[key] = null;
+				}
+			}
 		}
-		return resolved.sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.id.localeCompare(right.id));
+		return data;
+	}
+
+	private _widgetsOf(point: string): ComposerWidget[] {
+		return this._contributionService
+			.get<ComposerWidgetItem>(point)
+			.all()
+			.map((item) => ({
+				id: item.id,
+				widget: item.widget,
+				...(typeof item.data === "function" || item.data === undefined ? {} : { data: item.data }),
+				...(item.order === undefined ? {} : { order: item.order }),
+			}))
+			.sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.id.localeCompare(right.id));
 	}
 
 	private async _menuOf(session: Session): Promise<ContributionItem[]> {

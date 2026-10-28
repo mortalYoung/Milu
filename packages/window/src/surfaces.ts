@@ -4,6 +4,7 @@ import type { ComponentType } from "react";
 import type { ActionsService } from "./actions.ts";
 import type { ColumnsService } from "./columns.ts";
 import type { CommandRegistry } from "./commands.ts";
+import type { ComposerDataService } from "./composer-data.ts";
 import type { ComposerTriggerRegistry } from "./composer-triggers.ts";
 import type { ComposerService, WidgetRegistry } from "./composer.ts";
 import type { Connection } from "./connection.ts";
@@ -45,6 +46,7 @@ export interface Host {
 	readonly header: HeaderService;
 	readonly footer: FooterService;
 	readonly composer: ComposerService;
+	readonly composerData: ComposerDataService;
 	readonly commands: CommandRegistry;
 	readonly triggers: ComposerTriggerRegistry;
 	readonly hotkeys: HotkeysService;

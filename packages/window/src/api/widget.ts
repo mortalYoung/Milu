@@ -9,8 +9,9 @@ export interface WidgetContextValue {
 	readonly extension: string;
 	readonly id: string;
 	readonly data: unknown;
-	readonly session: string | null;
-	load(key: string): Promise<unknown>;
+	getSession(): string | null;
+	watchSession(listener: () => void): () => void;
+	load(key: string, session: string | null): Promise<unknown>;
 	execute(command: string, ...args: unknown[]): Promise<unknown>;
 }
 
@@ -59,7 +60,8 @@ export function useWidget(): { readonly id: string; readonly data: unknown } {
 }
 
 export function useSession(): string | null {
-	return useWidgetContext().session;
+	const value = useWidgetContext();
+	return useSyncExternalStore(value.watchSession, value.getSession);
 }
 
 export function useCommand(): (command: string, ...args: unknown[]) => Promise<unknown> {
@@ -68,7 +70,8 @@ export function useCommand(): (command: string, ...args: unknown[]) => Promise<u
 
 export function useExtensionData<T>(key: string): { readonly status: "loading" | "ready" | "error"; readonly data: T | undefined; readonly error?: string } {
 	const value = useWidgetContext();
-	const record = recordFor(`${value.extension}:${key}:${value.session ?? ""}`, () => value.load(key));
+	const session = useSession();
+	const record = recordFor(`${value.extension}:${key}:${session ?? ""}`, () => value.load(key, session));
 	const entry = useSyncExternalStore(
 		(listener) => {
 			record.listeners.add(listener);

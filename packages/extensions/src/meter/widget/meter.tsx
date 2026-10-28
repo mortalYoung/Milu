@@ -1,4 +1,5 @@
-import type { WidgetProps } from "@milu/window/api";
+import { composerDataKey } from "@milu/protocol";
+import { useComposerData, type WidgetProps } from "@milu/window/api";
 import { Tip } from "@milu/window/api/tooltip";
 import { useEffect, useRef, useState } from "react";
 
@@ -26,8 +27,19 @@ const formatTokens = (value: number): string => {
 	return String(value);
 };
 
+function MeterPlaceholder(props: { readonly error: boolean }) {
+	const label = props.error ? "Context usage unavailable" : "Loading context usage";
+	return (
+		<Tip label={label}>
+			<span className="grid h-[26px] w-[26px] shrink-0 place-items-center" aria-busy={props.error ? undefined : true} aria-label={label}>
+				<span className={`size-[14px] rounded-full border-2 ${props.error ? "border-dashed border-line" : "animate-pulse border-line motion-reduce:animate-none"}`} />
+			</span>
+		</Tip>
+	);
+}
+
 export function MeterWidget(props: WidgetProps) {
-	const data = props.data as MeterWidgetData | null;
+	const { data, status } = useComposerData<MeterWidgetData | null>(props.host, composerDataKey("composer.right", "meter"));
 	const [open, setOpen] = useState(false);
 	const root = useRef<HTMLSpanElement>(null);
 
@@ -41,7 +53,10 @@ export function MeterWidget(props: WidgetProps) {
 		return () => document.removeEventListener("pointerdown", onPointerDown);
 	}, [open]);
 
-	if (!data) return null;
+	if (!data) {
+		if (status === "ready") return null;
+		return <MeterPlaceholder error={status === "error"} />;
+	}
 
 	const percent = data.percent;
 	const usedTokens = data.projectedTokens ?? data.used;

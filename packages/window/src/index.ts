@@ -2,6 +2,7 @@ export { ActionsService, IActionsService, type BrowserCommands } from "./actions
 export { ColumnsService, IColumnsService, GRIP_WIDTH, type Columns, type DockMode, type ListMode } from "./columns.ts";
 export { type ComposerKey, formatHotkey, HotkeysService, IHotkeysService } from "./hotkeys.ts";
 export { ComposerService, IComposerService, type ComposerKeyState, WidgetRegistry, WidgetRegistryId, type WidgetComponent, type WidgetProps } from "./composer.ts";
+export { ComposerDataService, IComposerDataService, type ComposerDataEntry, type ComposerDataState } from "./composer-data.ts";
 export { CommandRegistry, CommandRegistryId, type ComposerCommand } from "./commands.ts";
 export { ComposerTriggerRegistry, ComposerTriggerRegistryId, type ComposerTriggerComponent, type ComposerTriggerProps } from "./composer-triggers.ts";
 export type { SlotProps } from "./slots.ts";
