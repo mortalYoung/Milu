@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 
 import { createBackend } from "@milu/bootstrap";
 import type { WidgetRef } from "@milu/core";
-import { app, BrowserWindow, ipcMain, net, protocol } from "electron";
+import { app, BrowserWindow, ipcMain, net, protocol, shell } from "electron";
 
 import { bootMark } from "./boot.ts";
 import { extensionHostFactory } from "./extension-host.ts";
@@ -85,6 +85,23 @@ async function main(): Promise<void> {
 			nodeIntegration: false,
 			sandbox: true,
 		},
+	});
+
+	const openExternal = (url: string): void => {
+		try {
+			const parsed = new URL(url);
+			if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return;
+			void shell.openExternal(url);
+		} catch {}
+	};
+	window.webContents.setWindowOpenHandler(({ url }) => {
+		openExternal(url);
+		return { action: "deny" };
+	});
+	window.webContents.on("will-navigate", (event, url) => {
+		if (url === window.webContents.getURL()) return;
+		event.preventDefault();
+		openExternal(url);
 	});
 
 	bootMark("window");

@@ -9,6 +9,7 @@ import type { ExecutionService } from "../services/execution.ts";
 import type { HookService } from "../services/hooks.ts";
 import type { ModelsService } from "../services/models.ts";
 import type { PromptService } from "../services/prompt.ts";
+import type { SettingsService } from "../services/settings.ts";
 import type { ToolService } from "../services/tools.ts";
 import { EVENTS } from "./events.ts";
 import {
@@ -118,6 +119,7 @@ export interface SessionDeps {
 	readonly promptService: PromptService;
 	readonly hookService: HookService;
 	readonly compactionService: CompactionService;
+	readonly settingsService: SettingsService;
 }
 
 export class Session {
@@ -141,6 +143,7 @@ export class Session {
 	private _workspace: WorkspaceFacts | null | undefined;
 	private _model: SessionModel | null | undefined;
 	private _usedTokens: number | null | undefined;
+	private _compacted = false;
 	private _error: string | null = null;
 	private _prompt = "";
 	private readonly _suspended = new Set<string>();
@@ -255,6 +258,14 @@ export class Session {
 			return;
 		}
 		this._applyModel(loop, model);
+		await this._autoCompact();
+		if (loop.isRunning()) {
+			void loop.run(message).catch((error: unknown) => {
+				this._error = error instanceof Error ? error.message : String(error);
+				console.error(`session ${this.name}: run failed:`, error);
+			});
+			return;
+		}
 		void loop.run(message).catch((error: unknown) => {
 			this._error = error instanceof Error ? error.message : String(error);
 			console.error(`session ${this.name}: run failed:`, error);
@@ -309,6 +320,8 @@ export class Session {
 	async continue(): Promise<void> {
 		const loop = await this.open();
 		if (loop.isRunning()) return;
+		await this._autoCompact();
+		if (loop.isRunning()) return;
 		void loop.continue().catch((error: unknown) => {
 			this._error = error instanceof Error ? error.message : String(error);
 			console.error(`session ${this.name}: continue failed:`, error);
@@ -323,7 +336,21 @@ export class Session {
 		loop.reset();
 		this._suspended.clear();
 		this._usedTokens = null;
+		this._compacted = false;
 		this._error = null;
+	}
+
+	private async _autoCompact(): Promise<void> {
+		const ratio = this._deps.settingsService.get().compaction?.thresholdRatio ?? 0.8;
+		if (!(ratio > 0)) return;
+		const used = await this._contextTokens();
+		const window = await this._contextWindow();
+		if (used === null || window === null || used < window * ratio) return;
+		try {
+			await this.compact();
+		} catch (error) {
+			console.error(`session ${this.name}: auto compact failed:`, error);
+		}
 	}
 
 	async compact(): Promise<{ shadowed: number } | null> {
@@ -343,6 +370,8 @@ export class Session {
 		});
 		const loop = await this.open();
 		loop.restore(await this._log.transcript());
+		this._usedTokens = null;
+		this._compacted = true;
 		return { shadowed: plan.shadowed };
 	}
 
@@ -389,6 +418,14 @@ export class Session {
 			return;
 		}
 		this._applyModel(loop, model);
+		await this._autoCompact();
+		if (loop.isRunning()) {
+			void loop.run(text).catch((error: unknown) => {
+				this._error = error instanceof Error ? error.message : String(error);
+				console.error(`session ${this.name}: run failed:`, error);
+			});
+			return;
+		}
 		void loop.run(text).catch((error: unknown) => {
 			this._error = error instanceof Error ? error.message : String(error);
 			console.error(`session ${this.name}: run failed:`, error);
@@ -413,6 +450,7 @@ export class Session {
 					if (message.role === "assistant" && message.usage) {
 						const usage = message.usage;
 						this._usedTokens = usage.input + usage.cacheRead + usage.cacheWrite;
+						this._compacted = false;
 					}
 					if (message.role === "toolResult") {
 						if (!this._suspended.has(message.toolCallId)) void this._recordToolResult(message);
@@ -508,7 +546,10 @@ export class Session {
 		const prompt = this.systemPrompt();
 		const breakdown = priceMessages(prompt, tools, messages);
 		const used = await this._contextTokens();
-		if (used === null) return { used: 0, window, percent: 0, breakdown };
+		if (used === null) {
+			const estimated = messages.length === 0 ? 0 : totalTokens(breakdown);
+			return { used: estimated, window, percent: estimated === 0 ? 0 : Math.min(100, Math.round((estimated / window) * 100)), breakdown };
+		}
 
 		let projectedTokens: number | undefined;
 		const sample = await this._sampleBreakdown(tools);
@@ -560,11 +601,14 @@ export class Session {
 	}
 
 	private async _contextTokens(): Promise<number | null> {
-		const live = this._loop?.usage();
-		if (live) return live.input + live.cacheRead + live.cacheWrite;
+		if (this._compacted) return null;
 		if (this._usedTokens !== undefined) return this._usedTokens;
 		let total: number | null = null;
-		for (const { entry } of await this._log.entries()) {
+		for (const entry of await this._log.origin()) {
+			if (entry.type === "custom" && entry.customType === EVENTS.compaction) {
+				total = null;
+				continue;
+			}
 			if (entry.type !== "message" || entry.message.role !== "assistant") continue;
 			const usage = entry.message.usage;
 			if (usage) total = usage.input + usage.cacheRead + usage.cacheWrite;

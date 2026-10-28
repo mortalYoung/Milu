@@ -55,7 +55,7 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 		const dispose = host.connection.onEntry(({ session: name, entry: framed }) => {
 			const entry = framed.entry;
 			if (name !== selected || entry.type !== "custom") return;
-			if (entry.customType !== LOG_EVENTS.taskStart && entry.customType !== LOG_EVENTS.taskEnd) return;
+			if (entry.customType !== LOG_EVENTS.taskStart && entry.customType !== LOG_EVENTS.taskEnd && entry.customType !== LOG_EVENTS.compaction) return;
 			void host.composer.load(selected);
 		});
 		return () => dispose.dispose();

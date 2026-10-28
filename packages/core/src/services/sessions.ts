@@ -93,6 +93,7 @@ export class SessionService implements Service {
 			promptService: this._promptService,
 			hookService: this._hookService,
 			compactionService: this._compactionService,
+			settingsService: this._settingsService,
 		});
 		this._sessions.set(name, session);
 
