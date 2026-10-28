@@ -32,9 +32,12 @@ import {
 } from "./files.ts";
 import { SessionLog } from "./log.ts";
 import type { OriginWindow } from "./origin.ts";
-import { projectSlice, type SliceItem } from "./slice.ts";
+import type { SliceItem } from "./slice.ts";
 import { textOf } from "./text.ts";
 import { type ContextBreakdown, priceMessages, totalTokens } from "./tokens.ts";
+
+const TAIL_MESSAGES = 40;
+const DEEP_TAIL_BYTES = 8 * 1024 * 1024;
 
 const DEFAULT_THINKING_LEVEL = "high";
 
@@ -143,6 +146,7 @@ export class Session {
 	private _workspace: WorkspaceFacts | null | undefined;
 	private _model: SessionModel | null | undefined;
 	private _usedTokens: number | null | undefined;
+	private _headerSignature: string | null = null;
 	private _compacted = false;
 	private _error: string | null = null;
 	private _prompt = "";
@@ -192,10 +196,6 @@ export class Session {
 	}
 
 	// ——— the log ———
-
-	async entries(since = 0): Promise<SeqEntry[]> {
-		return this._log.entries(since);
-	}
 
 	async records(customType: string): Promise<SeqEntry[]> {
 		return this._log.records(customType);
@@ -395,7 +395,7 @@ export class Session {
 		this._disposables.add(loop.events((event) => this._loopEmitter.fire(event)));
 		this._disposables.add(this._record(loop));
 
-		const resumed = await this._log.transcript();
+		const resumed = await this._log.tailTranscript();
 		if (resumed.length > 0) loop.restore(resumed);
 		return loop;
 	}
@@ -475,7 +475,10 @@ export class Session {
 					return;
 				case "turn_start":
 					record(EVENTS.turnStart, { run: event.run, turn: event.turn, timestamp });
-					record(EVENTS.requestHeader, this._requestHeader());
+					{
+						const header = this._requestHeader();
+						if (header) record(EVENTS.requestHeader, header);
+					}
 					return;
 				case "turn_end":
 					record(EVENTS.turnEnd, { run: event.run, turn: event.turn, timestamp });
@@ -533,7 +536,6 @@ export class Session {
 
 	async contextUsage(): Promise<{
 		used: number;
-		projectedTokens?: number;
 		window: number;
 		percent: number;
 		breakdown: ContextBreakdown | null;
@@ -541,35 +543,17 @@ export class Session {
 		const window = await this._contextWindow();
 		if (!window) return null;
 
-		const messages = await this._log.transcript();
 		const tools = await this._deps.toolService.tools(this);
 		const prompt = this.systemPrompt();
-		const breakdown = priceMessages(prompt, tools, messages);
+		const fixed = priceMessages(prompt, tools, []);
 		const used = await this._contextTokens();
 		if (used === null) {
-			const estimated = messages.length === 0 ? 0 : totalTokens(breakdown);
+			const breakdown = priceMessages(prompt, tools, await this._log.tailMessages(TAIL_MESSAGES));
+			const estimated = totalTokens(breakdown);
 			return { used: estimated, window, percent: estimated === 0 ? 0 : Math.min(100, Math.round((estimated / window) * 100)), breakdown };
 		}
-
-		let projectedTokens: number | undefined;
-		const sample = await this._sampleBreakdown(tools);
-		if (sample) projectedTokens = Math.max(0, used + (totalTokens(breakdown) - totalTokens(sample)));
-
-		const shown = projectedTokens ?? used;
-		return { used, ...(projectedTokens === undefined ? {} : { projectedTokens }), window, percent: shown === 0 ? 0 : Math.min(100, Math.round((shown / window) * 100)), breakdown };
-	}
-
-	private async _sampleBreakdown(tools: readonly unknown[]): Promise<ContextBreakdown | null> {
-		const origin = await this._log.origin();
-		let sampleAt = -1;
-		for (let index = origin.length - 1; index >= 0; index -= 1) {
-			const entry = origin[index];
-			if (!entry || entry.type !== "message" || entry.message.role !== "assistant" || !entry.message.usage) continue;
-			sampleAt = index;
-			break;
-		}
-		if (sampleAt < 0) return null;
-		return priceMessages(this.systemPrompt(), tools, projectSlice(origin.slice(0, sampleAt + 1)));
+		const breakdown = { ...fixed, messageTokens: Math.max(0, used - fixed.systemTokens - fixed.toolsTokens) };
+		return { used, window, percent: used === 0 ? 0 : Math.min(100, Math.round((used / window) * 100)), breakdown };
 	}
 
 	async markRead(readAt: number): Promise<void> {
@@ -603,18 +587,8 @@ export class Session {
 	private async _contextTokens(): Promise<number | null> {
 		if (this._compacted) return null;
 		if (this._usedTokens !== undefined) return this._usedTokens;
-		let total: number | null = null;
-		for (const entry of await this._log.origin()) {
-			if (entry.type === "custom" && entry.customType === EVENTS.compaction) {
-				total = null;
-				continue;
-			}
-			if (entry.type !== "message" || entry.message.role !== "assistant") continue;
-			const usage = entry.message.usage;
-			if (usage) total = usage.input + usage.cacheRead + usage.cacheWrite;
-		}
-		this._usedTokens = total;
-		return total;
+		this._usedTokens = await this._log.lastUsageTokens();
+		return this._usedTokens;
 	}
 
 	private async _modelOf(): Promise<SessionModel | null> {
@@ -648,9 +622,14 @@ export class Session {
 		});
 	}
 
-	private _requestHeader(): Record<string, unknown> {
+	/** A header that matches the last one would only cost bytes; the log keeps the first and every change. */
+	private _requestHeader(): Record<string, unknown> | null {
+		const prompt = this.systemPrompt();
 		const tools = (this._loop?.tools() ?? []).map((tool) => ({ name: tool.name, description: tool.description, parameters: tool.parameters }));
-		return { systemPrompt: this.systemPrompt(), toolNames: tools.map((tool) => tool.name), tools, timestamp: Date.now() };
+		const signature = `${prompt}\u0000${tools.map((tool) => `${tool.name}\u0000${tool.description ?? ""}`).join("\u0001")}`;
+		if (signature === this._headerSignature) return null;
+		this._headerSignature = signature;
+		return { systemPrompt: prompt, toolNames: tools.map((tool) => tool.name), tools, timestamp: Date.now() };
 	}
 
 	private _applyModel(loop: AgentLoopService, model: SessionModel | null): void {
@@ -683,9 +662,8 @@ export class Session {
 		return { ...(peek.createdAt ? { startedAt: peek.createdAt } : {}), last };
 	}
 
-	/** The tail missed (a long run of tool records at the end): fall back to the whole log, the slow but exact read. */
+	/** The tail missed (a long run of tool records at the end): read deeper, still bounded. */
 	private async _lastVisible(): Promise<LastVisible | null> {
-		await this._log.open();
-		return lastVisible((await this._log.entries()).map((each) => each.entry));
+		return lastVisible((await this._log.peek(DEEP_TAIL_BYTES)).tail);
 	}
 }

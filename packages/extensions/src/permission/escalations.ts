@@ -55,16 +55,17 @@ export function readDecisions(entries: readonly SeqEntry[]): ReadonlyMap<string,
 	return decisions;
 }
 
-export function readEscalations(entries: readonly SeqEntry[]): EscalationState {
-	const requests: EscalationRequest[] = [];
-	for (const { entry } of entries) {
+export function readEscalations(requests: readonly SeqEntry[], decisions: readonly SeqEntry[]): EscalationState {
+	const out: EscalationRequest[] = [];
+	for (const { entry } of requests) {
 		if (entry.type !== "custom" || entry.customType !== EVENTS.escalationRequest) continue;
 		const request = requestOf(entry.data);
-		if (request) requests.push(request);
+		if (request) out.push(request);
 	}
-	return { requests, decided: new Set(readDecisions(entries).keys()) };
+	return { requests: out, decided: new Set(readDecisions(decisions).keys()) };
 }
 
 export async function escalationLog(session: Session): Promise<EscalationState> {
-	return readEscalations(await session.entries());
+	const [requests, decisions] = await Promise.all([session.records(EVENTS.escalationRequest), session.records(EVENTS.escalationDecision)]);
+	return readEscalations(requests, decisions);
 }

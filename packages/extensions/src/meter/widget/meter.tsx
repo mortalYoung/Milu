@@ -59,7 +59,7 @@ export function MeterWidget(props: WidgetProps) {
 	}
 
 	const percent = data.percent;
-	const usedTokens = data.projectedTokens ?? data.used;
+	const usedTokens = data.used;
 	const reading = `Context ${percent}% · ${formatTokens(usedTokens)} / ${formatTokens(data.window)}`;
 	const tone = TONE[percent > 90 ? "danger" : percent > 60 ? "warn" : "ok"];
 

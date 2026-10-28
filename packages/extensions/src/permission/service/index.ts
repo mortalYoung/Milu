@@ -192,7 +192,7 @@ export class PermissionService implements Service {
 	}
 
 	private async _decisionOf(session: Session, escalationId: string): Promise<{ approved: boolean; dropped: boolean } | null> {
-		return readDecisions(await session.entries()).get(escalationId) ?? null;
+		return readDecisions(await session.records(EVENTS.escalationDecision)).get(escalationId) ?? null;
 	}
 
 	private async _request(call: ToolCall, to: SandboxMode, justification: string): Promise<EscalationOutcome> {

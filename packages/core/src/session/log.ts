@@ -1,4 +1,5 @@
-import { open, type FileHandle } from "node:fs/promises";
+import { open, readdir, stat, type FileHandle } from "node:fs/promises";
+import { join } from "node:path";
 
 import type { AgentMessage, Entry, JsonlSessionMetadata } from "@earendil-works/pi-agent-core";
 import { JsonlSessionRepo, type Session } from "@earendil-works/pi-agent-core";
@@ -6,7 +7,8 @@ import { Emitter, type Event } from "@milu/di";
 import type { SeqEntry } from "@milu/protocol";
 
 import type { ExecutionService } from "../services/execution.ts";
-import { originWindow, projectOrigin, tailWindow, type OriginWindow } from "./origin.ts";
+import { EVENTS } from "./events.ts";
+import { originWindow, projectOrigin, projectTail, tailWindow, type OriginWindow } from "./origin.ts";
 import { projectSlice, projectSliceItems, type SliceItem } from "./slice.ts";
 import { textOf } from "./text.ts";
 
@@ -21,7 +23,145 @@ function toRecord(message: AgentMessage): AgentMessage {
 }
 
 const TAIL_BYTES = 256 * 1024;
-const WINDOW_TAIL_BYTES = 2 * 1024 * 1024;
+const SCAN_CHUNK = 1024 * 1024;
+const SCAN_CAP = 32 * 1024 * 1024;
+const HEADER_BYTES = 8 * 1024;
+const RESUME_BYTES = 4 * 1024 * 1024;
+
+function parseEntry(line: string): Entry | null {
+	if (line === "") return null;
+	try {
+		const record = JSON.parse(line) as { kind?: unknown };
+		return record.kind === "entry" ? (record as Entry) : null;
+	} catch {
+		return null;
+	}
+}
+
+/** Each chunk of the file from its end, newest first: nothing is kept beyond the chunk being read. */
+async function scanTail(path: string, visit: (fresh: readonly Entry[], whole: boolean) => boolean, cap = SCAN_CAP): Promise<{ whole: boolean }> {
+	const handle = await open(path, "r");
+	try {
+		const { size } = await handle.stat();
+		let deferred = Buffer.alloc(0);
+		let read = 0;
+		while (read < size && read < cap) {
+			const length = Math.min(SCAN_CHUNK, size - read, cap - read);
+			if (length <= 0) break;
+			const buffer = Buffer.alloc(length);
+			await handle.read(buffer, 0, length, size - read - length);
+			read += length;
+			const combined = Buffer.concat([buffer, deferred]);
+			const fresh: Entry[] = [];
+			let end = combined.length;
+			for (;;) {
+				const start = combined.lastIndexOf(0x0a, end - 1);
+				if (start < 0) break;
+				const entry = parseEntry(combined.subarray(start + 1, end).toString("utf8"));
+				if (entry !== null) fresh.push(entry);
+				end = start;
+			}
+			deferred = combined.subarray(0, end);
+			if (visit(fresh, read >= size)) return { whole: read >= size };
+		}
+		const whole = read >= size;
+		if (whole) {
+			const first = parseEntry(deferred.toString("utf8"));
+			if (first !== null) visit([first], true);
+		}
+		return { whole };
+	} finally {
+		await handle.close();
+	}
+}
+
+/** The newest entries, kept: a transcript window needs them all in hand. */
+export async function scanBack(path: string, keep: (newestFirst: readonly Entry[], whole: boolean) => boolean): Promise<{ entries: Entry[]; whole: boolean }> {
+	const entries: Entry[] = [];
+	const result = await scanTail(path, (fresh, whole) => {
+		entries.push(...fresh);
+		return keep(entries, whole);
+	});
+	return { entries, whole: result.whole };
+}
+
+/** Every entry, read forward in chunks so the file never has to be one string in memory. */
+export async function readEntries(path: string, keep: (entry: Entry) => boolean = () => true): Promise<Entry[]> {
+	const handle = await open(path, "r");
+	try {
+		const out: Entry[] = [];
+		const chunk = Buffer.alloc(SCAN_CHUNK);
+		let carry = Buffer.alloc(0);
+		for (;;) {
+			const { bytesRead } = await handle.read(chunk, 0, SCAN_CHUNK, null);
+			if (bytesRead === 0) break;
+			const combined = carry.length === 0 ? chunk.subarray(0, bytesRead) : Buffer.concat([carry, chunk.subarray(0, bytesRead)]);
+			let start = 0;
+			for (;;) {
+				const end = combined.indexOf(0x0a, start);
+				if (end < 0) break;
+				const entry = parseEntry(combined.subarray(start, end).toString("utf8"));
+				if (entry !== null && keep(entry)) out.push(entry);
+				start = end + 1;
+			}
+			carry = Buffer.from(combined.subarray(start));
+		}
+		if (carry.length > 0) {
+			const entry = parseEntry(carry.toString("utf8"));
+			if (entry !== null && keep(entry)) out.push(entry);
+		}
+		return out;
+	} finally {
+		await handle.close();
+	}
+}
+
+/** A log's header line, read without the rest of the file. */
+async function readHeader(path: string): Promise<{ id?: string; createdAt?: number; cwd?: string } | null> {
+	let handle: FileHandle | null = null;
+	try {
+		handle = await open(path, "r");
+		const buffer = Buffer.alloc(HEADER_BYTES);
+		const { bytesRead } = await handle.read(buffer, 0, HEADER_BYTES, 0);
+		const line = buffer.subarray(0, bytesRead).toString("utf8").split("\n")[0] ?? "";
+		const parsed = JSON.parse(line) as { id?: unknown; createdAt?: unknown; cwd?: unknown };
+		return {
+			...(typeof parsed.id === "string" ? { id: parsed.id } : {}),
+			...(typeof parsed.createdAt === "number" ? { createdAt: parsed.createdAt } : {}),
+			...(typeof parsed.cwd === "string" ? { cwd: parsed.cwd } : {}),
+		};
+	} catch {
+		return null;
+	} finally {
+		await handle?.close();
+	}
+}
+
+/** The newest log file on disk: listing through the repo reads every file in full just to read its header. */
+async function newestLog(root: string): Promise<string | null> {
+	let newestPath: string | null = null;
+	let newestAt = -1;
+	const consider = async (path: string): Promise<void> => {
+		if (!path.endsWith(".jsonl")) return;
+		const info = await stat(path).catch(() => null);
+		if (info === null || !info.isFile()) return;
+		if (info.mtimeMs <= newestAt) return;
+		newestPath = path;
+		newestAt = info.mtimeMs;
+	};
+	for (const entry of await readdir(root, { withFileTypes: true }).catch(() => [])) {
+		const path = join(root, entry.name);
+		if (entry.isFile()) {
+			await consider(path);
+			continue;
+		}
+		if (!entry.isDirectory()) continue;
+		for (const inner of await readdir(path, { withFileTypes: true }).catch(() => [])) {
+			if (inner.isFile()) await consider(join(path, inner.name));
+		}
+	}
+	return newestPath;
+}
 
 export class SessionLog {
 	readonly onEntry: Event<SeqEntry>;
@@ -30,6 +170,8 @@ export class SessionLog {
 	private _opening: Promise<Session<JsonlSessionMetadata>> | null = null;
 	private _queue: Promise<void> = Promise.resolve();
 	private _disposed = false;
+	private _latestMeta: JsonlSessionMetadata | null | undefined;
+	private _latestPathCache: string | null | undefined;
 	private readonly _emitter = new Emitter<SeqEntry>();
 
 	constructor(
@@ -52,20 +194,37 @@ export class SessionLog {
 
 	private async _open(): Promise<Session<JsonlSessionMetadata>> {
 		const repo = this._repo();
+		const path = await this._latestPath();
+		const header = path === null ? null : await readHeader(path);
+		if (path !== null && header?.id !== undefined) {
+			return repo.open({ id: header.id, path, createdAt: header.createdAt ?? 0, cwd: header.cwd ?? this.root, modifiedAt: 0, sourceFormat: 4 });
+		}
 		const latest = await this._latest();
-		return latest ? repo.open(latest) : repo.create({ cwd: this.root });
+		if (latest) return repo.open(latest);
+		this._latestMeta = undefined;
+		this._latestPathCache = undefined;
+		return repo.create({ cwd: this.root });
 	}
 
+	private async _latestPath(): Promise<string | null> {
+		if (this._latestPathCache !== undefined) return this._latestPathCache;
+		this._latestPathCache = (await newestLog(this.root)) ?? (await this._latest())?.path ?? null;
+		return this._latestPathCache;
+	}
+
+	/** Listing reads every log in the directory in full, so the answer is kept until this log creates another. */
 	private async _latest(): Promise<JsonlSessionMetadata | null> {
-		return (await this._repo().list({ cwd: this.root }))[0] ?? null;
+		if (this._latestMeta !== undefined) return this._latestMeta;
+		this._latestMeta = (await this._repo().list({ cwd: this.root }))[0] ?? null;
+		return this._latestMeta;
 	}
 
 	/** The newest log's header and its last bytes — a preview without opening (and parsing) the whole file. */
 	async peek(bytes = TAIL_BYTES): Promise<{ createdAt?: number; tail: Entry[] }> {
-		const latest = await this._latest();
-		if (latest === null) return { tail: [] };
-		const tail = await this._readTail(latest.path, bytes);
-		return { ...(latest.createdAt ? { createdAt: latest.createdAt } : {}), tail: tail?.entries ?? [] };
+		const path = await this._latestPath();
+		if (path === null) return { tail: [] };
+		const [tail, header] = await Promise.all([this._readTail(path, bytes), readHeader(path)]);
+		return { ...(header?.createdAt ? { createdAt: header.createdAt } : {}), tail: tail?.entries ?? [] };
 	}
 
 	private async _readTail(path: string, bytes: number): Promise<{ entries: Entry[]; whole: boolean } | null> {
@@ -103,6 +262,8 @@ export class SessionLog {
 		await this.open();
 		await this._queue;
 		if (this._disposed) return;
+		this._latestMeta = undefined;
+		this._latestPathCache = undefined;
 		this._session = await this._repo().create({ cwd: this.root });
 	}
 
@@ -129,24 +290,32 @@ export class SessionLog {
 	}
 
 	async records(customType: string): Promise<SeqEntry[]> {
-		await this.open();
-		const listed = await this._sessionOrThrow().findEntries({ type: "custom", customType });
-		return listed.map((entry) => ({ seq: entry.seq, entry })).sort((left, right) => left.seq - right.seq);
+		if (this._session) {
+			const listed = await this._sessionOrThrow().findEntries({ type: "custom", customType });
+			return listed.map((entry) => ({ seq: entry.seq, entry })).sort((left, right) => left.seq - right.seq);
+		}
+		await this.flush();
+		const path = await this._latestPath();
+		if (path === null) return [];
+		const entries = await readEntries(path, (entry) => entry.type === "custom" && entry.customType === customType);
+		return entries.map((entry) => ({ seq: entry.seq, entry })).sort((left, right) => left.seq - right.seq);
 	}
 
-	async entries(since = 0): Promise<SeqEntry[]> {
-		await this.open();
-		const listed = await this._sessionOrThrow().findEntries();
-		return listed
-			.filter((entry) => entry.seq > since)
-			.sort((left, right) => left.seq - right.seq)
-			.map((entry) => ({ seq: entry.seq, entry }));
-	}
-
+	/**
+	 * Read straight from the file unless the storage is already open for writing. Request headers after the
+	 * first are dropped on the way in: nothing reads them, and they are what made a log 200MB.
+	 */
 	async rawEntries(): Promise<Entry[]> {
-		await this.open();
-		const listed = await this._sessionOrThrow().findEntries();
-		return [...listed].sort((left, right) => left.seq - right.seq);
+		await this.flush();
+		const path = await this._latestPath();
+		if (path === null) return [];
+		let header = false;
+		return readEntries(path, (entry) => {
+			if (!(entry.type === "custom" && entry.customType === EVENTS.requestHeader)) return true;
+			if (header) return false;
+			header = true;
+			return true;
+		});
 	}
 
 	async origin(): Promise<Entry[]> {
@@ -161,25 +330,76 @@ export class SessionLog {
 		return projectSliceItems(await this.origin(), options);
 	}
 
+	/** A transcript window, read backwards from the end of the log and never past the scan cap. */
 	async window(options: { mode?: "older" | "newer"; cursor?: string; conversations: number }): Promise<OriginWindow> {
-		if (options.mode === undefined && options.cursor === undefined) {
-			const fast = await this._tailWindow(options.conversations);
-			if (fast !== null) return fast;
-		}
-		return originWindow(await this.origin(), options);
+		const path = await this._latestPath();
+		if (path === null) return { entries: [], total: 0, hasMore: false, reset: false };
+		const pick = (newestFirst: readonly Entry[], whole: boolean): OriginWindow | null => {
+			const entries = [...newestFirst].reverse();
+			if (options.mode === undefined && options.cursor === undefined) return tailWindow(entries, options.conversations, whole);
+			if (options.cursor !== undefined && !entries.some((entry) => entry.id === options.cursor)) return null;
+			return originWindow(whole ? projectOrigin(entries) : projectTail(entries), options);
+		};
+		const scanned = await scanBack(path, (newestFirst, whole) => pick(newestFirst, whole) !== null);
+		const found = pick(scanned.entries, scanned.whole);
+		if (found !== null) return found;
+		return { ...originWindow(projectTail([...scanned.entries].reverse()), { conversations: options.conversations }), hasMore: false };
 	}
 
-	/** The first window is the newest conversations: read only the end of the log and grow until they fit. */
-	private async _tailWindow(conversations: number): Promise<OriginWindow | null> {
-		const latest = await this._latest();
-		if (latest === null) return null;
-		for (let bytes = WINDOW_TAIL_BYTES; ; bytes *= 2) {
-			const tail = await this._readTail(latest.path, bytes);
-			if (tail === null) return null;
-			const window = tailWindow(tail.entries, conversations, tail.whole);
-			if (window !== null) return window;
-			if (tail.whole) return null;
-		}
+	/** The last assistant usage, unless a compaction came after it: the tail answers without the whole log. */
+	async lastUsageTokens(): Promise<number | null> {
+		const path = await this._latestPath();
+		if (path === null) return null;
+		let found: number | null = null;
+		await scanTail(path, (fresh) => {
+			for (const entry of fresh) {
+				if (entry.type === "message" && entry.message.role === "assistant" && entry.message.usage) {
+					const usage = entry.message.usage;
+					found = usage.input + usage.cacheRead + usage.cacheWrite;
+					return true;
+				}
+				if (entry.type === "custom" && entry.customType === EVENTS.compaction) return true;
+			}
+			return false;
+		});
+		return found;
+	}
+
+	/** What a resumed loop needs: the newest messages, cut at the newest compaction instead of the whole log. */
+	async tailTranscript(): Promise<AgentMessage[]> {
+		const path = await this._latestPath();
+		if (path === null) return [];
+		const newestFirst: Entry[] = [];
+		await scanTail(
+			path,
+			(fresh) => {
+				for (const entry of fresh) {
+					newestFirst.push(entry);
+					if (entry.type === "custom" && entry.customType === EVENTS.compaction) return true;
+				}
+				return false;
+			},
+			RESUME_BYTES,
+		);
+		const sliced = projectSlice([...newestFirst].reverse());
+		const firstUser = sliced.findIndex((message) => message.role === "user");
+		return firstUser < 0 ? [] : sliced.slice(firstUser);
+	}
+
+	/** The newest messages, for an estimate before the provider has reported usage. */
+	async tailMessages(count: number): Promise<AgentMessage[]> {
+		const path = await this._latestPath();
+		if (path === null) return [];
+		const messages: AgentMessage[] = [];
+		await scanTail(path, (fresh) => {
+			for (const entry of fresh) {
+				if (entry.type !== "message") continue;
+				messages.push(entry.message);
+				if (messages.length >= count) return true;
+			}
+			return false;
+		});
+		return messages.reverse();
 	}
 
 	dispose(): void {
