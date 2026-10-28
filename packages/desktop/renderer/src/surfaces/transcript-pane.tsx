@@ -208,7 +208,10 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 	useEffect(() => {
 		const scroller = scroll.current;
 		const content = inner.current;
-		if (scroller && content) follower.attach(scroller, content, locating);
+		if (scroller && content) {
+			follower.attach(scroller, content, locating);
+			follower.pin(true);
+		}
 		return () => follower.detach();
 	}, [follower, selected, view]);
 
@@ -216,11 +219,6 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 		if (view !== null) return;
 		follower.pin(true);
 	}, [follower, view]);
-	const [followed, setFollowed] = useState(selected);
-	if (followed !== selected) {
-		setFollowed(selected);
-		follower.pin(true);
-	}
 
 	const hasData = display.length > 0;
 	useEffect(() => {
