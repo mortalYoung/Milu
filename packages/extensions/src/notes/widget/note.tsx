@@ -16,43 +16,39 @@ const ELLIPSIS = "mx-1 text-ink";
 const DETAIL =
 	"mt-1 mb-0 max-h-[320px] overflow-auto rounded-md border border-line bg-code-block-bg px-3 py-2 font-mono text-[11px] leading-[1.5] whitespace-pre-wrap break-words text-ink";
 
-const charWidths = new Map<string, number>();
-
-/** The widest glyph at the element's own font, measured once per font, so a preview can spend the whole row instead of a guessed character count. */
-function measureChar(element: HTMLElement): number {
+function textWidth(element: HTMLElement, text: string): number {
 	const style = getComputedStyle(element);
-	const font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
-	const cached = charWidths.get(font);
-	if (cached !== undefined) return cached;
 	const context = document.createElement("canvas").getContext("2d");
-	if (!context) return 6;
-	context.font = font;
-	const width = context.measureText("M").width || 6;
-	charWidths.set(font, width);
-	return width;
+	if (!context) return 0;
+	context.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+	return context.measureText(text).width;
 }
 
-function useBudget(ref: RefObject<HTMLElement | null>): number {
+/** Budget in characters, from the average width of the text itself: "M" is twice a Han glyph and wider than most letters, so neither fits everyone. */
+function useBudget(ref: RefObject<HTMLElement | null>, text: string): number {
 	const [budget, setBudget] = useState(0);
 	useEffect(() => {
 		const element = ref.current;
 		if (!element) return;
 		const observer = new ResizeObserver(() => {
 			const width = element.clientWidth;
-			if (width > 0) setBudget(Math.max(16, Math.floor(width / measureChar(element)) - 4));
+			const line = oneLine(text);
+			if (width <= 0 || line === "") return;
+			const average = textWidth(element, line) / [...line].length;
+			if (average > 0) setBudget(Math.max(8, Math.floor(width / average) - 2));
 		});
 		observer.observe(element);
 		return () => observer.disconnect();
-	}, [ref]);
+	}, [ref, text]);
 	return budget;
 }
 
 /** One line, elided in the middle: the head says what it is about, the tail says where it got to. */
 function middle(text: string, budget: number): { head: string; tail: string; elided: boolean } {
-	const line = oneLine(text);
-	if (line.length <= budget) return { head: line, tail: "", elided: false };
-	const keep = budget - 1;
-	return { head: line.slice(0, Math.ceil(keep / 2)), tail: line.slice(-Math.floor(keep / 2)), elided: true };
+	const points = [...oneLine(text)];
+	if (points.length <= budget) return { head: points.join(""), tail: "", elided: false };
+	const keep = Math.max(0, budget - 1);
+	return { head: points.slice(0, Math.ceil(keep / 2)).join(""), tail: points.slice(points.length - Math.floor(keep / 2)).join(""), elided: true };
 }
 
 function Middle(props: { text: string; budget: number }) {
@@ -70,7 +66,7 @@ function Middle(props: { text: string; budget: number }) {
 /** A line that spends whatever room it is given and cuts out of its middle, keeping both ends readable. */
 export function Elide(props: { text: string; className?: string }) {
 	const line = useRef<HTMLSpanElement>(null);
-	const budget = useBudget(line);
+	const budget = useBudget(line, props.text);
 	return (
 		<span ref={line} className={props.className}>
 			<Middle text={props.text} budget={budget} />
@@ -85,7 +81,7 @@ export function ThinkingRow(props: SlotProps) {
 	const foldable = !redacted && text.trim() !== "";
 	const live = item.live === true;
 	const line = useRef<HTMLSpanElement>(null);
-	const budget = useBudget(line);
+	const budget = useBudget(line, text);
 
 	return (
 		<div className="min-w-0">
@@ -113,16 +109,16 @@ export function ThinkingRow(props: SlotProps) {
 export function ToolRow(props: SlotProps) {
 	const { item, open = false, onToggle } = props.data as RowData;
 	const line = useRef<HTMLSpanElement>(null);
-	const budget = useBudget(line);
 	const tool = item.tool;
+	const args = tool ? toolArgs(tool) : "";
+	const result = !tool ? "" : tool.status === "running" ? "loading…" : tool.status === "pending" ? "…" : (tool.result ?? "");
+	const budget = useBudget(line, `${args} ${result}`);
 	if (!tool) return null;
 	const failed = tool.status === "error";
 	const running = tool.status === "running";
 	const pending = tool.status === "pending";
 	const tone = failed ? "border-signal/40 text-signal" : running ? "border-line-strong text-ink" : pending ? "border-dashed text-muted" : "border-line text-muted";
 	const foldable = (tool.args ?? "") !== "" || (tool.result ?? "") !== "";
-	const args = toolArgs(tool);
-	const result = running ? "loading…" : pending ? "…" : (tool.result ?? "");
 	const argsBudget = budget === 0 ? 0 : Math.max(12, Math.floor((budget - 3) * 0.45));
 	const resultBudget = budget === 0 ? 0 : Math.max(12, budget - 3 - argsBudget);
 	return (
