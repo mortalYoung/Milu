@@ -1,17 +1,19 @@
 import type { SlotProps, StepGroup, ViewItem } from "@milu/window/api";
-import { rowKindOf } from "@milu/window/api";
-import { createElement, type ReactNode, useEffect, useState } from "react";
+import { liveRowsOf, oneLine, rowKindOf } from "@milu/window/api";
+import { Brain, ChevronRight, type LucideIcon } from "lucide-react";
+import { createElement, type ReactNode, useEffect, useMemo, useState } from "react";
+import { useStore } from "zustand";
 
 import type { StepDisplay } from "../index.ts";
-import { NoteFallback, SayRow, ThinkingRow, ToolRow } from "./note.tsx";
+import { Elide, NoteFallback, SayRow, ThinkingRow, ToolRow } from "./note.tsx";
+import { toolArgs, toolIcon } from "./tool.ts";
 
 interface StepData {
 	readonly group: StepGroup;
 	readonly live: boolean;
-	readonly header?: boolean;
+	readonly session?: string;
 }
 
-const CAPSULE = "inline-flex max-w-full items-center gap-1.5 rounded-md border border-line bg-surface px-3 py-1 font-sans text-[15px] leading-[1.5] text-muted";
 const HEAD = "flex min-w-0 items-baseline gap-2";
 
 interface Stamp {
@@ -25,6 +27,37 @@ function span(ms: number): string {
 	if (seconds === 0) return "";
 	if (seconds < 60) return `${seconds}s`;
 	return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
+interface Latest {
+	readonly icon: LucideIcon | null;
+	readonly label: string;
+	readonly detail: string;
+	readonly code: boolean;
+	readonly failed: boolean;
+}
+
+function latestStep(group: StepGroup): Latest | null {
+	const item = group.rows[group.rows.length - 1];
+	if (!item) return null;
+	if (item.tool) return { icon: toolIcon(item.tool.name), label: oneLine(item.tool.name) || "tool", detail: toolArgs(item.tool), code: true, failed: item.tool.status === "error" };
+	if (item.thinking) return { icon: Brain, label: "thinking", detail: item.thinking.redacted ? "redacted" : oneLine(item.thinking.text), code: false, failed: false };
+	return { icon: null, label: "", detail: oneLine(item.text), code: false, failed: false };
+}
+
+function LatestStep(props: { step: Latest }) {
+	const { icon: Icon, label, detail, code, failed } = props.step;
+	return (
+		<>
+			<span className="shrink-0 text-line-strong">|</span>
+			<span className="flex min-w-0 flex-1 items-center gap-1">
+				{Icon ? <Icon size={12} aria-hidden="true" className={failed ? "shrink-0 text-signal" : "shrink-0"} /> : null}
+				{label === "" ? null : <span className="shrink-0">{label}</span>}
+				{label === "" || detail === "" ? null : <span className="shrink-0 text-line-strong">·</span>}
+				{detail === "" ? null : <Elide text={detail} className={`min-w-0 flex-1 truncate text-muted-soft${code ? " font-mono text-[13px]" : ""}`} />}
+			</span>
+		</>
+	);
 }
 
 /** "Running for 12s" while it streams, "Stopped after 12s" when it was cut, "Completed in 12s" once the last row is in. */
@@ -49,11 +82,19 @@ function useHeaderStamp(group: StepGroup, live: boolean): Stamp {
 }
 
 export function StepRow(props: SlotProps) {
-	const { group, live, header = true } = props.data as StepData;
+	const { group, live, session } = props.data as StepData;
+	const partial = useStore(props.host.transcript.store, (state) => (live && session ? (state.partials[session] ?? null) : null));
+	const started = useStore(props.host.transcript.store, (state) => (live && session ? (state.started[session] ?? 0) : 0));
+	const merged = useMemo(() => {
+		if (!live || !session || !partial) return group;
+		const first = liveRowsOf(partial, started)[0];
+		if (!first || !("step" in first)) return group;
+		return { ...group, rows: [...group.rows, ...first.step.rows] };
+	}, [group, live, session, partial, started]);
 	const [display, setDisplay] = useState<StepDisplay>("flat");
 	const [open, setOpen] = useState(false);
 	const [openRows, setOpenRows] = useState<ReadonlySet<string>>(() => new Set());
-	const stamp = useHeaderStamp(group, live);
+	const stamp = useHeaderStamp(merged, live);
 
 	useEffect(() => {
 		let alive = true;
@@ -94,16 +135,23 @@ export function StepRow(props: SlotProps) {
 			{stamp.duration === "" ? null : <span className="shrink-0 font-mono text-[13px] text-muted">{stamp.duration}</span>}
 		</>
 	);
-	const rows = <div className={header ? "mt-2 grid gap-1.5" : "mt-1.5 grid gap-1.5"}>{group.rows.map((item) => renderRow(props, item, openRows.has(item.id), toggleRow))}</div>;
-
-	if (!header) return rows;
+	const latest = live ? latestStep(merged) : null;
+	const rows = <div className="mt-2 grid gap-1.5">{merged.rows.map((item) => renderRow(props, item, openRows.has(item.id), toggleRow))}</div>;
 
 	return (
 		<div className="mt-6 min-w-0">
 			{collapsed ? (
-				<button type="button" className={CAPSULE} aria-expanded={open} onClick={() => setOpen(!open)}>
-					<span className="shrink-0 text-muted-soft">{open ? "⌄" : "›"}</span>
+				<button
+					type="button"
+					className="flex w-full min-w-0 max-w-full cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 text-left font-sans text-[15px] leading-[1.5] text-muted hover:text-ink"
+					aria-expanded={open}
+					onClick={() => setOpen(!open)}
+				>
+					<span className="grid size-4 shrink-0 place-items-center text-muted-soft">
+						<ChevronRight size={14} aria-hidden="true" className={`transition-transform duration-150 motion-reduce:transition-none${open ? " rotate-90" : ""}`} />
+					</span>
 					<span className={HEAD}>{head}</span>
+					{latest ? <LatestStep step={latest} /> : null}
 				</button>
 			) : (
 				<div className={`${HEAD} font-sans text-[15px] leading-[1.714] text-muted-soft`}>{head}</div>

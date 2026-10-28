@@ -158,18 +158,21 @@ function SpeakingDots() {
 }
 
 /** The one component that re-renders while a reply streams; the rows behind it stay put. */
-function StreamTail(props: { host: Host; session: string; working: boolean; headed: boolean }) {
+function StreamTail(props: { host: Host; session: string; working: boolean; mergeFirstStep: boolean }) {
 	const message = useStore(props.host.transcript.store, (state) => state.partials[props.session] ?? null);
 	const started = useStore(props.host.transcript.store, (state) => state.started[props.session] ?? 0);
 	const rows = useMemo(() => (message ? liveRowsOf(message, started) : NO_ROWS), [message, started]);
 	if (!props.working) return null;
-	if (rows.length === 0) return <SpeakingDots />;
+	if (rows.length === 0) return props.mergeFirstStep ? null : <SpeakingDots />;
+	const merged = props.mergeFirstStep && "step" in rows[0]!;
+	const shown = merged ? rows.slice(1) : rows;
+	if (shown.length === 0) return null;
 	const Step = props.host.rows.get("step");
 	return (
 		<>
-			{rows.map((row) =>
+			{shown.map((row) =>
 				"step" in row ? (
-					Step && <Step key={`s:${row.step.key}`} host={props.host} data={{ group: row.step, live: true, header: props.headed }} />
+					Step && <Step key={`s:${row.step.key}`} host={props.host} data={{ group: row.step, live: true }} />
 				) : (
 					<AssistantBlock key={`i:${row.item.id}`} host={props.host} item={row.item} live />
 				),
@@ -297,11 +300,12 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 									{display.map((row, index) => {
 										if ("step" in row) {
 											const Step = host.rows.get("step");
-											return Step ? createElement(Step, { key: `s:${row.step.key}`, host, data: { group: row.step, live: working && index === display.length - 1 } }) : null;
+											const live = working && index === display.length - 1;
+											return Step ? createElement(Step, { key: `s:${row.step.key}`, host, data: { group: row.step, live, ...(live ? { session: selected } : {}) } }) : null;
 										}
 										return <TranscriptRow key={`i:${row.item.id}`} host={host} session={selected} item={row.item} />;
 									})}
-									<StreamTail host={host} session={selected} working={working} headed={display.length === 0 || !("step" in display[display.length - 1]!)} />
+									<StreamTail host={host} session={selected} working={working} mergeFirstStep={display.length > 0 && "step" in display[display.length - 1]!} />
 									{error ? (
 										<div className="sys-error">
 											<span className="sys-error-tag">ERR</span>

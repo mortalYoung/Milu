@@ -1,6 +1,9 @@
 import { oneLine, type SlotProps, type ViewItem } from "@milu/window/api";
 import { Markdown } from "@milu/window/api/markdown/react";
-import { type RefObject, useEffect, useRef, useState } from "react";
+import { Brain } from "lucide-react";
+import { createElement, type RefObject, useEffect, useRef, useState } from "react";
+
+import { toolArgs, toolIcon } from "./tool.ts";
 
 interface RowData {
 	readonly item: ViewItem;
@@ -13,16 +16,20 @@ const ELLIPSIS = "mx-1 text-ink";
 const DETAIL =
 	"mt-1 mb-0 max-h-[320px] overflow-auto rounded-md border border-line bg-code-block-bg px-3 py-2 font-mono text-[11px] leading-[1.5] whitespace-pre-wrap break-words text-ink";
 
-let charWidth = 0;
+const charWidths = new Map<string, number>();
 
-/** JetBrains Mono at 10px, measured once, so a preview can spend the whole row instead of a guessed character count. */
-function measureChar(): number {
-	if (charWidth > 0) return charWidth;
+/** The widest glyph at the element's own font, measured once per font, so a preview can spend the whole row instead of a guessed character count. */
+function measureChar(element: HTMLElement): number {
+	const style = getComputedStyle(element);
+	const font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+	const cached = charWidths.get(font);
+	if (cached !== undefined) return cached;
 	const context = document.createElement("canvas").getContext("2d");
 	if (!context) return 6;
-	context.font = "10px 'JetBrains Mono', ui-monospace, monospace";
-	charWidth = context.measureText("M").width || 6;
-	return charWidth;
+	context.font = font;
+	const width = context.measureText("M").width || 6;
+	charWidths.set(font, width);
+	return width;
 }
 
 function useBudget(ref: RefObject<HTMLElement | null>): number {
@@ -32,7 +39,7 @@ function useBudget(ref: RefObject<HTMLElement | null>): number {
 		if (!element) return;
 		const observer = new ResizeObserver(() => {
 			const width = element.clientWidth;
-			if (width > 0) setBudget(Math.max(16, Math.floor(width / measureChar()) - 4));
+			if (width > 0) setBudget(Math.max(16, Math.floor(width / measureChar(element)) - 4));
 		});
 		observer.observe(element);
 		return () => observer.disconnect();
@@ -60,6 +67,17 @@ function Middle(props: { text: string; budget: number }) {
 	);
 }
 
+/** A line that spends whatever room it is given and cuts out of its middle, keeping both ends readable. */
+export function Elide(props: { text: string; className?: string }) {
+	const line = useRef<HTMLSpanElement>(null);
+	const budget = useBudget(line);
+	return (
+		<span ref={line} className={props.className}>
+			<Middle text={props.text} budget={budget} />
+		</span>
+	);
+}
+
 export function ThinkingRow(props: SlotProps) {
 	const { item, open = false, onToggle } = props.data as RowData;
 	const redacted = item.thinking?.redacted === true;
@@ -77,6 +95,7 @@ export function ThinkingRow(props: SlotProps) {
 				aria-expanded={foldable ? open : undefined}
 				onClick={foldable ? onToggle : undefined}
 			>
+				<Brain size={12} aria-hidden="true" className="shrink-0 text-muted-soft" />
 				<span className="shrink-0 text-muted-soft">thinking</span>
 				<span ref={line} className="min-w-0 flex-1 truncate text-left">
 					{redacted ? "redacted" : foldable ? <Middle text={text} budget={budget} /> : "…"}
@@ -101,9 +120,8 @@ export function ToolRow(props: SlotProps) {
 	const running = tool.status === "running";
 	const pending = tool.status === "pending";
 	const tone = failed ? "border-signal/40 text-signal" : running ? "border-line-strong text-ink" : pending ? "border-dashed text-muted" : "border-line text-muted";
-	const glyph = failed ? "✗" : running ? "●" : pending ? "…" : "✓";
 	const foldable = (tool.args ?? "") !== "" || (tool.result ?? "") !== "";
-	const args = tool.args ?? tool.summary;
+	const args = toolArgs(tool);
 	const result = running ? "loading…" : pending ? "…" : (tool.result ?? "");
 	const argsBudget = budget === 0 ? 0 : Math.max(12, Math.floor((budget - 3) * 0.45));
 	const resultBudget = budget === 0 ? 0 : Math.max(12, budget - 3 - argsBudget);
@@ -115,7 +133,11 @@ export function ToolRow(props: SlotProps) {
 				aria-expanded={foldable ? open : undefined}
 				onClick={foldable ? onToggle : undefined}
 			>
-				<span className={`shrink-0 ${failed ? "text-signal" : running ? "text-accent-teal" : "text-muted-soft"}`}>{glyph}</span>
+				{createElement(toolIcon(tool.name), {
+					size: 12,
+					"aria-hidden": "true",
+					className: `shrink-0 ${failed ? "text-signal" : running ? "text-accent-teal" : "text-muted-soft"}`,
+				})}
 				<span className="shrink-0 font-sans text-[11px] text-ink">{tool.name}</span>
 				<span ref={line} className="min-w-0 flex-1 truncate text-left">
 					{args === "" ? null : <Middle text={args} budget={argsBudget} />}

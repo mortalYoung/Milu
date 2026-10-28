@@ -60,11 +60,11 @@ const FIELDS: readonly Field[] = [
 		id: "workStepsDisplay",
 		category: "general",
 		kind: "select",
-		title: "Work steps display",
+		title: "Work Steps Display",
 		description: "Flat shows every thought and tool call; collapsed folds the whole step behind its header.",
 		options: [
-			{ value: "flat", label: "flat" },
-			{ value: "collapsed", label: "collapsed" },
+			{ value: "flat", label: "Flat" },
+			{ value: "collapsed", label: "Collapsed" },
 		],
 	},
 	{
