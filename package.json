@@ -12,6 +12,8 @@
 		"build": "bun run --filter '@milu/desktop' build",
 		"check": "bun run typecheck && bun run lint && bun run format:check && bun run boundaries",
 		"dev": "bun scripts/dev.ts",
+		"ext:build": "mkdir -p extensions/telemetry/dist && bun build extensions/telemetry/src/widget.tsx --outfile extensions/telemetry/dist/widget.js --format esm --target browser && bun build extensions/telemetry/src/host.ts --outfile extensions/telemetry/dist/host.js --format esm --target node",
+		"ext:install": "bun run ext:build && bun scripts/ext-install.ts",
 		"format": "oxfmt",
 		"format:check": "oxfmt --check",
 		"lint": "oxlint",

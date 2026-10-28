@@ -93,7 +93,14 @@ export interface ContributionItem {
 	readonly items?: readonly ContributionItem[];
 }
 
-export const SLOT_POINTS = { chatBar: "chat.bar", chatName: "chat.name", chatPanes: "chat.panes", workspaceViews: "workspace.views", welcomeTimeline: "welcome.timeline" } as const;
+export const SLOT_POINTS = {
+	chatBar: "chat.bar",
+	chatName: "chat.name",
+	chatPanes: "chat.panes",
+	workspaceViews: "workspace.views",
+	welcomeTimeline: "welcome.timeline",
+	overlay: "shell.overlay",
+} as const;
 
 export interface SlotItem {
 	readonly id: string;

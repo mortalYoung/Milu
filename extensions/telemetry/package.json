@@ -1,0 +1,28 @@
+{
+	"name": "milu-telemetry",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"main": "dist/host.js",
+	"milu": {
+		"id": "telemetry",
+		"apiVersion": 1,
+		"widgets": [
+			{
+				"id": "telemetry.ball",
+				"type": "slot",
+				"entry": "dist/widget.js",
+				"export": "TelemetryBall"
+			}
+		],
+		"contributions": {
+			"shell.overlay": [
+				{
+					"id": "telemetry",
+					"order": 100,
+					"component": "telemetry.ball"
+				}
+			]
+		}
+	}
+}
