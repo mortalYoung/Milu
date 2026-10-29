@@ -1,6 +1,6 @@
 import { pathToFileURL } from "node:url";
 
-import type { ChildRequest, ChildResponse, HostAction, HostRequest, HostResponse, HostTool, HostToolCall } from "@milu/core";
+import type { ChildRequest, ChildResponse, HostAction, HostRequest, HostResponse, HostTool, HostToolCall, Theme } from "@milu/core";
 
 interface Port {
 	postMessage(message: unknown): void;
@@ -48,6 +48,12 @@ function extensionContext(id: string) {
 		},
 		get: () => {
 			throw new Error("this extension runs out of process — host services are not available yet");
+		},
+		themes: {
+			register(theme: Theme) {
+				void callHost("registerTheme", theme);
+				return { dispose: () => {} };
+			},
 		},
 		settings: {
 			declare(request: { key: string; defaults: unknown }) {

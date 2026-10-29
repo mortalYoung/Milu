@@ -1,3 +1,4 @@
+import type { ThemeMode, ThemeSettings, ThemeState } from "@milu/protocol";
 import type { DialogProps } from "@milu/window/api";
 import { Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -40,18 +41,6 @@ const SANDBOX: readonly { value: string; label: string }[] = [
 ];
 
 const FIELDS: readonly Field[] = [
-	{
-		id: "theme",
-		category: "general",
-		kind: "segment",
-		title: "Theme",
-		description: "Follow the system, or force light or dark.",
-		options: [
-			{ value: "system", label: "System", hint: "Follow OS" },
-			{ value: "light", label: "Light", hint: "Always light" },
-			{ value: "dark", label: "Dark", hint: "Always dark" },
-		],
-	},
 	{
 		id: "partner_profile_path",
 		category: "general",
@@ -285,6 +274,112 @@ function DirsField(props: { values: readonly string[]; onCommit: (next: string[]
 	);
 }
 
+const THEME_DEFAULTS: ThemeSettings = { mode: "system", light: "light", dark: "dark" };
+
+function themeOf(value: unknown): ThemeSettings {
+	const record = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+	const theme = record["theme"];
+	const source = typeof theme === "object" && theme !== null ? (theme as Record<string, unknown>) : {};
+	const mode = source["mode"];
+	return {
+		mode: mode === "light" || mode === "dark" ? mode : "system",
+		light: typeof source["light"] === "string" ? source["light"] : THEME_DEFAULTS.light,
+		dark: typeof source["dark"] === "string" ? source["dark"] : THEME_DEFAULTS.dark,
+	};
+}
+
+function ThemePanel(props: { host: DialogProps["host"]; value: ThemeSettings; save: (next: ThemeSettings) => Promise<boolean> }) {
+	const appearance = props.host.theme.resolve(props.value.mode);
+	const id = appearance === "light" ? props.value.light : props.value.dark;
+	const current = props.host.theme.themes(appearance).find((theme) => theme.id === id);
+	const note =
+		props.value.mode === "system" ? `Following the system — currently ${appearance}. Using ${current?.name ?? id}.` : `Forced ${props.value.mode}. Using ${current?.name ?? id}.`;
+
+	const commit = (next: ThemeSettings): void => {
+		void props.save(next).then((saved) => {
+			if (saved) props.host.theme.select(next);
+		});
+	};
+
+	const modes: readonly { value: ThemeMode; label: string }[] = [
+		{ value: "system", label: "System" },
+		{ value: "light", label: "Light" },
+		{ value: "dark", label: "Dark" },
+	];
+
+	return (
+		<div className="pb-4">
+			<div className="font-serif text-[14px] font-medium text-ink">Appearance</div>
+			<div className="mt-1 max-w-[62ch] font-sans text-[12px] leading-snug text-muted">Follow the system, or force light or dark. This decides which theme slot is active.</div>
+			<div className="mt-3 inline-flex gap-0.5 rounded-[8px] border border-line bg-canvas p-0.5" role="radiogroup" aria-label="Appearance">
+				{modes.map((mode) => {
+					const active = props.value.mode === mode.value;
+					return (
+						<button
+							key={mode.value}
+							type="button"
+							role="radio"
+							aria-checked={active}
+							className={`cursor-pointer rounded-[6px] px-3 py-1 font-sans text-[11.5px] transition-colors duration-100 ${active ? "bg-selected text-ink" : "text-muted hover:text-ink"}`}
+							onClick={() => commit({ ...props.value, mode: mode.value })}
+						>
+							{mode.label}
+						</button>
+					);
+				})}
+			</div>
+			<div className="mt-2 font-sans text-[10.5px] text-muted-soft">{note}</div>
+
+			<div className="mt-5 font-serif text-[14px] font-medium text-ink">Themes</div>
+			<div className="mt-1 max-w-[62ch] font-sans text-[12px] leading-snug text-muted">
+				Pick the palette used for each appearance. A theme carries one appearance; extensions can register more.
+			</div>
+			<div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+				{(["light", "dark"] as const).map((slot) => {
+					const live = appearance === slot;
+					return (
+						<section key={slot} className={`overflow-hidden rounded-[9px] border bg-canvas ${live ? "border-accent-teal/40" : "border-line"}`}>
+							<div className="flex items-center gap-2 border-b border-line-soft px-2.5 py-1.5 font-sans text-[10px] tracking-[0.07em] text-muted uppercase">
+								<span>{slot}</span>
+								{live ? <span className="ml-auto rounded-full bg-hover px-1.5 py-0.5 text-[9px] tracking-[0.04em] text-accent-teal">Active now</span> : null}
+							</div>
+							<div className="flex flex-col gap-px p-1" role="radiogroup" aria-label={`${slot} theme`}>
+								{props.host.theme.themes(slot).map((theme) => {
+									const selected = props.value[slot] === theme.id;
+									const colors = props.host.theme.swatch(slot, theme.id);
+									return (
+										<button
+											key={theme.id}
+											type="button"
+											role="radio"
+											aria-checked={selected}
+											className={`flex w-full cursor-pointer items-center gap-2 rounded-[7px] border px-1.5 py-1 text-left transition-colors duration-100 ${selected ? "border-line bg-selected" : "border-transparent hover:bg-hover"}`}
+											onClick={() => commit({ ...props.value, [slot]: theme.id })}
+										>
+											<span className={`grid size-[13px] shrink-0 place-items-center rounded-full border-[1.5px] ${selected ? "border-accent-teal" : "border-line-strong"}`}>
+												{selected ? <span className="size-[5px] rounded-full bg-accent-teal" /> : null}
+											</span>
+											<span className="min-w-0 flex-1">
+												<span className="block font-sans text-[12.5px] leading-tight text-ink">{theme.name}</span>
+												<span className="block font-sans text-[10.5px] leading-tight text-muted">{theme.id === "light" || theme.id === "dark" ? "Built in" : "Extension"}</span>
+											</span>
+											<span className="flex shrink-0 gap-0.5" aria-hidden="true">
+												{colors.map((color, index) => (
+													<span key={`${color}-${index}`} className="size-[11px] rounded-[3px] border border-line" style={{ background: color }} />
+												))}
+											</span>
+										</button>
+									);
+								})}
+							</div>
+						</section>
+					);
+				})}
+			</div>
+		</div>
+	);
+}
+
 export function SettingsDialog(props: DialogProps) {
 	const [snapshot, setSnapshot] = useState<SettingsSnapshot | null>(null);
 	const [draft, setDraft] = useState<Settings | null>(null);
@@ -292,6 +387,7 @@ export function SettingsDialog(props: DialogProps) {
 	const [category, setCategory] = useState<CategoryId>("general");
 	const [query, setQuery] = useState("");
 	const [error, setError] = useState<string | null>(null);
+	const [, setThemeRevision] = useState(0);
 	const search = useRef<HTMLInputElement>(null);
 
 	const refresh = async (): Promise<void> => {
@@ -322,15 +418,26 @@ export function SettingsDialog(props: DialogProps) {
 	useEffect(() => {
 		search.current?.focus();
 	}, []);
+	useEffect(() => {
+		void props.host.actions
+			.request<ThemeState>("themes.state")
+			.then((state) => {
+				props.host.theme.hydrate(state);
+				setThemeRevision((revision) => revision + 1);
+			})
+			.catch(() => undefined);
+	}, [props.host]);
 
-	const persist = async (patch: Partial<Settings>, credentials?: Record<string, string | null>): Promise<void> => {
-		if (!draft) return;
+	const persist = async (patch: Partial<Settings>, credentials?: Record<string, string | null>): Promise<boolean> => {
+		if (!draft) return false;
 		setDraft({ ...draft, ...patch });
 		try {
 			await props.host.actions.invoke("settings.update", undefined, { patch, credentials });
 			setError(null);
+			return true;
 		} catch (saveError) {
 			setError(reason(saveError));
+			return false;
 		}
 	};
 
@@ -338,6 +445,8 @@ export function SettingsDialog(props: DialogProps) {
 		if (!draft) return;
 		void persist(patchFor(draft, path, next));
 	};
+
+	const saveTheme = (next: ThemeSettings): Promise<boolean> => persist({ theme: next } as Partial<Settings>);
 
 	const saveMcp = async (patch: Partial<McpOptions>): Promise<void> => {
 		if (!mcp) return;
@@ -356,12 +465,23 @@ export function SettingsDialog(props: DialogProps) {
 	const matches = useMemo(() => {
 		if (!searching) return null;
 		const hit = (field: Field) => field.title.toLowerCase().includes(needle) || field.description.toLowerCase().includes(needle);
+		const themeWords = [
+			"appearance",
+			"theme",
+			"themes",
+			"light",
+			"dark",
+			"system",
+			...props.host.theme.themes("light").map((theme) => theme.name.toLowerCase()),
+			...props.host.theme.themes("dark").map((theme) => theme.name.toLowerCase()),
+		];
 		return {
 			fields: FIELDS.filter(hit),
 			mcp: MCP_FIELDS.filter(hit).length > 0,
 			providers: snapshot ? snapshot.providers.filter((row) => row.id.toLowerCase().includes(needle)) : [],
+			theme: themeWords.some((word) => word.includes(needle)),
 		};
-	}, [searching, needle, snapshot]);
+	}, [searching, needle, snapshot, props.host]);
 
 	const fieldControl = (field: Field): ReactNode => {
 		if (!draft || !snapshot) return null;
@@ -448,7 +568,7 @@ export function SettingsDialog(props: DialogProps) {
 		);
 	}
 
-	const total = matches ? matches.fields.length + (matches.mcp ? MCP_FIELDS.length : 0) + matches.providers.length : 0;
+	const total = matches ? matches.fields.length + (matches.mcp ? MCP_FIELDS.length : 0) + matches.providers.length + (matches.theme ? 1 : 0) : 0;
 
 	return (
 		<div className="relative flex h-[min(640px,86vh)] w-[min(820px,calc(100vw-48px))] flex-col overflow-hidden font-sans text-ink">
@@ -463,6 +583,7 @@ export function SettingsDialog(props: DialogProps) {
 						const hits = !searching
 							? 0
 							: (matches?.fields.filter((field) => field.category === entry.id).length ?? 0) +
+								(entry.id === "general" && matches?.theme ? 1 : 0) +
 								(entry.id === "tools" && matches?.mcp ? 1 : 0) +
 								(entry.id === "providers" ? (matches?.providers.length ?? 0) : 0);
 						return (
@@ -511,13 +632,15 @@ export function SettingsDialog(props: DialogProps) {
 							<div className="space-y-5">
 								{CATEGORIES.map((entry) => {
 									const fields = matches?.fields.filter((field) => field.category === entry.id) ?? [];
+									const showTheme = entry.id === "general" && matches?.theme === true;
 									const showMcp = entry.id === "tools" && matches?.mcp === true;
 									const providers = entry.id === "providers" ? (matches?.providers ?? []) : [];
-									if (fields.length === 0 && !showMcp && providers.length === 0) return null;
+									if (fields.length === 0 && !showTheme && !showMcp && providers.length === 0) return null;
 									return (
 										<div key={entry.id}>
 											<div className="mb-2 font-serif text-[16px] font-medium text-ink">{entry.label}</div>
 											<div className="divide-y divide-line">
+												{showTheme ? <ThemePanel host={props.host} value={themeOf(draft)} save={saveTheme} /> : null}
 												{fields.map((field) => row(field, fieldControl(field), needle))}
 												{showMcp ? MCP_FIELDS.map((field) => row(field, mcpControl(field), needle)) : null}
 												{providers.map((row) => (
@@ -538,10 +661,22 @@ export function SettingsDialog(props: DialogProps) {
 								) : null}
 							</div>
 						) : category === "providers" ? (
-							<ProvidersPanel snapshot={snapshot} draft={draft} save={persist} refresh={refresh} />
+							<ProvidersPanel
+								snapshot={snapshot}
+								draft={draft}
+								save={async (patch, credentials) => {
+									await persist(patch, credentials);
+								}}
+								refresh={refresh}
+							/>
 						) : (
 							<div>
 								<div className="mb-2 font-serif text-[16px] font-medium text-ink">{CATEGORIES.find((entry) => entry.id === category)?.label}</div>
+								{category === "general" ? (
+									<div className="border-b border-line">
+										<ThemePanel host={props.host} value={themeOf(draft)} save={saveTheme} />
+									</div>
+								) : null}
 								{category === "tools" ? (
 									<div className="mb-1">
 										<div className="font-sans text-[10px] font-medium tracking-[0.6px] text-muted uppercase">MCP</div>

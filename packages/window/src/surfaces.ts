@@ -22,6 +22,7 @@ import type { RowRegistry } from "./rows.ts";
 import type { SelectionService } from "./selection.ts";
 import type { SessionListService } from "./sessions.ts";
 import type { SlotsService } from "./slots.ts";
+import type { ThemeService } from "./theme.ts";
 import type { TranscriptService } from "./transcripts.ts";
 import type { WelcomeService } from "./welcome.ts";
 import type { WorkbenchService } from "./workbench.ts";
@@ -62,6 +63,7 @@ export interface Host {
 	readonly notifications: NotificationService;
 	readonly layout: LayoutService;
 	readonly files: FileEventsService;
+	readonly theme: ThemeService;
 	readonly get: <T extends Service>(id: ServiceId<T>) => T;
 }
 

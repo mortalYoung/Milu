@@ -47,6 +47,8 @@ import { IModelsService } from "./models.ts";
 import type { ModelsService } from "./models.ts";
 import { ISettingsService, type SettingsPoint } from "./settings.ts";
 import type { SettingsService } from "./settings.ts";
+import { IThemesService } from "./themes.ts";
+import type { ThemesService } from "./themes.ts";
 import { IToolService } from "./tools.ts";
 import type { ToolService } from "./tools.ts";
 
@@ -81,6 +83,7 @@ export class ExtensionService implements Service {
 		@IModelsService private readonly _modelsService: ModelsService,
 		@IHookService private readonly _hookService: HookService,
 		@ISettingsService private readonly _settingsService: SettingsService,
+		@IThemesService private readonly _themesService: ThemesService,
 		@IComposerService private readonly _composerService: ComposerService,
 		@IToolService private readonly _toolService: ToolService,
 		@IInstantiationService private readonly _services: IInstantiationService,
@@ -137,6 +140,7 @@ export class ExtensionService implements Service {
 			actions: this._actionService,
 			models: this._modelsService,
 			settings: this._settingsService,
+			themes: { register: (theme) => disposables.add(this._themesService.register(extension.id, theme)) },
 			composer: this._composerService,
 			tools: this._toolService,
 			services: this.services,
@@ -212,6 +216,9 @@ export class ExtensionService implements Service {
 							run: async (call) => (await host.runTool(tool.name, { toolCallId: call.toolCallId, name: tool.name, params: call.params, workspace: call.workspace })) as never,
 						}),
 					);
+				},
+				theme: (theme) => {
+					round.add(this._themesService.register(id, theme));
 				},
 				settings: (key, defaults) => {
 					let point = points.get(key);

@@ -22,6 +22,7 @@ export { SlotsService, ISlotsService, type SlotComponent } from "./slots.ts";
 export { RowRegistry, RowRegistryId, type RowComponent } from "./rows.ts";
 export { createServiceId, type Service, type ServiceId } from "@milu/di";
 export { SurfaceRegistry, SurfaceRegistryId, type Host, type SurfaceComponent, type SurfaceProps } from "./surfaces.ts";
+export { IThemeService, ThemeService, type ThemeOption, type ThemeSnapshot } from "./theme.ts";
 export { TranscriptService, ITranscriptService, type TranscriptState } from "./transcripts.ts";
 export { WelcomeService, IWelcomeService } from "./welcome.ts";
 export { loadWidgets, type WidgetFailure, type WidgetSet } from "./widgets.tsx";

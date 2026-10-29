@@ -1,6 +1,7 @@
 import type { Extension } from "@milu/extension-types";
 
 export const BUILTIN: Record<string, () => Promise<{ default: Extension }>> = {
+	theme: () => import("./theme/index.ts"),
 	create: () => import("./create/index.ts"),
 	details: () => import("./details/index.ts"),
 	explorer: () => import("./explorer/index.ts"),

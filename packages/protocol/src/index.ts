@@ -118,6 +118,50 @@ export interface SlotItem {
 	readonly data?: unknown;
 }
 
+export type ThemeMode = "system" | "light" | "dark";
+export type ThemeAppearance = "light" | "dark";
+
+export const THEME_TOKEN_KEYS = [
+	"canvas",
+	"chrome",
+	"surface",
+	"ink",
+	"inkSoft",
+	"muted",
+	"mutedSoft",
+	"line",
+	"lineStrong",
+	"signal",
+	"accentTeal",
+	"accentAmber",
+	"codeBg",
+	"codeBlockBg",
+	"codeHairline",
+	"link",
+	"caption",
+] as const;
+
+export type ThemeTokenKey = (typeof THEME_TOKEN_KEYS)[number];
+export type ThemeTokens = Partial<Record<ThemeTokenKey, string>>;
+
+export interface Theme {
+	readonly id: string;
+	readonly name: string;
+	readonly appearance: ThemeAppearance;
+	readonly tokens: ThemeTokens;
+}
+
+export interface ThemeSettings {
+	readonly mode: ThemeMode;
+	readonly light: string;
+	readonly dark: string;
+}
+
+export interface ThemeState {
+	readonly themes: readonly Theme[];
+	readonly settings: ThemeSettings;
+}
+
 export interface WelcomeItem {
 	readonly id: string;
 	readonly title: string;

@@ -100,16 +100,9 @@ export {
 	type ReminderType,
 } from "./session/events.ts";
 export type { SessionModel, SessionProfile, WorkspaceFacts } from "./session/files.ts";
-export {
-	SettingsService,
-	ISettingsService,
-	type CustomModel,
-	type CustomProvider,
-	type DefaultModel,
-	type Settings,
-	type SettingsPoint,
-	type ThemeMode,
-} from "./services/settings.ts";
+export { SettingsService, ISettingsService, type CustomModel, type CustomProvider, type DefaultModel, type Settings, type SettingsPoint } from "./services/settings.ts";
+export { ThemesService, IThemesService } from "./services/themes.ts";
+export type { Theme, ThemeAppearance, ThemeMode, ThemeSettings, ThemeState, ThemeTokenKey, ThemeTokens } from "@milu/protocol";
 export { ToolService, IToolService, type Tool, type ToolCall, type ToolFields, type ToolMiddleware, type ToolNext, type ToolResult } from "./services/tools.ts";
 export {
 	bindEnv,

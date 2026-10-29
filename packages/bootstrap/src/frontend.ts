@@ -1,5 +1,5 @@
 import { DisposableStore, type Disposable, IInstantiationService, InstantiationService, ServiceCollection, SyncDescriptor } from "@milu/di";
-import type { Platform, SessionRow, Snapshot, WidgetEntry } from "@milu/protocol";
+import type { Platform, SessionRow, Snapshot, ThemeState, WidgetEntry } from "@milu/protocol";
 import {
 	ActionsService,
 	IActionsService,
@@ -52,6 +52,8 @@ import {
 	WorkbenchService,
 	IWorkbenchService,
 	type ComposerTriggerComponent,
+	IThemeService,
+	ThemeService,
 	type Transport,
 	type SurfaceComponent,
 	SurfaceRegistry,
@@ -122,6 +124,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	services.set(ComposerTriggerRegistryId, new SyncDescriptor(ComposerTriggerRegistry, [[...(deps.triggers ?? []), ...set.triggers]]));
 	services.set(CommandRegistryId, new SyncDescriptor(CommandRegistry));
 	services.set(ILayoutService, new SyncDescriptor(LayoutService));
+	services.set(IThemeService, new SyncDescriptor(ThemeService));
 	container = new InstantiationService(services);
 	services.set(IInstantiationService, container);
 	await container.initialize();
@@ -150,6 +153,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	const hotkeys = container.get(IHotkeysService);
 	const widgets = container.get(WidgetRegistryId);
 	const layout = container.get(ILayoutService);
+	const theme = container.get(IThemeService);
 
 	const disposables = new DisposableStore();
 	disposables.add(markdown);
@@ -235,6 +239,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 			notifications,
 			markdown,
 			layout,
+			theme,
 			get: (id) => container.get(id),
 		},
 		start() {
@@ -285,11 +290,9 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 			);
 			disposables.add(connection.onEntry(({ session, entry }) => transcript.append(session, entry)));
 			disposables.add(connection.onPartial(({ session, message }) => transcript.setPartial(session, message)));
-			const applyTheme = async (): Promise<void> => {
-				const theme = await actions.request<string>("settings.theme").catch(() => undefined);
-				if (theme === undefined) return;
-				if (theme === "system") delete document.documentElement.dataset["theme"];
-				else document.documentElement.dataset["theme"] = theme;
+			const hydrateTheme = async (): Promise<void> => {
+				const state = await actions.request<ThemeState>("themes.state").catch(() => undefined);
+				theme.hydrate(state);
 			};
 
 			disposables.add(
@@ -300,7 +303,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 							composerData.clear();
 							void composer.loadLayout(true);
 							void dock.refresh();
-							void applyTheme();
+							void hydrateTheme();
 							markdown.warm();
 						}
 						return;
@@ -342,7 +345,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 					}
 					if (event.type === "settings") {
 						composerData.clear();
-						void applyTheme();
+						void hydrateTheme();
 						return;
 					}
 					if (event.type === "file") {

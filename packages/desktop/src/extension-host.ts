@@ -13,6 +13,7 @@ import type {
 	HostTool,
 	HostToolCall,
 	HostToolResult,
+	Theme,
 } from "@milu/core";
 import { app, utilityProcess } from "electron";
 
@@ -40,6 +41,13 @@ class UtilityExtensionHost implements ExtensionHost {
 			if (message.method === "registerTool") {
 				this._sink.tool(message.params as HostTool);
 				this._child.postMessage({ id: message.id, ok: true, result: null });
+			} else if (message.method === "registerTheme") {
+				try {
+					this._sink.theme(message.params as Theme);
+					this._child.postMessage({ id: message.id, ok: true, result: null });
+				} catch (error) {
+					this._child.postMessage({ id: message.id, ok: false, error: error instanceof Error ? error.message : String(error) });
+				}
 			} else if (message.method === "registerAction") {
 				this._sink.action(message.params as HostAction);
 				this._child.postMessage({ id: message.id, ok: true, result: null });

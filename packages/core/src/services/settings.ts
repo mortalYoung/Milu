@@ -7,8 +7,6 @@ import { createServiceId, type Disposable, Emitter, type Event, type Service } f
 import { IConfigService } from "./config.ts";
 import type { ConfigService } from "./config.ts";
 
-export type ThemeMode = "system" | "light" | "dark";
-
 export interface CustomModel {
 	id: string;
 	contextWindow?: number;
@@ -34,7 +32,6 @@ export interface Settings {
 	defaultModel?: DefaultModel;
 	providers?: string[];
 	customProviders?: CustomProvider[];
-	theme?: ThemeMode;
 	rememberSession?: boolean;
 	/** Only what the core decides with: the rest of the file belongs to the extensions that declare it. */
 	compaction?: { thresholdRatio?: number };
@@ -45,7 +42,7 @@ export function expandHome(value: string): string {
 }
 
 function defaults(): Settings {
-	return { partner_profile_path: "~/.partner/", theme: "system", rememberSession: true };
+	return { partner_profile_path: "~/.partner/", rememberSession: true };
 }
 
 function isSectionObject(value: unknown): value is Record<string, unknown> {

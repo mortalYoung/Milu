@@ -1,8 +1,25 @@
 import type { AgentToolResult, ExecutionEnv } from "@earendil-works/pi-agent-core";
 import type { TSchema } from "@earendil-works/pi-ai";
-import type { BrowserCommand, ComposerCommand, ComposerTip, DialogDescriptor, Hotkey, SlotItem, WelcomeItem, WidgetType } from "@milu/protocol";
+import type { BrowserCommand, DialogDescriptor, Hotkey, Theme, WidgetType } from "@milu/protocol";
 
-export type { BrowserCommand, ComposerCommand, ComposerTip, DialogDescriptor, ExecutionEnv, Hotkey, SlotItem, TSchema, WelcomeItem, WidgetType };
+export type {
+	BrowserCommand,
+	ComposerCommand,
+	ComposerTip,
+	DialogDescriptor,
+	Hotkey,
+	SlotItem,
+	Theme,
+	ThemeAppearance,
+	ThemeMode,
+	ThemeSettings,
+	ThemeTokenKey,
+	ThemeTokens,
+	WelcomeItem,
+	WidgetType,
+} from "@milu/protocol";
+export type { ExecutionEnv } from "@earendil-works/pi-agent-core";
+export type { TSchema } from "@earendil-works/pi-ai";
 
 export interface Disposable {
 	dispose(): void;
@@ -18,6 +35,10 @@ export interface SettingsPoint<T> {
 
 export interface SettingsPort {
 	declare<T>(section: { readonly key: string; readonly defaults: T }): SettingsPoint<T>;
+}
+
+export interface ThemesPort {
+	register(theme: Theme): Disposable;
 }
 
 export interface ToolCall {
@@ -90,6 +111,7 @@ export interface ExtensionContext {
 	readonly id: string;
 	readonly disposables: Disposables;
 	readonly settings: SettingsPort;
+	readonly themes: ThemesPort;
 	readonly actions: ActionsPort;
 	readonly models: ModelsPort;
 	readonly tools: ToolsPort;

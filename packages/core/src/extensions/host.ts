@@ -1,5 +1,6 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { TSchema } from "@earendil-works/pi-ai";
+import type { Theme } from "@milu/protocol";
 
 import type { AgentHookPoint } from "../services/hooks.ts";
 import type { AgentReminder } from "../session/events.ts";
@@ -43,6 +44,7 @@ export type HostRequest =
 
 export type ChildRequest =
 	| { readonly id: number; readonly method: "registerTool"; readonly params: HostTool }
+	| { readonly id: number; readonly method: "registerTheme"; readonly params: Theme }
 	| { readonly id: number; readonly method: "registerAction"; readonly params: HostAction }
 	| { readonly id: number; readonly method: "registerHook"; readonly params: { readonly point: AgentHookPoint } }
 	| { readonly id: number; readonly method: "provideData"; readonly params: { readonly key: string } }
@@ -56,6 +58,7 @@ export type ChildResponse = { readonly id: number; readonly ok: true; readonly r
 
 export interface HostSink {
 	tool(tool: HostTool): void;
+	theme(theme: Theme): void;
 	settings(key: string, defaults: unknown): unknown;
 	action(action: HostAction): void;
 	hook(point: AgentHookPoint): void;

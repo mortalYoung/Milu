@@ -30,6 +30,7 @@ import {
 	ISelectionService,
 	ISessionService,
 	ISettingsService,
+	IThemesService,
 	IToolService,
 	LayoutService,
 	LifecycleService,
@@ -38,6 +39,7 @@ import {
 	SelectionService,
 	SessionService,
 	SettingsService,
+	ThemesService,
 	ToolService,
 } from "@milu/core";
 import { IInstantiationService, InstantiationService, ServiceCollection, SyncDescriptor } from "@milu/di";
@@ -52,6 +54,7 @@ export async function createBackend(config: BackendConfig): Promise<Backend> {
 	services.set(IContributionService, new SyncDescriptor(ContributionService));
 	services.set(IExecutionService, new SyncDescriptor(ExecutionService));
 	services.set(ISettingsService, new SyncDescriptor(SettingsService));
+	services.set(IThemesService, new SyncDescriptor(ThemesService));
 	services.set(IModelsService, new SyncDescriptor(ModelsService));
 	services.set(ILayoutService, new SyncDescriptor(LayoutService));
 	services.set(IToolService, new SyncDescriptor(ToolService));
