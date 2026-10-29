@@ -373,6 +373,7 @@ export class Session {
 		});
 		const loop = await this.open();
 		loop.restore(await this._log.transcript());
+		await loop.refreshContext();
 		this._usedTokens = null;
 		this._compacted = true;
 		return { shadowed: plan.shadowed };

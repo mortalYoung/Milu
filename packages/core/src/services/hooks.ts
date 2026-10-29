@@ -5,7 +5,7 @@ import { createServiceId, type Disposable, type Service } from "@milu/di";
 import type { AgentReminder } from "../session/events.ts";
 import type { Session } from "../session/session.ts";
 
-export type AgentHookPoint = "beforeRun" | "beforeRequest";
+export type AgentHookPoint = "beforeRun" | "beforeRequest" | "afterCompact";
 
 export interface AgentHookContext {
 	readonly session: Session;
@@ -38,6 +38,7 @@ export class HookService implements Service {
 	initialize(): void {
 		this.register("beforeRun");
 		this.register("beforeRequest");
+		this.register("afterCompact");
 	}
 
 	register(point: AgentHookPoint): void {

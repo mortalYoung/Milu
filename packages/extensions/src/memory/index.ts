@@ -1,6 +1,7 @@
 import {
 	ICompactionService,
 	EVENTS,
+	type AgentHookContext,
 	type ExecutionEnv,
 	type Extension,
 	IHookService,
@@ -121,14 +122,15 @@ export const memoryExtension: Extension = {
 			},
 		});
 
-		context.disposables.add(
-			context.get(IHookService).on("beforeRequest", async (hook) => {
-				const next = await memory.context(hook.session);
-				if (!next) return;
-				if (lastMemoryDigest(hook.messages) === next.digest) return;
-				hook.inject({ type: EVENTS.memoryContext, data: { text: next.text, digest: next.digest } });
-			}),
-		);
+		const hooks = context.get(IHookService);
+		const inject = async (hook: AgentHookContext): Promise<void> => {
+			const next = await memory.context(hook.session);
+			if (!next) return;
+			if (lastMemoryDigest(hook.messages) === next.digest) return;
+			hook.inject({ type: EVENTS.memoryContext, data: { text: next.text, digest: next.digest } });
+		};
+		context.disposables.add(hooks.on("beforeRequest", inject));
+		context.disposables.add(hooks.on("afterCompact", inject));
 
 		context.disposables.add(
 			context.get(ISessionService).onLoopEvent(({ session, event }) => {

@@ -281,6 +281,10 @@ export class AgentLoopService implements Service {
 		this._agent.state.messages = [...messages];
 	}
 
+	async refreshContext(): Promise<void> {
+		await this._emit("afterCompact", this._agent.state.messages);
+	}
+
 	private inject(messages: readonly AgentMessage[]): void {
 		this._agent.state.messages = [...this._agent.state.messages, ...messages];
 	}
