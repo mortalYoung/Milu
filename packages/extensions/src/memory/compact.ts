@@ -3,7 +3,7 @@ import { EVENTS, type CompactionPlan, type Entry } from "@milu/core";
 import { extractionEntries, formatMemoryRecord, type MemoryKind, type MemoryRecord } from "./store.ts";
 
 const MIN_ENTRIES = 8;
-const DEFAULT_DIGEST_MAX_ITEMS = 10;
+export const DEFAULT_DIGEST_MAX_ITEMS = 10;
 const EVENT_RESERVED = 3;
 const QA_PAIRS = 5;
 const QA_MAX_CHARS = 200;

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { EVENTS, type CompactionPlan, type Entry, type Model, type ModelsService, type Session, type SessionService, type SettingsPoint, type SettingsService } from "@milu/core";
 import { createServiceId, type Service } from "@milu/di";
 
-import { planMemoryCompaction } from "../compact.ts";
+import { DEFAULT_DIGEST_MAX_ITEMS, planMemoryCompaction } from "../compact.ts";
 import { consolidateMemory } from "../consolidate.ts";
 import { buildMemoryContext, type MemoryContext } from "../context.ts";
 import { organizeMemory } from "../extract.ts";
@@ -37,6 +37,7 @@ export class MemoryService implements Service {
 	private _idleMinutes: SettingsPoint<number> | null = null;
 	private _maxScenes: SettingsPoint<number> | null = null;
 	private _pendingRounds: SettingsPoint<number> | null = null;
+	private _digestMaxItems: SettingsPoint<number> | null = null;
 
 	constructor(
 		private readonly _modelsService: ModelsService,
@@ -49,6 +50,7 @@ export class MemoryService implements Service {
 		this._idleMinutes = this._settingsService.declare({ key: "memoryIdleMinutes", defaults: DEFAULT_IDLE_MINUTES });
 		this._maxScenes = this._settingsService.declare({ key: "memoryMaxScenes", defaults: DEFAULT_MAX_SCENES });
 		this._pendingRounds = this._settingsService.declare({ key: "memoryPendingRounds", defaults: DEFAULT_PENDING_ROUNDS });
+		this._digestMaxItems = this._settingsService.declare({ key: "memoryDigestMaxItems", defaults: DEFAULT_DIGEST_MAX_ITEMS });
 		for (const name of await this._sessionService.names()) {
 			const session = this._sessionService.get(name);
 			void this._boot(session).catch((error: unknown) => console.error(`memory ${name}: boot failed:`, error));
@@ -135,7 +137,7 @@ export class MemoryService implements Service {
 		const enabled = this._enabled?.get() !== false;
 		const flush = enabled ? await this._flushForCompact(session) : { memoryAvailable: false, covered: false, coveredIndex: -1 };
 		const memoryEvents = enabled ? await this._sessionMemories(session.root, entries) : [];
-		return planMemoryCompaction(entries, { ...flush, memoryEvents, digestMaxItems: this._settingsService.get().compaction?.digestMaxItems });
+		return planMemoryCompaction(entries, { ...flush, memoryEvents, digestMaxItems: this._digestMaxItems?.get() });
 	}
 
 	async status(session: Session): Promise<string> {

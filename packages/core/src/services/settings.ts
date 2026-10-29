@@ -36,31 +36,16 @@ export interface Settings {
 	customProviders?: CustomProvider[];
 	theme?: ThemeMode;
 	rememberSession?: boolean;
-	commands_path?: string;
-	compaction?: {
-		thresholdRatio?: number;
-		digestMaxItems?: number;
-		maxOverflowRetries?: number;
-		prune?: { thresholdChars?: number; headChars?: number; tailChars?: number };
-	};
-	explorer?: { lineGap?: number; fold?: { braces?: boolean; markdown?: boolean } };
-	highlight?: { tokenizeMaxLineLength?: number; tokenizeTimeLimit?: number };
+	/** Only what the core decides with: the rest of the file belongs to the extensions that declare it. */
+	compaction?: { thresholdRatio?: number };
 }
 
 export function expandHome(value: string): string {
 	return value.startsWith("~") ? join(homedir(), value.slice(1)) : value;
 }
 
-function defaults(root: string): Settings {
-	return {
-		partner_profile_path: "~/.partner/",
-		commands_path: join(root, "commands"),
-		theme: "system",
-		rememberSession: true,
-		explorer: { lineGap: 0.2, fold: { braces: true, markdown: true } },
-		highlight: { tokenizeMaxLineLength: 3000, tokenizeTimeLimit: 500 },
-		compaction: { digestMaxItems: 10 },
-	};
+function defaults(): Settings {
+	return { partner_profile_path: "~/.partner/", theme: "system", rememberSession: true };
 }
 
 function isSectionObject(value: unknown): value is Record<string, unknown> {
@@ -115,7 +100,7 @@ export class SettingsService implements Service {
 	constructor(@IConfigService private readonly _configService: ConfigService) {
 		this.file = join(this._configService.root, "settings.json");
 		this.onChange = this._changed.event;
-		this._base = defaults(this._configService.root);
+		this._base = defaults();
 		this._settings = this._base;
 	}
 

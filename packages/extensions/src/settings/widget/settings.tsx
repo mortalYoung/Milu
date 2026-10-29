@@ -12,7 +12,6 @@ const CATEGORIES = [
 	{ id: "tools", label: "MCP & Tools" },
 	{ id: "skills", label: "Skills" },
 	{ id: "memory", label: "Memory" },
-	{ id: "compaction", label: "Compaction" },
 	{ id: "permission", label: "Permission" },
 	{ id: "schedule", label: "Schedule" },
 	{ id: "providers", label: "Providers" },
@@ -141,10 +140,9 @@ const FIELDS: readonly Field[] = [
 		min: 0,
 	},
 	{ id: "memoryMaxScenes", category: "memory", kind: "number", title: "Max Scene Documents", description: "Cap on scene documents per partner; older scenes are merged.", min: 0 },
-
 	{
-		id: "compaction.digestMaxItems",
-		category: "compaction",
+		id: "memoryDigestMaxItems",
+		category: "memory",
 		kind: "number",
 		title: "Checkpoint Digest Items",
 		description: "Max memories carried in a checkpoint digest; the newest events are always reserved.",
