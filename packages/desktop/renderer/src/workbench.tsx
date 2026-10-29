@@ -54,7 +54,13 @@ export function Workbench(props: { host: Host }) {
 	const row = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
-		document.getElementById("boot")?.remove();
+		const boot = document.getElementById("boot");
+		if (boot) {
+			// the boot frame and the app share their geometry, so a short fade reads as nothing happening
+			boot.style.pointerEvents = "none";
+			boot.style.opacity = "0";
+			window.setTimeout(() => boot.remove(), 120);
+		}
 		mark("mounted");
 	}, []);
 

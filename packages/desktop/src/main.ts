@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 
 import { createBackend } from "@milu/bootstrap";
 import type { WidgetRef } from "@milu/core";
-import { app, BrowserWindow, ipcMain, net, protocol, shell } from "electron";
+import { app, BrowserWindow, ipcMain, nativeTheme, net, protocol, shell } from "electron";
 
 import { bootMark } from "./boot.ts";
 import { extensionHostFactory } from "./extension-host.ts";
@@ -77,7 +77,7 @@ async function main(): Promise<void> {
 		minHeight: WINDOW_MIN.height,
 		titleBarStyle: "hiddenInset",
 		trafficLightPosition: { x: 20, y: 20 },
-		backgroundColor: "#faf9f5",
+		backgroundColor: nativeTheme.shouldUseDarkColors ? "#181715" : "#faf9f5",
 		show: false,
 		webPreferences: {
 			preload: join(appDir, "dist-electron/preload.cjs"),
