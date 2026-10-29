@@ -24,6 +24,7 @@ function Row(props: {
 	onRun: (item: ContributionItem) => void;
 }) {
 	const { session } = props;
+	const pinned = session.pinned === true && props.leaf !== true;
 	const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
 	const [menuOpen, setMenuOpen] = useState(false);
 	const menuClosedAt = useRef(0);
@@ -31,7 +32,7 @@ function Row(props: {
 
 	return (
 		<div
-			className={`group relative flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-100 hover:bg-hover${props.selected ? " bg-selected" : ""}${active ? " bg-selected ring-1 ring-line-strong ring-inset" : ""}${props.leaf ? " ml-5" : ""}`}
+			className={`group relative flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-100 hover:bg-hover${props.selected ? " bg-selected" : ""}${active ? " bg-selected ring-1 ring-line-strong ring-inset" : ""}${props.leaf ? " ml-5" : ""}${pinned ? " session-pinned-row" : ""}`}
 			role="button"
 			tabIndex={0}
 			aria-current={props.selected ? "true" : undefined}
@@ -205,6 +206,8 @@ export function SessionListSurface(props: SurfaceProps) {
 	}, [rows, query, expanded, arrived]);
 
 	const roots = useMemo(() => rows.filter((session) => !session.forkedFrom || !rows.some((each) => each.name === session.forkedFrom)).sort(byPinThenRecency), [rows]);
+	/* A fork is never pinned, so its order is only about when it last moved — a pin left over from
+	   before the rule means nothing here. */
 	const leavesByRoot = useMemo(() => {
 		const map = new Map<string, SessionRow[]>();
 		for (const session of rows) {
@@ -213,7 +216,7 @@ export function SessionListSurface(props: SurfaceProps) {
 			list.push(session);
 			map.set(session.forkedFrom, list);
 		}
-		for (const list of map.values()) list.sort(byPinThenRecency);
+		for (const list of map.values()) list.sort((left, right) => activityAt(right) - activityAt(left) || left.name.localeCompare(right.name));
 		return map;
 	}, [rows]);
 
@@ -365,15 +368,15 @@ export function SessionListSurface(props: SurfaceProps) {
 							</div>
 						) : null}
 
-						<div className={`flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto edge-fade${edges.above ? " has-above" : ""}${edges.below ? " has-below" : ""}`} ref={rowsRef}>
-							{
-								<>
-									{pinnedRoots.length > 0 ? <div className="px-2 pt-4 pb-1.5 font-sans text-[10px] font-semibold tracking-[0.16em] text-muted-soft uppercase">Pinned</div> : null}
+						<div className={`edge-fade${edges.above ? " has-above" : ""}${edges.below ? " has-below" : ""} flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto`} ref={rowsRef}>
+							{pinnedRoots.length > 0 ? (
+								<div className="session-pinned">
+									<span className="session-pinned-cap">Pinned</span>
 									{pinnedRoots.map(renderRoot)}
-									{pinnedRoots.length > 0 && restRoots.length > 0 ? <div className="h-2.5 shrink-0" aria-hidden="true" /> : null}
-									{restRoots.map(renderRoot)}
-								</>
-							}
+								</div>
+							) : null}
+							{pinnedRoots.length > 0 && restRoots.length > 0 ? <div className="h-2.5 shrink-0" aria-hidden="true" /> : null}
+							{restRoots.map(renderRoot)}
 						</div>
 					</>
 				)}

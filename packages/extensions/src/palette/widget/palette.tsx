@@ -134,6 +134,10 @@ export function PaletteDialog(props: DialogProps) {
 		if (activeMode === "access") loadAccess();
 	}, [activeMode, loadAccess]);
 
+	useEffect(() => {
+		input.current?.focus();
+	}, [activeMode]);
+
 	const grant = (row: GrantRow): void => {
 		if (row.alwaysOn || selected === "") return;
 		const action = row.group === "skills" ? "skills.partners" : "mcp.partners";
@@ -180,15 +184,10 @@ export function PaletteDialog(props: DialogProps) {
 		setCursor({ stamp, at: (index + delta + rows.length) % rows.length });
 	};
 
-	const pickMode = (next: Mode): void => {
-		setMode(next);
-		setQuery("");
-	};
-
 	const cycle = (): void => {
 		const available = MODES.filter((candidate) => candidate.id !== "files" || filesAvailable);
 		const at = available.findIndex((candidate) => candidate.id === activeMode);
-		pickMode(available[(at + 1) % available.length]?.id ?? "sessions");
+		setMode(available[(at + 1) % available.length]?.id ?? "sessions");
 	};
 
 	const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>): void => {
@@ -246,7 +245,7 @@ export function PaletteDialog(props: DialogProps) {
 								className={`${CHIP} ${activeMode === candidate.id ? "bg-ink text-canvas" : "bg-transparent text-muted hover:bg-hover"}${available ? "" : " cursor-default opacity-50"}`}
 								disabled={!available}
 								aria-pressed={activeMode === candidate.id}
-								onClick={() => pickMode(candidate.id)}
+								onClick={() => setMode(candidate.id)}
 							>
 								{candidate.label}
 							</button>
@@ -254,8 +253,18 @@ export function PaletteDialog(props: DialogProps) {
 					})}
 				</div>
 				<KbdGroup className="ml-auto">
-					<Kbd>⌘</Kbd>
-					<Kbd>P</Kbd>
+					{activeMode === "access" ? (
+						<>
+							<Kbd>⌘</Kbd>
+							<Kbd>⇧</Kbd>
+							<Kbd>P</Kbd>
+						</>
+					) : (
+						<>
+							<Kbd>⌘</Kbd>
+							<Kbd>P</Kbd>
+						</>
+					)}
 				</KbdGroup>
 			</div>
 
