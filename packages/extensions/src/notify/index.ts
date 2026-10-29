@@ -11,6 +11,12 @@ export function placementOf(value: unknown): ToastPlacement {
 	return text === "bottomright" ? "bottomright" : DEFAULT_TOAST_PLACEMENT;
 }
 
+/** 0 is a real choice — the row waits for a dismiss — so only a value that is not a number falls back. */
+export function durationOf(value: unknown): number {
+	const parsed = typeof value === "number" ? value : Number.parseFloat(String(value ?? ""));
+	return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : DEFAULT_TOAST_DURATION_MS;
+}
+
 const notifyExtension: Extension = {
 	id: "notify",
 	apiVersion: 1,
@@ -29,7 +35,7 @@ const notifyExtension: Extension = {
 			run: () => ({
 				data: {
 					placement: placementOf(placement.get()),
-					durationMs: Math.max(0, Number(duration.get()) || DEFAULT_TOAST_DURATION_MS),
+					durationMs: durationOf(duration.get()),
 				},
 			}),
 		});

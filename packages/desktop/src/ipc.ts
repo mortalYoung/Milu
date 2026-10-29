@@ -83,7 +83,12 @@ export class IpcServer {
 				this._broadcast({ type: "entry", session, entry });
 				if (entry.entry.type !== "custom" || entry.entry.customType !== "escalation/request" || this._looking(session)) return;
 				const request = entry.entry.data as { command?: unknown; from?: unknown; to?: unknown } | undefined;
-				this._notify(`${session} · sandbox escalation`, String(request?.command ?? "").slice(0, 140), `${String(request?.from ?? "")} → ${String(request?.to ?? "")}`);
+				this._notify({
+					title: `${session} · sandbox escalation`,
+					body: String(request?.command ?? "").slice(0, 140),
+					subtitle: `${String(request?.from ?? "")} → ${String(request?.to ?? "")}`,
+					session,
+				});
 			}),
 			this._backend.layout.onChange((state) => this._broadcast({ type: "live", event: { type: "layout", ...state } })),
 			this._backend.watch.onChange((path: string) => this._broadcast({ type: "live", event: { type: "file", path } })),
@@ -421,17 +426,36 @@ export class IpcServer {
 	}
 
 	/** A system banner, or the in-app toast when the platform refuses it — a dev Electron build has no notification authorization. */
-	private _notify(title: string, body: string, subtitle?: string, tone: "plain" | "error" = "plain"): void {
+	private _notify(message: { readonly title: string; readonly body: string; readonly subtitle?: string; readonly tone?: "plain" | "error"; readonly session?: string }): void {
+		const { title, body, subtitle, tone = "plain", session } = message;
+		const inApp = () => this._broadcast({ type: "live", event: { type: "notify", title, body, tone, ...(session === undefined ? {} : { session }) } });
 		if (!Notification.isSupported()) {
-			this._broadcast({ type: "live", event: { type: "notify", title, body, tone } });
+			inApp();
 			return;
 		}
 		const notification = new Notification({ title, body, ...(subtitle === undefined ? {} : { subtitle }) });
+		notification.on("click", () => {
+			if (session !== undefined) this._reveal(session);
+		});
 		notification.on("failed", (_event, error) => {
 			console.error(`system notification refused (${error}):`, title);
-			this._broadcast({ type: "live", event: { type: "notify", title, body, tone } });
+			inApp();
 		});
 		notification.show();
+	}
+
+	/** A click on a banner brings the window forward and switches to the session the banner was about. */
+	private _reveal(session: string): void {
+		for (const sender of this._windows) {
+			if (sender.isDestroyed()) continue;
+			const window = BrowserWindow.fromWebContents(sender);
+			if (!window) continue;
+			if (window.isMinimized()) window.restore();
+			window.show();
+			window.focus();
+			break;
+		}
+		void this._backend.selection.select(session);
 	}
 
 	private async _notifyRunEnd(session: string, error?: string): Promise<void> {
@@ -439,7 +463,7 @@ export class IpcServer {
 			const row = await this._backend.sessions.get(session).row();
 			const spoken = row.lastMessageKind === "assistant" || row.lastMessageKind === "send_message" ? (row.lastMessage ?? "") : "";
 			const body = error || spoken || "Click to view the conversation";
-			this._notify(`${session} · ${error ? "run ended with an error" : "finished"}`, body.slice(0, 140));
+			this._notify({ title: `${session} · ${error ? "run ended with an error" : "finished"}`, body: body.slice(0, 140), session });
 		} catch (failure) {
 			console.error("run-end notification failed:", failure);
 		}
