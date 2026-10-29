@@ -41,6 +41,13 @@ export interface ViewCommand {
 	status: "running" | "success" | "error";
 }
 
+export interface ViewShell {
+	readonly shellId: string;
+	readonly output: string;
+	readonly exitCode?: number;
+	readonly status: "running" | "success" | "error";
+}
+
 export interface ViewRetry {
 	readonly attempt: number;
 	readonly maxRetries: number;
@@ -70,7 +77,7 @@ export interface ViewItem {
 	/** The files this run wrote, absolute and inside the workspace — the words a message may link. */
 	files?: readonly string[];
 	escalation?: ViewEscalation;
-	shell?: { readonly output: string; readonly exitCode?: number };
+	shell?: ViewShell;
 }
 
 const WEEKDAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
@@ -277,16 +284,38 @@ function commandDoneVisit(entry: LogEntry, out: ViewItem[]): void {
 	if (typeof data.text === "string" && data.text !== "") item.command.text = data.text;
 }
 
+function shellRunVisit(entry: LogEntry, out: ViewItem[]): void {
+	if (entry.type !== "custom") return;
+	const data = entry.data as { shellId?: unknown; command?: unknown; timestamp?: unknown } | undefined;
+	if (data?.shellId == null) return;
+	out.push({
+		id: entry.id,
+		kind: "shell",
+		text: String(data.command ?? ""),
+		time: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
+		shell: { shellId: String(data.shellId), output: "", status: "running" },
+	});
+}
+
 function shellDoneVisit(entry: LogEntry, out: ViewItem[]): void {
 	if (entry.type !== "custom") return;
-	const data = entry.data as { command?: unknown; text?: unknown; exitCode?: unknown; timestamp?: unknown } | undefined;
+	const data = entry.data as { shellId?: unknown; command?: unknown; text?: unknown; exitCode?: unknown; kind?: unknown; timestamp?: unknown } | undefined;
+	const output = typeof data?.text === "string" ? data.text : "";
+	const exitCode = typeof data?.exitCode === "number" ? data.exitCode : undefined;
+	const status = data?.kind === "error" ? "error" : "success";
+	const shellId = data?.shellId == null ? "" : String(data.shellId);
+	const running = findLast(out, (row) => row.shell !== undefined && (shellId === "" ? row.shell.status === "running" : row.shell.shellId === shellId));
+	if (running?.shell) {
+		running.shell = { shellId: running.shell.shellId, output, status, ...(exitCode === undefined ? {} : { exitCode }) };
+		return;
+	}
 	if (typeof data?.command !== "string") return;
 	out.push({
 		id: entry.id,
 		kind: "shell",
 		text: data.command,
 		time: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
-		shell: { output: typeof data.text === "string" ? data.text : "", ...(typeof data.exitCode === "number" ? { exitCode: data.exitCode } : {}) },
+		shell: { shellId, output, status, ...(exitCode === undefined ? {} : { exitCode }) },
 	});
 }
 
@@ -406,6 +435,7 @@ const VISITORS: Readonly<Record<string, (entry: LogEntry, out: ViewItem[]) => vo
 	[LOG_EVENTS.toolResult]: toolResultVisit,
 	[LOG_EVENTS.sendMessage]: sendMessageVisit,
 	[LOG_EVENTS.agentEnd]: agentEndVisit,
+	[LOG_EVENTS.shellRun]: shellRunVisit,
 	[LOG_EVENTS.shellDone]: shellDoneVisit,
 	[LOG_EVENTS.escalationRequest]: escalationVisit,
 	[LOG_EVENTS.escalationDecision]: escalationDecisionVisit,

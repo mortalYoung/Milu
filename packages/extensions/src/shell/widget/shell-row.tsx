@@ -13,12 +13,13 @@ export function ShellRow(props: SlotProps) {
 	const { item } = props.data as RowData;
 	const [open, setOpen] = useState(true);
 	const shell = item.shell;
-	const failed = shell?.exitCode !== undefined && shell.exitCode !== 0;
-	const foldable = shell !== undefined && shell.output !== "";
+	const running = shell?.status === "running";
+	const failed = shell?.status === "error";
+	const foldable = shell !== undefined && !running && shell.output !== "";
 	const tone = failed ? "border-signal/45 bg-signal/10 text-ink" : "border-line bg-hover text-ink";
 
 	return (
-		<div className={`${CARD} ${tone}`} data-entry={item.id}>
+		<div className={`${CARD} ${tone}`} data-entry={item.id} aria-busy={running || undefined}>
 			<button
 				type="button"
 				className={`flex w-full items-center gap-2 border-0 bg-transparent p-0 text-left ${foldable ? "cursor-pointer" : "cursor-default"}`}
@@ -27,10 +28,11 @@ export function ShellRow(props: SlotProps) {
 			>
 				<span className={`${BADGE} ${failed ? "border-signal/40 text-signal" : "border-accent-amber/50 text-accent-amber"}`}>shell</span>
 				<span className="min-w-0 flex-1 truncate">$ {item.text}</span>
+				{running ? <span className="work-dot shrink-0" aria-hidden="true" /> : null}
 				{failed ? <span className="shrink-0 font-mono text-[10px] text-signal">exit {shell?.exitCode}</span> : null}
 				{foldable ? <span className="shrink-0 text-[10px] text-muted-soft">{open ? "⌄" : "›"}</span> : null}
 			</button>
-			{open && shell && shell.output !== "" ? <pre className={OUTPUT}>{shell.output}</pre> : null}
+			{open && !running && shell && shell.output !== "" ? <pre className={OUTPUT}>{shell.output}</pre> : null}
 		</div>
 	);
 }
