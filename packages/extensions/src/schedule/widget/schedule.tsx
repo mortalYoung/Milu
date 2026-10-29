@@ -139,31 +139,31 @@ export function ScheduleTimeline(props: SlotProps) {
 	if (!data || data.rows.length === 0) return null;
 
 	return (
-		<section className="welcome-grp">
-			<h3 className="welcome-eyebrow">Next</h3>
-			<ul>
-				{data.rows.slice(0, WELCOME_MAX_ROWS).map((row) => {
+		<section className="welcome-schedule">
+			<div className="welcome-schedule-head">
+				<span>Schedule</span>
+				<span className="welcome-schedule-count">{data.rows.length} upcoming</span>
+			</div>
+			<div className="welcome-schedule-list">
+				{data.rows.slice(0, WELCOME_MAX_ROWS).map((row, index) => {
 					const when = describeNextRun(row.at);
 					return (
-						<li className="welcome-row-item" key={`${row.session}:${row.id}`}>
-							<Tip label={row.title}>
-								<button type="button" className="welcome-row" onClick={() => void props.host.selection.select(row.session)}>
-									<span className="welcome-tick" aria-hidden="true" />
-									<span className="welcome-when">
-										{when.day}
-										{when.offset !== null ? <sub className="welcome-offset">+{when.offset}</sub> : null}
-										{when.day ? " " : ""}
-										{when.clock}
-									</span>
-									<span className="welcome-what">{row.title || row.id}</span>
-									<span className="welcome-chat">{row.session}</span>
-								</button>
-							</Tip>
-						</li>
+						<Tip key={`${row.session}:${row.id}`} label={row.title}>
+							<button type="button" className={index === 0 ? "welcome-schedule-row is-next" : "welcome-schedule-row"} onClick={() => void props.host.selection.select(row.session)}>
+								<span className="welcome-schedule-time">
+									{when.day}
+									{when.offset !== null ? <sub className="welcome-schedule-offset">+{when.offset}</sub> : null}
+									{when.day ? " " : ""}
+									{when.clock}
+								</span>
+								<span className="welcome-schedule-title">{row.title || row.id}</span>
+								<span className="welcome-schedule-chat">{row.session}</span>
+							</button>
+						</Tip>
 					);
 				})}
-				{data.rows.length > WELCOME_MAX_ROWS ? <li className="welcome-more">+{data.rows.length - WELCOME_MAX_ROWS} more</li> : null}
-			</ul>
+			</div>
+			{data.rows.length > WELCOME_MAX_ROWS ? <div className="welcome-schedule-more">+{data.rows.length - WELCOME_MAX_ROWS} more</div> : null}
 		</section>
 	);
 }

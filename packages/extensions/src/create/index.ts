@@ -10,7 +10,7 @@ const createExtension: Extension = {
 
 	contributions: {
 		"session.header": [{ id: "create", title: "Create", icon: "square-pen", action: "create.session" }],
-		"welcome.items": [{ id: "new-chat", order: 0, title: "new chat", variant: "primary", action: "create.session" }],
+		"welcome.items": [{ id: "new-chat", order: 0, title: "New Chat", variant: "primary", action: "create.session" }],
 	},
 
 	activate(context) {

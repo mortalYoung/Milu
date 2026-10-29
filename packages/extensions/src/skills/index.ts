@@ -22,7 +22,7 @@ const skillsExtension: Extension = {
 
 	contributions: {
 		"workspace.views": [{ id: "skills", order: 10, component: "skills.view" }],
-		"welcome.items": [{ id: "skills", order: 5, title: "skills & mcp", variant: "primary", action: "skills.open" }],
+		"welcome.items": [{ id: "skills", order: 5, title: "Skills & MCP", variant: "outline", action: "skills.open" }],
 	},
 
 	services: [{ id: ISkillsService, create: (container) => new SkillsService(container.get(ISettingsService)) }],
@@ -31,7 +31,7 @@ const skillsExtension: Extension = {
 		const skills = context.get(ISkillsService);
 		const sessions = context.get(ISessionService);
 
-		context.actions.register({ id: "skills.open", run: () => ({ kind: "view", view: "skills" }) });
+		context.actions.register({ id: "skills.open", scope: "app", hotkey: "Mod+K", run: () => ({ kind: "view", view: "skills" }) });
 		context.actions.register({ id: "workspace.close", scope: "view", hotkey: "Mod+W", run: () => ({ kind: "view", view: null }) });
 		context.disposables.add(
 			context.get(ICommandsService).register({
