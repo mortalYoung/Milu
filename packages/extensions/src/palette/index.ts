@@ -33,7 +33,8 @@ const paletteExtension: Extension = {
 			id: "palette.access",
 			scope: "app",
 			hotkey: "Mod+Shift+P",
-			run: async ({ dialog }) => {
+			run: async ({ session, dialog }) => {
+				if (!session) return;
 				await dialog?.({ kind: "custom", id: "palette", title: "Manage Access", data: { mode: "access" }, presentation: "palette" });
 			},
 		});

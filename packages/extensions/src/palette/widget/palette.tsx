@@ -77,7 +77,8 @@ export function PaletteDialog(props: DialogProps) {
 
 	const current = sessions.find((row) => row.name === selected);
 	const filesAvailable = selected !== "" && current?.workspace !== undefined && current?.workspace !== null;
-	const activeMode: Mode = mode === "files" && !filesAvailable ? "sessions" : mode;
+	const accessAvailable = selected !== "";
+	const activeMode: Mode = mode === "files" && !filesAvailable ? "sessions" : mode === "access" && !accessAvailable ? "sessions" : mode;
 
 	const panel = useRef<HTMLDivElement>(null);
 
@@ -185,7 +186,7 @@ export function PaletteDialog(props: DialogProps) {
 	};
 
 	const cycle = (): void => {
-		const available = MODES.filter((candidate) => candidate.id !== "files" || filesAvailable);
+		const available = MODES.filter((candidate) => (candidate.id !== "files" || filesAvailable) && (candidate.id !== "access" || accessAvailable));
 		const at = available.findIndex((candidate) => candidate.id === activeMode);
 		setMode(available[(at + 1) % available.length]?.id ?? "sessions");
 	};
@@ -219,7 +220,7 @@ export function PaletteDialog(props: DialogProps) {
 	};
 
 	const empty = (() => {
-		if (activeMode === "access") return selected === "" ? "open a chat to grant" : loaded ? "no skills or mcp servers" : "loading…";
+		if (activeMode === "access") return loaded ? "no skills or mcp servers" : "loading…";
 		if (activeMode === "sessions") return "no chat found";
 		if (!filesAvailable) return "open a chat with a workspace to search files";
 		if (searching) return "searching…";
@@ -237,7 +238,7 @@ export function PaletteDialog(props: DialogProps) {
 			<div className="flex items-center gap-2 border-b border-line px-3 py-2">
 				<div className={CHIPS} role="group" aria-label="Mode">
 					{MODES.map((candidate) => {
-						const available = candidate.id !== "files" || filesAvailable;
+						const available = candidate.id === "files" ? filesAvailable : candidate.id === "access" ? accessAvailable : true;
 						return (
 							<button
 								key={candidate.id}
