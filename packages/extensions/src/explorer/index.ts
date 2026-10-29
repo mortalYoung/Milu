@@ -45,6 +45,9 @@ const BINARY = new Set([
 	".zip",
 ]);
 
+/** A session with no workspace has no tree: the point drops the item instead of rendering an empty pane. */
+const workspaceOnly = async (session: Session): Promise<true | null> => ((await session.workspace()) === null ? null : true);
+
 const extensionOf = (path: string): string => {
 	const at = path.lastIndexOf(".");
 	const slash = path.lastIndexOf("/");
@@ -63,9 +66,9 @@ const explorerExtension: Extension = {
 	],
 
 	contributions: {
-		"chat.bar": [{ id: "explorer", order: 40, component: "explorer.bar" }],
-		"dock.bar": [{ id: "explorer", order: 10, component: "explorer.head" }],
-		"dock.views": [{ id: "explorer", order: 20, component: "explorer.pane", title: "Explorer", icon: "folder-tree" }],
+		"chat.bar": [{ id: "explorer", order: 40, component: "explorer.bar", data: workspaceOnly }],
+		"dock.bar": [{ id: "explorer", order: 10, component: "explorer.head", data: workspaceOnly }],
+		"dock.views": [{ id: "explorer", order: 20, component: "explorer.pane", title: "Explorer", icon: "folder-tree", data: workspaceOnly }],
 	},
 
 	activate(context) {

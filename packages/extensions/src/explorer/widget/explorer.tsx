@@ -107,11 +107,22 @@ interface RowMenu {
 	readonly y: number;
 }
 
+/** The tree needs a workspace: without one the explorer is not part of the chrome at all. */
+function useHasWorkspace(host: Host): boolean {
+	const selected = useStore(host.selection.store, (state) => state.selected);
+	return useStore(host.sessions.store, (state) => {
+		const row = state.rows.find((each) => each.name === selected);
+		return selected !== "" && row !== undefined && row.workspace != null;
+	});
+}
+
 export function ExplorerButton(props: SlotProps) {
 	const { host } = props;
+	const hasWorkspace = useHasWorkspace(host);
 	const visible = useStore(host.dock.store, (state) => state.visible);
 	const active = useStore(host.dock.store, (state) => state.active);
 	const open = visible && active === "explorer";
+	if (!hasWorkspace) return null;
 	return (
 		<>
 			<span aria-hidden className="mx-0.5 h-4 w-px shrink-0 bg-line" />
@@ -132,12 +143,14 @@ export function ExplorerButton(props: SlotProps) {
 
 export function ExplorerHead(props: SlotProps) {
 	const { host } = props;
+	const hasWorkspace = useHasWorkspace(host);
 	const tree = host.get(IExplorerTreeService);
 	const state = useStore(tree.store);
 
 	const root = state.dirs[""];
 	const rootName = state.root === "" ? "workspace" : (state.root.split("/").filter(Boolean).pop() ?? state.root);
 
+	if (!hasWorkspace) return null;
 	return (
 		<>
 			<span className="dock-bar-title">
@@ -157,6 +170,7 @@ export function ExplorerHead(props: SlotProps) {
 
 export function ExplorerPane(props: SlotProps) {
 	const { host } = props;
+	const hasWorkspace = useHasWorkspace(host);
 	const tree = host.get(IExplorerTreeService);
 	const state = useStore(tree.store);
 	const dockWidth = useStore(host.columns.store, (current) => current.columns.dock.width);
@@ -311,6 +325,8 @@ export function ExplorerPane(props: SlotProps) {
 			</div>
 		);
 	};
+
+	if (!hasWorkspace) return null;
 
 	const treeBody = (
 		<div className="explorer-tree" ref={rows} onScroll={(event) => tree.rememberScroll(event.currentTarget.scrollTop)}>

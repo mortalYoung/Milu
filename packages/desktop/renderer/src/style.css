@@ -383,6 +383,12 @@ body.pane-dragging {
 }
 
 /* 悬停才显形的省略号；菜单是手写的平铺版本，子菜单到位时整体换掉 */
+.conv-menu {
+	max-height: min(70vh, var(--radix-dropdown-menu-content-available-height, 70vh));
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}
+
 .conv-menu[data-state="open"] {
 	animation: menu-in 120ms cubic-bezier(0.23, 1, 0.32, 1) both;
 }

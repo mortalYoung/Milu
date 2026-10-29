@@ -24,12 +24,14 @@ function Row(props: {
 	onRun: (item: ContributionItem) => void;
 }) {
 	const { session } = props;
+	const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
 	const [menuOpen, setMenuOpen] = useState(false);
 	const menuClosedAt = useRef(0);
+	const active = menuOpen || pointer !== null;
 
 	return (
 		<div
-			className={`group relative flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-100 hover:bg-hover${props.selected ? " bg-selected" : ""}${props.leaf ? " ml-5" : ""}`}
+			className={`group relative flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-100 hover:bg-hover${props.selected ? " bg-selected" : ""}${active ? " bg-selected ring-1 ring-line-strong ring-inset" : ""}${props.leaf ? " ml-5" : ""}`}
 			role="button"
 			tabIndex={0}
 			aria-current={props.selected ? "true" : undefined}
@@ -39,7 +41,7 @@ function Row(props: {
 			}}
 			onContextMenu={(event) => {
 				event.preventDefault();
-				setMenuOpen(true);
+				setPointer({ x: event.clientX, y: event.clientY });
 			}}
 			onKeyDown={(event) => {
 				if (event.key !== "Enter" && event.key !== " ") return;
@@ -102,10 +104,9 @@ function Row(props: {
 				) : null}
 			</span>
 			<Menu
-				open={menuOpen}
 				onOpenChange={(open) => {
-					if (!open) menuClosedAt.current = Date.now();
 					setMenuOpen(open);
+					if (!open) menuClosedAt.current = Date.now();
 				}}
 			>
 				<MenuTrigger asChild>
@@ -122,6 +123,24 @@ function Row(props: {
 					<MenuItems items={session.menu ?? []} onRun={props.onRun} />
 				</MenuContent>
 			</Menu>
+
+			{pointer === null ? null : (
+				<Menu
+					open
+					onOpenChange={(open) => {
+						if (open) return;
+						menuClosedAt.current = Date.now();
+						setPointer(null);
+					}}
+				>
+					<MenuTrigger asChild>
+						<span aria-hidden tabIndex={-1} style={{ position: "fixed", left: pointer.x, top: pointer.y, width: 1, height: 1 }} />
+					</MenuTrigger>
+					<MenuContent>
+						<MenuItems items={session.menu ?? []} onRun={props.onRun} />
+					</MenuContent>
+				</Menu>
+			)}
 		</div>
 	);
 }
