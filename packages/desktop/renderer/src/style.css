@@ -3357,7 +3357,43 @@ body.git-resizing {
 
 .ledger-count {
 	display: inline-block;
+	margin-left: auto;
 	color: var(--muted-soft);
+}
+
+.ledger-clear {
+	display: grid;
+	place-items: center;
+	align-self: center;
+	width: 18px;
+	height: 18px;
+	margin-left: 2px;
+	padding: 0;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: var(--muted-soft);
+	cursor: pointer;
+	opacity: 0.55;
+	transition:
+		opacity 120ms var(--ease-out),
+		background-color 120ms var(--ease-out),
+		color 120ms var(--ease-out);
+}
+
+.ledger:hover .ledger-clear,
+.ledger-clear:focus-visible {
+	opacity: 1;
+}
+
+.ledger-clear:hover {
+	background: var(--hover);
+	color: var(--ink);
+}
+
+.ledger-clear:focus-visible {
+	outline: 1px solid var(--line-strong);
+	outline-offset: 1px;
 }
 
 .ledger-count.is-bumped {
