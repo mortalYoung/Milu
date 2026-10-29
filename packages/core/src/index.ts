@@ -16,8 +16,9 @@ import type { ToolService } from "./services/tools.ts";
 import type { WatchService } from "./services/watch.ts";
 
 export { Agent } from "@earendil-works/pi-agent-core";
+export { isRetryableAssistantError } from "@earendil-works/pi-ai";
 export type { Entry, StreamFn } from "@earendil-works/pi-agent-core";
-export type { Message, Model } from "@earendil-works/pi-ai";
+export type { AssistantMessage, Message, Model } from "@earendil-works/pi-ai";
 export type { AgentLoopEvent, AgentLoopRun, AgentLoopService } from "./services/agent-loop.ts";
 export { IAgentLoopService } from "./services/agent-loop.ts";
 export { ActionService, IActionService, type Action, type ActionContext, type ActionOutcome } from "./services/actions.ts";

@@ -6,6 +6,7 @@ export const BUILTIN: Record<string, () => Promise<{ default: Extension }>> = {
 	explorer: () => import("./explorer/index.ts"),
 	git: () => import("./git/index.ts"),
 	fork: () => import("./fork/index.ts"),
+	retry: () => import("./retry/index.ts"),
 	mentions: () => import("./mentions/index.ts"),
 	settings: () => import("./settings/index.ts"),
 	pin: () => import("./pin/index.ts"),

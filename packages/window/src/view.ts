@@ -41,9 +41,17 @@ export interface ViewCommand {
 	status: "running" | "success" | "error";
 }
 
+export interface ViewRetry {
+	readonly attempt: number;
+	readonly maxRetries: number;
+	readonly delayMs: number;
+	readonly error: string;
+	started?: true;
+}
+
 export interface ViewItem {
 	id: string;
-	kind: "user" | "assistant" | "escalation" | "error" | "aborted" | "shell" | "sep" | "command";
+	kind: "user" | "assistant" | "escalation" | "error" | "aborted" | "shell" | "sep" | "command" | "retry";
 	text: string;
 	time: number;
 	from?: string;
@@ -54,6 +62,7 @@ export interface ViewItem {
 	thinking?: { text: string; redacted?: boolean };
 	tool?: ViewTool;
 	command?: ViewCommand;
+	retry?: ViewRetry;
 	stepMs?: number;
 	say?: true;
 	live?: true;
@@ -364,6 +373,33 @@ function attachPeerPosts(entries: readonly LogEntry[], out: ViewItem[]): void {
 	}
 }
 
+/** A retry is one row: scheduled shows the wait, started turns the same row to its past tense. */
+function retryScheduledVisit(entry: LogEntry, out: ViewItem[]): void {
+	if (entry.type !== "custom") return;
+	const data = entry.data as { retry?: unknown; maxRetries?: unknown; delayMs?: unknown; error?: unknown; timestamp?: unknown } | undefined;
+	if (typeof data?.retry !== "number") return;
+	out.push({
+		id: entry.id,
+		kind: "retry",
+		text: typeof data.error === "string" ? data.error : "",
+		time: typeof data.timestamp === "number" ? data.timestamp : (entry.timestamp ?? 0),
+		retry: {
+			attempt: data.retry,
+			maxRetries: typeof data.maxRetries === "number" ? data.maxRetries : data.retry,
+			delayMs: typeof data.delayMs === "number" ? data.delayMs : 0,
+			error: typeof data.error === "string" ? data.error : "",
+		},
+	});
+}
+
+function retryStartedVisit(entry: LogEntry, out: ViewItem[]): void {
+	if (entry.type !== "custom") return;
+	const data = entry.data as { retry?: unknown } | undefined;
+	if (typeof data?.retry !== "number") return;
+	const item = findLast(out, (row) => row.retry !== undefined && row.retry.started !== true && row.retry.attempt === data.retry);
+	if (item?.retry) item.retry.started = true;
+}
+
 const VISITORS: Readonly<Record<string, (entry: LogEntry, out: ViewItem[]) => void>> = {
 	"role:user": userVisit,
 	"role:assistant": assistantVisit,
@@ -377,6 +413,8 @@ const VISITORS: Readonly<Record<string, (entry: LogEntry, out: ViewItem[]) => vo
 	[LOG_EVENTS.rewind]: rewindVisit,
 	[LOG_EVENTS.commandRun]: commandVisit,
 	[LOG_EVENTS.commandDone]: commandDoneVisit,
+	[LOG_EVENTS.retryScheduled]: retryScheduledVisit,
+	[LOG_EVENTS.retryStarted]: retryStartedVisit,
 };
 
 export function rowKindOf(item: ViewItem): string {
@@ -642,7 +680,7 @@ export function layoutView(items: readonly ViewItem[]): DisplayRow[] {
 	const out: ViewItem[] = [];
 	let lastDay = "";
 	for (const item of items) {
-		if (item.kind !== "error" && item.kind !== "aborted") {
+		if (item.kind !== "error" && item.kind !== "aborted" && item.kind !== "retry") {
 			const day = dayOf(item.time);
 			if (lastDay !== "" && day !== lastDay) out.push({ id: `sep:${day}`, kind: "sep", text: day, time: item.time });
 			lastDay = day;

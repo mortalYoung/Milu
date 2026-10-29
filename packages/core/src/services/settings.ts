@@ -37,7 +37,6 @@ export interface Settings {
 	theme?: ThemeMode;
 	rememberSession?: boolean;
 	commands_path?: string;
-	retry?: { maxRetries?: number; baseDelayMs?: number };
 	compaction?: {
 		thresholdRatio?: number;
 		digestMaxItems?: number;

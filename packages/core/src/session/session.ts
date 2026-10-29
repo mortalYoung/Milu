@@ -444,6 +444,21 @@ export class Session {
 					record(EVENTS.agentEnd, { run: event.run, reason, ...(reason === "error" && event.error ? { error: event.error } : {}), timestamp });
 					return;
 				}
+				case "retry_scheduled":
+					record(EVENTS.retryScheduled, {
+						retryId: `${event.run}:${event.retry}`,
+						run: event.run,
+						turn: event.turn,
+						retry: event.retry,
+						maxRetries: event.maxRetries,
+						delayMs: event.delayMs,
+						error: event.error,
+						timestamp,
+					});
+					return;
+				case "retry_started":
+					record(EVENTS.retryStarted, { retryId: `${event.run}:${event.retry}`, run: event.run, turn: event.turn, retry: event.retry, timestamp });
+					return;
 				case "reminder":
 					record(event.reminder.type, { ...event.reminder.data, timestamp });
 					return;

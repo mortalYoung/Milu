@@ -45,6 +45,8 @@ export const LOG_EVENTS = {
 	scheduleRun: "schedule/run",
 	commandRun: "command/run",
 	commandDone: "command/done",
+	retryScheduled: "retry/scheduled",
+	retryStarted: "retry/started",
 	shellRun: "shell/run",
 	shellDone: "shell/done",
 } as const;

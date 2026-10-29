@@ -1,6 +1,6 @@
 import type { AgentEvent, AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
 import { Agent } from "@earendil-works/pi-agent-core";
-import type { Api, Model, ModelThinkingLevel } from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, Model, ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { DisposableStore, createServiceId, Emitter, type Event, type Service } from "@milu/di";
 
 import { type AgentReminder, reminderText } from "../session/events.ts";
@@ -23,6 +23,8 @@ export type AgentLoopEvent =
 	| ({ type: "tool_end"; toolCallId: string; toolName: string; isError: boolean } & AgentLoopProgress)
 	| { type: "reminder"; reminder: AgentReminder }
 	| ({ type: "turn_end" } & AgentLoopProgress)
+	| ({ type: "retry_scheduled"; retry: number; maxRetries: number; delayMs: number; error: string } & AgentLoopProgress)
+	| ({ type: "retry_started"; retry: number } & AgentLoopProgress)
 	| ({ type: "run_end"; stopped?: boolean; error?: string } & AgentLoopProgress);
 
 export interface AgentLoopRun {
@@ -40,6 +42,11 @@ export class AgentLoopService implements Service {
 	private _running = false;
 	private _stopped = false;
 	private readonly _pending: (string | AgentMessage)[] = [];
+	/** A failed attempt's tail, held until the retry decision says whether it is final. */
+	private _held: AgentEvent[] = [];
+	private _releasing = false;
+	private _retries = 0;
+	private _wake: (() => void) | null = null;
 
 	constructor(
 		private readonly _modelsService: ModelsService,
@@ -88,7 +95,7 @@ export class AgentLoopService implements Service {
 		this._stopped = false;
 		this._running = true;
 		try {
-			return await this._execute(input);
+			return await this._runWithRetry(input);
 		} finally {
 			this._running = false;
 			void this._drain();
@@ -100,24 +107,99 @@ export class AgentLoopService implements Service {
 		this._stopped = false;
 		this._running = true;
 		try {
-			await this._agent.continue();
-			await this._agent.waitForIdle();
-			const error = this._agent.state.errorMessage;
-			return error ? { error } : {};
+			return await this._runWithRetry(null);
 		} finally {
 			this._running = false;
 			void this._drain();
 		}
 	}
 
-	private async _execute(input: string | AgentMessage): Promise<AgentLoopRun> {
-		this._agent.state.tools = [...(await this._toolService.tools(this._session))];
-		await this._emit("beforeRun", this._agent.state.messages);
-		if (typeof input === "string") await this._agent.prompt(input);
-		else await this._agent.prompt(input);
+	/** One attempt, then another if the failure hook asks for it — the failed one leaves no trace. */
+	private async _runWithRetry(input: string | AgentMessage | null): Promise<AgentLoopRun> {
+		let next = input;
+		this._retries = 0;
+		for (;;) {
+			const result = await this._attempt(next);
+			if (result.error === undefined) {
+				this._release();
+				return result;
+			}
+			const message = this._agent.state.messages.at(-1);
+			this._retries += 1;
+			const decision =
+				this._stopped || message?.role !== "assistant"
+					? null
+					: await this._hookService.askRetry({ session: this._session, message: message as AssistantMessage, attempt: this._retries });
+			if (decision === null) {
+				this._release();
+				return result;
+			}
+			this._held = [];
+			this._dropFailure();
+			this._emitter.fire({
+				type: "retry_scheduled",
+				run: this._runs,
+				turn: this._turn,
+				retry: this._retries,
+				maxRetries: decision.maxRetries,
+				delayMs: decision.delayMs,
+				error: result.error,
+			});
+			await this._idle(decision.delayMs);
+			if (this._stopped) {
+				this._stopped = false;
+				this._emitter.fire({ type: "run_end", run: this._runs, turn: this._turn, stopped: true });
+				return {};
+			}
+			this._emitter.fire({ type: "retry_started", run: this._runs, turn: this._turn, retry: this._retries });
+			next = null;
+		}
+	}
+
+	private async _attempt(input: string | AgentMessage | null): Promise<AgentLoopRun> {
+		if (input !== null) {
+			this._agent.state.tools = [...(await this._toolService.tools(this._session))];
+			await this._emit("beforeRun", this._agent.state.messages);
+			if (typeof input === "string") await this._agent.prompt(input);
+			else await this._agent.prompt(input);
+		} else {
+			await this._agent.continue();
+		}
 		await this._agent.waitForIdle();
 		const error = this._agent.state.errorMessage;
 		return error ? { error } : {};
+	}
+
+	/** Give the failed attempt back to whoever listens — the records are written from here. */
+	private _release(): void {
+		const held = this._held;
+		this._held = [];
+		this._releasing = true;
+		try {
+			for (const event of held) this._relay(event);
+		} finally {
+			this._releasing = false;
+		}
+	}
+
+	private _dropFailure(): void {
+		const messages = this._agent.state.messages;
+		const last = messages.at(-1);
+		if (last !== undefined && last.role === "assistant" && (last as { stopReason?: unknown }).stopReason === "error") this._agent.state.messages = messages.slice(0, -1);
+	}
+
+	/** The backoff, woken early by `stop()` so an aborted retry does not wait out its delay. */
+	private _idle(ms: number): Promise<void> {
+		if (ms <= 0) return Promise.resolve();
+		return new Promise<void>((resolve) => {
+			const done = () => {
+				clearTimeout(timer);
+				this._wake = null;
+				resolve();
+			};
+			const timer = setTimeout(done, ms);
+			this._wake = done;
+		});
 	}
 
 	private _awaitingToolResult(): boolean {
@@ -132,7 +214,7 @@ export class AgentLoopService implements Service {
 			this._running = true;
 			this._stopped = false;
 			try {
-				await this._execute(next);
+				await this._runWithRetry(next);
 			} catch (error) {
 				console.error(`loop ${this._session.name}: queued message failed:`, error);
 				return;
@@ -146,6 +228,7 @@ export class AgentLoopService implements Service {
 		this._stopped = true;
 		this._pending.length = 0;
 		this._agent.abort();
+		this._wake?.();
 	}
 
 	waitForIdle(): Promise<void> {
@@ -226,6 +309,16 @@ export class AgentLoopService implements Service {
 	// ——— pi's events, relayed as ours ———
 
 	private _relay(event: AgentEvent): void {
+		if (!this._releasing) {
+			if (event.type === "agent_end") {
+				this._held.push(event);
+				return;
+			}
+			if (event.type === "message_end" && event.message.role === "assistant" && (event.message as { stopReason?: unknown }).stopReason === "error") {
+				this._held.push(event);
+				return;
+			}
+		}
 		const progress = { run: this._runs, turn: this._turn };
 		switch (event.type) {
 			case "agent_start":

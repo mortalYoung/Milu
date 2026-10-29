@@ -272,6 +272,11 @@ export const EVENT_META: Record<string, EventMeta> = {
 	[LOG_EVENTS.commandDone]: dataNode("custom", { chip: "CMD", caption: (record) => firstLine(recordText(record, "data.text")) || recordText(record, "data.kind") }),
 	[LOG_EVENTS.shellRun]: dataNode("custom", { chip: "SHLL", caption: (record) => firstLine(recordText(record, "data.command")) }),
 	[LOG_EVENTS.shellDone]: dataNode("custom", { chip: "SHLL", caption: (record) => firstLine(recordText(record, "data.command")) }),
+	[LOG_EVENTS.retryScheduled]: dataNode("change", {
+		chip: "RET",
+		caption: (record) => `retry ${recordNumber(record, "data.retry") ?? "?"}/${recordNumber(record, "data.maxRetries") ?? "?"} in ${recordNumber(record, "data.delayMs") ?? 0}ms`,
+	}),
+	[LOG_EVENTS.retryStarted]: dataNode("change", { chip: "RET", caption: (record) => `retry ${recordNumber(record, "data.retry") ?? "?"} started` }),
 };
 
 export function trajectoryNode(record: TrajectoryRecord): TrajectoryNode & { chip: string; tone: TrajectoryTone; caption: string; details: TrajectoryDetail[] } {
