@@ -144,13 +144,14 @@ export function ExplorerButton(props: SlotProps) {
 export function ExplorerHead(props: SlotProps) {
 	const { host } = props;
 	const hasWorkspace = useHasWorkspace(host);
+	const active = useStore(host.dock.store, (current) => current.active);
 	const tree = host.get(IExplorerTreeService);
 	const state = useStore(tree.store);
 
 	const root = state.dirs[""];
 	const rootName = state.root === "" ? "workspace" : (state.root.split("/").filter(Boolean).pop() ?? state.root);
 
-	if (!hasWorkspace) return null;
+	if (!hasWorkspace || active !== "explorer") return null;
 	return (
 		<>
 			<span className="dock-bar-title">
