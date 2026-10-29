@@ -84,11 +84,20 @@ const tasksExtension: Extension = {
 		});
 
 		context.actions.register({
+			id: "tasks.collect",
+			run: async ({ session }) => {
+				if (!session) throw new Error("tasks.collect needs a session");
+				return { data: await tasks.dialogData(session) };
+			},
+		});
+
+		context.actions.register({
 			id: "tasks.stop",
 			run: async ({ args }) => {
 				const { id } = (args ?? {}) as { id?: string };
 				if (!id) throw new Error("tasks.stop needs an id");
-				await tasks.stop(id);
+				const outcome = await tasks.stop(id);
+				if (!outcome.ok) throw new Error(outcome.error ?? `cannot stop ${id}`);
 			},
 		});
 

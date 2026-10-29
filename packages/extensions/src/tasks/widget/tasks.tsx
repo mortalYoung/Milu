@@ -1,8 +1,9 @@
 import { composerDataKey, LOG_EVENTS } from "@milu/protocol";
-import { useComposerData, useComposerRefresh, type DialogProps, type WidgetProps } from "@milu/window/api";
+import { useComposerData, useComposerRefresh, type DialogProps, type MarkdownPort, type WidgetProps } from "@milu/window/api";
+import { Markdown } from "@milu/window/api/markdown/react";
 import { Tip } from "@milu/window/api/tooltip";
 import { Terminal } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 interface TaskView {
 	readonly id: string;
@@ -17,6 +18,7 @@ interface TaskView {
 
 interface TasksData {
 	readonly session: string;
+	readonly tail: number;
 	readonly tasks: readonly TaskView[];
 }
 
@@ -40,33 +42,57 @@ function formatBytes(value: number): string {
 	return `${value} B`;
 }
 
+/** A task that never got a process — a spawn error, a refused sandbox — ends "exited" with no code. */
+function failedOf(task: TaskView): boolean {
+	return task.status === "exited" && task.exitCode !== 0;
+}
+
 function glyphOf(task: TaskView): string {
 	if (task.status === "running") return "●";
-	if (task.status === "exited") return task.exitCode ? "✕" : "✓";
+	if (task.status === "exited") return failedOf(task) ? "✕" : "✓";
 	return "—";
 }
 
-function detailOf(task: TaskView, now: number): string {
-	if (task.status === "running") return `running · ${elapsed(task.startedAt, now)}`;
-	const took = task.endedAt === undefined ? "" : ` · ${elapsed(task.startedAt, task.endedAt)}`;
-	if (task.status === "killed") return `killed${took}`;
-	if (task.status === "interrupted") return `interrupted${took}`;
-	return `exit ${task.exitCode ?? "?"}${took}`;
+/** The glyph says how it ended; the row keeps the clock, and the exact ending waits for the opened block. */
+function whenOf(task: TaskView, now: number, stopping: boolean): string {
+	if (stopping) return "stopping";
+	return elapsed(task.startedAt, task.endedAt ?? now);
+}
+
+/** Both the command and its output may contain backticks; the fence outgrows the longest run so nothing breaks out. */
+function fenced(text: string, language: string): string {
+	const longest = (text.match(/`+/g) ?? []).reduce((most, run) => Math.max(most, run.length), 0);
+	const fence = "`".repeat(Math.max(3, longest + 1));
+	return `${fence}${language}\n${text}\n${fence}`;
+}
+
+function endingOf(task: TaskView): string {
+	if (task.status === "killed") return "killed";
+	if (task.status === "interrupted") return "interrupted";
+	if (task.status !== "exited") return "";
+	return task.exitCode === undefined ? "failed" : task.exitCode === 0 ? "" : `exit ${task.exitCode}`;
+}
+
+/** The glyph is decorative; this is what a screen reader hears instead of it. */
+function spokenOf(task: TaskView): string {
+	if (task.status === "running") return "running";
+	return endingOf(task) || "finished";
 }
 
 export function TasksWidget(props: WidgetProps) {
 	const { data, session, refresh } = useComposerData<WidgetData | null>(props.host, composerDataKey("composer.left", "tasks"));
 	useComposerRefresh(props.host, session, refresh, (entry) => entry.type === "custom" && (entry.customType === LOG_EVENTS.taskStart || entry.customType === LOG_EVENTS.taskEnd));
 	if (!data) return null;
+	const label = data.running > 0 ? `Tasks · ${data.running} running` : "Tasks";
 	return (
 		<span className="relative inline-flex">
-			<Tip label="Tasks">
-				<button type="button" className="composer-icon-btn" aria-label="Tasks" onClick={() => void props.host.actions.invoke("tasks.open", data.session)}>
+			<Tip label={label}>
+				<button type="button" className="composer-icon-btn" aria-label={label} onClick={() => void props.host.actions.invoke("tasks.open", data.session)}>
 					<Terminal size={15} />
 				</button>
 			</Tip>
 			{data.running > 0 ? (
-				<span className="pointer-events-none absolute -top-[3px] -right-[3px] grid h-[13px] min-w-[13px] place-items-center rounded-[6px] bg-signal px-[3px] font-mono text-[10px] font-semibold text-surface">
+				<span className="pointer-events-none absolute top-0 right-0 grid h-[13px] min-w-[13px] place-items-center rounded-full bg-accent-teal/20 px-[3px] font-mono text-[8px] leading-none font-semibold text-accent-teal tabular-nums">
 					{data.running}
 				</span>
 			) : null}
@@ -74,82 +100,208 @@ export function TasksWidget(props: WidgetProps) {
 	);
 }
 
-export function TasksDialog(props: DialogProps) {
-	const data = props.data as TasksData | null;
-	const tasks = data?.tasks ?? [];
-	const [selected, setSelected] = useState<string | null>(tasks.at(-1)?.id ?? null);
-	const current = tasks.find((task) => task.id === selected) ?? null;
-	const [now] = useState(() => Date.now());
-	const running = tasks.filter((task) => task.status === "running").length;
-	const failed = tasks.filter((task) => task.status === "exited" && task.exitCode).length;
+function TaskRow(props: {
+	task: TaskView;
+	tail: number;
+	port: MarkdownPort;
+	now: number;
+	open: boolean;
+	stopping: boolean;
+	index: number;
+	onToggle: () => void;
+	onStop: () => void;
+}) {
+	const tone = props.task.status === "running" ? "text-muted tabular-nums" : "text-muted-soft tabular-nums";
+	const silent = props.task.text.trim() === "";
+	const log = useRef<HTMLDivElement>(null);
+	const pinned = useRef(true);
+	const title = useRef<HTMLSpanElement>(null);
+	const [cut, setCut] = useState(false);
 
-	const stop = async (): Promise<void> => {
-		if (!data || !current) return;
-		await props.host.actions.invoke("tasks.stop", data.session, { id: current.id });
-		props.close(null);
-	};
+	useLayoutEffect(() => {
+		const element = title.current;
+		setCut(element !== null && element.scrollWidth > element.clientWidth + 1);
+	}, [props.task.command]);
+
+	useLayoutEffect(() => {
+		pinned.current = true;
+	}, [props.open]);
+
+	useLayoutEffect(() => {
+		const element = log.current;
+		if (element && pinned.current) element.scrollTop = element.scrollHeight;
+	}, [props.open, props.task.text]);
 
 	return (
-		<div className="flex max-h-[min(80vh,720px)] w-[min(880px,calc(100vw-48px))] flex-col overflow-hidden">
-			<div className="flex items-baseline gap-3 border-b border-line pt-4 pr-12 pb-3 pl-5">
-				<h2 className="m-0 font-sans text-[16px] font-semibold text-ink">Tasks</h2>
-				<span className="font-mono text-[10px] text-muted">
-					{running} running
-					{failed > 0 ? <span className="text-signal"> · {failed} failed</span> : null}
-				</span>
+		<div className="animate-[tasks-row-in_220ms_var(--ease-out)_both] motion-reduce:animate-none" style={{ animationDelay: `${Math.min(props.index, 8) * 22}ms` }}>
+			<div className={`flex items-center gap-1 rounded-[6px] transition-colors duration-[120ms] ${props.open ? "bg-selected" : "hover:bg-hover"}`}>
+				<button
+					type="button"
+					aria-expanded={props.open}
+					className="flex min-w-0 flex-1 cursor-pointer items-baseline gap-2.5 border-0 bg-transparent px-3 py-2 text-left"
+					onClick={props.onToggle}
+				>
+					<span
+						aria-hidden
+						className={`w-[10px] shrink-0 font-mono text-[10px] leading-none ${
+							props.task.status === "running" && !props.stopping
+								? "animate-[tasks-live-pulse_1.9s_cubic-bezier(0.23,1,0.32,1)_infinite] text-accent-teal motion-reduce:animate-none"
+								: props.stopping
+									? "text-muted"
+									: failedOf(props.task)
+										? "text-signal"
+										: "text-muted-soft"
+						}`}
+					>
+						{glyphOf(props.task)}
+					</span>
+					<span className="sr-only">{spokenOf(props.task)}</span>
+					<span ref={title} className={`min-w-0 flex-1 truncate font-mono text-[12px] ${props.open ? "text-ink" : "text-ink-soft"}`}>
+						{props.task.command}
+					</span>
+					<span className={`shrink-0 font-mono text-[10px] ${tone}`}>{whenOf(props.task, props.now, props.stopping)}</span>
+				</button>
+				{props.task.status === "running" ? (
+					<button
+						type="button"
+						disabled={props.stopping}
+						className="mr-2 h-[22px] shrink-0 cursor-pointer rounded-[4px] border border-line bg-transparent px-2 font-mono text-[10px] leading-none tracking-[0.08em] text-ink-soft transition-colors duration-[120ms] hover:border-signal hover:bg-hover hover:text-signal disabled:cursor-default disabled:opacity-45 disabled:hover:border-line disabled:hover:bg-transparent disabled:hover:text-ink-soft"
+						onClick={props.onStop}
+					>
+						STOP
+					</button>
+				) : null}
 			</div>
+			{props.open ? (
+				<div className="pr-3 pb-2.5 pl-[32px]">
+					{cut ? (
+						<div className="task-command mb-1.5 min-w-0">
+							<Markdown port={props.port} text={fenced(`$ ${props.task.command}`, "console")} />
+						</div>
+					) : null}
+					<div
+						ref={log}
+						onScroll={() => {
+							const element = log.current;
+							if (element) pinned.current = element.scrollTop + element.clientHeight >= element.scrollHeight - 16;
+						}}
+						className="task-log max-h-[min(42vh,300px)] overflow-auto rounded-[6px] border border-line-soft bg-canvas px-3 py-2"
+					>
+						{silent ? (
+							<p className="m-0 font-mono text-[11.5px] leading-[1.7] text-muted-soft">{props.task.status === "running" ? "(no output yet)" : "(no output)"}</p>
+						) : (
+							<Markdown port={props.port} text={fenced(props.task.text, "log")} />
+						)}
+					</div>
+					<div className="mt-1.5 flex items-baseline gap-3 font-mono text-[10px] text-muted-soft">
+						{endingOf(props.task) === "" ? null : <span>{endingOf(props.task)}</span>}
+						<span>{formatBytes(props.task.bytes)}</span>
+						<span className="ml-auto">last {props.tail} lines</span>
+					</div>
+				</div>
+			) : null}
+		</div>
+	);
+}
+
+/** A running task keeps writing; the dialog re-reads while it is open so the tail and the clock stay true. */
+const POLL_MS = 1500;
+
+export function TasksDialog(props: DialogProps) {
+	const [data, setData] = useState<TasksData | null>(() => props.data as TasksData | null);
+	const [open, setOpen] = useState<string | null>(null);
+	const [stopping, setStopping] = useState<ReadonlySet<string>>(() => new Set());
+	const [stopped, setStopped] = useState<ReadonlyMap<string, number>>(() => new Map());
+	const [now, setNow] = useState(() => Date.now());
+	const rows = [...(data?.tasks ?? [])].sort((left, right) => right.startedAt - left.startedAt);
+	const tasks = rows.map((task) => {
+		const at = stopped.get(task.id);
+		return at === undefined ? task : { ...task, status: "killed" as const, endedAt: at };
+	});
+	const opened = open ?? tasks[0]?.id ?? null;
+
+	const running = tasks.filter((task) => task.status === "running").length;
+	const failed = tasks.filter(failedOf).length;
+	const ticking = tasks.some((task) => task.status === "running" && !stopping.has(task.id));
+
+	useEffect(() => {
+		if (!ticking) return;
+		const timer = window.setInterval(() => setNow(Date.now()), 1000);
+		return () => window.clearInterval(timer);
+	}, [ticking]);
+
+	const refresh = useCallback(async () => {
+		const session = data?.session;
+		if (session === undefined) return;
+		const next = await props.host.actions.request<TasksData>("tasks.collect", session).catch(() => undefined);
+		if (!next) return;
+		const alive = new Set(next.tasks.filter((task) => task.status === "running").map((task) => task.id));
+		setData(next);
+		setStopping((current) => {
+			const kept = new Set([...current].filter((id) => alive.has(id)));
+			return kept.size === current.size ? current : kept;
+		});
+		setStopped((current) => {
+			const kept = new Map([...current].filter(([id]) => alive.has(id)));
+			return kept.size === current.size ? current : kept;
+		});
+	}, [data?.session, props.host]);
+
+	const ready = data !== null;
+	useEffect(() => {
+		if (!ready) return;
+		const timer = window.setInterval(() => void refresh(), POLL_MS);
+		return () => window.clearInterval(timer);
+	}, [ready, refresh]);
+
+	/** A stop shows at once; the poll below replaces this with what the service recorded. */
+	const stop = (id: string): void => {
+		if (!data) return;
+		setStopping((current) => new Set(current).add(id));
+		void props.host.actions
+			.invoke("tasks.stop", data.session, { id })
+			.then(() => setStopped((current) => new Map(current).set(id, Date.now())))
+			.catch(() =>
+				setStopping((current) => {
+					const next = new Set(current);
+					next.delete(id);
+					return next;
+				}),
+			);
+	};
+
+	const summary = [`${running} running`, ...(failed > 0 ? [`${failed} failed`] : [])].join(" · ");
+
+	return (
+		<div className="flex max-h-[min(80vh,680px)] w-[min(720px,calc(100vw-48px))] flex-col overflow-hidden">
+			<header className="flex items-baseline gap-3 border-b border-line pt-4 pr-12 pb-3 pl-5">
+				<h2 className="m-0 font-serif text-[18px] font-semibold tracking-[-0.01em] text-ink">Tasks</h2>
+				{tasks.length > 0 ? <span className="min-w-0 flex-1 truncate font-mono text-[10px] text-muted">{summary}</span> : null}
+			</header>
 
 			{tasks.length === 0 ? (
-				<p className="m-0 px-5 py-8 font-sans text-[13px] text-muted">No background tasks yet.</p>
+				<div className="flex flex-col gap-2 px-5 py-10">
+					<p className="m-0 font-serif text-[15px] text-ink">Nothing in the background.</p>
+					<p className="m-0 font-mono text-[10.5px] leading-[1.7] text-muted">
+						A bash call with <span className="text-ink-soft">background: true</span> starts one and returns its id.
+					</p>
+				</div>
 			) : (
-				<div className="grid h-[min(56vh,440px)] min-h-0 grid-cols-[186px_minmax(0,1fr)]">
-					<div className="min-h-0 overflow-y-auto border-r border-line p-1.5">
-						{tasks.map((task: TaskView) => {
-							const live = task.status === "running";
-							const broken = task.status === "exited" && Boolean(task.exitCode);
-							const on = task.id === selected;
-							return (
-								<button
-									type="button"
-									key={task.id}
-									className={`block w-full cursor-pointer rounded-md border-0 px-2 py-1.5 text-left transition-colors duration-[120ms] ${on ? "bg-selected" : "bg-transparent hover:bg-hover"}`}
-									onClick={() => setSelected(task.id)}
-								>
-									<span className="flex items-center gap-1.5">
-										<span
-											className={`shrink-0 font-mono text-[10px] ${
-												live
-													? "animate-[tasks-live-pulse_1.9s_cubic-bezier(0.23,1,0.32,1)_infinite] text-accent-teal motion-reduce:animate-none"
-													: broken
-														? "text-signal"
-														: "text-muted"
-											}`}
-										>
-											{glyphOf(task)}
-										</span>
-										<span className={`min-w-0 overflow-hidden font-mono text-[12px] text-ellipsis whitespace-nowrap ${on ? "font-semibold text-ink" : "text-ink-soft"}`}>
-											{task.command}
-										</span>
-									</span>
-									<span className={`mt-0.5 block pl-[18px] font-mono text-[10px] ${broken ? "text-signal" : "text-muted"}`}>{detailOf(task, now)}</span>
-								</button>
-							);
-						})}
-					</div>
-
-					<div className="flex min-h-0 flex-col">
-						<pre className="m-0 flex-1 overflow-auto px-3 py-2 font-mono text-[12px] leading-[1.7] whitespace-pre text-ink-soft">
-							{current?.text.trim() ? current.text : current ? "(no output yet)" : "—"}
-						</pre>
-						<div className="flex items-baseline justify-between gap-3 border-t border-line px-3 py-1.5 font-mono text-[10px] text-muted">
-							<span>{current ? `${detailOf(current, now)} · ${formatBytes(current.bytes)}` : "—"}</span>
-							{current?.status === "running" ? (
-								<button type="button" className="cursor-pointer border-0 bg-transparent font-mono text-[10px] text-muted hover:text-ink" onClick={() => void stop()}>
-									stop
-								</button>
-							) : null}
-						</div>
-					</div>
+				<div className="min-h-0 overflow-y-auto p-1.5">
+					{tasks.map((task, index) => (
+						<TaskRow
+							key={task.id}
+							task={task}
+							tail={data?.tail ?? 0}
+							port={props.host.markdown}
+							now={now}
+							index={index}
+							open={opened === task.id}
+							stopping={stopping.has(task.id)}
+							onToggle={() => setOpen(opened === task.id ? null : task.id)}
+							onStop={() => stop(task.id)}
+						/>
+					))}
 				</div>
 			)}
 		</div>

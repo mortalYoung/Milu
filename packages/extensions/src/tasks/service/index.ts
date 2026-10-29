@@ -5,6 +5,7 @@ import { type ExecutionEnv, EVENTS, type Session } from "@milu/core";
 import { createServiceId, type Service } from "@milu/di";
 
 const DEFAULT_LINES = 200;
+const DIALOG_TAIL_LINES = 200;
 const MAX_READ_BYTES = 50 * 1024;
 
 export const DEFAULT_REMIND_AFTER_SEC = 180;
@@ -166,13 +167,13 @@ export class TaskService implements Service {
 		return tasks.sort((left, right) => left.startedAt - right.startedAt);
 	}
 
-	async dialogData(session: Session): Promise<{ session: string; tasks: (TaskSummary & { text: string })[] }> {
+	async dialogData(session: Session): Promise<{ session: string; tail: number; tasks: (TaskSummary & { text: string })[] }> {
 		const tasks: (TaskSummary & { text: string })[] = [];
 		for (const summary of await this.list(session)) {
-			const tail = await readTail(summary.logPath, 200);
+			const tail = await readTail(summary.logPath, DIALOG_TAIL_LINES);
 			tasks.push({ ...summary, text: tail.text });
 		}
-		return { session: session.name, tasks };
+		return { session: session.name, tail: DIALOG_TAIL_LINES, tasks };
 	}
 
 	async read(session: Session, id: string, options: { lines?: number } = {}): Promise<TaskRead | TaskFailure> {
