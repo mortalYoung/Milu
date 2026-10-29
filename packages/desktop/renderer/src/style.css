@@ -182,6 +182,7 @@ body {
 	height: var(--bar-h);
 	padding: 0 calc(var(--page-gutter) - 6px);
 	border-bottom: 0.5px solid var(--line);
+	background: var(--surface);
 	-webkit-app-region: drag;
 	user-select: none;
 }
@@ -2248,6 +2249,7 @@ body.pane-dragging {
 /* ——— explorer: the tree and the reader are two panes of one view ——— */
 
 .explorer-dock {
+	position: relative;
 	display: flex;
 	height: 100%;
 	min-height: 0;
@@ -2261,18 +2263,86 @@ body.pane-dragging {
 	min-width: 0;
 	overflow: hidden;
 	background: var(--surface);
-	transition:
-		width 120ms var(--ease-out),
-		opacity 90ms var(--ease-out);
 }
 
-.explorer-list.collapsed {
-	width: 0;
-	opacity: 0;
+.explorer-dock.split .explorer-list {
+	flex: none;
 }
 
-.explorer-dock .explorer-list + .explorer-reader {
-	border-left: 0.5px solid var(--line);
+.explorer-split {
+	position: relative;
+	z-index: 5;
+	flex: none;
+	width: 5px;
+	cursor: col-resize;
+	touch-action: none;
+	outline: none;
+}
+
+.explorer-split::after {
+	content: "";
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	left: 2px;
+	width: 0.5px;
+	background: var(--line);
+	transition: background-color 120ms var(--ease-out);
+}
+
+.explorer-split:hover::after,
+.explorer-split:focus-visible::after,
+body.explorer-resizing .explorer-split::after {
+	background: var(--line-strong);
+}
+
+body.explorer-resizing {
+	cursor: col-resize;
+	user-select: none;
+}
+
+.explorer-peek {
+	position: absolute;
+	top: 40px;
+	left: 8px;
+	z-index: 20;
+	display: flex;
+	flex-direction: column;
+	width: 246px;
+	max-height: min(70%, 560px);
+	overflow: hidden;
+	border: 0.5px solid var(--line);
+	border-radius: var(--r8);
+	background: var(--surface);
+	box-shadow: 0 10px 28px color-mix(in srgb, var(--ink) 14%, transparent);
+}
+
+.explorer-peek-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	flex: none;
+	height: 30px;
+	padding: 0 6px 0 10px;
+	border-bottom: 0.5px solid var(--line);
+}
+
+.explorer-peek .explorer-tree {
+	flex: 1;
+	min-height: 0;
+	overflow-y: auto;
+}
+
+.dock-bar-status {
+	display: inline-flex;
+	align-items: center;
+	gap: 3px;
+	flex: none;
+	font-family: var(--mono);
+	font-size: 10px;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--muted);
 }
 
 .dock-bar-title {
@@ -2289,11 +2359,17 @@ body.pane-dragging {
 }
 
 .explorer-tree {
+	--row-h: 27px;
 	flex: 1;
 	min-height: 0;
 	overflow-y: auto;
-	padding: 8px 0 12px;
+	padding: 0 0 12px;
 	user-select: none;
+}
+
+/* Air above the first row belongs to the content, so a pinned folder can still reach the top edge. */
+.explorer-tree > :first-child {
+	margin-top: 8px;
 }
 
 .explorer-row {
@@ -2301,9 +2377,10 @@ body.pane-dragging {
 	align-items: center;
 	gap: 6px;
 	width: 100%;
+	height: var(--row-h);
 	border: 0;
 	background: transparent;
-	padding: 5px 8px 5px 0;
+	padding: 0 8px 0 0;
 	font-family: var(--mono);
 	font-size: 13px;
 	text-align: left;
@@ -2316,6 +2393,23 @@ body.pane-dragging {
 	background: var(--hover);
 }
 
+/* An expanded folder heads its own subtree: every open level stays pinned, stacked by depth,
+   and a shallower folder paints over a deeper one as its subtree ends. */
+.explorer-row.sticky {
+	position: sticky;
+	top: calc(var(--depth, 0) * var(--row-h));
+	z-index: calc(100 - var(--depth, 0));
+	background: var(--surface);
+}
+
+.explorer-row.sticky:hover {
+	background: color-mix(in srgb, var(--ink) 7%, var(--surface));
+}
+
+.explorer-row.sticky.selected {
+	background: color-mix(in srgb, var(--ink) 12%, var(--surface));
+}
+
 .explorer-row.selected {
 	background: var(--selected);
 	color: var(--ink);
@@ -2325,21 +2419,6 @@ body.pane-dragging {
 .explorer-row.ignored .explorer-row-icon {
 	color: var(--muted-soft);
 	opacity: 0.6;
-}
-
-.explorer-chevron {
-	flex: none;
-	color: var(--muted-soft);
-	transition: transform 120ms var(--ease-out);
-}
-
-.explorer-chevron.open {
-	transform: rotate(90deg);
-}
-
-.explorer-chevron-space {
-	flex: none;
-	width: 11px;
 }
 
 .explorer-row-icon {

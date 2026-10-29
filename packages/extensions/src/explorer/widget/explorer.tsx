@@ -1,4 +1,5 @@
 import type { Host, SlotProps } from "@milu/window/api";
+import { ensureLanguages, getHighlighter, highlightLines, resolveLanguage } from "@milu/window/api/markdown";
 import { Tip } from "@milu/window/api/tooltip";
 import {
 	ChevronLeft,
@@ -13,11 +14,12 @@ import {
 	FolderOpen,
 	FolderTree,
 	MessageSquareQuote,
+	PanelLeft,
 	Pilcrow,
 	WrapText,
 	X,
 } from "lucide-react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, Fragment, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 
 import { IExplorerTreeService } from "../service/tree.ts";
@@ -54,8 +56,11 @@ const JSONISH = new Set(["json", "jsonc", "lock"]);
 const IMAGES = new Set(["avif", "bmp", "gif", "ico", "jpeg", "jpg", "png", "svg", "webp"]);
 const MARKDOWN = new Set(["md", "markdown", "mdx"]);
 const MAX_LINES = 3000;
-const PANE_MIN = 520;
-const LIST_PANE = 232;
+const LIST_WIDTH = 232;
+const LIST_MIN = 140;
+const READER_MIN = 260;
+
+const clamp = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
 
 const extensionOf = (name: string): string => {
 	const at = name.lastIndexOf(".");
@@ -77,22 +82,21 @@ function Glyph(props: { name: string; className?: string }) {
 }
 
 interface ListControls {
-	readonly open: boolean;
-	readonly fits: boolean;
+	readonly shown: boolean;
 	readonly toggle: () => void;
 }
 
-function ListToggle(props: { open: boolean; onToggle: () => void }) {
+function ListToggle(props: { shown: boolean; onToggle: () => void }) {
 	return (
 		<button
 			type="button"
-			className="explorer-btn"
-			aria-expanded={props.open}
-			aria-label={props.open ? "Collapse the list" : "Show the list"}
-			title={props.open ? "Collapse the list" : "Show the list"}
+			className="explorer-btn explorer-list-toggle"
+			aria-expanded={props.shown}
+			aria-label={props.shown ? "Collapse the list" : "Show the list"}
+			title={props.shown ? "Collapse the list" : "Show the list"}
 			onClick={props.onToggle}
 		>
-			{props.open ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
+			{props.shown ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
 		</button>
 	);
 }
@@ -130,20 +134,23 @@ export function ExplorerHead(props: SlotProps) {
 	const { host } = props;
 	const tree = host.get(IExplorerTreeService);
 	const state = useStore(tree.store);
-	const mode = useStore(host.columns.store, (current) => current.columns.dock.mode);
-	const dockWidth = useStore(host.columns.store, (current) => current.columns.dock.width);
 
 	const root = state.dirs[""];
 	const rootName = state.root === "" ? "workspace" : (state.root.split("/").filter(Boolean).pop() ?? state.root);
-	const fits = mode === "overlay" || dockWidth >= PANE_MIN;
-	const detailOpen = state.activeFile !== null;
 
 	return (
 		<>
 			<span className="dock-bar-title">
 				{rootName} · {root?.entries?.length ?? 0}
 			</span>
-			{detailOpen && fits ? <ListToggle open={state.listOpen} onToggle={() => tree.toggleList()} /> : null}
+			{state.reading === null ? null : (
+				<span className="dock-bar-status">
+					<span className="work-dot" />
+					<span className="work-dot" />
+					<span className="work-dot" />
+					Loading…
+				</span>
+			)}
 		</>
 	);
 }
@@ -152,20 +159,33 @@ export function ExplorerPane(props: SlotProps) {
 	const { host } = props;
 	const tree = host.get(IExplorerTreeService);
 	const state = useStore(tree.store);
-	const mode = useStore(host.columns.store, (current) => current.columns.dock.mode);
 	const dockWidth = useStore(host.columns.store, (current) => current.columns.dock.width);
 	const session = useStore(host.selection.store, (current) => current.selected);
 	const rows = useRef<HTMLDivElement>(null);
+	const peek = useRef<HTMLDivElement>(null);
+	const origin = useRef<{ x: number; width: number } | null>(null);
 	const [menu, setMenu] = useState<RowMenu | null>(null);
+	const [peeking, setPeeking] = useState(false);
 
-	const floating = mode === "overlay";
-	const fits = floating || dockWidth >= PANE_MIN;
 	const detailOpen = state.activeFile !== null;
-	const faceList = !detailOpen || (floating ? state.listOpen : state.listOpen && fits);
-	const collapsed = detailOpen && !faceList;
-	const both = detailOpen && faceList;
-	const list: ListControls = { open: state.listOpen, fits, toggle: () => tree.toggleList() };
+	const listShown = !detailOpen || state.listOpen;
+	const listMax = Math.max(LIST_MIN, dockWidth - READER_MIN);
+	const listWidth = clamp(state.listWidth, LIST_MIN, listMax);
+	const root = state.dirs[""];
+	const rootName = state.root === "" ? "workspace" : (state.root.split("/").filter(Boolean).pop() ?? state.root);
 	const active = state.opened.find((file) => file.path === state.activeFile) ?? null;
+	const list: ListControls = {
+		shown: listShown,
+		toggle: () => {
+			if (listShown) tree.setList(false);
+			else setPeeking((open) => !open);
+		},
+	};
+
+	useEffect(() => {
+		const element = rows.current;
+		if (element !== null) element.scrollTop = tree.scrollTop;
+	}, [tree, listShown, peeking, state.dirs, state.expanded]);
 
 	useEffect(() => {
 		const target = state.focus;
@@ -188,9 +208,30 @@ export function ExplorerPane(props: SlotProps) {
 		};
 	}, [menu]);
 
+	useEffect(() => {
+		if (!peeking) return;
+		const onDown = (event: PointerEvent) => {
+			const target = event.target;
+			if (target instanceof Node && peek.current?.contains(target) === true) return;
+			if (target instanceof Element && target.closest(".explorer-list-toggle") !== null) return;
+			setPeeking(false);
+		};
+		const onKey = (event: KeyboardEvent) => {
+			if (event.key === "Escape") setPeeking(false);
+		};
+		window.addEventListener("pointerdown", onDown);
+		window.addEventListener("keydown", onKey);
+		return () => {
+			window.removeEventListener("pointerdown", onDown);
+			window.removeEventListener("keydown", onKey);
+		};
+	}, [peeking]);
+
+	useEffect(() => () => document.body.classList.remove("explorer-resizing"), []);
+
 	const open = (entry: ExplorerEntry): void => {
 		tree.openFile(entry.path, entry.name);
-		if (floating && state.listOpen) tree.toggleList();
+		setPeeking(false);
 	};
 
 	const copy = (text: string): void => {
@@ -202,17 +243,45 @@ export function ExplorerPane(props: SlotProps) {
 		void tree.focusDir(path);
 	};
 
-	const node = (entry: ExplorerEntry, depth: number): ReactNode[] => {
+	const resize = (width: number): void => {
+		tree.setListWidth(clamp(width, LIST_MIN, listMax));
+	};
+
+	const onSplitDown = (event: ReactPointerEvent<HTMLDivElement>): void => {
+		origin.current = { x: event.clientX, width: listWidth };
+		document.body.classList.add("explorer-resizing");
+		event.currentTarget.setPointerCapture(event.pointerId);
+	};
+
+	const onSplitMove = (event: ReactPointerEvent<HTMLDivElement>): void => {
+		const start = origin.current;
+		if (start !== null) resize(start.width + event.clientX - start.x);
+	};
+
+	const onSplitUp = (event: ReactPointerEvent<HTMLDivElement>): void => {
+		if (origin.current === null) return;
+		origin.current = null;
+		document.body.classList.remove("explorer-resizing");
+		event.currentTarget.releasePointerCapture(event.pointerId);
+	};
+
+	const onSplitKey = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+		const step = event.key === "ArrowLeft" ? -16 : event.key === "ArrowRight" ? 16 : 0;
+		if (step === 0) return;
+		event.preventDefault();
+		resize(listWidth + step);
+	};
+
+	const node = (entry: ExplorerEntry, depth: number): ReactNode => {
 		const directory = entry.kind === "directory";
 		const isOpen = directory && state.expanded.has(entry.path);
 		const dir = state.dirs[entry.path];
 		const row = (
 			<button
-				key={entry.path}
 				type="button"
-				className={`explorer-row${entry.path === state.activeFile ? " selected" : ""}${entry.ignored === true ? " ignored" : ""}`}
+				className={`explorer-row${isOpen ? " sticky" : ""}${entry.path === state.activeFile ? " selected" : ""}${entry.ignored === true ? " ignored" : ""}`}
 				data-path={entry.path}
-				style={{ paddingLeft: 10 + depth * 16 }}
+				style={{ paddingLeft: 10 + depth * 16, "--depth": String(depth) } as CSSProperties}
 				title={entry.path}
 				onClick={() => (directory ? tree.toggle(entry.path) : open(entry))}
 				onContextMenu={(event) => {
@@ -220,46 +289,92 @@ export function ExplorerPane(props: SlotProps) {
 					setMenu({ entry, x: event.clientX, y: event.clientY });
 				}}
 			>
-				{directory ? <ChevronRight size={11} className={`explorer-chevron${isOpen ? " open" : ""}`} /> : <span className="explorer-chevron-space" />}
 				{directory ? isOpen ? <FolderOpen size={13} className="explorer-row-icon" /> : <Folder size={13} className="explorer-row-icon" /> : <Glyph name={entry.name} />}
 				<span className="explorer-name">{entry.name}</span>
 			</button>
 		);
-		if (!isOpen) return [row];
-		if (dir === undefined || dir.status === "loading")
-			return [
-				row,
-				<div key={`${entry.path}:loading`} className="explorer-note" style={{ paddingLeft: 26 + depth * 16 }}>
-					…
-				</div>,
-			];
-		if (dir.status === "error")
-			return [
-				row,
-				<div key={`${entry.path}:error`} className="explorer-note" style={{ paddingLeft: 26 + depth * 16 }}>
-					{dir.error ?? "failed to load"}
-				</div>,
-			];
-		return [row, ...(dir.entries ?? []).flatMap((child) => node(child, depth + 1))];
+		if (!directory) return <Fragment key={entry.path}>{row}</Fragment>;
+		return (
+			<div className="explorer-node" key={entry.path}>
+				{row}
+				{!isOpen ? null : dir === undefined || dir.status === "loading" ? (
+					<p className="explorer-note" style={{ paddingLeft: 26 + depth * 16 }}>
+						…
+					</p>
+				) : dir.status === "error" ? (
+					<p className="explorer-note" style={{ paddingLeft: 26 + depth * 16 }}>
+						{dir.error ?? "failed to load"}
+					</p>
+				) : (
+					<div className="explorer-children">{(dir.entries ?? []).map((child) => node(child, depth + 1))}</div>
+				)}
+			</div>
+		);
 	};
 
-	const root = state.dirs[""];
+	const treeBody = (
+		<div className="explorer-tree" ref={rows} onScroll={(event) => tree.rememberScroll(event.currentTarget.scrollTop)}>
+			{root === undefined || root.status === "loading" ? (
+				<p className="explorer-note">loading workspace…</p>
+			) : root.status === "error" ? (
+				<p className="explorer-note">{root.error ?? "failed to load"}</p>
+			) : (
+				(root.entries ?? []).map((entry) => node(entry, 0))
+			)}
+		</div>
+	);
 
 	return (
-		<div className={`explorer-dock${floating ? " floating" : ""}`}>
-			<div className={`explorer-list${collapsed ? " collapsed" : ""}`} style={both ? { width: LIST_PANE } : undefined} inert={collapsed}>
-				<div className="explorer-tree" ref={rows}>
-					{root === undefined || root.status === "loading" ? (
-						<p className="explorer-note">loading workspace…</p>
-					) : root.status === "error" ? (
-						<p className="explorer-note">{root.error ?? "failed to load"}</p>
-					) : (
-						(root.entries ?? []).flatMap((entry) => node(entry, 0))
-					)}
+		<div className={`explorer-dock${detailOpen && listShown ? " split" : ""}`}>
+			{listShown ? (
+				<div className="explorer-list" style={detailOpen ? { width: listWidth } : undefined}>
+					{treeBody}
 				</div>
-			</div>
+			) : null}
 
-			{detailOpen && active !== null && (!floating || !state.listOpen) ? <FileReader host={host} file={active} list={list} root={state.root} onPin={pin} /> : null}
+			{detailOpen && listShown ? (
+				<div
+					className="explorer-split"
+					role="separator"
+					aria-orientation="vertical"
+					aria-label="Resize the file tree"
+					aria-valuemin={LIST_MIN}
+					aria-valuemax={Math.round(listMax)}
+					aria-valuenow={Math.round(listWidth)}
+					tabIndex={0}
+					onDoubleClick={() => resize(LIST_WIDTH)}
+					onPointerDown={onSplitDown}
+					onPointerMove={onSplitMove}
+					onPointerUp={onSplitUp}
+					onPointerCancel={onSplitUp}
+					onKeyDown={onSplitKey}
+				/>
+			) : null}
+
+			{detailOpen && active !== null ? <FileReader host={host} file={active} list={list} root={state.root} onPin={pin} /> : null}
+
+			{!listShown && peeking ? (
+				<div className="explorer-peek" ref={peek}>
+					<div className="explorer-peek-head">
+						<span className="dock-bar-title">
+							{rootName} · {root?.entries?.length ?? 0}
+						</span>
+						<button
+							type="button"
+							className="explorer-btn"
+							aria-label="Dock the list"
+							title="Dock the list"
+							onClick={() => {
+								setPeeking(false);
+								tree.setList(true);
+							}}
+						>
+							<PanelLeft size={12} />
+						</button>
+					</div>
+					{treeBody}
+				</div>
+			) : null}
 
 			{menu === null ? null : (
 				<div className="explorer-menu" style={{ left: menu.x, top: menu.y }}>
@@ -350,6 +465,7 @@ function FileReader(props: { host: Host; file: OpenFile; list: ListControls; roo
 	const [markup, setMarkup] = useState<{ path: string; render: boolean } | null>(null);
 	const [wrapped, setWrapped] = useState(false);
 	const [range, setRange] = useState<{ path: string; start: number; end: number } | null>(null);
+	const [painted, setPainted] = useState<{ path: string; lines: readonly string[] } | null>(null);
 	const body = useRef<HTMLDivElement>(null);
 	const strip = useRef<HTMLDivElement>(null);
 
@@ -357,6 +473,8 @@ function FileReader(props: { host: Host; file: OpenFile; list: ListControls; roo
 	const error = failed !== null && failed.path === file.path ? failed.message : "";
 	const render = data !== null && isMarkdown(file.path) && (markup === null || markup.path !== file.path || markup.render);
 	const html = full !== null && full.path === file.path ? full.html : "";
+	const language = resolveLanguage(extensionOf(file.path));
+	const paintedLines = painted !== null && painted.path === file.path ? painted.lines : null;
 
 	useEffect(() => {
 		if (file.path === "" || session === "") return;
@@ -370,8 +488,8 @@ function FileReader(props: { host: Host; file: OpenFile; list: ListControls; roo
 	useEffect(() => {
 		if (file.path === "" || session === "") return;
 		let alive = true;
-		host.actions
-			.request<ExplorerFile>("explorer.read", session, { path: file.path })
+		tree
+			.read(file.path)
 			.then((next) => {
 				if (alive && next) setLoaded({ path: file.path, file: next });
 			})
@@ -381,7 +499,7 @@ function FileReader(props: { host: Host; file: OpenFile; list: ListControls; roo
 		return () => {
 			alive = false;
 		};
-	}, [host, session, file.path, revision]);
+	}, [tree, session, file.path, revision]);
 
 	useEffect(() => {
 		if (!render || data === null) return;
@@ -393,6 +511,22 @@ function FileReader(props: { host: Host; file: OpenFile; list: ListControls; roo
 			alive = false;
 		};
 	}, [host, render, data]);
+
+	useEffect(() => {
+		if (data === null || render || language === null) return;
+		let alive = true;
+		const code = data.text.replace(/\n$/, "").split("\n").slice(0, MAX_LINES).join("\n");
+		void ensureLanguages([language])
+			.then(() => getHighlighter())
+			.then((core) => {
+				const lines = highlightLines(core, code, language);
+				if (alive && lines.length > 0) setPainted({ path: data.path, lines });
+			})
+			.catch(() => undefined);
+		return () => {
+			alive = false;
+		};
+	}, [data, render, language]);
 
 	useEffect(() => {
 		strip.current?.querySelector<HTMLElement>(".explorer-tab.on")?.scrollIntoView({ inline: "nearest", block: "nearest" });
@@ -431,7 +565,7 @@ function FileReader(props: { host: Host; file: OpenFile; list: ListControls; roo
 	return (
 		<div className="explorer-reader">
 			<div className="explorer-reader-head">
-				{props.list.open ? null : props.list.fits ? <ListToggle open={false} onToggle={props.list.toggle} /> : null}
+				<ListToggle shown={props.list.shown} onToggle={props.list.toggle} />
 				<div className="explorer-tabs" ref={strip}>
 					{state.opened.map((tab) => (
 						<div className={`explorer-tab${tab.path === file.path ? " on" : ""}`} key={tab.path}>
@@ -516,7 +650,11 @@ function FileReader(props: { host: Host; file: OpenFile; list: ListControls; roo
 					{shown.map((line, index) => (
 						<div className="explorer-line" key={index} data-line={index}>
 							<span className="explorer-ln">{index + 1}</span>
-							<span className="explorer-code">{line === "" ? " " : line}</span>
+							{paintedLines === null ? (
+								<span className="explorer-code">{line === "" ? " " : line}</span>
+							) : (
+								<span className="explorer-code" dangerouslySetInnerHTML={{ __html: paintedLines[index] ?? "" }} />
+							)}
 						</div>
 					))}
 					{data.truncated ? (

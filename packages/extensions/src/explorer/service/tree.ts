@@ -2,7 +2,7 @@ import { createServiceId, type Service } from "@milu/di";
 import { type Connection, IConnection, ISelectionService, type SelectionService } from "@milu/window/api";
 import { createStore } from "zustand/vanilla";
 
-import type { ExplorerEntry, ExplorerListing, OpenFile } from "../types.ts";
+import type { ExplorerEntry, ExplorerFile, ExplorerListing, OpenFile } from "../types.ts";
 
 export interface DirState {
 	readonly status: "loading" | "ready" | "error";
@@ -19,13 +19,34 @@ export interface ExplorerTree {
 	readonly opened: readonly OpenFile[];
 	readonly activeFile: string | null;
 	readonly listOpen: boolean;
+	readonly listWidth: number;
+	readonly reading: string | null;
 }
 
 const LIST_KEY = "milu.explorer.list";
+const WIDTH_KEY = "milu.explorer.width";
+const LIST_WIDTH = 232;
+const LIST_MIN = 140;
 
 const listOpen = (): boolean => localStorage.getItem(LIST_KEY) !== "0";
 
-const EMPTY: ExplorerTree = { session: "", root: "", dirs: {}, expanded: new Set(), focus: null, opened: [], activeFile: null, listOpen: listOpen() };
+const listWidth = (): number => {
+	const stored = Number(localStorage.getItem(WIDTH_KEY));
+	return Number.isFinite(stored) && stored >= LIST_MIN ? stored : LIST_WIDTH;
+};
+
+const EMPTY: ExplorerTree = {
+	session: "",
+	root: "",
+	dirs: {},
+	expanded: new Set(),
+	focus: null,
+	opened: [],
+	activeFile: null,
+	listOpen: listOpen(),
+	listWidth: listWidth(),
+	reading: null,
+};
 
 async function call<T>(connection: Connection, action: string, session: string, args?: unknown): Promise<T | undefined> {
 	const result = await connection.request("invoke", { action, session, ...(args === undefined ? {} : { args }) });
@@ -40,6 +61,7 @@ export class ExplorerTreeService implements Service {
 	readonly store = createStore<ExplorerTree>()(() => EMPTY);
 
 	private readonly _tokens = new Map<string, number>();
+	private _scrollTop = 0;
 	private _seq = 0;
 	private _stop: (() => void) | null = null;
 
@@ -111,10 +133,33 @@ export class ExplorerTreeService implements Service {
 		});
 	}
 
-	toggleList(): void {
-		const next = !this.store.getState().listOpen;
-		localStorage.setItem(LIST_KEY, next ? "1" : "0");
-		this._patch((tree) => ({ ...tree, listOpen: next }));
+	setList(open: boolean): void {
+		localStorage.setItem(LIST_KEY, open ? "1" : "0");
+		this._patch((tree) => ({ ...tree, listOpen: open }));
+	}
+
+	get scrollTop(): number {
+		return this._scrollTop;
+	}
+
+	rememberScroll(top: number): void {
+		this._scrollTop = top;
+	}
+
+	async read(path: string): Promise<ExplorerFile | undefined> {
+		const session = this._session();
+		if (session === "") return undefined;
+		this._patch((tree) => ({ ...tree, reading: path }));
+		try {
+			return await call<ExplorerFile>(this._connection, "explorer.read", session, { path });
+		} finally {
+			this._patch((tree) => ({ ...tree, reading: tree.reading === path ? null : tree.reading }));
+		}
+	}
+
+	setListWidth(width: number): void {
+		localStorage.setItem(WIDTH_KEY, String(Math.round(width)));
+		this._patch((tree) => ({ ...tree, listWidth: width }));
 	}
 
 	toggle(path: string): void {
@@ -162,7 +207,8 @@ export class ExplorerTreeService implements Service {
 
 	private _reset(): void {
 		this._tokens.clear();
-		this.store.setState({ ...EMPTY, session: this._session(), listOpen: listOpen() }, true);
+		this._scrollTop = 0;
+		this.store.setState({ ...EMPTY, session: this._session(), listOpen: listOpen(), listWidth: listWidth() }, true);
 	}
 
 	private _session(): string {

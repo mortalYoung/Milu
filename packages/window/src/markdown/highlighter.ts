@@ -138,3 +138,18 @@ export function highlightWith(core: HighlighterCore, code: string, lang: string)
 	blocks.set(key, html);
 	return html;
 }
+
+/** One HTML string per line, both themes baked into `light-dark()`; empty when the grammar gives up. */
+export function highlightLines(core: HighlighterCore, code: string, lang: string): readonly string[] {
+	const id = resolveLanguage(lang) ?? "text";
+	try {
+		const html = core.codeToHtml(code, { lang: id, themes: SHIKI_THEMES, defaultColor: "light-dark()", ...HIGHLIGHT_LIMITS });
+		const open = html.indexOf("<code");
+		const start = html.indexOf(">", open);
+		const end = html.lastIndexOf("</code>");
+		if (open < 0 || start < 0 || end < 0) return [];
+		return html.slice(start + 1, end).split("\n");
+	} catch {
+		return [];
+	}
+}
