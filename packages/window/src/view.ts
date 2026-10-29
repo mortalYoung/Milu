@@ -58,6 +58,8 @@ export interface ViewItem {
 	say?: true;
 	live?: true;
 	stopped?: true;
+	/** The files this run wrote, absolute and inside the workspace — the words a message may link. */
+	files?: readonly string[];
 	escalation?: ViewEscalation;
 	shell?: { readonly output: string; readonly exitCode?: number };
 }
@@ -455,11 +457,156 @@ function markProcessText(entries: readonly LogEntry[], out: readonly ViewItem[])
 	flush();
 }
 
-export function projectView(entries: readonly LogEntry[]): ViewItem[] {
+// ——— the files a run wrote ———
+
+type Producer = (args: unknown) => string | null;
+
+const PRODUCERS: Readonly<Record<string, Producer>> = {
+	write: (args) => {
+		const record = parseRecord(args) as { path?: unknown; content?: unknown } | null;
+		if (record === null) return null;
+		const target = nonEmptyString(record.path);
+		return target !== null && typeof record.content === "string" ? target : null;
+	},
+	edit: (args) => {
+		const record = parseRecord(args) as { path?: unknown; edits?: unknown; oldText?: unknown; newText?: unknown } | null;
+		if (record === null) return null;
+		const target = nonEmptyString(record.path);
+		return target !== null && hasChangingEdit(record.edits, record.oldText, record.newText) ? target : null;
+	},
+};
+
+function nonEmptyString(value: unknown): string | null {
+	return typeof value === "string" && value !== "" ? value : null;
+}
+
+function parseRecord(value: unknown): Record<string, unknown> | null {
+	if (typeof value === "string") {
+		try {
+			return parseRecord(JSON.parse(value));
+		} catch {
+			return null;
+		}
+	}
+	return value !== null && typeof value === "object" ? (value as Record<string, unknown>) : null;
+}
+
+function asArray(value: unknown): unknown[] | null {
+	if (Array.isArray(value)) return value;
+	if (typeof value !== "string") return null;
+	try {
+		const parsed: unknown = JSON.parse(value);
+		return Array.isArray(parsed) ? parsed : null;
+	} catch {
+		return null;
+	}
+}
+
+function hasChangingEdit(edits: unknown, oldText: unknown, newText: unknown): boolean {
+	const list = asArray(edits) ?? [{ oldText, newText }];
+	for (const edit of list) {
+		const record = parseRecord(edit) as { oldText?: unknown; newText?: unknown } | null;
+		if (record === null) continue;
+		const before = nonEmptyString(record.oldText);
+		if (before !== null && typeof record.newText === "string" && before !== record.newText) return true;
+	}
+	return false;
+}
+
+const isAbsolutePath = (path: string): boolean => path.startsWith("/") || /^[A-Za-z]:[\\/]/.test(path);
+
+function workspacePath(path: string, baseDir: string): string {
+	if (path === "" || isAbsolutePath(path)) return path;
+	return `${baseDir.endsWith("/") ? baseDir.slice(0, -1) : baseDir}/${path}`;
+}
+
+/** Collapse `.` and `..` without a path module: this file runs in the renderer, which has no node. */
+function normalizePath(path: string): string {
+	const absolute = path.startsWith("/");
+	const segments: string[] = [];
+	for (const segment of path.split("/")) {
+		if (segment === "" || segment === ".") continue;
+		if (segment === "..") {
+			if (segments.length > 0) segments.pop();
+			else if (!absolute) segments.push("..");
+			continue;
+		}
+		segments.push(segment);
+	}
+	return `${absolute ? "/" : ""}${segments.join("/")}`;
+}
+
+function insideWorkspace(path: string, baseDir: string): boolean {
+	const root = normalizePath(baseDir);
+	const target = normalizePath(path);
+	return target === root || target.startsWith(`${root}/`);
+}
+
+/**
+ * What each reply wrote: the run's `write` / `edit` calls that landed without error, made absolute and
+ * kept inside the workspace, attached to the last assistant message that carried words. A mention the
+ * markdown layer can link, and a list no one can invent by writing `../` in a tool call.
+ */
+export function attachMentionFiles(entries: readonly LogEntry[], items: readonly ViewItem[], baseDir: string | null): void {
+	if (baseDir === null || baseDir === "") return;
+	const calls = new Map<string, { run: string; path: string | null }>();
+	const produced: { run: string; path: string }[] = [];
+	const closing = new Map<string, string>();
+	const closed = new Set<string>();
+	let run = "";
+	for (const entry of entries) {
+		if (entry.type === "message") {
+			if (run === "" || entry.message.role !== "assistant" || contentText(entry.message.content).trim() === "") continue;
+			closing.set(run, entry.id);
+			continue;
+		}
+		if (entry.type !== "custom") continue;
+		if (entry.customType === LOG_EVENTS.agentStart) {
+			run = entry.id;
+			continue;
+		}
+		if (entry.customType === LOG_EVENTS.agentEnd) {
+			closed.add(run);
+			continue;
+		}
+		const data = (entry.data ?? {}) as { callId?: unknown; toolCallId?: unknown; name?: unknown; args?: unknown; isError?: unknown };
+		if (entry.customType === LOG_EVENTS.toolCall) {
+			const callId = nonEmptyString(data.callId);
+			if (callId === null) continue;
+			const produce = PRODUCERS[nonEmptyString(data.name) ?? ""];
+			calls.set(callId, { run, path: produce === undefined ? null : produce(data.args) });
+			continue;
+		}
+		if (entry.customType !== LOG_EVENTS.toolResult || data.isError === true) continue;
+		const callId = nonEmptyString(data.toolCallId);
+		const call = callId === null ? undefined : calls.get(callId);
+		if (call === undefined || call.path === null) continue;
+		const absolute = normalizePath(workspacePath(call.path, baseDir));
+		if (!insideWorkspace(absolute, baseDir)) continue;
+		produced.push({ run: call.run, path: absolute });
+	}
+	const byItem = new Map<string, string[]>();
+	for (const [owner, id] of closing) {
+		if (!closed.has(owner)) continue;
+		const files: string[] = [];
+		for (const file of produced) {
+			if (file.run !== owner || files.includes(file.path)) continue;
+			files.push(file.path);
+		}
+		if (files.length > 0) byItem.set(id, files);
+	}
+	for (const item of items) {
+		const files = byItem.get(item.id);
+		if (files !== undefined) item.files = files;
+	}
+}
+
+export function projectView(entries: readonly LogEntry[], options: { baseDir?: string | null } = {}): ViewItem[] {
 	const out: ViewItem[] = [];
 	for (const entry of entries) VISITORS[entryKey(entry)]?.(entry, out);
 	markProcessText(entries, out);
 	attachPeerPosts(entries, out);
+	attachMentionFiles(entries, out, options.baseDir ?? null);
 	return out;
 }
 

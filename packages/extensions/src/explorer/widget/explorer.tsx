@@ -488,7 +488,11 @@ function FileReader(props: { host: Host; file: OpenFile; list: ListControls; roo
 
 	const data = loaded !== null && loaded.path === file.path ? loaded.file : null;
 	const error = failed !== null && failed.path === file.path ? failed.message : "";
-	const render = data !== null && isMarkdown(file.path) && (markup === null || markup.path !== file.path || markup.render);
+	const target = state.line !== null && state.line.path === file.path ? state.line : null;
+	/* A line was asked for: a markdown preview has no rows to land on, so show the source unless the
+	   reader toggled the preview for this very file. */
+	const chosen = markup !== null && markup.path === file.path ? markup.render : null;
+	const render = data !== null && isMarkdown(file.path) && (chosen ?? target === null);
 	const html = full !== null && full.path === file.path ? full.html : "";
 	const language = resolveLanguage(extensionOf(file.path));
 	const paintedLines = painted !== null && painted.path === file.path ? painted.lines : null;
@@ -548,6 +552,22 @@ function FileReader(props: { host: Host; file: OpenFile; list: ListControls; roo
 	useEffect(() => {
 		strip.current?.querySelector<HTMLElement>(".explorer-tab.on")?.scrollIntoView({ inline: "nearest", block: "nearest" });
 	}, [state.activeFile]);
+
+	const located = useRef(0);
+
+	useEffect(() => {
+		if (target === null || data === null || render || located.current === target.seq) return;
+		const row = body.current?.querySelector<HTMLElement>(`[data-line="${Math.max(0, target.line - 1)}"]`);
+		if (!row) return;
+		located.current = target.seq;
+		row.scrollIntoView({ block: "center" });
+		row.classList.add("is-located");
+		const timer = window.setTimeout(() => row.classList.remove("is-located"), 1400);
+		return () => {
+			window.clearTimeout(timer);
+			row.classList.remove("is-located");
+		};
+	}, [target, data, render]);
 
 	const relative = relativeOf(props.root, file.path);
 	const segments = relative.split("/").filter(Boolean);

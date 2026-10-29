@@ -16,6 +16,8 @@ export interface ExplorerTree {
 	readonly dirs: Readonly<Record<string, DirState>>;
 	readonly expanded: ReadonlySet<string>;
 	readonly focus: { readonly path: string; readonly seq: number } | null;
+	/** A line the reader should bring into view; `seq` re-fires a second ask for the same one. */
+	readonly line: { readonly path: string; readonly line: number; readonly seq: number } | null;
 	readonly opened: readonly OpenFile[];
 	readonly activeFile: string | null;
 	readonly listOpen: boolean;
@@ -41,6 +43,7 @@ const EMPTY: ExplorerTree = {
 	dirs: {},
 	expanded: new Set(),
 	focus: null,
+	line: null,
 	opened: [],
 	activeFile: null,
 	listOpen: listOpen(),
@@ -175,6 +178,11 @@ export class ExplorerTreeService implements Service {
 
 	collapseAll(): void {
 		this._patch((tree) => ({ ...tree, expanded: new Set() }));
+	}
+
+	revealLine(path: string, line: number): void {
+		this._seq += 1;
+		this._patch((tree) => ({ ...tree, line: { path, line, seq: this._seq } }));
 	}
 
 	/** Expand every segment up to `path`, load what is missing, and ask the pane to scroll there. */

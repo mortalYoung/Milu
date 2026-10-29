@@ -59,7 +59,7 @@ import {
 	loadWidgets,
 	type WidgetFailure,
 } from "@milu/window";
-import type { MarkdownPort } from "@milu/window/markdown";
+import { createMarkdown, DEFAULT_PLUGINS, type Markdown } from "@milu/window/markdown";
 
 export interface FrontEndDeps {
 	readonly transport: Transport;
@@ -67,7 +67,6 @@ export interface FrontEndDeps {
 	readonly triggers?: readonly ComposerTriggerComponent[];
 	readonly commands?: BrowserCommands;
 	readonly platform: Platform;
-	readonly markdown: MarkdownPort & Disposable;
 	readonly mark?: (name: string) => void;
 }
 
@@ -89,6 +88,8 @@ async function widgetEntries(connection: Connection): Promise<readonly WidgetEnt
 export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	const connection = new Connection(deps.transport);
 	const set = await loadWidgets(await widgetEntries(connection));
+	/* Plugins arrive with the widgets, so the port is built here — after them, before anything renders. */
+	const markdown: Markdown = createMarkdown([...DEFAULT_PLUGINS, ...set.markdown]);
 
 	let container: InstantiationService;
 	const services = new ServiceCollection();
@@ -151,7 +152,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	const layout = container.get(ILayoutService);
 
 	const disposables = new DisposableStore();
-	disposables.add(deps.markdown);
+	disposables.add(markdown);
 	disposables.add(
 		connection.onLive((event) => {
 			if (event.type !== "dialog") return;
@@ -232,7 +233,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 			slots,
 			rows,
 			notifications,
-			markdown: deps.markdown,
+			markdown,
 			layout,
 			get: (id) => container.get(id),
 		},
@@ -300,7 +301,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 							void composer.loadLayout(true);
 							void dock.refresh();
 							void applyTheme();
-							deps.markdown.warm();
+							markdown.warm();
 						}
 						return;
 					}

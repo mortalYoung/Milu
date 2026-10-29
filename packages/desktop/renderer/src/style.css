@@ -973,6 +973,41 @@ body.pane-dragging {
 	padding: 0 5px;
 }
 
+/* A mention is a button inside the code span: the chip has to be the box that wraps it, and the
+   line height goes back to normal so a one-line chip is still exactly as tall as a plain code span. */
+.md code.md-mention-chip {
+	display: inline-block;
+	line-height: normal;
+}
+
+.md-file-mention {
+	background: none;
+	border: 0;
+	padding: 0;
+	margin: 0;
+	font: inherit;
+	color: inherit;
+	text-align: inherit;
+	cursor: pointer;
+	text-decoration: underline dotted;
+	text-decoration-color: color-mix(in srgb, var(--ink) 32%, transparent);
+	text-decoration-thickness: 1px;
+	text-underline-offset: 2px;
+	transition: text-decoration-color 140ms var(--ease-out);
+}
+
+.md-file-mention:focus-visible {
+	outline: 2px solid var(--ink);
+	outline-offset: 1px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+	.md-file-mention:hover {
+		text-decoration-style: solid;
+		text-decoration-color: var(--ink);
+	}
+}
+
 .md a,
 .md-inline-url {
 	color: var(--link);

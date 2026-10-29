@@ -110,9 +110,11 @@ function EscalationCard(props: { item: ViewItem; host: Host; session: string }) 
 }
 
 function AssistantBlock(props: { host: Host; item: ViewItem; live?: boolean }) {
+	const files = props.item.files;
+	const env = useMemo(() => (files === undefined ? undefined : { files }), [files]);
 	return (
 		<div className={props.live ? "msg-block msg-block-agent is-live" : "msg-block msg-block-agent"} data-entry={props.item.id}>
-			<Markdown port={props.host.markdown} text={props.item.text} className="msg-body" plain={props.live} />
+			<Markdown port={props.host.markdown} text={props.item.text} env={env} className="msg-body" plain={props.live} />
 			<div className={props.live ? "msg-meta invisible" : "msg-meta"}>
 				<CopyButton text={props.item.text} />
 				<span className="msg-at">{formatHistoryTime(props.item.time)}</span>
@@ -192,8 +194,10 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 	const runError = useStore(host.sessions.store, (state) => state.rows.find((row) => row.name === selected)?.error ?? "");
 	const error = loadError || runError;
 	const working = useStore(host.sessions.store, (state) => state.rows.find((row) => row.name === selected)?.running ?? false);
+	const workspace = useStore(host.sessions.store, (state) => state.rows.find((row) => row.name === selected)?.workspace ?? null);
 
-	const items = useMemo(() => projectView(entries.map((seq) => seq.entry)), [entries]);
+	const log = useMemo(() => entries.map((seq) => seq.entry), [entries]);
+	const items = useMemo(() => projectView(log, { baseDir: workspace }), [log, workspace]);
 	const display = useMemo(() => layoutView(items), [items]);
 
 	const panes = useStore(host.slots.store, (state) => state.points[SLOT_POINTS.chatPanes] ?? NO_PANES);

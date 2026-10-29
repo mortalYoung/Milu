@@ -11,6 +11,10 @@ export interface Markdown extends MarkdownPort {
 }
 
 const CACHE_LIMIT = 200;
+
+/** Markdown-it's own env type is not exported; this is the shape its `render` takes. */
+type RenderEnv = NonNullable<Parameters<MarkdownItType["render"]>[1]>;
+
 /** Every fence's language, read by markdown-it itself: indented, nested and metad fence info all land the same way. */
 function fenceLanguages(md: MarkdownItType, source: string): string[] {
 	const out: string[] = [];
@@ -53,6 +57,17 @@ function ordered(plugins: readonly MarkdownPlugin[]): readonly MarkdownPlugin[] 
 		byId.add(plugin.id);
 	}
 	return sorted;
+}
+
+/**
+ * What a render depends on, as one cache key: the text, plus the env a plugin reads. Only `files` is
+ * known to be stable string data today — anything else keeps the render uncached rather than guess.
+ */
+function cacheKey(text: string, env: MarkdownEnv): string | null {
+	const keys = Object.keys(env);
+	if (keys.length === 0) return text;
+	if (keys.length !== 1 || keys[0] !== "files") return null;
+	return `${text}\u0001${(env.files ?? []).join("\u0000")}`;
 }
 
 function instance(): MarkdownItType {
@@ -112,11 +127,11 @@ export function createMarkdown(plugins: readonly MarkdownPlugin[] = DEFAULT_PLUG
 	};
 
 	const paint = (md: MarkdownItType, cache: RenderCache, tier: MarkdownTier, text: string, env: MarkdownEnv): string => {
-		const cacheable = Object.keys(env).length === 0;
-		const hit = cacheable ? cache.get(text) : undefined;
+		const key = cacheKey(text, env);
+		const hit = key === null ? undefined : cache.get(key);
 		if (hit !== undefined) return hit;
-		const html = htmlOf(md.render(sourceOf(text, env, tier)), env, tier);
-		if (cacheable) cache.set(text, html);
+		const html = htmlOf(md.render(sourceOf(text, env, tier), env as RenderEnv), env, tier);
+		if (key !== null) cache.set(key, html);
 		return html;
 	};
 
@@ -130,8 +145,8 @@ export function createMarkdown(plugins: readonly MarkdownPlugin[] = DEFAULT_PLUG
 			return paint(plain, caches.plain, "both", text, env);
 		},
 		async renderFull(text, env = {}) {
-			const cacheable = Object.keys(env).length === 0;
-			const hit = cacheable ? caches.full.get(text) : undefined;
+			const key = cacheKey(text, env);
+			const hit = key === null ? undefined : caches.full.get(key);
 			if (hit !== undefined) return hit;
 			const source = sourceOf(text, env, "full");
 			const fences = fenceLanguages(plain, source);

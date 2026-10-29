@@ -1,5 +1,4 @@
 import { createFrontEnd } from "@milu/bootstrap/frontend";
-import { createMarkdown, DEFAULT_PLUGINS } from "@milu/window/markdown";
 import { createElement } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -25,7 +24,6 @@ async function main(): Promise<void> {
 
 	const front = await createFrontEnd({
 		transport,
-		markdown: createMarkdown([...DEFAULT_PLUGINS]),
 		platform: "desktop",
 		mark,
 		commands: { copy: (text) => copyPath(text) },

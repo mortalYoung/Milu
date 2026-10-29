@@ -7,6 +7,7 @@ import type { WidgetComponent, WidgetProps } from "./composer.ts";
 import type { DialogComponent, DialogProps } from "./dialogs.ts";
 import { ExtensionWidget, WidgetBoundary } from "./extension-widget.tsx";
 import type { FrontEndService } from "./extensions.ts";
+import type { MarkdownPlugin } from "./markdown/types.ts";
 import type { RowComponent } from "./rows.ts";
 import type { SlotComponent, SlotProps } from "./slots.ts";
 
@@ -22,6 +23,7 @@ export interface WidgetSet {
 	readonly dialogs: readonly DialogComponent[];
 	readonly triggers: readonly ComposerTriggerComponent[];
 	readonly services: readonly FrontEndService[];
+	readonly markdown: readonly MarkdownPlugin[];
 	readonly failures: readonly WidgetFailure[];
 }
 
@@ -48,6 +50,14 @@ function asService(value: unknown, entry: WidgetEntry): FrontEndService {
 	return value as FrontEndService;
 }
 
+function asMarkdownPlugin(value: unknown, entry: WidgetEntry): MarkdownPlugin {
+	const plugin = value as { id?: unknown; order?: unknown; tier?: unknown; setup?: unknown; html?: unknown; source?: unknown };
+	if (typeof plugin !== "object" || plugin === null || plugin.id !== entry.id || typeof plugin.order !== "number") {
+		throw new Error(`"${entry.export ?? "default"}" is not the "${entry.id}" markdown plugin`);
+	}
+	return plugin as MarkdownPlugin;
+}
+
 function wrap<P extends object>(entry: WidgetEntry, component: ComponentType<P>, narrowed: boolean): ComponentType<P> {
 	if (entry.source === "builtin") return component;
 	if (narrowed) {
@@ -64,6 +74,7 @@ export async function loadWidgets(entries: readonly WidgetEntry[]): Promise<Widg
 	const dialogs: DialogComponent[] = [];
 	const triggers: ComposerTriggerComponent[] = [];
 	const services: FrontEndService[] = [];
+	const markdown: MarkdownPlugin[] = [];
 	const failures: WidgetFailure[] = [];
 
 	for (const entry of entries) {
@@ -79,6 +90,7 @@ export async function loadWidgets(entries: readonly WidgetEntry[]): Promise<Widg
 			else if (entry.type === "row") rows.push({ id: entry.id, component: wrap<SlotProps>(entry, asComponent<SlotProps>(value, entry), true) });
 			else if (entry.type === "dialog") dialogs.push({ id: entry.id, component: wrap<DialogProps>(entry, asComponent<DialogProps>(value, entry), false) });
 			else if (entry.type === "trigger") triggers.push(asTrigger(value, entry));
+			else if (entry.type === "markdown") markdown.push(asMarkdownPlugin(value, entry));
 			else services.push(asService(value, entry));
 		} catch (error) {
 			const message = reason(error);
@@ -87,5 +99,5 @@ export async function loadWidgets(entries: readonly WidgetEntry[]): Promise<Widg
 		}
 	}
 
-	return { slots, rows, widgets, dialogs, triggers, services, failures };
+	return { slots, rows, widgets, dialogs, triggers, services, markdown, failures };
 }

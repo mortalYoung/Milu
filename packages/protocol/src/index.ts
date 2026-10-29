@@ -247,7 +247,7 @@ export type Result<K extends MethodName> = Methods[K]["result"];
 
 export type RpcResponse = { readonly ok: true; readonly result: unknown } | { readonly ok: false; readonly error: WireError };
 
-export type WidgetType = "slot" | "widget" | "dialog" | "trigger" | "service" | "row";
+export type WidgetType = "slot" | "widget" | "dialog" | "trigger" | "service" | "row" | "markdown";
 
 export type LifecyclePhase = "starting" | "restored" | "ready";
 

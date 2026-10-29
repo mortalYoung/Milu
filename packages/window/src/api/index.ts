@@ -8,6 +8,7 @@ export { ISelectionService } from "../selection.ts";
 export type { SlotProps } from "../slots.ts";
 export type { Host, SurfaceProps } from "../surfaces.ts";
 export type { WidgetProps } from "../composer.ts";
+export type { MarkdownEnv, MarkdownPlugin } from "../markdown/types.ts";
 export type { ComposerTriggerProps } from "../composer-triggers.ts";
 export { Kbd, KbdGroup } from "./kbd.tsx";
 export { TooltipProvider, Tip } from "./tooltip.tsx";
