@@ -9,6 +9,7 @@ export const CORE_LANGUAGES = ["ts", "tsx", "bash"];
 
 const LOADERS: Record<string, () => Promise<{ default: LanguageInput }>> = {
 	bash: () => import("shiki/langs/bash.mjs"),
+	console: () => import("shiki/langs/console.mjs"),
 	css: () => import("shiki/langs/css.mjs"),
 	diff: () => import("shiki/langs/diff.mjs"),
 	html: () => import("shiki/langs/html.mjs"),
@@ -17,6 +18,7 @@ const LOADERS: Record<string, () => Promise<{ default: LanguageInput }>> = {
 	json: () => import("shiki/langs/json.mjs"),
 	jsonc: () => import("shiki/langs/jsonc.mjs"),
 	jsx: () => import("shiki/langs/jsx.mjs"),
+	log: () => import("shiki/langs/log.mjs"),
 	markdown: () => import("shiki/langs/markdown.mjs"),
 	python: () => import("shiki/langs/python.mjs"),
 	sql: () => import("shiki/langs/sql.mjs"),
@@ -28,7 +30,6 @@ const LOADERS: Record<string, () => Promise<{ default: LanguageInput }>> = {
 };
 
 const ALIASES: Record<string, string> = {
-	console: "bash",
 	htm: "html",
 	javascript: "js",
 	md: "markdown",
