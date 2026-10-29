@@ -50,11 +50,15 @@ function useHasWorkspace(host: Host): boolean {
 export function GitButton(props: SlotProps) {
 	const { host } = props;
 	const hasWorkspace = useHasWorkspace(host);
-	const count = useStore(host.get(IGitChangesService).store, (state) => state.changes.length);
-	const visible = useStore(host.dock.store, (state) => state.visible);
-	const active = useStore(host.dock.store, (state) => state.active);
+	const state = useStore(host.get(IGitChangesService).store);
+	const visible = useStore(host.dock.store, (current) => current.visible);
+	const active = useStore(host.dock.store, (current) => current.active);
 	const open = visible && active === "git";
-	if (!hasWorkspace) return null;
+	const count = state.changes.length;
+	/* No entry for a clean tree: nothing to show is the whole point of the button. A read that failed
+	   still shows — a broken repository is worth one line of chrome. */
+	const worth = state.status === "error" || (state.status === "ready" && count > 0);
+	if (!hasWorkspace || !worth) return null;
 	return (
 		<Tip label="Changes (⌘J)">
 			<button
@@ -100,6 +104,7 @@ export function GitPane(props: SlotProps) {
 	const session = useStore(host.selection.store, (current) => current.selected);
 	const running = useStore(host.sessions.store, (current) => current.rows.find((row) => row.name === session)?.running ?? false);
 	const dockWidth = useStore(host.columns.store, (current) => current.columns.dock.width);
+	const shown = useStore(host.dock.store, (current) => current.visible);
 	const origin = useRef<{ x: number; width: number } | null>(null);
 	const peek = useRef<HTMLDivElement>(null);
 	const wasRunning = useRef(running);
@@ -121,6 +126,12 @@ export function GitPane(props: SlotProps) {
 	useEffect(() => {
 		void service.refresh();
 	}, [service]);
+
+	/* The entry is gone once the tree is clean, so a view left showing nothing hands the dock back. */
+	useEffect(() => {
+		if (!hasWorkspace || !shown || state.status !== "ready" || state.changes.length > 0) return;
+		host.dock.select("explorer");
+	}, [host, hasWorkspace, shown, state.status, state.changes.length]);
 
 	useEffect(() => {
 		if (wasRunning.current && !running) void service.refresh();
