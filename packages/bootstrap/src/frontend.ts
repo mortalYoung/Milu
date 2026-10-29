@@ -331,6 +331,15 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 						notifications.push({ title: event.title, body: event.body, tone: event.tone });
 						return;
 					}
+					if (event.type === "fork") {
+						void sessions.refresh();
+						if (event.error !== undefined) {
+							notifications.push({ title: "Fork failed", body: event.error, tone: "error" });
+							return;
+						}
+						void selection.select(event.session);
+						return;
+					}
 					if (event.type === "settings") {
 						composerData.clear();
 						void applyTheme();

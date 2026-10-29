@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
@@ -9,6 +9,7 @@ export const WORKSPACE_FILE = "workspace.json";
 export const MODEL_FILE = "model.json";
 export const LAST_PROMPT_FILE = "last-prompt.json";
 export const SANDBOX_FILE = "sandbox.json";
+export const FORKING_FILE = "forking.json";
 
 const promptHash = (prompt: string) => createHash("sha256").update(prompt).digest("hex");
 
@@ -80,6 +81,23 @@ export function modelOf(dir: string): Promise<SessionModel | null> {
 
 export function writeModel(dir: string, model: SessionModel): Promise<void> {
 	return writeJson(join(dir, MODEL_FILE), model);
+}
+
+/** While this file exists the session is a copy still being written: it has no log to read yet. */
+export function forkingOf(dir: string): Promise<{ from?: unknown } | null> {
+	return readJson<{ from?: unknown }>(join(dir, FORKING_FILE));
+}
+
+export function markForking(dir: string, from: string): Promise<void> {
+	return writeJson(join(dir, FORKING_FILE), { from, startedAt: Date.now() });
+}
+
+export async function clearForking(dir: string): Promise<void> {
+	await rm(join(dir, FORKING_FILE), { force: true });
+}
+
+export function writeProfile(dir: string, profile: SessionProfile): Promise<void> {
+	return writeJson(join(dir, PROFILE_FILE), profile);
 }
 
 export async function writePinned(dir: string, pinned: boolean): Promise<void> {

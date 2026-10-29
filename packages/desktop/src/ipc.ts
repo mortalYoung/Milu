@@ -87,6 +87,7 @@ export class IpcServer {
 			}),
 			this._backend.layout.onChange((state) => this._broadcast({ type: "live", event: { type: "layout", ...state } })),
 			this._backend.watch.onChange((path: string) => this._broadcast({ type: "live", event: { type: "file", path } })),
+			this._backend.sessions.onFork(({ session, error }) => this._broadcast({ type: "live", event: { type: "fork", session, ...(error === undefined ? {} : { error }) } })),
 			this._backend.sessions.onLoopEvent(({ session, event }) => {
 				if (event.type === "message_update") {
 					this._queuePartial(session, event.message);

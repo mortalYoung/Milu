@@ -50,6 +50,7 @@ export interface SessionMenuItemBase {
 	readonly order?: number;
 	readonly group?: string;
 	readonly danger?: boolean;
+	readonly disabled?: SessionValue<boolean>;
 	readonly title: SessionValue<string>;
 	readonly icon?: SessionValue<string>;
 }

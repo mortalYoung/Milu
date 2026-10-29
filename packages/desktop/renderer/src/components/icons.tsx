@@ -1,15 +1,18 @@
 import {
 	ArrowDown,
 	ArrowUp,
+	ArrowUpFromLine,
 	Check,
 	ChevronDown,
 	ChevronRight,
 	CircleStop,
 	Copy,
+	CopyPlus,
 	EllipsisVertical,
 	FileText,
 	Folder,
 	FolderTree,
+	GitFork,
 	Info,
 	type LucideIcon,
 	PanelLeft,
@@ -44,6 +47,9 @@ export const CheckIcon = sized(Check);
 export const ArrowDownIcon = sized(ArrowDown);
 export const CircleStopIcon = sized(CircleStop);
 export const CopyIcon = sized(Copy);
+export const CopyPlusIcon = sized(CopyPlus);
+export const GitForkIcon = sized(GitFork);
+export const ArrowUpFromLineIcon = sized(ArrowUpFromLine);
 export const PinIcon = sized(Pin);
 export const PinOffIcon = sized(PinOff);
 export const InfoIcon = sized(Info);
@@ -65,6 +71,9 @@ const NAMED: Record<string, (props: { size?: number; className?: string }) => Re
 	"folder-tree": FolderTreeIcon,
 	"file-text": FileTextIcon,
 	copy: CopyIcon,
+	"copy-plus": CopyPlusIcon,
+	"git-fork": GitForkIcon,
+	"arrow-up-from-line": ArrowUpFromLineIcon,
 };
 
 export function IconByName(props: { name?: string; size?: number; className?: string }) {

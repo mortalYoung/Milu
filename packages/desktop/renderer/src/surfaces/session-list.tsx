@@ -25,6 +25,7 @@ function Row(props: {
 }) {
 	const { session } = props;
 	const pinned = session.pinned === true && props.leaf !== true;
+	const forking = session.forking === true;
 	const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
 	const [menuOpen, setMenuOpen] = useState(false);
 	const menuClosedAt = useRef(0);
@@ -32,12 +33,13 @@ function Row(props: {
 
 	return (
 		<div
-			className={`group relative flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-100 hover:bg-hover${props.selected ? " bg-selected" : ""}${active ? " bg-selected ring-1 ring-line-strong ring-inset" : ""}${props.leaf ? " ml-5" : ""}${pinned ? " session-pinned-row" : ""}`}
+			className={`group relative flex items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-100 hover:bg-hover${forking ? " cursor-default" : " cursor-pointer"}${props.selected ? " bg-selected" : ""}${active ? " bg-selected ring-1 ring-line-strong ring-inset" : ""}${props.leaf ? " ml-5" : ""}${pinned ? " session-pinned-row" : ""}`}
 			role="button"
 			tabIndex={0}
+			aria-disabled={forking ? true : undefined}
 			aria-current={props.selected ? "true" : undefined}
 			onClick={() => {
-				if (Date.now() - menuClosedAt.current < 200) return;
+				if (forking || Date.now() - menuClosedAt.current < 200) return;
 				props.onSelect();
 			}}
 			onContextMenu={(event) => {
@@ -45,7 +47,7 @@ function Row(props: {
 				setPointer({ x: event.clientX, y: event.clientY });
 			}}
 			onKeyDown={(event) => {
-				if (event.key !== "Enter" && event.key !== " ") return;
+				if (forking || (event.key !== "Enter" && event.key !== " ")) return;
 				event.preventDefault();
 				props.onSelect();
 			}}
@@ -81,11 +83,14 @@ function Row(props: {
 				</span>
 				<span className="mt-0.5 flex min-w-0 items-center gap-2 font-sans text-[13px] text-muted">
 					<span className="min-w-0 flex-1 truncate">
-						{props.writing ? (
-							<span className="inline-flex items-center gap-[3px] pt-[3px]">
-								<span className="work-dot" />
-								<span className="work-dot" />
-								<span className="work-dot" />
+						{props.writing || forking ? (
+							<span className="inline-flex items-center gap-[6px] pt-[3px]">
+								<span className="inline-flex items-center gap-[3px]">
+									<span className="work-dot" />
+									<span className="work-dot" />
+									<span className="work-dot" />
+								</span>
+								{forking ? <span className="font-mono text-[10px] tracking-[0.12em] text-muted-soft uppercase">forking…</span> : null}
 							</span>
 						) : (
 							previewFor(session) || "—"

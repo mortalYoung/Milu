@@ -1,5 +1,5 @@
-import { open, readdir, stat, type FileHandle } from "node:fs/promises";
-import { join } from "node:path";
+import { open, readdir, rm, stat, utimes, type FileHandle } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 
 import type { AgentMessage, Entry, JsonlSessionMetadata } from "@earendil-works/pi-agent-core";
 import { JsonlSessionRepo, type Session } from "@earendil-works/pi-agent-core";
@@ -8,6 +8,7 @@ import type { SeqEntry } from "@milu/protocol";
 
 import type { ExecutionService } from "../services/execution.ts";
 import { EVENTS } from "./events.ts";
+import { forkingOf } from "./files.ts";
 import { originWindow, projectOrigin, projectTail, tailWindow, type OriginWindow } from "./origin.ts";
 import { projectSlice, projectSliceItems, type SliceItem } from "./slice.ts";
 import { textOf } from "./text.ts";
@@ -183,6 +184,7 @@ export class SessionLog {
 
 	async open(): Promise<void> {
 		if (this._disposed || this._session) return;
+		if ((await forkingOf(this.root)) !== null) throw new Error("this chat is still being forked");
 		this._opening ??= this._open();
 		try {
 			const opened = await this._opening;
@@ -255,6 +257,38 @@ export class SessionLog {
 		} finally {
 			await handle.close();
 		}
+	}
+
+	/** Forget the file this log was reading: the next read finds whatever is on disk now. */
+	invalidate(): void {
+		this._session = null;
+		this._latestMeta = undefined;
+		this._latestPathCache = undefined;
+	}
+
+	/**
+	 * New logs for a copy of this session: the SDK forks each tree, and the log the reader is on has to
+	 * stay the newest one — every fork lands with a fresh mtime, so order alone would no longer say.
+	 */
+	async forkInto(targetRoot: string): Promise<void> {
+		await this.open();
+		const current = await this._latestPath();
+		const sessions = await this._repo().list({ cwd: this.root });
+		/* Whatever the copy brought over is a byte copy of the old logs; the fork replaces it, or the
+		   new session would read the source's own history under its name. */
+		for (const source of sessions) {
+			await rm(join(targetRoot, basename(dirname(source.path))), { recursive: true, force: true });
+			await rm(join(targetRoot, basename(source.path)), { force: true });
+		}
+		/* The fork reads the source log and writes the new one: one env rooted above both directories. */
+		const fs = this._executionService.env(dirname(targetRoot));
+		const target = new JsonlSessionRepo({ fs, sessionsRoot: targetRoot });
+		let forked = "";
+		for (const source of sessions) {
+			const created = await target.fork(source, { scope: "tree", cwd: targetRoot });
+			if (current !== null && source.path === current) forked = ((await created.getMetadata()) as { path?: string }).path ?? "";
+		}
+		if (forked !== "") await utimes(forked, new Date(), new Date(Date.now() + 1000));
 	}
 
 	async reset(): Promise<void> {

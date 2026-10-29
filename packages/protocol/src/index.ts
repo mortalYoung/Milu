@@ -60,6 +60,8 @@ export interface SessionRow {
 	readonly pinned?: boolean;
 	readonly readAt?: number;
 	readonly running: boolean;
+	/** The directory is a copy still being written: there is no log to open yet. */
+	readonly forking?: boolean;
 	readonly error?: string;
 	readonly lastMessage?: string;
 	readonly lastMessageAt?: number;
@@ -88,6 +90,7 @@ export interface ContributionItem {
 	readonly order?: number;
 	readonly group?: string;
 	readonly danger?: boolean;
+	readonly disabled?: boolean;
 	readonly action?: string;
 	readonly args?: unknown;
 	readonly items?: readonly ContributionItem[];
@@ -188,6 +191,7 @@ export interface LayoutState {
 
 export type LiveEvent =
 	| { readonly type: "status"; readonly session: string; readonly running: boolean }
+	| { readonly type: "fork"; readonly session: string; readonly error?: string }
 	| { readonly type: "selection"; readonly selected: string | null }
 	| ({ readonly type: "layout" } & LayoutState)
 	| { readonly type: "composer"; readonly session: string; readonly mode: ComposerMode }

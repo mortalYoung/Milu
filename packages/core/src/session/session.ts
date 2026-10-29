@@ -15,6 +15,7 @@ import { EVENTS } from "./events.ts";
 import {
 	modelOf,
 	promptChangedSinceLastPersist,
+	forkingOf,
 	profileOf,
 	readAtOf,
 	recordPrompt,
@@ -27,6 +28,7 @@ import {
 	type WorkspaceFacts,
 	writeModel,
 	writePinned,
+	writeProfile,
 	writeReadAt,
 	writeSandbox,
 } from "./files.ts";
@@ -174,6 +176,7 @@ export class Session {
 		const readAt = await this._readAtOf();
 		const workspace = await this._workspaceOf();
 		const facts = await this._facts();
+		const forking = (await forkingOf(this.root)) !== null;
 		return {
 			name: this.name,
 			path: this.path,
@@ -187,6 +190,7 @@ export class Session {
 			...(workspace ? { workspace: workspace.path, workspaceKind: workspace.kind, workspaceRepo: workspace.repo } : {}),
 			...(facts.last ? { lastMessage: facts.last.text, lastMessageAt: facts.last.time, lastMessageKind: facts.last.kind } : {}),
 			running: this.running,
+			...(forking ? { forking: true } : {}),
 			...(this._error ? { error: this._error } : {}),
 		};
 	}
@@ -483,6 +487,38 @@ export class Session {
 
 	async profile(): Promise<SessionProfile | null> {
 		return this._profileOf();
+	}
+
+	/**
+	 * Everything read from the directory before a fork finished writing it is stale — the row was
+	 * already reading a session whose log, workspace and model had not been copied yet.
+	 */
+	invalidate(): void {
+		this._log.invalidate();
+		this._profile = undefined;
+		this._readAt = undefined;
+		this._workspace = undefined;
+		this._model = undefined;
+		this._usedTokens = undefined;
+	}
+
+	async forking(): Promise<boolean> {
+		return (await forkingOf(this.root)) !== null;
+	}
+
+	/** The log side of a copy; the directory and the profile belong to the caller. */
+	async forkInto(target: string): Promise<void> {
+		await this._log.forkInto(target);
+	}
+
+	/** A fork becomes a root chat: the branch keeps its history and stops being a branch. */
+	async promote(): Promise<void> {
+		const profile = (await this._profileOf()) ?? { name: this.name, createdAt: Date.now() };
+		if (profile.forkedFrom === undefined) throw new Error(`"${this.name}" is already a root chat`);
+		const next = { ...profile };
+		delete next.forkedFrom;
+		await writeProfile(this.root, next);
+		this._profile = next;
 	}
 
 	async pin(pinned: boolean): Promise<void> {

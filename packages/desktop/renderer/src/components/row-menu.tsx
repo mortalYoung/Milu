@@ -110,7 +110,8 @@ function MenuEntry(props: { item: ContributionItem; first: boolean; previous?: C
 		<>
 			{separator}
 			<DropdownMenu.Item
-				className={`flex w-full cursor-pointer items-center gap-1.5 rounded bg-transparent px-2 py-1 text-left font-sans text-[14px] whitespace-nowrap transition-colors hover:bg-[color-mix(in_srgb,var(--ink)_10%,transparent)] data-[highlighted]:bg-[color-mix(in_srgb,var(--ink)_10%,transparent)] data-[highlighted]:outline-none data-[state=open]:bg-[color-mix(in_srgb,var(--ink)_10%,transparent)] ${
+				disabled={item.disabled === true}
+				className={`flex w-full cursor-pointer items-center gap-1.5 rounded bg-transparent px-2 py-1 text-left font-sans text-[14px] whitespace-nowrap transition-colors hover:bg-[color-mix(in_srgb,var(--ink)_10%,transparent)] data-[disabled]:pointer-events-none data-[disabled]:opacity-45 data-[highlighted]:bg-[color-mix(in_srgb,var(--ink)_10%,transparent)] data-[highlighted]:outline-none data-[state=open]:bg-[color-mix(in_srgb,var(--ink)_10%,transparent)] ${
 					item.danger ? "text-signal" : "text-ink"
 				}`}
 				onSelect={() => props.onRun(item)}

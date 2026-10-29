@@ -1,3 +1,4 @@
+import { cp, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { createServiceId, DisposableStore, Emitter, type Event, type Service } from "@milu/di";
@@ -13,7 +14,7 @@ import {
 	type SessionMenuItem,
 	type SessionValue,
 } from "../extensions/types.ts";
-import { profileOf } from "../session/files.ts";
+import { clearForking, forkingOf, markForking, profileOf, type SessionProfile, writeProfile } from "../session/files.ts";
 import { Session } from "../session/session.ts";
 import type { AgentLoopEvent } from "./agent-loop.ts";
 import { ICompactionService } from "./compaction.ts";
@@ -43,15 +44,23 @@ export interface SessionLoopEvent {
 	readonly event: AgentLoopEvent;
 }
 
+export interface SessionForkEvent {
+	readonly session: string;
+	readonly error?: string;
+}
+
 export class SessionService implements Service {
 	readonly onEntry: Event<SessionEntry>;
 	readonly onLoopEvent: Event<SessionLoopEvent>;
+	readonly onFork: Event<SessionForkEvent>;
 
 	private _partnerRoot = "";
 	private readonly _sessions = new Map<string, Session>();
 	private readonly _relays = new Map<string, DisposableStore>();
 	private readonly _entryEmitter = new Emitter<SessionEntry>();
 	private readonly _loopEmitter = new Emitter<SessionLoopEvent>();
+	private readonly _forkEmitter = new Emitter<SessionForkEvent>();
+	private readonly _forks = new Map<string, Promise<void>>();
 
 	constructor(
 		@IExecutionService private readonly _executionService: ExecutionService,
@@ -65,10 +74,12 @@ export class SessionService implements Service {
 	) {
 		this.onEntry = this._entryEmitter.event;
 		this.onLoopEvent = this._loopEmitter.event;
+		this.onFork = this._forkEmitter.event;
 	}
 
 	async initialize(): Promise<void> {
 		this._partnerRoot = expandHome(this._settingsService.get().partner_profile_path);
+		await this._discardIncomplete();
 	}
 
 	get partnerRoot(): string {
@@ -113,6 +124,72 @@ export class SessionService implements Service {
 		return this._names();
 	}
 
+	/** Up to 64 characters, case-insensitive, the way a session name has always been chosen. */
+	private async _nameFor(base: string, used: readonly string[]): Promise<string> {
+		const taken = new Set(used.map((name) => name.toLowerCase()));
+		const trimmed = base.slice(0, 64);
+		if (!taken.has(trimmed.toLowerCase())) return trimmed;
+		for (let index = 2; ; index += 1) {
+			const suffix = `-${index}`;
+			const candidate = `${base.slice(0, 64 - suffix.length)}${suffix}`;
+			if (!taken.has(candidate.toLowerCase())) return candidate;
+		}
+	}
+
+	/**
+	 * A copy of a chat, directory and all. `fork` makes it a branch of the source; `duplicate` keeps
+	 * the source's own parent, so copying a fork yields a sibling.
+	 */
+	async copy(name: string, mode: "fork" | "duplicate"): Promise<string> {
+		if (this.running(name)) throw new Error(`"${name}" is still running; wait for it to finish`);
+		const source = await this.ensure(name);
+		const profile = await profileOf(source.root);
+		if (mode === "fork" && profile?.forkedFrom !== undefined) throw new Error(`"${name}" is a fork; promote it before forking`);
+		const target = await this._nameFor(mode === "fork" ? `${name}-fork` : name, await this._names());
+		const dir = join(this._partnerRoot, target);
+		const next: SessionProfile = { ...(profile ?? { name, createdAt: Date.now() }), name: target, createdAt: Date.now(), ...(mode === "fork" ? { forkedFrom: name } : {}) };
+		delete next.pinned;
+		/* The chat appears at once and says it is being written; the copy itself runs behind this return. */
+		await mkdir(dir, { recursive: true });
+		await writeProfile(dir, next);
+		await markForking(dir, name);
+		const job = this._fill(source, dir, next)
+			.then(() => {
+				this._sessions.get(target)?.invalidate();
+				this._forkEmitter.fire({ session: target });
+			})
+			.catch(async (error: unknown) => {
+				await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+				this._forkEmitter.fire({ session: target, error: reason(error) });
+			})
+			.finally(() => this._forks.delete(target));
+		this._forks.set(target, job);
+		return target;
+	}
+
+	private async _fill(source: Session, dir: string, profile: SessionProfile): Promise<void> {
+		/* The logs are rewritten by the fork itself, so the copy leaves them out — a chat's history is
+		   most of its bytes and copying it twice is the whole cost of this operation. */
+		await cp(source.root, dir, { recursive: true, filter: (from) => !from.endsWith(".tmp") && !from.endsWith(".jsonl") });
+		await writeProfile(dir, profile);
+		await source.forkInto(dir);
+		await clearForking(dir);
+	}
+
+	/** A fork that never finished is not a chat: its directory only holds half a copy. */
+	private async _discardIncomplete(): Promise<void> {
+		for (const name of await this._names()) {
+			const dir = join(this._partnerRoot, name);
+			if ((await forkingOf(dir)) === null) continue;
+			await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+		}
+	}
+
+	async promote(name: string): Promise<void> {
+		if (this.running(name)) throw new Error(`"${name}" is still running; wait for it to finish`);
+		await (await this.ensure(name)).promote();
+	}
+
 	async forksOf(name: string): Promise<string[]> {
 		const forks: string[] = [];
 		for (const each of await this._names()) {
@@ -127,6 +204,7 @@ export class SessionService implements Service {
 	}
 
 	async shutdown(): Promise<void> {
+		await Promise.allSettled(this._forks.values());
 		for (const session of this._sessions.values()) await session.close();
 	}
 
@@ -142,6 +220,7 @@ export class SessionService implements Service {
 	dispose(): void {
 		this._entryEmitter.dispose();
 		this._loopEmitter.dispose();
+		this._forkEmitter.dispose();
 		for (const relays of this._relays.values()) relays.dispose();
 		for (const session of this._sessions.values()) session.dispose();
 		this._sessions.clear();
@@ -242,6 +321,7 @@ export class SessionService implements Service {
 		const title = await resolve(item.title);
 		if (title === null || title === undefined) return null;
 		const icon = await resolve(item.icon);
+		const disabled = await resolve(item.disabled);
 		const base = {
 			id: item.id,
 			title,
@@ -249,6 +329,7 @@ export class SessionService implements Service {
 			...(item.order === undefined ? {} : { order: item.order }),
 			...(item.group === undefined ? {} : { group: item.group }),
 			...(item.danger ? { danger: true } : {}),
+			...(disabled === true ? { disabled: true } : {}),
 		};
 
 		if ("items" in item) {
