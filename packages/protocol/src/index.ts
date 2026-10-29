@@ -187,7 +187,7 @@ export interface LayoutState {
 }
 
 export type LiveEvent =
-	| { readonly type: "status"; readonly session: string; readonly running: boolean; readonly error?: string }
+	| { readonly type: "status"; readonly session: string; readonly running: boolean }
 	| { readonly type: "selection"; readonly selected: string | null }
 	| ({ readonly type: "layout" } & LayoutState)
 	| { readonly type: "composer"; readonly session: string; readonly mode: ComposerMode }
@@ -213,7 +213,7 @@ export interface Methods {
 		result: { entries: SeqEntry[]; total: number; hasMore: boolean; reset: boolean };
 	};
 	slice: { params: { session: string }; result: { items: { id: string; message: unknown }[] } };
-	prompt: { params: { text: string }; result: { accepted: boolean } };
+	prompt: { params: { text: string }; result: Record<string, never> };
 	abort: { params: Record<string, never>; result: { aborted: boolean } };
 	composer: { params: Record<string, never>; result: { layout: ComposerLayout } };
 	composerMode: { params: { session: string }; result: { mode: ComposerMode } };

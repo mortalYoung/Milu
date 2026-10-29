@@ -100,7 +100,7 @@ export class IpcServer {
 				if (event.type === "run_end") {
 					this._partials.delete(session);
 					if (!this._looking(session)) void this._notifyRunEnd(session, event.error);
-					const status = { type: "status" as const, session, running: false, ...(event.error ? { error: event.error } : {}) };
+					const status = { type: "status" as const, session, running: false };
 					void this._backend.sessions
 						.get(session)
 						.flush()
@@ -282,14 +282,9 @@ export class IpcServer {
 		const name = this._backend.selection.selected;
 		if (!name) throw new Error("no session is selected");
 		const session = await this._backend.sessions.ensure(name);
-		try {
-			await this._backend.extensions.settled();
-			await session.run(params.text);
-		} catch (error) {
-			this._broadcast({ type: "live", event: { type: "status", session: name, running: false, error: reason(error) } });
-			return { accepted: false };
-		}
-		return { accepted: true };
+		await this._backend.extensions.settled();
+		await session.run(params.text);
+		return {};
 	}
 
 	private async _abort(): Promise<Result<"abort">> {

@@ -64,6 +64,7 @@ export interface SessionDetails extends SessionSummary {
 	readonly context: { readonly used: number; readonly window: number; readonly percent: number } | null;
 	readonly size: SessionSize;
 	readonly model: { readonly provider: string; readonly modelId?: string } | null;
+	readonly resolved: { readonly provider: string; readonly modelId: string } | null;
 	readonly models: readonly ModelChoiceGroup[];
 	readonly efforts: readonly string[];
 	readonly effort: string;
@@ -212,9 +213,12 @@ export async function collectDetails(session: Session, sources: DetailsSources):
 				.filter((group) => group.models.length > 0)
 		: [];
 	let efforts: readonly string[] = [];
+	let resolved: { provider: string; modelId: string } | null = null;
 	if (sources.models) {
 		try {
-			efforts = [...sources.models.supportedThinkingLevels(sources.models.resolve(model ?? undefined))];
+			const runnable = sources.models.resolve(model ?? undefined);
+			resolved = { provider: runnable.provider, modelId: runnable.id };
+			efforts = [...sources.models.supportedThinkingLevels(runnable)];
 		} catch {
 			efforts = [];
 		}
@@ -228,6 +232,7 @@ export async function collectDetails(session: Session, sources: DetailsSources):
 		context: contextUsage ? { used: contextUsage.used, window: contextUsage.window, percent: contextUsage.percent } : null,
 		size,
 		model: model ? { provider: model.provider, ...(model.modelId === undefined ? {} : { modelId: model.modelId }) } : null,
+		resolved,
 		models: groups,
 		efforts,
 		effort: session.thinkingLevel(),

@@ -233,43 +233,40 @@ export class Session {
 			skill?: string;
 		} = {},
 	): Promise<void> {
-		const loop = await this.open();
-		const message = {
+		await this._submit({
 			role: "user",
 			content: text,
 			timestamp: Date.now(),
 			...(meta.skill ? { skill: meta.skill } : {}),
 			...(meta.schedule ? { scheduleId: meta.schedule.scheduleId, scheduleRunId: meta.schedule.runId, scheduleTitle: meta.schedule.title } : {}),
 			...(meta.peer ? { from: meta.peer.from, peerKind: meta.peer.kind, requestId: meta.peer.requestId, hop: meta.peer.hop } : {}),
-		} as AgentMessage;
+		} as AgentMessage);
+	}
+
+	private async _submit(message: AgentMessage): Promise<void> {
+		const loop = await this.open();
 		if (loop.isRunning()) {
-			void loop.run(message).catch((error: unknown) => {
-				this._error = error instanceof Error ? error.message : String(error);
-				console.error(`session ${this.name}: run failed:`, error);
-			});
+			this._launch(loop, message);
 			return;
 		}
-		const model = await this._modelOf();
-		if (loop.isRunning()) {
-			void loop.run(message).catch((error: unknown) => {
-				this._error = error instanceof Error ? error.message : String(error);
-				console.error(`session ${this.name}: run failed:`, error);
-			});
-			return;
-		}
-		this._applyModel(loop, model);
+		const failure = this._applyModel(loop, await this._modelOf());
+		if (failure !== null) return this._failBeforeRun(message, failure);
 		await this._autoCompact();
-		if (loop.isRunning()) {
-			void loop.run(message).catch((error: unknown) => {
-				this._error = error instanceof Error ? error.message : String(error);
-				console.error(`session ${this.name}: run failed:`, error);
-			});
-			return;
-		}
+		this._launch(loop, message);
+	}
+
+	private _launch(loop: AgentLoopService, message: AgentMessage): void {
 		void loop.run(message).catch((error: unknown) => {
 			this._error = error instanceof Error ? error.message : String(error);
 			console.error(`session ${this.name}: run failed:`, error);
 		});
+	}
+
+	/** A send that never reaches the loop still says why — once, in the log, where a reload finds it. */
+	private async _failBeforeRun(message: AgentMessage | null, failure: string): Promise<void> {
+		this._error = null;
+		if (message !== null) await this._log.append(message);
+		await this._log.record(EVENTS.agentEnd, { reason: "error", error: failure, timestamp: Date.now() });
 	}
 
 	async record(type: string, data?: unknown): Promise<void> {
@@ -320,6 +317,8 @@ export class Session {
 	async continue(): Promise<void> {
 		const loop = await this.open();
 		if (loop.isRunning()) return;
+		const failure = this._applyModel(loop, await this._modelOf());
+		if (failure !== null) return this._failBeforeRun(null, failure);
 		await this._autoCompact();
 		if (loop.isRunning()) return;
 		void loop.continue().catch((error: unknown) => {
@@ -401,35 +400,7 @@ export class Session {
 	}
 
 	async run(text: string): Promise<void> {
-		const loop = await this.open();
-		if (loop.isRunning()) {
-			void loop.run(text).catch((error: unknown) => {
-				this._error = error instanceof Error ? error.message : String(error);
-				console.error(`session ${this.name}: run failed:`, error);
-			});
-			return;
-		}
-		const model = await this._modelOf();
-		if (loop.isRunning()) {
-			void loop.run(text).catch((error: unknown) => {
-				this._error = error instanceof Error ? error.message : String(error);
-				console.error(`session ${this.name}: run failed:`, error);
-			});
-			return;
-		}
-		this._applyModel(loop, model);
-		await this._autoCompact();
-		if (loop.isRunning()) {
-			void loop.run(text).catch((error: unknown) => {
-				this._error = error instanceof Error ? error.message : String(error);
-				console.error(`session ${this.name}: run failed:`, error);
-			});
-			return;
-		}
-		void loop.run(text).catch((error: unknown) => {
-			this._error = error instanceof Error ? error.message : String(error);
-			console.error(`session ${this.name}: run failed:`, error);
-		});
+		await this._submit({ role: "user", content: text, timestamp: Date.now() } as AgentMessage);
 	}
 
 	abort(): boolean {
@@ -466,7 +437,6 @@ export class Session {
 					return;
 				case "run_end": {
 					const reason = event.stopped ? "aborted" : event.error ? "error" : "completed";
-					this._error = event.stopped ? null : (event.error ?? null);
 					record(EVENTS.agentEnd, { run: event.run, reason, ...(reason === "error" && event.error ? { error: event.error } : {}), timestamp });
 					return;
 				}
@@ -632,12 +602,14 @@ export class Session {
 		return { systemPrompt: prompt, toolNames: tools.map((tool) => tool.name), tools, timestamp: Date.now() };
 	}
 
-	private _applyModel(loop: AgentLoopService, model: SessionModel | null): void {
+	/** Hands the model to the loop; returns why it could not, and a run that needed it must not start. */
+	private _applyModel(loop: AgentLoopService, model: SessionModel | null): string | null {
 		try {
 			loop.setModel(this._deps.modelsService.resolve(model ?? undefined));
 			loop.setThinkingLevel((model?.thinkingLevel ?? DEFAULT_THINKING_LEVEL) as ModelThinkingLevel);
-		} catch {
-			return;
+			return null;
+		} catch (error) {
+			return error instanceof Error ? error.message : String(error);
 		}
 	}
 

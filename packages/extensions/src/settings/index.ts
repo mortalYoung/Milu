@@ -19,6 +19,13 @@ export interface SettingsSnapshot {
 	readonly mcp: McpOptions;
 	readonly providers: readonly ProviderRow[];
 	readonly addable: readonly string[];
+	readonly modelOptions: readonly ModelOptionGroup[];
+	readonly effective: { readonly provider: string; readonly modelId: string } | null;
+}
+
+export interface ModelOptionGroup {
+	readonly provider: string;
+	readonly models: readonly { readonly id: string; readonly name: string }[];
 }
 
 export interface SettingsPatch {
@@ -59,6 +66,21 @@ function effective(values: Settings, defaults: Readonly<Record<string, unknown>>
 	return merged as unknown as Settings;
 }
 
+function modelOptions(context: ExtensionContext, providers: readonly ProviderRow[]): ModelOptionGroup[] {
+	return providers
+		.map((row) => ({ provider: row.id, models: context.models.available(row.id).map((model) => ({ id: model.id, name: model.name })) }))
+		.filter((group) => group.models.length > 0);
+}
+
+function runnable(context: ExtensionContext): { provider: string; modelId: string } | null {
+	try {
+		const model = context.models.resolve();
+		return { provider: model.provider, modelId: model.id };
+	} catch {
+		return null;
+	}
+}
+
 async function collect(context: ExtensionContext): Promise<SettingsSnapshot> {
 	const { providers, addable } = providerRows(context);
 	const defaults = context.settings.defaults();
@@ -68,6 +90,8 @@ async function collect(context: ExtensionContext): Promise<SettingsSnapshot> {
 		mcp: await context.get(IMcpService).options(),
 		providers,
 		addable,
+		modelOptions: modelOptions(context, providers),
+		effective: runnable(context),
 	};
 }
 

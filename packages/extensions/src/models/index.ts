@@ -11,6 +11,7 @@ export interface ModelWidgetData {
 	readonly efforts: readonly string[];
 	readonly groups: readonly ModelGroup[];
 	readonly selected: ModelRef | null;
+	readonly resolved: ModelRef | null;
 }
 
 let services: { readonly models: ModelsService; readonly settings: SettingsService } | null = null;
@@ -28,14 +29,17 @@ async function modelDataOf(session: Session): Promise<ModelWidgetData | null> {
 	if (groups.length === 0) return null;
 
 	const chosen = await session.model();
+	let resolved: ModelRef | null = null;
 	let efforts: string[] = [];
 	try {
-		efforts = [...models.supportedThinkingLevels(models.resolve(chosen ?? undefined))];
+		const model = models.resolve(chosen ?? undefined);
+		resolved = { provider: model.provider, modelId: model.id };
+		efforts = [...models.supportedThinkingLevels(model)];
 	} catch {
 		efforts = [];
 	}
 
-	return { label: chosen?.modelId ?? "default model", effort: session.thinkingLevel(), efforts, groups, selected: chosen };
+	return { label: resolved?.modelId ?? "no model", effort: session.thinkingLevel(), efforts, groups, selected: chosen, resolved };
 }
 
 const modelsExtension: Extension = {
@@ -56,11 +60,13 @@ const modelsExtension: Extension = {
 				if (!session) throw new Error("model.set needs a session");
 				const choice = (args ?? {}) as { provider?: string; modelId?: string };
 				if (!choice.provider) throw new Error("model.set needs a provider");
-				await session.setModel({
-					provider: choice.provider,
-					...(choice.modelId ? { modelId: choice.modelId } : {}),
-					thinkingLevel: session.thinkingLevel(),
-				});
+				const next = { provider: choice.provider, ...(choice.modelId ? { modelId: choice.modelId } : {}) };
+				await session.setModel({ ...next, thinkingLevel: session.thinkingLevel() });
+
+				if (context.settings.get().defaultModel !== undefined) return;
+				const row = await session.row();
+				if (row.lastMessageAt !== undefined) return;
+				await context.settings.update({ defaultModel: next });
 			},
 		});
 

@@ -32,8 +32,8 @@ export class SessionListService implements Service {
 		this.store.setState((state) => ({ ...state, rows: state.rows.map((row) => (row.name === session ? { ...row, readAt } : row)) }), true);
 	}
 
-	patchStatus(session: string, running: boolean, error?: string): void {
-		this.store.setState((state) => ({ ...state, rows: state.rows.map((row) => (row.name === session ? { ...row, running, error: error ?? undefined } : row)) }), true);
+	patchStatus(session: string, running: boolean): void {
+		this.store.setState((state) => ({ ...state, rows: state.rows.map((row) => (row.name === session ? { ...row, running } : row)) }), true);
 	}
 
 	dispose(): void {}

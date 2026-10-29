@@ -43,14 +43,16 @@ export function ModelsWidget(props: WidgetProps) {
 		await host.composerData.refresh(session);
 	};
 
+	const hint = data.resolved === null ? " · pick a model" : data.selected === null ? " · default" : "";
+
 	return (
 		<div className="inline-flex h-[26px] shrink-0 items-center rounded-full">
-			<Tip label={expanded ? "collapse" : `${data.label} · ${data.effort}`}>
+			<Tip label={expanded ? "collapse" : `${data.label} · ${data.effort}${hint}`}>
 				<button
 					type="button"
 					className={`grid size-[26px] shrink-0 cursor-pointer place-items-center border-0 bg-transparent p-0 text-muted-soft transition-colors duration-150 hover:bg-hover hover:text-ink ${expanded ? "rounded-l-full rounded-r-none" : "rounded-full"}`}
 					aria-expanded={expanded}
-					aria-label={expanded ? "Collapse model and effort" : `Model and effort: ${data.label} · ${data.effort}`}
+					aria-label={expanded ? "Collapse model and effort" : `Model and effort: ${data.label} · ${data.effort}${hint}`}
 					onClick={() => {
 						if (expanded) {
 							setMenuOpen(false);
@@ -91,7 +93,7 @@ export function ModelsWidget(props: WidgetProps) {
 												{group.models.map((model) => (
 													<DropdownMenu.Item key={model.id} className={ITEM} onSelect={() => void choose({ provider: group.provider, modelId: model.id })}>
 														<span>{model.name}</span>
-														{group.provider === data.selected?.provider && model.id === data.selected.modelId ? <span className={CHECK}>✓</span> : null}
+														{group.provider === data.resolved?.provider && model.id === data.resolved.modelId ? <span className={CHECK}>✓</span> : null}
 													</DropdownMenu.Item>
 												))}
 											</DropdownMenu.Group>

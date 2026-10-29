@@ -340,7 +340,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 						return;
 					}
 					if (event.type !== "status") return;
-					sessions.patchStatus(event.session, event.running, event.error);
+					sessions.patchStatus(event.session, event.running);
 					transcript.markRunning(event.session, event.running);
 					if (!event.running) {
 						transcript.setStopping(event.session, false);

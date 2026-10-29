@@ -15,7 +15,6 @@ export interface ModelRef {
 	modelId?: string;
 }
 
-const FALLBACK_PROVIDER = "deepseek";
 const DEFAULT_MODELS: Record<string, string> = { deepseek: "deepseek-v4-flash" };
 const DEFAULT_CONTEXT_WINDOW = 128_000;
 const DEFAULT_MAX_TOKENS = 8_192;
@@ -90,12 +89,22 @@ export class ModelsService implements Service {
 		return getSupportedThinkingLevels(model);
 	}
 
+	/** The model a session with none of its own runs, when a default is configured. */
+	defaultRef(): ModelRef | null {
+		const value = this._settingsService.get().defaultModel;
+		return value !== undefined && value.provider !== "" ? value : null;
+	}
+
 	resolve(ref?: ModelRef): Model<Api> {
-		const provider = ref?.provider ?? FALLBACK_PROVIDER;
+		const chosen = ref ?? this.defaultRef() ?? undefined;
+		if (chosen === undefined) {
+			throw new Error("No model — pick one for this session, or set a default in Settings → Providers");
+		}
+		const provider = chosen.provider;
 		if (!this._configService.apiKey(provider)) {
 			throw new Error(`No API key for provider "${provider}"`);
 		}
-		const modelId = ref?.modelId ?? DEFAULT_MODELS[provider] ?? this._models.getModels(provider)[0]?.id;
+		const modelId = chosen.modelId ?? DEFAULT_MODELS[provider] ?? this._models.getModels(provider)[0]?.id;
 		const model = modelId ? this._models.getModel(provider, modelId) : undefined;
 		if (!model) {
 			throw new Error(`Model "${modelId ?? "?"}" not found for provider "${provider}"`);

@@ -143,7 +143,7 @@ export function SessionDetailsDialog(props: DialogProps) {
 	];
 	const usage = details?.usage ?? null;
 	const sizeParts = details?.size.parts.map((part) => `${part.label} · ${formatBytes(part.bytes)}`).join("\n");
-	const modelLabel = details?.model?.modelId ?? (details ? "default" : "—");
+	const modelLabel = details?.model?.modelId ?? details?.resolved?.modelId ?? (details ? "default" : "—");
 	const sandbox = details ? sandboxLabel(details.sandbox) : "—";
 
 	async function setModel(provider: string, modelId?: string): Promise<void> {
@@ -281,7 +281,15 @@ export function SessionDetailsDialog(props: DialogProps) {
 									<AnimatedNumber value={details?.size.bytes ?? 0} format={formatSize} />
 								</Fact>
 								{details?.models.length ? (
-									<MenuValue label="Model" value={modelLabel} tip={details.model ? `${details.model.provider} · ${details.model.modelId ?? "default"}` : "default model"}>
+									<MenuValue
+										label="Model"
+										value={modelLabel}
+										tip={
+											details.model
+												? `${details.model.provider} · ${details.model.modelId ?? "default"}`
+												: `default · ${details.resolved?.provider ?? "—"} · ${details.resolved?.modelId ?? "—"}`
+										}
+									>
 										<ModelMenu groups={details.models} model={details.model} onSelect={(provider, modelId) => void setModel(provider, modelId)} />
 									</MenuValue>
 								) : (

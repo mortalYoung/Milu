@@ -1,7 +1,7 @@
 import { useState } from "react";
 
 import type { CustomModel, CustomProvider, ProviderRow, Settings, SettingsSnapshot } from "../index.ts";
-import { BUTTON_GHOST, BUTTON_PRIMARY, FIELD, LINK } from "./ui.tsx";
+import { BUTTON_GHOST, BUTTON_PRIMARY, FIELD, LINK, Row, Select } from "./ui.tsx";
 
 interface ModelDraft {
 	id: string;
@@ -265,9 +265,38 @@ export function ProvidersPanel(props: {
 		reset();
 	};
 
+	const defaultKey = draft.defaultModel ? `${draft.defaultModel.provider}/${draft.defaultModel.modelId ?? ""}` : "";
+	const options = [
+		{ value: "", label: "Not set" },
+		...snapshot.modelOptions.flatMap((group) => group.models.map((model) => ({ value: `${group.provider}/${model.id}`, label: `${group.provider} · ${model.name}` }))),
+	];
+
+	const setDefault = async (next: string): Promise<void> => {
+		if (next === "") await save({ defaultModel: undefined });
+		else {
+			const at = next.indexOf("/");
+			await save({ defaultModel: { provider: next.slice(0, at), modelId: next.slice(at + 1) } });
+		}
+		await refresh();
+	};
+
 	return (
 		<div>
 			<div className="mb-3 font-serif text-[16px] font-medium text-ink">Providers</div>
+			<div className="divide-y divide-line">
+				<Row
+					title="Default model"
+					description={
+						draft.defaultModel === undefined
+							? snapshot.effective
+								? `A session with no model of its own runs ${snapshot.effective.provider} · ${snapshot.effective.modelId}.`
+								: "Not set — a session with no model of its own cannot run until a default is chosen."
+							: "New sessions start here. Picking a model in a session with no messages also sets it."
+					}
+				>
+					<Select value={defaultKey} options={options} onChange={(next) => void setDefault(next)} ariaLabel="Default model" width="w-[260px]" />
+				</Row>
+			</div>
 			{snapshot.providers.length > 0 ? (
 				<div className="divide-y divide-line">
 					<div className={`${COLS} pb-1 font-sans text-[10px] text-muted`}>

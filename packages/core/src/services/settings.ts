@@ -24,8 +24,14 @@ export interface CustomProvider {
 	defaultMaxTokens?: number;
 }
 
+export interface DefaultModel {
+	provider: string;
+	modelId?: string;
+}
+
 export interface Settings {
 	partner_profile_path: string;
+	defaultModel?: DefaultModel;
 	providers?: string[];
 	customProviders?: CustomProvider[];
 	theme?: ThemeMode;
