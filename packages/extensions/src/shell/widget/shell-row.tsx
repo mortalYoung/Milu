@@ -1,4 +1,5 @@
 import type { SlotProps, ViewItem } from "@milu/window/api";
+import { ChevronDown, Terminal } from "lucide-react";
 import { useState } from "react";
 
 interface RowData {
@@ -6,7 +7,6 @@ interface RowData {
 }
 
 const CARD = "mt-5 self-end max-w-full rounded-md border px-[15px] py-[10px] font-mono text-[14px] leading-[1.5]";
-const BADGE = "shrink-0 rounded-[4px] border px-1 py-[1px] font-mono text-[10px] uppercase tracking-[0.08em]";
 const OUTPUT = "mt-1.5 mb-0 max-h-[320px] overflow-auto border-t border-line pt-1.5 font-mono text-[12px] leading-[1.5] whitespace-pre-wrap break-words text-muted";
 
 export function ShellRow(props: SlotProps) {
@@ -26,11 +26,16 @@ export function ShellRow(props: SlotProps) {
 				aria-expanded={foldable ? open : undefined}
 				onClick={foldable ? () => setOpen(!open) : undefined}
 			>
-				<span className={`${BADGE} ${failed ? "border-signal/40 text-signal" : "border-accent-amber/50 text-accent-amber"}`}>shell</span>
+				<Terminal size={13} className={`shrink-0 ${failed ? "text-signal" : "text-accent-amber"}`} />
 				<span className="min-w-0 flex-1 truncate">$ {item.text}</span>
-				{running ? <span className="work-dot shrink-0" aria-hidden="true" /> : null}
 				{failed ? <span className="shrink-0 font-mono text-[10px] text-signal">exit {shell?.exitCode}</span> : null}
-				{foldable ? <span className="shrink-0 text-[10px] text-muted-soft">{open ? "⌄" : "›"}</span> : null}
+				<span className="flex w-3 shrink-0 items-center justify-center" aria-hidden={foldable ? undefined : true}>
+					{running ? (
+						<span className="work-dot" />
+					) : foldable ? (
+						<ChevronDown size={11} className={`text-muted-soft transition-transform duration-[120ms] ${open ? "" : "-rotate-90"}`} />
+					) : null}
+				</span>
 			</button>
 			{open && !running && shell && shell.output !== "" ? <pre className={OUTPUT}>{shell.output}</pre> : null}
 		</div>

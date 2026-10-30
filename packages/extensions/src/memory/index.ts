@@ -143,3 +143,5 @@ export const memoryExtension: Extension = {
 function say(text: string, details: Record<string, unknown> = { ok: true }): ToolResult {
 	return { content: [{ type: "text", text }], details };
 }
+
+export default memoryExtension;
