@@ -118,15 +118,17 @@ export async function readEntries(path: string, keep: (entry: Entry) => boolean 
 }
 
 /** A log's header line, read without the rest of the file. */
-async function readHeader(path: string): Promise<{ id?: string; createdAt?: number; cwd?: string } | null> {
+async function readHeader(path: string): Promise<{ kind?: string; version?: number; id?: string; createdAt?: number; cwd?: string } | null> {
 	let handle: FileHandle | null = null;
 	try {
 		handle = await open(path, "r");
 		const buffer = Buffer.alloc(HEADER_BYTES);
 		const { bytesRead } = await handle.read(buffer, 0, HEADER_BYTES, 0);
 		const line = buffer.subarray(0, bytesRead).toString("utf8").split("\n")[0] ?? "";
-		const parsed = JSON.parse(line) as { id?: unknown; createdAt?: unknown; cwd?: unknown };
+		const parsed = JSON.parse(line) as { kind?: unknown; version?: unknown; id?: unknown; createdAt?: unknown; cwd?: unknown };
 		return {
+			...(typeof parsed.kind === "string" ? { kind: parsed.kind } : {}),
+			...(typeof parsed.version === "number" ? { version: parsed.version } : {}),
 			...(typeof parsed.id === "string" ? { id: parsed.id } : {}),
 			...(typeof parsed.createdAt === "number" ? { createdAt: parsed.createdAt } : {}),
 			...(typeof parsed.cwd === "string" ? { cwd: parsed.cwd } : {}),
@@ -138,17 +140,18 @@ async function readHeader(path: string): Promise<{ id?: string; createdAt?: numb
 	}
 }
 
+function isSessionHeader(header: Awaited<ReturnType<typeof readHeader>>): header is { kind: "header"; version: number; id: string; createdAt?: number; cwd?: string } {
+	return header?.kind === "header" && header.version === 4 && typeof header.id === "string";
+}
+
 /** The newest log file on disk: listing through the repo reads every file in full just to read its header. */
 async function newestLog(root: string): Promise<string | null> {
-	let newestPath: string | null = null;
-	let newestAt = -1;
+	const candidates: { path: string; at: number }[] = [];
 	const consider = async (path: string): Promise<void> => {
 		if (!path.endsWith(".jsonl")) return;
 		const info = await stat(path).catch(() => null);
 		if (info === null || !info.isFile()) return;
-		if (info.mtimeMs <= newestAt) return;
-		newestPath = path;
-		newestAt = info.mtimeMs;
+		candidates.push({ path, at: info.mtimeMs });
 	};
 	for (const entry of await readdir(root, { withFileTypes: true }).catch(() => [])) {
 		const path = join(root, entry.name);
@@ -161,7 +164,11 @@ async function newestLog(root: string): Promise<string | null> {
 			if (inner.isFile()) await consider(join(path, inner.name));
 		}
 	}
-	return newestPath;
+	candidates.sort((left, right) => right.at - left.at);
+	for (const candidate of candidates) {
+		if (isSessionHeader(await readHeader(candidate.path))) return candidate.path;
+	}
+	return null;
 }
 
 export class SessionLog {
@@ -198,7 +205,7 @@ export class SessionLog {
 		const repo = this._repo();
 		const path = await this._latestPath();
 		const header = path === null ? null : await readHeader(path);
-		if (path !== null && header?.id !== undefined) {
+		if (path !== null && isSessionHeader(header)) {
 			return repo.open({ id: header.id, path, createdAt: header.createdAt ?? 0, cwd: header.cwd ?? this.root, modifiedAt: 0, sourceFormat: 4 });
 		}
 		const latest = await this._latest();
