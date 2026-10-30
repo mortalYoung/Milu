@@ -52,13 +52,12 @@ function UserBubble(props: { item: ViewItem }) {
 			<div className="msg-user read-clamp">{props.item.text}</div>
 			<div className="msg-meta">
 				<span className="msg-at">{formatHistoryTime(props.item.time)}</span>
-				{props.item.from ? <span className="msg-chip">from {props.item.from}</span> : null}
 			</div>
 		</div>
 	);
 }
 
-function ReplyCard(props: { item: ViewItem; port: MarkdownPort }) {
+function PeerCard(props: { item: ViewItem; port: MarkdownPort }) {
 	return (
 		<div className="msg-reply" data-entry={props.item.id}>
 			<div className="msg-reply-head">
@@ -118,7 +117,6 @@ function AssistantBlock(props: { host: Host; item: ViewItem; live?: boolean }) {
 			<div className={props.live ? "msg-meta invisible" : "msg-meta"}>
 				<CopyButton text={props.item.text} />
 				<span className="msg-at">{formatHistoryTime(props.item.time)}</span>
-				{props.item.to ? <span className="msg-chip">→ {props.item.to}</span> : null}
 			</div>
 		</div>
 	);
@@ -141,7 +139,7 @@ const TranscriptRow = memo(function TranscriptRow(props: { host: Host; session: 
 				<span>{item.text}</span>
 			</div>
 		);
-	if (item.kind === "user") return item.peerKind === "reply" ? <ReplyCard item={item} port={host.markdown} /> : <UserBubble item={item} />;
+	if (item.kind === "user") return item.from ? <PeerCard item={item} port={host.markdown} /> : <UserBubble item={item} />;
 	const Row = host.rows.get(item.kind);
 	if (Row) return createElement(Row, { host, data: { item } });
 	return <AssistantBlock host={host} item={item} />;

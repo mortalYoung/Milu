@@ -62,9 +62,6 @@ export interface ViewItem {
 	text: string;
 	time: number;
 	from?: string;
-	to?: string;
-	peerKind?: "ask" | "reply";
-	requestId?: string;
 	schedule?: ViewSchedule;
 	thinking?: { text: string; redacted?: boolean };
 	tool?: ViewTool;
@@ -145,8 +142,6 @@ function userVisit(entry: LogEntry, out: ViewItem[]): void {
 		timestamp?: number;
 		skill?: unknown;
 		from?: unknown;
-		peerKind?: unknown;
-		requestId?: unknown;
 		scheduleId?: unknown;
 		scheduleRunId?: unknown;
 		scheduleTitle?: unknown;
@@ -158,8 +153,6 @@ function userVisit(entry: LogEntry, out: ViewItem[]): void {
 		text: typeof message.content === "string" ? message.content : contentText(message.content),
 		time: message.timestamp ?? entry.timestamp ?? 0,
 		...(typeof message.from === "string" ? { from: message.from } : {}),
-		...(message.peerKind === "ask" || message.peerKind === "reply" ? { peerKind: message.peerKind } : {}),
-		...(typeof message.requestId === "string" ? { requestId: message.requestId } : {}),
 		...(typeof message.scheduleId === "string"
 			? {
 					schedule: {
@@ -387,18 +380,6 @@ function rewindVisit(entry: LogEntry, out: ViewItem[]): void {
 	const shadowed = new Set(data.shadowedIds.filter((id): id is string => typeof id === "string"));
 	for (let index = out.length - 1; index >= 0; index -= 1) {
 		if (shadowed.has(out[index]!.id)) out.splice(index, 1);
-	}
-}
-
-function attachPeerPosts(entries: readonly LogEntry[], out: ViewItem[]): void {
-	for (const entry of entries) {
-		if (entry.type !== "custom" || entry.customType !== LOG_EVENTS.sendMessage) continue;
-		if (sendMessageVia(entry) !== "harness") continue;
-		const data = entry.data as { to?: unknown; text?: unknown } | undefined;
-		if (typeof data?.to !== "string") continue;
-		const spoken = typeof data.text === "string" ? data.text : "";
-		const target = findLast(out, (item) => item.kind === "assistant" && item.text === spoken) ?? findLast(out, (item) => item.kind === "assistant" && item.text !== "");
-		if (target) target.to = data.to;
 	}
 }
 
@@ -673,7 +654,6 @@ export function projectView(entries: readonly LogEntry[], options: { baseDir?: s
 	const out: ViewItem[] = [];
 	for (const entry of entries) VISITORS[entryKey(entry)]?.(entry, out);
 	markProcessText(entries, out);
-	attachPeerPosts(entries, out);
 	attachMentionFiles(entries, out, options.baseDir ?? null);
 	return out;
 }

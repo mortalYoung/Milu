@@ -198,6 +198,11 @@ export class Session {
 		return this._loop?.isRunning() ?? false;
 	}
 
+	/** The live model-visible messages, or nothing before the loop is opened. */
+	messages(): readonly AgentMessage[] {
+		return this._loop?.messages() ?? [];
+	}
+
 	// ——— the log ———
 
 	async records(customType: string): Promise<SeqEntry[]> {
@@ -232,30 +237,34 @@ export class Session {
 		text: string,
 		meta: {
 			schedule?: { scheduleId: string; runId: string; title: string };
-			peer?: { from: string; kind: "ask" | "reply"; requestId: string; hop: number };
+			peer?: { from: string; hop: number; notice?: boolean };
 			skill?: string;
 		} = {},
-	): Promise<void> {
-		await this._submit({
+	): Promise<{ ok: true } | { ok: false; error: string }> {
+		return this._submit({
 			role: "user",
 			content: text,
 			timestamp: Date.now(),
 			...(meta.skill ? { skill: meta.skill } : {}),
 			...(meta.schedule ? { scheduleId: meta.schedule.scheduleId, scheduleRunId: meta.schedule.runId, scheduleTitle: meta.schedule.title } : {}),
-			...(meta.peer ? { from: meta.peer.from, peerKind: meta.peer.kind, requestId: meta.peer.requestId, hop: meta.peer.hop } : {}),
+			...(meta.peer ? { from: meta.peer.from, hop: meta.peer.hop, ...(meta.peer.notice ? { notice: true } : {}) } : {}),
 		} as AgentMessage);
 	}
 
-	private async _submit(message: AgentMessage): Promise<void> {
+	private async _submit(message: AgentMessage): Promise<{ ok: true } | { ok: false; error: string }> {
 		const loop = await this.open();
 		if (loop.isRunning()) {
 			this._launch(loop, message);
-			return;
+			return { ok: true };
 		}
 		const failure = this._applyModel(loop, await this._modelOf());
-		if (failure !== null) return this._failBeforeRun(message, failure);
+		if (failure !== null) {
+			await this._failBeforeRun(message, failure);
+			return { ok: false, error: failure };
+		}
 		await this._autoCompact();
 		this._launch(loop, message);
+		return { ok: true };
 	}
 
 	private _launch(loop: AgentLoopService, message: AgentMessage): void {

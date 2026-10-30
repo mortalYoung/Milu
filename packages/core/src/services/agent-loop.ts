@@ -302,7 +302,7 @@ export class AgentLoopService implements Service {
 		for (const reminder of reminders) {
 			const text = reminderText(reminder.type, reminder.data);
 			if (text.trim() === "") continue;
-			injected.push({ role: "user", content: text, timestamp } as AgentMessage);
+			injected.push({ role: "user", content: text, timestamp, reminder: reminder.type } as AgentMessage);
 			this._emitter.fire({ type: "reminder", reminder });
 		}
 		if (injected.length === 0) return [];

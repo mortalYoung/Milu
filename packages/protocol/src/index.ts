@@ -40,6 +40,7 @@ export const LOG_EVENTS = {
 	memoryRunStart: "memory/run/start",
 	memoryRunEnd: "memory/run/end",
 	memoryContext: "memory/context",
+	peerMessage: "peer/message",
 	taskStart: "task/start",
 	taskEnd: "task/end",
 	scheduleRun: "schedule/run",

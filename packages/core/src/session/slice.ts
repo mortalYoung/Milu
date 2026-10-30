@@ -150,6 +150,7 @@ function rewind(ctx: SliceContext): void {
 const BY_CUSTOM: Record<string, (ctx: SliceContext) => void> = {
 	[EVENTS.sendMessage]: sendMessage,
 	[EVENTS.memoryContext]: memoryContext,
+	[EVENTS.peerMessage]: reminder,
 	[EVENTS.timeGapReminder]: reminder,
 	[EVENTS.contextChanged]: reminder,
 	[EVENTS.instructionsChanged]: reminder,

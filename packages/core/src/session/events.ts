@@ -2,7 +2,7 @@ import { LOG_EVENTS } from "@milu/protocol";
 
 export const EVENTS = LOG_EVENTS;
 
-export type ReminderType = (typeof EVENTS)["timeGapReminder" | "contextChanged" | "instructionsChanged" | "mcpChanged" | "memoryContext"];
+export type ReminderType = (typeof EVENTS)["timeGapReminder" | "contextChanged" | "instructionsChanged" | "mcpChanged" | "memoryContext" | "peerMessage"];
 
 export interface AgentReminder {
 	readonly type: ReminderType;
@@ -66,6 +66,10 @@ export function reminderText(type: ReminderType, data: Record<string, unknown>):
 			return instructionsChangedText(typeof data["agentMd"] === "string" ? data["agentMd"] : null);
 		case EVENTS.memoryContext:
 			return typeof data["text"] === "string" ? data["text"] : "";
+		case EVENTS.peerMessage: {
+			const id = escapeXml(JSON.stringify(typeof data["from"] === "string" ? data["from"] : ""));
+			return `<system_reminder>This message came from agent ${id}. If you want that agent to receive a result, send it with peer({ op: "send", peer: ${id}, text: "<self-contained result>" }). It does not automatically receive your transcript, tool output, or reasoning. Send another message as soon as a finding changes what that agent should do next; sending a message does not end your turn. Replying is optional.</system_reminder>`;
+		}
 		case EVENTS.mcpChanged:
 			return mcpChangedText({
 				server: typeof data["server"] === "string" ? data["server"] : "",
