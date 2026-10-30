@@ -420,22 +420,6 @@ export class SessionLog {
 		return firstUser < 0 ? [] : sliced.slice(firstUser);
 	}
 
-	/** The newest messages, for an estimate before the provider has reported usage. */
-	async tailMessages(count: number): Promise<AgentMessage[]> {
-		const path = await this._latestPath();
-		if (path === null) return [];
-		const messages: AgentMessage[] = [];
-		await scanTail(path, (fresh) => {
-			for (const entry of fresh) {
-				if (entry.type !== "message") continue;
-				messages.push(entry.message);
-				if (messages.length >= count) return true;
-			}
-			return false;
-		});
-		return messages.reverse();
-	}
-
 	dispose(): void {
 		this._disposed = true;
 		this._session = null;

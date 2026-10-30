@@ -38,7 +38,6 @@ import type { SliceItem } from "./slice.ts";
 import { textOf } from "./text.ts";
 import { type ContextBreakdown, priceMessages, totalTokens } from "./tokens.ts";
 
-const TAIL_MESSAGES = 40;
 const DEEP_TAIL_BYTES = 8 * 1024 * 1024;
 
 const DEFAULT_THINKING_LEVEL = "high";
@@ -371,11 +370,11 @@ export class Session {
 			tier: plan.tier,
 			timestamp: Date.now(),
 		});
+		this._usedTokens = null;
+		this._compacted = true;
 		const loop = await this.open();
 		loop.restore(await this._log.transcript());
 		await loop.refreshContext();
-		this._usedTokens = null;
-		this._compacted = true;
 		return { shadowed: plan.shadowed };
 	}
 
@@ -570,7 +569,7 @@ export class Session {
 		const fixed = priceMessages(prompt, tools, []);
 		const used = await this._contextTokens();
 		if (used === null) {
-			const breakdown = priceMessages(prompt, tools, await this._log.tailMessages(TAIL_MESSAGES));
+			const breakdown = priceMessages(prompt, tools, await this._log.transcript());
 			const estimated = totalTokens(breakdown);
 			return { used: estimated, window, percent: estimated === 0 ? 0 : Math.min(100, Math.round((estimated / window) * 100)), breakdown };
 		}
