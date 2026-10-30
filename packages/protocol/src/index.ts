@@ -244,7 +244,6 @@ export type LiveEvent =
 	| { readonly type: "dialog"; readonly id: string; readonly dialog: DialogDescriptor }
 	| { readonly type: "lifecycle"; readonly phase: LifecyclePhase }
 	| { readonly type: "settings" }
-	| { readonly type: "notify"; readonly title: string; readonly body: string; readonly tone: "plain" | "error"; readonly session?: string }
 	| { readonly type: "command"; readonly action: string }
 	| { readonly type: "file"; readonly path: string };
 

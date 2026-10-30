@@ -425,12 +425,11 @@ export class IpcServer {
 		Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 	}
 
-	/** A system banner, or the in-app toast when the platform refuses it — a dev Electron build has no notification authorization. */
-	private _notify(message: { readonly title: string; readonly body: string; readonly subtitle?: string; readonly tone?: "plain" | "error"; readonly session?: string }): void {
-		const { title, body, subtitle, tone = "plain", session } = message;
-		const inApp = () => this._broadcast({ type: "live", event: { type: "notify", title, body, tone, ...(session === undefined ? {} : { session }) } });
+	/** A system banner. A platform that refuses it is logged, never rerouted into the in-app tray. */
+	private _notify(message: { readonly title: string; readonly body: string; readonly subtitle?: string; readonly session?: string }): void {
+		const { title, body, subtitle, session } = message;
 		if (!Notification.isSupported()) {
-			inApp();
+			console.warn("system notifications are not supported; dropped:", title);
 			return;
 		}
 		const notification = new Notification({ title, body, ...(subtitle === undefined ? {} : { subtitle }) });
@@ -439,7 +438,6 @@ export class IpcServer {
 		});
 		notification.on("failed", (_event, error) => {
 			console.error(`system notification refused (${error}):`, title);
-			inApp();
 		});
 		notification.show();
 	}

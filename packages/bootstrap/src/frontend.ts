@@ -330,15 +330,6 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 						});
 						return;
 					}
-					if (event.type === "notify") {
-						notifications.push({
-							title: event.title,
-							body: event.body,
-							tone: event.tone,
-							...(event.session === undefined ? {} : { session: event.session }),
-						});
-						return;
-					}
 					if (event.type === "fork") {
 						void sessions.refresh();
 						if (event.error !== undefined) {
