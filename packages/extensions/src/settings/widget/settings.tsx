@@ -57,17 +57,6 @@ const FIELDS: readonly Field[] = [
 		mono: true,
 	},
 	{
-		id: "workStepsDisplay",
-		category: "general",
-		kind: "select",
-		title: "Work Steps Display",
-		description: "Flat shows every thought and tool call; collapsed folds the whole step behind its header.",
-		options: [
-			{ value: "flat", label: "Flat" },
-			{ value: "collapsed", label: "Collapsed" },
-		],
-	},
-	{
 		id: "toastPlacement",
 		category: "general",
 		kind: "select",

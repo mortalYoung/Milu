@@ -16,9 +16,22 @@ export interface TranscriptState {
 	readonly partials: Readonly<Record<string, PartialMessage>>;
 	readonly started: Readonly<Record<string, number>>;
 	readonly stopping: Readonly<Record<string, boolean>>;
+	readonly stepOpen: Readonly<Record<string, boolean>>;
 }
 
-const EMPTY: TranscriptState = { logs: {}, hasMore: {}, loadingOlder: {}, drafts: {}, errors: {}, loading: {}, focused: null, partials: {}, started: {}, stopping: {} };
+const EMPTY: TranscriptState = {
+	logs: {},
+	hasMore: {},
+	loadingOlder: {},
+	drafts: {},
+	errors: {},
+	loading: {},
+	focused: null,
+	partials: {},
+	started: {},
+	stopping: {},
+	stepOpen: {},
+};
 const NO_ENTRIES: readonly SeqEntry[] = [];
 
 function without<T>(record: Readonly<Record<string, T>>, names: readonly string[]): Record<string, T> {
@@ -94,6 +107,7 @@ export class TranscriptService implements Service {
 				errors: without(current.errors, dropped),
 				partials: without(current.partials, dropped),
 				stopping: without(current.stopping, dropped),
+				stepOpen: without(current.stepOpen, dropped),
 				drafts: without(current.drafts, replaced),
 			}),
 			true,
@@ -172,8 +186,21 @@ export class TranscriptService implements Service {
 				delete started[session];
 				return { ...current, started };
 			}
-			if (session in current.started) return current;
-			return { ...current, started: { ...current.started, [session]: Date.now() } };
+			const started = session in current.started ? current.started : { ...current.started, [session]: Date.now() };
+			const stepOpen = current.stepOpen[session] === true ? current.stepOpen : { ...current.stepOpen, [session]: true };
+			if (started === current.started && stepOpen === current.stepOpen) return current;
+			return { ...current, started, stepOpen };
+		}, true);
+	}
+
+	setStepOpen(session: string, open: boolean): void {
+		this.store.setState((current) => {
+			const value = current.stepOpen[session];
+			if (open ? value === true : value === undefined) return current;
+			const stepOpen = { ...current.stepOpen };
+			if (open) stepOpen[session] = true;
+			else delete stepOpen[session];
+			return { ...current, stepOpen };
 		}, true);
 	}
 

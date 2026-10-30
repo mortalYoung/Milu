@@ -20,9 +20,14 @@ function atBottom(element: HTMLElement): boolean {
 
 function anchorOf(scroller: HTMLElement, content: HTMLElement): Anchor | null {
 	const frame = scroller.getBoundingClientRect().top;
+	let visible = frame;
+	for (const head of content.querySelectorAll<HTMLElement>("[data-sticky-head]")) {
+		const rect = head.getBoundingClientRect();
+		if (rect.top <= frame + 1 && rect.bottom > visible) visible = rect.bottom;
+	}
 	for (const row of content.querySelectorAll<HTMLElement>("[data-entry]")) {
 		const rect = row.getBoundingClientRect();
-		if (rect.bottom > frame) return { id: row.dataset["entry"] ?? "", top: rect.top };
+		if (rect.bottom > visible) return { id: row.dataset["entry"] ?? "", top: rect.top };
 	}
 	return null;
 }
@@ -152,6 +157,20 @@ export class TranscriptScroll {
 		const content = this._content;
 		if (scroller && content) this._anchor = anchorOf(scroller, content);
 		this._follow(false);
+	}
+
+	alignTo(element: HTMLElement): void {
+		const scroller = this._scroller;
+		if (!scroller) return;
+		const top = element.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+		if (top >= scroller.scrollTop - 1) return;
+		if (this._frame !== null) {
+			cancelAnimationFrame(this._frame);
+			this._frame = null;
+		}
+		this._follow(false);
+		this._anchor = null;
+		this._write(scroller, Math.max(0, top));
 	}
 
 	private _pinNow(force: boolean): void {

@@ -1,20 +1,36 @@
 import type { SlotProps, StepGroup, ViewItem } from "@milu/window/api";
-import { liveRowsOf, oneLine, rowKindOf } from "@milu/window/api";
-import { Brain, ChevronRight, type LucideIcon } from "lucide-react";
-import { createElement, type ReactNode, useEffect, useMemo, useState } from "react";
+import { liveRowsOf, oneLine } from "@milu/window/api";
+import { Markdown } from "@milu/window/api/markdown/react";
+import { Brain, ChevronDown, Wrench, type LucideIcon } from "lucide-react";
+import { useEffect, useId, useMemo, useRef, useState, type RefObject } from "react";
 import { useStore } from "zustand";
 
-import type { StepDisplay } from "../index.ts";
-import { Elide, NoteFallback, SayRow, ThinkingRow, ToolRow } from "./note.tsx";
+import { Elide, NoteFallback } from "./note.tsx";
 import { toolArgs, toolIcon } from "./tool.ts";
 
 interface StepData {
 	readonly group: StepGroup;
 	readonly live: boolean;
 	readonly session?: string;
+	readonly defaultOpen?: boolean;
+	readonly onOpenChange?: (open: boolean) => void;
+	readonly onAlign?: (element: HTMLElement) => void;
 }
 
-const HEAD = "flex min-w-0 items-baseline gap-2";
+interface Family {
+	readonly key: string;
+	readonly label: string;
+	readonly icon: LucideIcon;
+	readonly count: number;
+}
+
+interface Latest {
+	readonly id: string;
+	readonly icon: LucideIcon | null;
+	readonly label: string;
+	readonly detail: string;
+	readonly failed: boolean;
+}
 
 interface Stamp {
 	readonly label: string;
@@ -29,42 +45,41 @@ function span(ms: number): string {
 	return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }
 
-interface Latest {
-	readonly icon: LucideIcon | null;
-	readonly label: string;
-	readonly detail: string;
-	readonly code: boolean;
-	readonly failed: boolean;
+function familyOf(item: ViewItem): Omit<Family, "count"> | null {
+	if (item.thinking) return { key: "think", label: "thinking", icon: Brain };
+	if (item.tool) return { key: "tool", label: "tool", icon: Wrench };
+	return null;
 }
 
-function latestStep(group: StepGroup): Latest | null {
-	const item = group.rows[group.rows.length - 1];
+function familiesOf(rows: readonly ViewItem[]): readonly Family[] {
+	const families = new Map<string, Family>();
+	for (const row of rows) {
+		const family = familyOf(row);
+		if (!family) continue;
+		const current = families.get(family.key);
+		families.set(family.key, current ? { ...current, count: current.count + 1 } : { ...family, count: 1 });
+	}
+	return [...families.values()];
+}
+
+function latestOf(rows: readonly ViewItem[]): Latest | null {
+	const item = rows[rows.length - 1];
 	if (!item) return null;
-	if (item.tool) return { icon: toolIcon(item.tool.name), label: oneLine(item.tool.name) || "tool", detail: toolArgs(item.tool), code: true, failed: item.tool.status === "error" };
-	if (item.thinking) return { icon: Brain, label: "thinking", detail: item.thinking.redacted ? "redacted" : oneLine(item.thinking.text), code: false, failed: false };
-	return { icon: null, label: "", detail: oneLine(item.text), code: false, failed: false };
+	if (item.tool) {
+		return { id: item.id, icon: toolIcon(item.tool.name), label: item.tool.name, detail: toolArgs(item.tool), failed: item.tool.status === "error" };
+	}
+	if (item.thinking) {
+		return { id: item.id, icon: Brain, label: "thinking", detail: item.thinking.redacted ? "redacted" : oneLine(item.thinking.text), failed: false };
+	}
+	return { id: item.id, icon: null, label: "", detail: oneLine(item.text), failed: false };
 }
 
-function LatestStep(props: { step: Latest }) {
-	const { icon: Icon, label, detail, code, failed } = props.step;
-	return (
-		<>
-			<span className="shrink-0 text-line-strong">|</span>
-			<span className="flex min-w-0 flex-1 items-center gap-1">
-				{Icon ? <Icon size={12} aria-hidden="true" className={failed ? "shrink-0 text-signal" : "shrink-0"} /> : null}
-				{label === "" ? null : <span className="shrink-0">{label}</span>}
-				{label === "" || detail === "" ? null : <span className="shrink-0 text-line-strong">·</span>}
-				{detail === "" ? null : <Elide text={detail} className={`min-w-0 flex-1 truncate text-muted-soft${code ? " font-mono text-[13px]" : ""}`} />}
-			</span>
-		</>
-	);
-}
-
-/** "Running for 12s" while it streams, "Stopped after 12s" when it was cut, "Completed in 12s" once the last row is in. */
+/** "Running for 12s" while it streams, "Thought for 12s" when it only thought, "Completed in 12s" once the last row is in. */
 function useHeaderStamp(group: StepGroup, live: boolean): Stamp {
 	const first = group.rows[0]?.time ?? 0;
 	const last = group.rows[group.rows.length - 1]?.time ?? first;
 	const stopped = group.rows.some((row) => row.stopped === true);
+	const onlyThinking = group.rows.length > 0 && group.rows.every((row) => row.thinking !== undefined);
 	const [elapsed, setElapsed] = useState(0);
 
 	useEffect(() => {
@@ -78,11 +93,49 @@ function useHeaderStamp(group: StepGroup, live: boolean): Stamp {
 	if (live) return { label: "Running for", duration: span(elapsed) || "0s" };
 	const took = span(last - first);
 	if (stopped) return took === "" ? { label: "Stopped", duration: "" } : { label: "Stopped after", duration: took };
+	if (onlyThinking) return took === "" ? { label: "Thought", duration: "" } : { label: "Thought for", duration: took };
 	return took === "" ? { label: "Completed", duration: "" } : { label: "Completed in", duration: took };
 }
 
+/** The same edge logic the session list uses: a mask appears only when there is more content past the edge. */
+function useScrollEdges<T extends HTMLElement>(): readonly [RefObject<T | null>, string] {
+	const ref = useRef<T>(null);
+	const [edges, setEdges] = useState({ above: false, below: false });
+
+	useEffect(() => {
+		const element = ref.current;
+		if (!element) return;
+		let frame = 0;
+		const measure = () => {
+			cancelAnimationFrame(frame);
+			frame = requestAnimationFrame(() => {
+				frame = 0;
+				setEdges({
+					above: element.scrollTop > 2,
+					below: element.scrollTop + element.clientHeight < element.scrollHeight - 2,
+				});
+			});
+		};
+		measure();
+		element.addEventListener("scroll", measure, { passive: true });
+		const resize = new ResizeObserver(measure);
+		resize.observe(element);
+		const mutations = new MutationObserver(measure);
+		mutations.observe(element, { subtree: true, childList: true, characterData: true });
+		return () => {
+			cancelAnimationFrame(frame);
+			element.removeEventListener("scroll", measure);
+			resize.disconnect();
+			mutations.disconnect();
+		};
+	}, []);
+
+	return [ref, `edge-fade${edges.above ? " has-above" : ""}${edges.below ? " has-below" : ""}`];
+}
+
 export function StepRow(props: SlotProps) {
-	const { group, live, session } = props.data as StepData;
+	const { group, live, session, defaultOpen, onOpenChange, onAlign } = props.data as StepData;
+	const groupRef = useRef<HTMLDivElement>(null);
 	const partial = useStore(props.host.transcript.store, (state) => (live && session ? (state.partials[session] ?? null) : null));
 	const started = useStore(props.host.transcript.store, (state) => (live && session ? (state.started[session] ?? 0) : 0));
 	const merged = useMemo(() => {
@@ -91,33 +144,26 @@ export function StepRow(props: SlotProps) {
 		if (!first || !("step" in first)) return group;
 		return { ...group, rows: [...group.rows, ...first.step.rows] };
 	}, [group, live, session, partial, started]);
-	const [display, setDisplay] = useState<StepDisplay>("flat");
-	const [open, setOpen] = useState(false);
+	const [open, setOpen] = useState(() => merged.rows.some((row) => row.tool?.status === "error") || (defaultOpen ?? live));
 	const [openRows, setOpenRows] = useState<ReadonlySet<string>>(() => new Set());
 	const stamp = useHeaderStamp(merged, live);
+	const bodyId = useId();
 
-	useEffect(() => {
-		let alive = true;
-		const load = () => {
-			void props.host.actions
-				.request<StepDisplay>("notes.display")
-				.then((next) => {
-					if (alive && next) setDisplay(next);
-				})
-				.catch(() => undefined);
-		};
-		load();
-		const subscription = props.host.connection.onLive((event) => {
-			if (event.type === "settings") load();
-		});
-		return () => {
-			alive = false;
-			subscription.dispose();
-		};
-	}, [props.host]);
+	const families = useMemo(() => familiesOf(merged.rows), [merged.rows]);
+	const failed = merged.rows.some((row) => row.tool?.status === "error");
+	const stopped = merged.rows.some((row) => row.stopped === true);
+	const latest = live || stopped ? latestOf(merged.rows) : null;
+	const LatestIcon = latest?.icon ?? null;
 
-	const collapsed = display === "collapsed";
-	const folded = collapsed && !open;
+	const toggleOpen = (): void => {
+		const next = !open;
+		setOpen(next);
+		onOpenChange?.(next);
+		if (!next) {
+			const element = groupRef.current;
+			if (element !== null) requestAnimationFrame(() => onAlign?.(element));
+		}
+	};
 
 	const toggleRow = (id: string): void => {
 		setOpenRows((previous) => {
@@ -128,43 +174,155 @@ export function StepRow(props: SlotProps) {
 		});
 	};
 
-	const head = (
-		<>
-			{live ? <span className="work-dot shrink-0 self-center" /> : null}
-			<span className="shrink-0">{stamp.label}</span>
-			{stamp.duration === "" ? null : <span className="shrink-0 font-mono text-[13px] text-muted">{stamp.duration}</span>}
-		</>
-	);
-	const latest = live ? latestStep(merged) : null;
-	const rows = <div className="mt-2 grid gap-1.5">{merged.rows.map((item) => renderRow(props, item, openRows.has(item.id), toggleRow))}</div>;
-
 	return (
-		<div className="mt-6 min-w-0">
-			{collapsed ? (
-				<button
-					type="button"
-					className="flex w-full min-w-0 max-w-full cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 text-left font-sans text-[15px] leading-[1.5] text-muted hover:text-ink"
-					aria-expanded={open}
-					onClick={() => setOpen(!open)}
-				>
-					<span className="grid size-4 shrink-0 place-items-center text-muted-soft">
-						<ChevronRight size={14} aria-hidden="true" className={`transition-transform duration-150 motion-reduce:transition-none${open ? " rotate-90" : ""}`} />
+		<div className="step-ribbon mt-6 min-w-0" data-open={open} ref={groupRef}>
+			<button type="button" className="step-head" aria-expanded={open} aria-controls={bodyId} onClick={toggleOpen} data-sticky-head>
+				<span className="step-chev">
+					<ChevronDown size={13} aria-hidden="true" />
+				</span>
+				<span className="step-stamp" key={stamp.label}>
+					{stamp.label}
+				</span>
+				{stamp.duration === "" ? null : <span className="step-duration">{stamp.duration}</span>}
+				{failed ? <span className="step-error-dot" title="a step failed" /> : null}
+				{live ? <span className="work-dot shrink-0" aria-hidden="true" /> : null}
+				{families.length === 0 ? null : (
+					<span className="step-families" aria-hidden="true">
+						{families.map((family) => {
+							const FamilyIcon = family.icon;
+							return (
+								<span className="step-family" key={family.key} title={`${family.label} · ${family.count}`}>
+									<FamilyIcon size={11} aria-hidden="true" />
+									<span className="step-family-label">{family.label}</span>
+									<span className="step-family-count" key={family.count}>
+										{family.count}
+									</span>
+								</span>
+							);
+						})}
 					</span>
-					<span className={HEAD}>{head}</span>
-					{latest ? <LatestStep step={latest} /> : null}
-				</button>
-			) : (
-				<div className={`${HEAD} font-sans text-[15px] leading-[1.714] text-muted-soft`}>{head}</div>
-			)}
-			{folded ? null : rows}
+				)}
+				{latest === null ? null : (
+					<span className={`step-latest${latest.failed ? " is-error" : ""}`} key={latest.id}>
+						{LatestIcon === null ? null : <LatestIcon size={11} aria-hidden="true" />}
+						{latest.label === "" ? null : <span className="step-latest-label">{latest.label}</span>}
+						{latest.label !== "" && latest.detail !== "" ? <span className="step-sep">·</span> : null}
+						{latest.detail === "" ? null : <Elide text={latest.detail} className="step-latest-detail" />}
+					</span>
+				)}
+			</button>
+			<div className="step-body" id={bodyId} inert={!open}>
+				<div className="step-body-inner">
+					<div className="step-ledger">{merged.rows.map((item, index) => renderRow(props, item, index, merged.rows, openRows.has(item.id), toggleRow))}</div>
+				</div>
+			</div>
 		</div>
 	);
 }
 
-function renderRow(props: SlotProps, item: ViewItem, open: boolean, onToggle: (id: string) => void): ReactNode {
-	if (item.tool) return createElement(ToolRow, { host: props.host, data: { item, open, onToggle: () => onToggle(item.id), capsule: true } });
-	if (item.thinking) return createElement(ThinkingRow, { host: props.host, data: { item, open, onToggle: () => onToggle(item.id) } });
-	if (item.say) return createElement(SayRow, { host: props.host, data: { item } });
-	const Note = props.host.rows.get(rowKindOf(item));
-	return Note ? createElement(Note, { host: props.host, data: { item, open, onToggle: () => onToggle(item.id) } }) : createElement(NoteFallback, { item });
+function renderRow(props: SlotProps, item: ViewItem, index: number, rows: readonly ViewItem[], open: boolean, onToggle: (id: string) => void) {
+	if (item.say) {
+		return (
+			<div className="step-say" key={item.id} data-entry={item.id}>
+				<Markdown port={props.host.markdown} text={item.text} plain={item.live === true} />
+			</div>
+		);
+	}
+	if (!item.tool && !item.thinking) {
+		return (
+			<div className="step-entry" key={item.id} data-entry={item.id}>
+				<NoteFallback item={item} />
+			</div>
+		);
+	}
+
+	const tool = item.tool;
+	const failed = tool?.status === "error";
+	const running = tool?.status === "running";
+	const pending = tool?.status === "pending";
+	const Icon = tool ? toolIcon(tool.name) : Brain;
+	const args = tool ? toolArgs(tool) : "";
+	const result = !tool ? "" : tool.status === "running" ? "loading…" : tool.status === "pending" ? "…" : (tool.result ?? "");
+	const thinking = item.thinking?.redacted ? "redacted" : oneLine(item.thinking?.text ?? "");
+	const previous = rows[index - 1];
+	const took = previous === undefined ? "" : span(item.time - previous.time);
+
+	return (
+		<div className={`step-entry${item.thinking ? " is-think" : ""}`} key={item.id} data-entry={item.id}>
+			<button
+				type="button"
+				className={`step-row${failed ? " is-error" : ""}${running ? " is-running" : ""}${pending ? " is-pending" : ""}`}
+				aria-expanded={open}
+				onClick={() => onToggle(item.id)}
+			>
+				<Icon size={12} aria-hidden="true" className="step-row-icon" />
+				<span className="step-row-label">{tool ? tool.name : "thinking"}</span>
+				<span className="step-row-detail">
+					{tool ? (
+						<>
+							{args === "" ? null : (
+								<span className="step-row-args" title={args}>
+									{args}
+								</span>
+							)}
+							{args !== "" && result !== "" ? <span className="step-sep">|</span> : null}
+							{result === "" ? null : (
+								<span className="step-row-result" title={result}>
+									{result}
+								</span>
+							)}
+						</>
+					) : (
+						<span className="step-row-thinking" title={thinking}>
+							{thinking}
+						</span>
+					)}
+				</span>
+				<span className="step-row-took">{took === "" ? "—" : took}</span>
+				<ChevronDown size={11} aria-hidden="true" className={`step-row-chev${open ? " is-open" : ""}`} />
+			</button>
+			{open ? <RowDetail host={props.host} item={item} /> : null}
+		</div>
+	);
+}
+
+function RowDetail(props: { readonly host: SlotProps["host"]; readonly item: ViewItem }) {
+	const { item, host } = props;
+	if (item.thinking) return <ThinkingDetail host={host} item={item} />;
+	if (!item.tool) return null;
+	return <ToolDetail tool={item.tool} />;
+}
+
+function ThinkingDetail(props: { readonly host: SlotProps["host"]; readonly item: ViewItem }) {
+	const { item, host } = props;
+	const [scrollRef, scrollClass] = useScrollEdges<HTMLDivElement>();
+	const text = item.thinking?.redacted ? "redacted" : (item.thinking?.text ?? "");
+	return (
+		<div className="step-detail is-think">
+			<div ref={scrollRef} className={`${scrollClass} step-detail-scroll`}>
+				<Markdown port={host.markdown} text={text} plain={item.live === true} />
+			</div>
+		</div>
+	);
+}
+
+function ToolDetail(props: { readonly tool: NonNullable<ViewItem["tool"]> }) {
+	const [scrollRef, scrollClass] = useScrollEdges<HTMLDivElement>();
+	const { tool } = props;
+	const args = tool.args?.trim() ?? "";
+	const result = tool.status === "running" ? "loading…" : tool.status === "pending" ? "…" : (tool.result ?? "");
+	return (
+		<div className="step-detail">
+			<div ref={scrollRef} className={`${scrollClass} step-detail-scroll`}>
+				<section className="step-detail-section">
+					<span className="step-detail-label">args</span>
+					<pre className="step-detail-code">{args || "(none)"}</pre>
+				</section>
+				<section className={`step-detail-section${tool.status === "error" ? " is-error" : ""}`}>
+					<span className="step-detail-label">result</span>
+					<pre className="step-detail-code">{result || "(no output)"}</pre>
+				</section>
+			</div>
+		</div>
+	);
 }

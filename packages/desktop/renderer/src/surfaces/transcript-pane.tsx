@@ -158,7 +158,15 @@ function SpeakingDots() {
 }
 
 /** The one component that re-renders while a reply streams; the rows behind it stay put. */
-function StreamTail(props: { host: Host; session: string; working: boolean; mergeFirstStep: boolean }) {
+function StreamTail(props: {
+	host: Host;
+	session: string;
+	working: boolean;
+	mergeFirstStep: boolean;
+	lastStepOpen?: boolean;
+	onStepOpenChange?: (open: boolean) => void;
+	onAlign?: (element: HTMLElement) => void;
+}) {
 	const message = useStore(props.host.transcript.store, (state) => state.partials[props.session] ?? null);
 	const started = useStore(props.host.transcript.store, (state) => state.started[props.session] ?? 0);
 	const rows = useMemo(() => (message ? liveRowsOf(message, started) : NO_ROWS), [message, started]);
@@ -172,7 +180,13 @@ function StreamTail(props: { host: Host; session: string; working: boolean; merg
 		<>
 			{shown.map((row) =>
 				"step" in row ? (
-					Step && <Step key={`s:${row.step.key}`} host={props.host} data={{ group: row.step, live: true }} />
+					Step && (
+						<Step
+							key={`s:${row.step.key}`}
+							host={props.host}
+							data={{ group: row.step, live: true, defaultOpen: props.lastStepOpen, onOpenChange: props.onStepOpenChange, onAlign: props.onAlign }}
+						/>
+					)
 				) : (
 					<AssistantBlock key={`i:${row.item.id}`} host={props.host} item={row.item} live />
 				),
@@ -197,6 +211,17 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 	const log = useMemo(() => entries.map((seq) => seq.entry), [entries]);
 	const items = useMemo(() => projectView(log, { baseDir: workspace }), [log, workspace]);
 	const display = useMemo(() => layoutView(items), [items]);
+	const mergeFirstStep = display.length > 0 && "step" in display[display.length - 1]!;
+	const lastStepOpen = useStore(host.transcript.store, (state) => state.stepOpen[selected]);
+	let lastStepIndex = -1;
+	for (let index = display.length - 1; index >= 0; index -= 1) {
+		const row = display[index];
+		if (row !== undefined && "step" in row) {
+			lastStepIndex = index;
+			break;
+		}
+	}
+	const currentStepIndex = !working || mergeFirstStep ? lastStepIndex : -1;
 
 	const panes = useStore(host.slots.store, (state) => state.points[SLOT_POINTS.chatPanes] ?? NO_PANES);
 	const focused = useStore(host.transcript.store, (state) => state.focused);
@@ -210,6 +235,7 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 	const locating = useRef(false);
 	const [follower] = useState(() => new TranscriptScroll());
 	const following = useStore(follower.store, (state) => state.following);
+	const alignStep = (element: HTMLElement): void => follower.alignTo(element);
 	useEffect(() => {
 		const scroller = scroll.current;
 		const content = inner.current;
@@ -303,11 +329,32 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 										if ("step" in row) {
 											const Step = host.rows.get("step");
 											const live = working && index === display.length - 1;
-											return Step ? createElement(Step, { key: `s:${row.step.key}`, host, data: { group: row.step, live, ...(live ? { session: selected } : {}) } }) : null;
+											const current = index === currentStepIndex;
+											return Step
+												? createElement(Step, {
+														key: `s:${row.step.key}${live ? ":live" : ""}`,
+														host,
+														data: {
+															group: row.step,
+															live,
+															...(live ? { session: selected } : {}),
+															...(current ? { defaultOpen: lastStepOpen, onOpenChange: (open: boolean) => host.transcript.setStepOpen(selected, open) } : {}),
+															onAlign: alignStep,
+														},
+													})
+												: null;
 										}
 										return <TranscriptRow key={`i:${row.item.id}`} host={host} session={selected} item={row.item} />;
 									})}
-									<StreamTail host={host} session={selected} working={working} mergeFirstStep={display.length > 0 && "step" in display[display.length - 1]!} />
+									<StreamTail
+										host={host}
+										session={selected}
+										working={working}
+										mergeFirstStep={mergeFirstStep}
+										lastStepOpen={lastStepOpen}
+										onStepOpenChange={(open) => host.transcript.setStepOpen(selected, open)}
+										onAlign={alignStep}
+									/>
 									{error ? (
 										<div className="sys-error">
 											<span className="sys-error-tag">ERR</span>
