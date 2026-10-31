@@ -1,5 +1,6 @@
 import { SLOT_POINTS, type SeqEntry } from "@milu/protocol";
 import { type DisplayRow, type Host, type SurfaceProps, type ViewItem, formatHistoryTime, layoutView, liveRowsOf, projectView } from "@milu/window";
+import { Tip } from "@milu/window/api/tooltip";
 import type { MarkdownPort } from "@milu/window/markdown";
 import { Markdown } from "@milu/window/markdown/react";
 import { createElement, memo, useEffect, useMemo, useRef, useState } from "react";
@@ -21,18 +22,37 @@ const NO_ROWS: readonly DisplayRow[] = [];
 function CopyButton(props: { text: string }) {
 	const [copied, setCopied] = useState(false);
 	return (
-		<button
-			type="button"
-			className={copied ? "msg-copy copied" : "msg-copy"}
-			aria-label={copied ? "Copied" : "Copy message"}
-			onClick={() => {
-				void copyPath(props.text);
-				setCopied(true);
-				window.setTimeout(() => setCopied(false), 1200);
-			}}
-		>
-			{copied ? <CheckIcon size={11} /> : <CopyIcon size={11} />}
-		</button>
+		<Tip label={copied ? "Copied" : "Copy message"}>
+			<button
+				type="button"
+				className={copied ? "msg-copy copied" : "msg-copy"}
+				aria-label={copied ? "Copied" : "Copy message"}
+				onClick={() => {
+					void copyPath(props.text);
+					setCopied(true);
+					window.setTimeout(() => setCopied(false), 1200);
+				}}
+			>
+				{copied ? <CheckIcon size={11} /> : <CopyIcon size={11} />}
+			</button>
+		</Tip>
+	);
+}
+
+function MessageMeta(props: { text: string; time: number; from?: string; className?: string }) {
+	return (
+		<div className={props.className === undefined ? "msg-meta" : `msg-meta ${props.className}`}>
+			<CopyButton text={props.text} />
+			{props.from === undefined || props.from === "" ? null : (
+				<>
+					<span className="msg-from">{props.from}</span>
+					<span className="msg-dot">·</span>
+				</>
+			)}
+			<time className="msg-at" dateTime={new Date(props.time).toISOString()}>
+				{formatHistoryTime(props.time)}
+			</time>
+		</div>
 	);
 }
 
@@ -50,9 +70,7 @@ function UserBubble(props: { item: ViewItem }) {
 				</div>
 			) : null}
 			<div className="msg-user read-clamp">{props.item.text}</div>
-			<div className="msg-meta">
-				<span className="msg-at">{formatHistoryTime(props.item.time)}</span>
-			</div>
+			<MessageMeta text={props.item.text} time={props.item.time} />
 		</div>
 	);
 }
@@ -60,12 +78,7 @@ function UserBubble(props: { item: ViewItem }) {
 function PeerCard(props: { item: ViewItem; port: MarkdownPort }) {
 	return (
 		<div className="msg-reply" data-entry={props.item.id}>
-			<div className="msg-reply-head">
-				<span className="msg-reply-stamp">
-					{props.item.from} · {formatHistoryTime(props.item.time)}
-				</span>
-				<CopyButton text={props.item.text} />
-			</div>
+			<MessageMeta text={props.item.text} time={props.item.time} from={props.item.from} className="msg-reply-meta" />
 			<div className="msg-reply-body read-clamp">
 				<Markdown port={props.port} text={props.item.text} />
 			</div>
@@ -114,10 +127,7 @@ function AssistantBlock(props: { host: Host; item: ViewItem; live?: boolean }) {
 	return (
 		<div className={props.live ? "msg-block msg-block-agent is-live" : "msg-block msg-block-agent"} data-entry={props.item.id}>
 			<Markdown port={props.host.markdown} text={props.item.text} env={env} className="msg-body" plain={props.live} />
-			<div className={props.live ? "msg-meta invisible" : "msg-meta"}>
-				<CopyButton text={props.item.text} />
-				<span className="msg-at">{formatHistoryTime(props.item.time)}</span>
-			</div>
+			<MessageMeta text={props.item.text} time={props.item.time} className={props.live ? "invisible" : undefined} />
 		</div>
 	);
 }

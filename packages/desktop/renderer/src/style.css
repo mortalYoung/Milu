@@ -1405,49 +1405,86 @@ body.pane-dragging {
 	transition: opacity 140ms var(--ease-out);
 }
 
+.msg-from {
+	flex: none;
+	color: var(--ink-soft);
+}
+
+.msg-dot {
+	flex: none;
+	color: var(--line-strong);
+}
+
 .msg-copy {
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	flex: none;
-	width: 15px;
-	height: 15px;
+	width: 24px;
+	height: 24px;
+	margin: -4px 0;
 	padding: 0;
 	border: 0;
+	border-radius: var(--r4);
 	background: transparent;
 	color: var(--muted);
 	cursor: pointer;
 	opacity: 0;
-	transition: opacity 140ms var(--ease-out);
+	transform: translateX(2px);
+	transition:
+		opacity 140ms var(--ease-out),
+		transform 140ms var(--ease-out),
+		color 140ms var(--ease-out),
+		background-color 140ms var(--ease-out);
 }
 
 .msg-copy:hover {
 	color: var(--ink);
 	background: var(--hover);
+	opacity: 1;
+	transform: none;
 }
 
 .msg-copy:focus-visible {
 	outline: 1px solid var(--ink);
 	opacity: 1;
+	transform: none;
 }
 
 .msg-copy.copied {
 	color: var(--ink);
 	opacity: 1;
+	transform: none;
 }
 
-.msg-block:hover .msg-at,
 .msg-block:hover .msg-copy,
 .msg-block:has(:focus-visible) .msg-copy,
 .msg-reply:hover .msg-copy,
 .msg-reply:has(:focus-visible) .msg-copy {
 	opacity: 1;
+	transform: none;
+}
+
+.msg-block:hover .msg-at,
+.msg-block:has(:focus-visible) .msg-at,
+.msg-reply:hover .msg-at,
+.msg-reply:has(:focus-visible) .msg-at {
+	opacity: 1;
 }
 
 @media (hover: none) {
-	.msg-at,
-	.msg-copy {
+	.msg-copy,
+	.msg-at {
 		opacity: 1;
+		transform: none;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.msg-copy,
+	.msg-at {
+		transform: none;
+		transition: none;
 	}
 }
 
@@ -1459,19 +1496,8 @@ body.pane-dragging {
 	background: var(--letter);
 }
 
-.msg-reply-head {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 12px;
-}
-
-.msg-reply-stamp {
-	flex: none;
-	font-family: var(--mono);
-	font-size: 10px;
-	font-variant-numeric: tabular-nums;
-	color: var(--muted);
+.msg-reply-meta {
+	margin-top: 0;
 }
 
 .msg-reply-body {
