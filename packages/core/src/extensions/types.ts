@@ -31,6 +31,7 @@ export const WELCOME_TIMELINE_POINT = SLOT_POINTS.welcomeTimeline;
 export const WORKSPACE_VIEWS_POINT = SLOT_POINTS.workspaceViews;
 export const DOCK_VIEWS_POINT = SLOT_POINTS.dockViews;
 export const DOCK_BAR_POINT = SLOT_POINTS.dockBar;
+export const COMPOSER_ABOVE_POINT = SLOT_POINTS.composerAbove;
 export const OVERLAY_POINT = SLOT_POINTS.overlay;
 
 export type { ComposerCommand, SlotItem, WelcomeItem };

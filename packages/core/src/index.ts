@@ -61,6 +61,7 @@ export {
 	CHAT_NAME_POINT,
 	CHAT_PANES_POINT,
 	DOCK_BAR_POINT,
+	COMPOSER_ABOVE_POINT,
 	WELCOME_TIMELINE_POINT,
 	OVERLAY_POINT,
 	SYSTEM_PROMPT_POINT,
@@ -87,6 +88,7 @@ export { SelectionService, ISelectionService } from "./services/selection.ts";
 export { SessionService, ISessionService, type SessionEntry, type SessionLoopEvent } from "./services/sessions.ts";
 export { Session, type SessionDeps } from "./session/session.ts";
 export { SessionLog } from "./session/log.ts";
+export { followUpId, followUpView } from "./session/followups.ts";
 export { projectSlice } from "./session/slice.ts";
 export type { CompactionPlan, CompactionTier } from "./session/compact.ts";
 export {

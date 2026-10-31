@@ -107,6 +107,7 @@ export const SLOT_POINTS = {
 	dockViews: "dock.views",
 	dockBar: "dock.bar",
 	welcomeTimeline: "welcome.timeline",
+	composerAbove: "composer.above",
 	overlay: "shell.overlay",
 } as const;
 
@@ -236,8 +237,16 @@ export interface LayoutState {
 	readonly layout: Layout;
 }
 
+export interface FollowUpItem {
+	readonly id: string;
+	readonly text: string;
+	readonly at: number;
+	readonly source: "you" | "scheduled" | "peer" | "skill";
+}
+
 export type LiveEvent =
 	| { readonly type: "status"; readonly session: string; readonly running: boolean }
+	| { readonly type: "followup"; readonly session: string; readonly items: readonly FollowUpItem[] }
 	| { readonly type: "fork"; readonly session: string; readonly error?: string }
 	| { readonly type: "selection"; readonly selected: string | null }
 	| ({ readonly type: "layout" } & LayoutState)

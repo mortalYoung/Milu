@@ -2205,6 +2205,8 @@ body.pane-dragging {
 .composer-box {
 	width: 100%;
 	min-width: 0;
+	position: relative;
+	z-index: 1;
 	border: 0.5px solid var(--line);
 	border-radius: var(--r12);
 	background: var(--surface);

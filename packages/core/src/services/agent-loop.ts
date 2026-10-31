@@ -4,6 +4,7 @@ import type { Api, AssistantMessage, Model, ModelThinkingLevel } from "@earendil
 import { DisposableStore, createServiceId, Emitter, type Event, type Service } from "@milu/di";
 
 import { type AgentReminder, reminderText } from "../session/events.ts";
+import { followUpId } from "../session/followups.ts";
 import type { Session } from "../session/session.ts";
 import type { AgentHookPoint, HookService } from "./hooks.ts";
 import type { ModelsService } from "./models.ts";
@@ -25,6 +26,7 @@ export type AgentLoopEvent =
 	| ({ type: "turn_end" } & AgentLoopProgress)
 	| ({ type: "retry_scheduled"; retry: number; maxRetries: number; delayMs: number; error: string } & AgentLoopProgress)
 	| ({ type: "retry_started"; retry: number } & AgentLoopProgress)
+	| { type: "followups"; items: readonly AgentMessage[] }
 	| ({ type: "run_end"; stopped?: boolean; error?: string } & AgentLoopProgress);
 
 export interface AgentLoopRun {
@@ -42,6 +44,7 @@ export class AgentLoopService implements Service {
 	private _running = false;
 	private _stopped = false;
 	private readonly _pending: (string | AgentMessage)[] = [];
+	private readonly _followUps: AgentMessage[] = [];
 	/** A failed attempt's tail, held until the retry decision says whether it is final. */
 	private _held: AgentEvent[] = [];
 	private _releasing = false;
@@ -98,6 +101,7 @@ export class AgentLoopService implements Service {
 			return await this._runWithRetry(input);
 		} finally {
 			this._running = false;
+			this._requeueFollowUps();
 			void this._drain();
 		}
 	}
@@ -110,8 +114,29 @@ export class AgentLoopService implements Service {
 			return await this._runWithRetry(null);
 		} finally {
 			this._running = false;
+			this._requeueFollowUps();
 			void this._drain();
 		}
+	}
+
+	followUp(message: AgentMessage): void {
+		this._followUps.push(message);
+		this._agent.followUp(message);
+		this._emitFollowUps();
+	}
+
+	followUps(): readonly AgentMessage[] {
+		return [...this._followUps];
+	}
+
+	cancelFollowUp(id: string): boolean {
+		const at = this._followUps.findIndex((item) => followUpId(item) === id);
+		if (at < 0) return false;
+		this._followUps.splice(at, 1);
+		this._agent.clearFollowUpQueue();
+		for (const item of this._followUps) this._agent.followUp(item);
+		this._emitFollowUps();
+		return true;
 	}
 
 	/** One attempt, then another if the failure hook asks for it — the failed one leaves no trace. */
@@ -220,6 +245,7 @@ export class AgentLoopService implements Service {
 				return;
 			} finally {
 				this._running = false;
+				this._requeueFollowUps();
 			}
 		}
 	}
@@ -227,6 +253,7 @@ export class AgentLoopService implements Service {
 	stop(): void {
 		this._stopped = true;
 		this._pending.length = 0;
+		this._clearFollowUps();
 		this._agent.abort();
 		this._wake?.();
 	}
@@ -274,6 +301,7 @@ export class AgentLoopService implements Service {
 		this._running = false;
 		this._stopped = false;
 		this._pending.length = 0;
+		this._clearFollowUps();
 		this._agent.reset();
 	}
 
@@ -310,6 +338,32 @@ export class AgentLoopService implements Service {
 		return injected;
 	}
 
+	private _emitFollowUps(): void {
+		this._emitter.fire({ type: "followups", items: [...this._followUps] });
+	}
+
+	private _clearFollowUps(): void {
+		const had = this._followUps.length > 0;
+		this._followUps.length = 0;
+		this._agent.clearFollowUpQueue();
+		if (had) this._emitFollowUps();
+	}
+
+	private _dropFollowUp(id: string): void {
+		const at = this._followUps.findIndex((item) => followUpId(item) === id);
+		if (at < 0) return;
+		this._followUps.splice(at, 1);
+		this._emitFollowUps();
+	}
+
+	/** A follow-up the run never reached starts the next run instead of being lost. */
+	private _requeueFollowUps(): void {
+		if (this._followUps.length === 0) return;
+		this._pending.push(...this._followUps.splice(0));
+		this._agent.clearFollowUpQueue();
+		this._emitFollowUps();
+	}
+
 	// ——— pi's events, relayed as ours ———
 
 	private _relay(event: AgentEvent): void {
@@ -338,9 +392,12 @@ export class AgentLoopService implements Service {
 			case "message_update":
 				this._emitter.fire({ type: "message_update", ...progress, message: event.message });
 				return;
-			case "message_end":
+			case "message_end": {
+				const claimed = event.message.role === "user" ? followUpId(event.message) : null;
+				if (claimed !== null) this._dropFollowUp(claimed);
 				this._emitter.fire({ type: "message_end", ...progress, message: event.message });
 				return;
+			}
 			case "tool_execution_start":
 				this._emitter.fire({ type: "tool_start", ...progress, toolCallId: event.toolCallId, toolName: event.toolName, args: event.args });
 				return;

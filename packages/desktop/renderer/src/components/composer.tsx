@@ -1,4 +1,4 @@
-import type { ComposerTip, ComposerWidget } from "@milu/protocol";
+import { type ComposerTip, type ComposerWidget, SLOT_POINTS, type SlotItem } from "@milu/protocol";
 import { detectComposerTrigger, type ComposerTriggerToken, type Host, Kbd } from "@milu/window";
 import { Tip } from "@milu/window/tooltip";
 import { type KeyboardEvent, memo, useEffect, useRef, useState } from "react";
@@ -9,6 +9,7 @@ import { ArrowUpIcon, SquareIcon } from "./icons.tsx";
 
 const MAX_HEIGHT = 120;
 const NO_ITEMS: readonly unknown[] = [];
+const NO_SLOT_ITEMS: readonly SlotItem[] = [];
 const COMMAND_LINE = /^\/([a-z][a-z0-9_:-]*)(?:\s+(.*))?$/s;
 
 function parseCommandLine(value: string): { name: string; args: string } | null {
@@ -57,6 +58,8 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 	const text = useStore(host.transcript.store, (state) => state.drafts[selected] ?? "");
 	const busy = useStore(host.sessions.store, (state) => state.rows.find((row) => row.name === selected)?.running ?? false);
 	const stopping = useStore(host.transcript.store, (state) => state.stopping[selected] === true);
+	const above = useStore(host.slots.store, (state) => state.points[SLOT_POINTS.composerAbove] ?? NO_SLOT_ITEMS);
+	const slotComponents = useStore(host.slots.store, (state) => state.components);
 
 	const area = useRef<HTMLTextAreaElement>(null);
 	const composing = useRef(false);
@@ -81,6 +84,7 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 		void host.composer.loadLayout();
 		void host.composer.loadMode(selected);
 		void host.commands.load(selected);
+		void host.slots.load(SLOT_POINTS.composerAbove, selected || undefined);
 	}, [host, selected]);
 
 	useEffect(() => {
@@ -256,6 +260,10 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 				</div>
 			) : null}
 			<div className="composer-row">
+				{above.map((item) => {
+					const Slot = slotComponents.get(item.component);
+					return Slot ? <Slot key={item.id} host={host} data={item.data} /> : null;
+				})}
 				<div className={`composer-box${shownShell ? " shell" : ""}`}>
 					<div className="composer-input-layer">
 						<textarea

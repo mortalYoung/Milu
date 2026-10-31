@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type { AgentMessage, AgentToolResult, Entry } from "@earendil-works/pi-agent-core";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { DisposableStore, Emitter, type Event } from "@milu/di";
@@ -254,7 +256,7 @@ export class Session {
 	private async _submit(message: AgentMessage): Promise<{ ok: true } | { ok: false; error: string }> {
 		const loop = await this.open();
 		if (loop.isRunning()) {
-			this._launch(loop, message);
+			loop.followUp({ ...message, dockId: randomUUID() } as unknown as AgentMessage);
 			return { ok: true };
 		}
 		const failure = this._applyModel(loop, await this._modelOf());
@@ -420,6 +422,14 @@ export class Session {
 		if (!this._loop?.isRunning()) return false;
 		this._loop.stop();
 		return true;
+	}
+
+	followUps(): readonly AgentMessage[] {
+		return this._loop?.followUps() ?? [];
+	}
+
+	cancelFollowUp(id: string): boolean {
+		return this._loop?.cancelFollowUp(id) ?? false;
 	}
 
 	private _record(loop: AgentLoopService): { dispose(): void } {

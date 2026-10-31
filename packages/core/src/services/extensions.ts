@@ -28,6 +28,7 @@ import {
 	WELCOME_ITEMS_POINT,
 	DOCK_VIEWS_POINT,
 	DOCK_BAR_POINT,
+	COMPOSER_ABOVE_POINT,
 	WORKSPACE_VIEWS_POINT,
 	type SessionBarItem,
 	type SessionMenuItem,
@@ -117,6 +118,7 @@ export class ExtensionService implements Service {
 		this._contributionService.declare<SlotItem>(WORKSPACE_VIEWS_POINT);
 		this._contributionService.declare<SlotItem>(DOCK_VIEWS_POINT);
 		this._contributionService.declare<SlotItem>(DOCK_BAR_POINT);
+		this._contributionService.declare<SlotItem>(COMPOSER_ABOVE_POINT);
 		this._contributionService.declare<SlotItem>(OVERLAY_POINT, "global");
 		for (const extension of this._pending) this._register(extension);
 		this._activation = this._activateAll();

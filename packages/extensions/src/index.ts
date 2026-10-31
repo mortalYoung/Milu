@@ -16,6 +16,7 @@ export const BUILTIN: Record<string, () => Promise<{ default: Extension }>> = {
 	trash: () => import("./trash/index.ts"),
 	permission: () => import("./permission/index.ts"),
 	chat: () => import("./chat/index.ts"),
+	followup: () => import("./followup/index.ts"),
 	files: () => import("./files/index.ts"),
 	bash: () => import("./bash/index.ts"),
 	tasks: () => import("./tasks/index.ts"),
