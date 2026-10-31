@@ -152,7 +152,7 @@ export class ThemeService implements Service {
 		const tokens = matched?.tokens ?? {};
 		const effective = matched?.id ?? id;
 		this._paint(this._settings.mode, appearance, effective, tokens);
-		writeCache({ mode: this._settings.mode, appearance, theme: effective, tokens });
+		if (this._themes.size > 0) writeCache({ mode: this._settings.mode, appearance, theme: effective, tokens });
 		this.store.setState({ mode: this._settings.mode, appearance, theme: effective, settings: this._settings }, true);
 	}
 

@@ -277,10 +277,16 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 				}),
 			});
 			disposables.add(connection.onSnapshot(apply));
+			const hydrateTheme = async (): Promise<void> => {
+				const state = await actions.request<ThemeState>("themes.state").catch(() => undefined);
+				theme.hydrate(state);
+			};
+
 			disposables.add(
 				connection.onLink((up) => {
 					transcript.setLinked(up);
 					if (!up) return;
+					void hydrateTheme();
 					composerData.clear();
 					const selected = selection.store.getState().selected;
 					if (selected === "") return;
@@ -290,10 +296,6 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 			);
 			disposables.add(connection.onEntry(({ session, entry }) => transcript.append(session, entry)));
 			disposables.add(connection.onPartial(({ session, message }) => transcript.setPartial(session, message)));
-			const hydrateTheme = async (): Promise<void> => {
-				const state = await actions.request<ThemeState>("themes.state").catch(() => undefined);
-				theme.hydrate(state);
-			};
 
 			disposables.add(
 				connection.onLive((event) => {
