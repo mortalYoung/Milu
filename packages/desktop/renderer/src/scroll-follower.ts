@@ -1,7 +1,6 @@
 import { createStore } from "zustand/vanilla";
 
 const BOTTOM_SLACK = 24;
-const INTENT_WINDOW_MS = 400;
 
 interface Anchor {
 	readonly id: string;
@@ -40,7 +39,6 @@ export class TranscriptScroll {
 	private _content: HTMLElement | null = null;
 	private _paused: { readonly current: boolean } | null = null;
 	private _observed = 0;
-	private _intent = 0;
 	private _frame: number | null = null;
 	private _anchor: Anchor | null = null;
 	private _release: (() => void) | null = null;
@@ -55,18 +53,10 @@ export class TranscriptScroll {
 		this._content = content;
 		this._paused = paused;
 
-		const markIntent = () => {
-			this._intent = performance.now();
-		};
 		const onScroll = () => {
 			if (this._paused?.current === true) return;
 			if (Math.abs(scroller.scrollTop - this._observed) < 1) return;
-			const bottom = atBottom(scroller);
-			if (this.following && !bottom && performance.now() - this._intent > INTENT_WINDOW_MS) {
-				this.pin();
-				return;
-			}
-			this._follow(bottom);
+			this._follow(atBottom(scroller));
 		};
 		const remember = () => {
 			if (!this.following) this._anchor = anchorOf(scroller, content);
@@ -90,7 +80,7 @@ export class TranscriptScroll {
 			this._write(scroller, scroller.scrollTop + delta);
 		};
 		const onKey = (event: KeyboardEvent) => {
-			if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) markIntent();
+			if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) this._follow(atBottom(scroller));
 		};
 
 		scroller.addEventListener("scroll", onScroll, { passive: true });
@@ -107,9 +97,6 @@ export class TranscriptScroll {
 		frame.observe(scroller);
 
 		scroller.addEventListener("scroll", remember, { passive: true });
-		scroller.addEventListener("wheel", markIntent, { passive: true });
-		scroller.addEventListener("pointerdown", markIntent, { passive: true });
-		scroller.addEventListener("touchmove", markIntent, { passive: true });
 		window.addEventListener("keydown", onKey, true);
 		window.addEventListener("resize", rejudge);
 
@@ -122,9 +109,6 @@ export class TranscriptScroll {
 		this._release = () => {
 			scroller.removeEventListener("scroll", onScroll);
 			scroller.removeEventListener("scroll", remember);
-			scroller.removeEventListener("wheel", markIntent);
-			scroller.removeEventListener("pointerdown", markIntent);
-			scroller.removeEventListener("touchmove", markIntent);
 			window.removeEventListener("keydown", onKey, true);
 			window.removeEventListener("resize", rejudge);
 			frame.disconnect();

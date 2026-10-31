@@ -173,7 +173,6 @@ function StreamTail(props: {
 	session: string;
 	working: boolean;
 	mergeFirstStep: boolean;
-	lastStepOpen?: boolean;
 	onStepOpenChange?: (open: boolean) => void;
 	onAlign?: (element: HTMLElement) => void;
 }) {
@@ -190,13 +189,7 @@ function StreamTail(props: {
 		<>
 			{shown.map((row) =>
 				"step" in row ? (
-					Step && (
-						<Step
-							key={`s:${row.step.key}`}
-							host={props.host}
-							data={{ group: row.step, live: true, defaultOpen: props.lastStepOpen, onOpenChange: props.onStepOpenChange, onAlign: props.onAlign }}
-						/>
-					)
+					Step && <Step key={`s:${row.step.key}`} host={props.host} data={{ group: row.step, live: true, onOpenChange: props.onStepOpenChange, onAlign: props.onAlign }} />
 				) : (
 					<AssistantBlock key={`i:${row.item.id}`} host={props.host} item={row.item} live />
 				),
@@ -231,7 +224,7 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 			break;
 		}
 	}
-	const currentStepIndex = !working || mergeFirstStep ? lastStepIndex : -1;
+	const currentStepIndex = lastStepIndex;
 
 	const panes = useStore(host.slots.store, (state) => state.points[SLOT_POINTS.chatPanes] ?? NO_PANES);
 	const focused = useStore(host.transcript.store, (state) => state.focused);
@@ -342,13 +335,14 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 											const current = index === currentStepIndex;
 											return Step
 												? createElement(Step, {
-														key: `s:${row.step.key}${live ? ":live" : ""}`,
+														key: `s:${row.step.key}`,
 														host,
 														data: {
 															group: row.step,
 															live,
 															...(live ? { session: selected } : {}),
-															...(current ? { defaultOpen: lastStepOpen, onOpenChange: (open: boolean) => host.transcript.setStepOpen(selected, open) } : {}),
+															...(current && !live ? { defaultOpen: lastStepOpen } : {}),
+															...(current ? { onOpenChange: (open: boolean) => host.transcript.setStepOpen(selected, open) } : {}),
 															onAlign: alignStep,
 														},
 													})
@@ -361,7 +355,6 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 										session={selected}
 										working={working}
 										mergeFirstStep={mergeFirstStep}
-										lastStepOpen={lastStepOpen}
 										onStepOpenChange={(open) => host.transcript.setStepOpen(selected, open)}
 										onAlign={alignStep}
 									/>
