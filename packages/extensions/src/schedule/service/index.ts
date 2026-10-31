@@ -77,6 +77,18 @@ export class ScheduleService implements Service {
 		return rows.sort((left, right) => left.at - right.at || left.session.localeCompare(right.session) || left.id.localeCompare(right.id));
 	}
 
+	async run(session: Session, id: string): Promise<{ ok: true; record: RunRecord } | { ok: false; error: string }> {
+		const clock = await this.clock(session);
+		if (!clock) return { ok: false, error: "scheduling is disabled in settings" };
+
+		const definition = clock.definitions().find((item) => item.id === id);
+		if (!definition) return { ok: false, error: `no schedule "${id}" on this chat` };
+		if (!definition.enabled || definition.lifecycleStatus !== "active")
+			return { ok: false, error: `${definition.title || definition.id} is ${definition.lifecycleStatus} — only an active schedule runs` };
+
+		return { ok: true, record: await clock.run(id) };
+	}
+
 	async create(session: Session, input: { when: string; text: string; title?: string }): Promise<{ ok: true; definition: ScheduleDefinition } | { ok: false; error: string }> {
 		if (input.text.trim() === "") return { ok: false, error: "a scheduled task needs something to do" };
 		const clock = await this.clock(session);
@@ -109,7 +121,8 @@ export class ScheduleService implements Service {
 		const identity = workspace ? expandHome(workspace.path) : null;
 		if (definition.workspaceIdentity != null && identity !== definition.workspaceIdentity) throw new ScheduleConfigError("workspace changed since this schedule was created");
 
-		await session.deliver(definition.payload.text, { schedule: { scheduleId: definition.id, runId: fire.runId, title: definition.title } });
+		const result = await session.deliver(definition.payload.text, { schedule: { scheduleId: definition.id, runId: fire.runId, title: definition.title } });
+		if (!result.ok) throw new Error(result.error);
 	}
 }
 

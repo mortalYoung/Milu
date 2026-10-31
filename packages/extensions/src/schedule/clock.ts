@@ -142,6 +142,29 @@ export class ScheduleClock {
 		return definition;
 	}
 
+	async run(id: string): Promise<RunRecord> {
+		const definition = this._definitions.find((item) => item.id === id);
+		if (!definition) throw new Error(`no schedule "${id}"`);
+
+		const at = Date.now();
+		const fire: DueFire = { id, runId: `${id}:manual:${at}`, scheduledAt: at, trigger: "manual" };
+		let record: RunRecord;
+		try {
+			await this._options.dispatch(definition, fire);
+			record = { runId: fire.runId, scheduleId: id, scheduledAt: at, dispatchedAt: at, trigger: "manual", status: "dispatched" };
+		} catch (failure) {
+			const message = failure instanceof Error ? failure.message : String(failure);
+			if (failure instanceof ScheduleConfigError) {
+				this._definitions = this._definitions.map((item) => (item.id === id ? pause(item, at) : item));
+				await saveDefinitions(this._options.session.root, this._definitions);
+				this._arm();
+			}
+			record = { runId: fire.runId, scheduleId: id, scheduledAt: at, dispatchedAt: null, trigger: "manual", status: "skipped", error: message };
+		}
+		await this._note(record);
+		return record;
+	}
+
 	stop(): void {
 		if (this._timer) clearTimeout(this._timer);
 		this._timer = null;

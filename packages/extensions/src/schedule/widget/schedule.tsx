@@ -1,7 +1,7 @@
 import { describeNextRun, type DialogProps, type SlotProps } from "@milu/window/api";
 import { Tip } from "@milu/window/api/tooltip";
 import * as Popover from "@radix-ui/react-popover";
-import { AlarmClock } from "lucide-react";
+import { AlarmClock, Check, Play } from "lucide-react";
 import { useState } from "react";
 
 interface ScheduleView {
@@ -169,10 +169,29 @@ export function ScheduleTimeline(props: SlotProps) {
 }
 
 export function ScheduleDialog(props: DialogProps) {
-	const data = props.data as ScheduleData | null;
+	const [data, setData] = useState(props.data as ScheduleData | null);
 	const [open, setOpen] = useState<string | null>(null);
+	const [pending, setPending] = useState<string | null>(null);
+	const [sent, setSent] = useState<string | null>(null);
+	const [failure, setFailure] = useState<string | null>(null);
 	const schedules = data?.schedules ?? [];
 	const runs = data?.runs ?? [];
+
+	const runNow = async (id: string): Promise<void> => {
+		if (!data) return;
+		setPending(id);
+		setSent(null);
+		setFailure(null);
+		try {
+			const next = await props.host.actions.request<ScheduleData>("schedule.run", data.session, { id });
+			if (next) setData(next);
+			setSent(id);
+		} catch (error) {
+			setFailure(error instanceof Error ? error.message : String(error));
+		} finally {
+			setPending(null);
+		}
+	};
 	const bySchedule = (id: string) =>
 		runs.filter((run) => run.scheduleId === id).sort((left, right) => (right.dispatchedAt ?? right.scheduledAt) - (left.dispatchedAt ?? left.scheduledAt));
 	const last = [...runs].sort((left, right) => (right.dispatchedAt ?? right.scheduledAt) - (left.dispatchedAt ?? left.scheduledAt))[0];
@@ -199,6 +218,7 @@ export function ScheduleDialog(props: DialogProps) {
 				<h2 className="m-0 font-sans text-[16px] font-semibold text-ink">Scheduled</h2>
 				<span className="min-w-0 overflow-hidden font-mono text-[11px] text-ellipsis whitespace-nowrap text-muted">{summary}</span>
 			</div>
+			{failure ? <span className="border-b border-line px-5 py-1.5 font-mono text-[10.5px] text-signal">{failure}</span> : null}
 
 			{schedules.length === 0 ? (
 				<p className="m-0 px-5 py-7 text-[13px] text-muted">Nothing on the clock yet. Ask in the chat to put work on it.</p>
@@ -217,15 +237,30 @@ export function ScheduleDialog(props: DialogProps) {
 						const expanded = open === item.id;
 						return (
 							<div key={item.id}>
-								<button
-									type="button"
-									className="flex w-full cursor-pointer flex-col gap-0.5 rounded-md bg-transparent px-2.5 py-2 text-left hover:bg-hover"
-									aria-expanded={expanded}
-									onClick={() => setOpen(expanded ? null : item.id)}
-								>
-									<span className="font-sans text-[13px] text-ink">{item.title || item.display}</span>
-									<span className={`font-mono text-[10px] ${latest?.status === "missed" ? "text-accent-amber" : "text-muted"}`}>{facts}</span>
-								</button>
+								<div className="group flex items-start gap-1.5 rounded-md px-2.5 py-2 hover:bg-hover">
+									<button
+										type="button"
+										className="flex min-w-0 flex-1 cursor-pointer flex-col gap-0.5 bg-transparent p-0 text-left"
+										aria-expanded={expanded}
+										onClick={() => setOpen(expanded ? null : item.id)}
+									>
+										<span className="font-sans text-[13px] text-ink">{item.title || item.display}</span>
+										<span className={`font-mono text-[10px] ${latest?.status === "missed" ? "text-accent-amber" : "text-muted"}`}>{facts}</span>
+									</button>
+									{item.enabled && item.lifecycleStatus === "active" ? (
+										<Tip label="Run now">
+											<button
+												type="button"
+												aria-label={`Run ${item.title || item.display} now`}
+												disabled={pending !== null}
+												onClick={() => void runNow(item.id)}
+												className={`mt-0.5 flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 transition-opacity duration-[140ms] group-hover:opacity-100 hover:bg-selected hover:text-ink focus-visible:opacity-100 disabled:cursor-default disabled:opacity-100 ${sent === item.id ? "text-ink opacity-100" : "text-muted opacity-0"}`}
+											>
+												{sent === item.id ? <Check size={12} /> : <Play size={12} fill="currentColor" className={pending === item.id ? "animate-pulse" : undefined} />}
+											</button>
+										</Tip>
+									) : null}
+								</div>
 								{expanded ? (
 									<div className="px-2.5 pb-2.5">
 										<p className="m-0 mb-1.5 text-[12px] leading-[1.6] whitespace-pre-wrap text-ink-soft">{item.payload.text}</p>
