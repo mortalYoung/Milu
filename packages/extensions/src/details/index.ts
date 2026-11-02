@@ -49,7 +49,7 @@ export interface SessionSummary {
 	readonly forkedFrom?: string;
 	readonly pinned?: boolean;
 	readonly running: boolean;
-	readonly workspace?: { readonly path: string | null; readonly kind?: string | null; readonly repo?: string | null };
+	readonly workspace?: { readonly path: string | null };
 }
 
 export interface ModelChoiceGroup {
@@ -189,7 +189,7 @@ export async function collectSummary(session: Session): Promise<SessionSummary> 
 		...(profile?.forkedFrom ? { forkedFrom: profile.forkedFrom } : {}),
 		...(profile?.pinned ? { pinned: true } : {}),
 		running: session.running,
-		...(workspace ? { workspace: { path: workspace.path, kind: workspace.kind, repo: workspace.repo } } : {}),
+		...(workspace ? { workspace: { path: workspace.path } } : {}),
 	};
 }
 

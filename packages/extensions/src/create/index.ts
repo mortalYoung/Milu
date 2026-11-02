@@ -31,7 +31,7 @@ const createExtension: Extension = {
 				await mkdir(dir, { recursive: true });
 				const profile = { name, createdAt: Date.now(), ...(values.persona ? { persona: values.persona } : {}) };
 				await writeFile(join(dir, "profile.json"), `${JSON.stringify(profile, null, 2)}\n`, "utf8");
-				if (values.workspace) await writeFile(join(dir, "workspace.json"), `${JSON.stringify({ path: values.workspace, kind: null, repo: null }, null, 2)}\n`, "utf8");
+				if (values.workspace) await writeFile(join(dir, "workspace.json"), `${JSON.stringify({ path: values.workspace }, null, 2)}\n`, "utf8");
 				await context.get(ISelectionService).select(name);
 			},
 		});

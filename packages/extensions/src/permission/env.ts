@@ -175,7 +175,6 @@ async function runCommand(
 ): Promise<Result<{ stdout: string; stderr: string; exitCode: number }, ExecutionError>> {
 	const base = policy.workspace ?? policy.storage;
 	const cwd = options.cwd ? resolve(base, options.cwd) : base;
-	await mkdir(cwd, { recursive: true });
 	if (options.abortSignal?.aborted) return err(new ExecutionError("aborted", "Command aborted"));
 
 	return await new Promise((resolve_) => {

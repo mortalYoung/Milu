@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { stat } from "node:fs/promises";
+import { resolve } from "node:path";
 
 import type { AgentMessage, AgentToolResult, Entry } from "@earendil-works/pi-agent-core";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
@@ -188,7 +190,7 @@ export class Session {
 			...(profile?.pinned ? { pinned: true } : {}),
 			...(facts.startedAt ? { startedAt: facts.startedAt } : {}),
 			...(readAt !== undefined ? { readAt } : {}),
-			...(workspace ? { workspace: workspace.path, workspaceKind: workspace.kind, workspaceRepo: workspace.repo } : {}),
+			...(workspace ? { workspace: workspace.path } : {}),
 			...(facts.last ? { lastMessage: facts.last.text, lastMessageAt: facts.last.time, lastMessageKind: facts.last.kind } : {}),
 			running: this.running,
 			...(forking ? { forking: true } : {}),
@@ -521,7 +523,15 @@ export class Session {
 	}
 
 	async setWorkspace(path: string | null): Promise<void> {
-		await writeWorkspace(this.root, path);
+		if (path === null) {
+			await writeWorkspace(this.root, null);
+			this._workspace = undefined;
+			return;
+		}
+		const target = resolve(path);
+		const info = await stat(target).catch(() => null);
+		if (info === null || !info.isDirectory()) throw new Error(`workspace is not a directory: ${target}`);
+		await writeWorkspace(this.root, target);
 		this._workspace = undefined;
 	}
 

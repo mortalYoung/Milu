@@ -18,7 +18,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 
 import { mark } from "../boot.ts";
-import { ChevronDownIcon, ChevronRightIcon, FolderTreeIcon, GitForkIcon, IconByName, MoreVerticalIcon, PanelLeftCloseIcon, PinIcon, SearchIcon } from "../components/icons.tsx";
+import {
+	ChevronDownIcon,
+	ChevronRightIcon,
+	FolderIcon,
+	FolderTreeIcon,
+	GitForkIcon,
+	IconByName,
+	MoreVerticalIcon,
+	PanelLeftCloseIcon,
+	PinIcon,
+	SearchIcon,
+} from "../components/icons.tsx";
 import { MiluWordmark } from "../components/MiluWordmark.tsx";
 import { Menu, MenuContent, MenuItems, MenuTrigger } from "../components/row-menu.tsx";
 import { SessionListSkeleton } from "../components/skeletons.tsx";
@@ -33,6 +44,14 @@ function groupLabel(key: string): string {
 	return trimmed.split(/[\\/]/).pop() ?? "";
 }
 
+interface WorkspaceFacts {
+	readonly path: string;
+	readonly kind: "repo" | "worktree" | "dir";
+	readonly repo: string | null;
+	readonly branch: string | null;
+	readonly detached: boolean;
+}
+
 function Row(props: {
 	host: Host;
 	session: SessionRow;
@@ -42,6 +61,7 @@ function Row(props: {
 	family: string | null;
 	forks: number;
 	showWorkspace: boolean;
+	workspaceFacts?: WorkspaceFacts;
 	onSelect: () => void;
 	onFamily: (name: string | null) => void;
 	onRun: (item: ContributionItem) => void;
@@ -53,6 +73,9 @@ function Row(props: {
 	const familyActive = props.family !== null && (session.name === props.family || session.forkedFrom === props.family);
 	const when = activityAt(session) ? listTime(activityAt(session)) : "";
 	const workspace = workspaceLabel(session);
+	const facts = props.workspaceFacts;
+	const worktree = facts?.kind === "worktree";
+	const workspaceName = worktree ? (facts.repo ?? workspace) : facts?.kind === "repo" ? (facts.repo ?? workspace) : workspace;
 	const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
 	const [menuOpen, setMenuOpen] = useState(false);
 	const menuClosedAt = useRef(0);
@@ -70,8 +93,13 @@ function Row(props: {
 			<span className="text-muted-soft">-</span>
 		) : (
 			<span className="inline-flex min-w-0 items-center gap-[3px]" title={session.workspace ?? workspace}>
-				{session.workspaceKind === "worktree" ? <FolderTreeIcon size={9} className="shrink-0" /> : null}
-				<span className="truncate">{workspace}</span>
+				{worktree ? <FolderTreeIcon size={9} className="shrink-0 text-muted-soft" /> : <FolderIcon size={9} className="shrink-0 text-muted-soft" />}
+				<span className="truncate">{workspaceName}</span>
+				{worktree ? (
+					<span className="workspace-branch" title={facts?.branch === null ? "detached worktree" : `worktree branch ${facts?.branch ?? ""}`}>
+						<span>{facts?.branch ?? "detached"}</span>
+					</span>
+				) : null}
 			</span>
 		);
 	const forkOf =
@@ -262,6 +290,9 @@ export function SessionListSurface(props: SurfaceProps) {
 	const [query, setQuery] = useState("");
 	const [family, setFamily] = useState<string | null>(null);
 	const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
+	const [workspaceFacts, setWorkspaceFacts] = useState<ReadonlyMap<string, WorkspaceFacts>>(() => new Map());
+	const factsRef = useRef(new Map<string, WorkspaceFacts>());
+	const factsPending = useRef(new Set<string>());
 	const [edges, setEdges] = useState({ above: false, below: false });
 	const searchRef = useRef<HTMLInputElement>(null);
 	const rowsRef = useRef<HTMLDivElement>(null);
@@ -285,6 +316,24 @@ export function SessionListSurface(props: SurfaceProps) {
 		searchRef.current?.focus();
 		searchRef.current?.select();
 	}, [searchOpen]);
+
+	useEffect(() => {
+		if (typeof host.actions.request !== "function") return;
+		for (const row of rows) {
+			const path = row.workspace;
+			if (!path || factsRef.current.has(path) || factsPending.current.has(path)) continue;
+			factsPending.current.add(path);
+			void host.actions
+				.request<WorkspaceFacts>("git.workspace", row.name)
+				.then((facts) => {
+					if (!facts) return;
+					factsRef.current.set(path, facts);
+					setWorkspaceFacts(new Map(factsRef.current));
+				})
+				.catch(() => undefined)
+				.finally(() => factsPending.current.delete(path));
+		}
+	}, [rows, host]);
 
 	useEffect(() => {
 		const element = rowsRef.current;
@@ -326,15 +375,20 @@ export function SessionListSurface(props: SurfaceProps) {
 			map.set(key, list);
 		}
 		return [...map.entries()]
-			.map(([key, list]) => ({
-				key,
-				label: groupLabel(key),
-				full: key,
-				rows: [...list].sort(byPinThenRecency),
-				activity: Math.max(...list.map((row) => activityAt(row))),
-			}))
+			.map(([key, list]) => {
+				const facts = workspaceFacts.get(key);
+				const worktree = facts?.kind === "worktree";
+				return {
+					key,
+					label: worktree ? (facts?.branch ?? groupLabel(key)) : facts?.kind === "repo" ? (facts.repo ?? groupLabel(key)) : groupLabel(key),
+					full: key,
+					worktree,
+					rows: [...list].sort(byPinThenRecency),
+					activity: Math.max(...list.map((row) => activityAt(row))),
+				};
+			})
 			.sort((left, right) => right.activity - left.activity || left.label.localeCompare(right.label));
-	}, [rows]);
+	}, [rows, workspaceFacts]);
 
 	const toggleGroup = (key: string) =>
 		setCollapsedGroups((current) => {
@@ -353,6 +407,7 @@ export function SessionListSurface(props: SurfaceProps) {
 		family,
 		forks: forkCounts.get(session.name) ?? 0,
 		showWorkspace,
+		workspaceFacts: session.workspace ? workspaceFacts.get(session.workspace) : undefined,
 		onSelect: () => {
 			host.workbench.showView(null);
 			void host.selection.select(session.name);
@@ -464,7 +519,7 @@ export function SessionListSurface(props: SurfaceProps) {
 													className="sticky top-0 z-[2] flex h-[22px] shrink-0 items-center gap-1.5 border-b border-line bg-chrome px-1.5 font-mono text-[9.5px] text-muted"
 													title={group.full}
 												>
-													<FolderTreeIcon size={10} className="shrink-0 text-muted-soft" />
+													{group.worktree ? <FolderTreeIcon size={10} className="shrink-0 text-muted-soft" /> : <FolderIcon size={10} className="shrink-0 text-muted-soft" />}
 													<span className="min-w-0 truncate">{group.label}</span>
 													<button
 														type="button"

@@ -1,8 +1,8 @@
 import { execFile } from "node:child_process";
-import { readFile } from "node:fs/promises";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { readFile, realpath } from "node:fs/promises";
+import { basename, isAbsolute, relative, resolve, sep } from "node:path";
 
-import type { GitChange, GitChangeStatus, GitPatch, GitSides } from "../types.ts";
+import type { GitChange, GitChangeStatus, GitPatch, GitSides, GitWorktree, GitWorktrees } from "../types.ts";
 
 const MAX_BUFFER = 32 * 1024 * 1024;
 
@@ -84,6 +84,93 @@ export async function gitChanges(workspace: string): Promise<{ repoRoot: string 
 	const result = await run(repoRoot, ["status", "--porcelain=v1", "-z", "--untracked-files=all"]);
 	if (result.code !== 0) throw new Error(text(result.stderr).trim() || "git status failed");
 	return { repoRoot, changes: parseStatus(text(result.stdout)) };
+}
+
+async function canonical(path: string): Promise<string> {
+	return realpath(path).catch(() => resolve(path));
+}
+
+function contains(root: string, target: string): boolean {
+	const rel = relative(root, target);
+	return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
+}
+
+function parseWorktrees(stdout: string): GitWorktree[] {
+	const worktrees: GitWorktree[] = [];
+	for (const block of stdout.split("\n\n")) {
+		let path: string | null = null;
+		let branch: string | null = null;
+		let head: string | null = null;
+		for (const line of block.split("\n")) {
+			if (line.startsWith("worktree ")) path = line.slice("worktree ".length);
+			else if (line.startsWith("HEAD ")) head = line.slice("HEAD ".length);
+			else if (line.startsWith("branch ")) branch = line.slice("branch ".length).replace(/^refs\/heads\//, "");
+		}
+		if (path !== null) worktrees.push({ path, branch, head });
+	}
+	return worktrees;
+}
+
+/** Every worktree of the repo this workspace sits in, and the one containing the workspace. */
+export async function gitWorktrees(workspace: string): Promise<GitWorktrees> {
+	const repoRoot = await rootOrThrow(workspace);
+	const result = await run(repoRoot, ["worktree", "list", "--porcelain"]);
+	if (result.code !== 0) throw new Error(text(result.stderr).trim() || "git worktree list failed");
+	const worktrees = parseWorktrees(text(result.stdout));
+	const here = await canonical(workspace);
+	const containing: GitWorktree[] = [];
+	for (const tree of worktrees) {
+		const root = await canonical(tree.path);
+		if (contains(root, here)) containing.push(tree);
+	}
+	containing.sort((left, right) => right.path.length - left.path.length);
+	return { repoRoot, current: containing[0]?.path ?? null, worktrees };
+}
+
+/** Create a worktree; an existing branch is checked out, a new one starts from base. */
+export async function gitWorktreeAdd(workspace: string, path: string, branch: string, base: string): Promise<void> {
+	const ref = `refs/heads/${branch}`;
+	const checked = await run(workspace, ["show-ref", "--verify", "--quiet", ref]);
+	if (checked.code === 0) {
+		const added = await run(workspace, ["worktree", "add", path, branch]);
+		if (added.code !== 0) throw new Error(text(added.stderr).trim() || "git worktree add failed");
+		return;
+	}
+	if (checked.code !== 1) throw new Error(text(checked.stderr).trim() || "git show-ref failed");
+	const added = await run(workspace, ["worktree", "add", "-b", branch, path, base]);
+	if (added.code !== 0) throw new Error(text(added.stderr).trim() || "git worktree add failed");
+}
+
+export async function gitWorktreeRemove(workspace: string, path: string): Promise<void> {
+	const removed = await run(workspace, ["worktree", "remove", path]);
+	if (removed.code !== 0) throw new Error(text(removed.stderr).trim() || "git worktree remove failed");
+}
+
+export interface WorkspaceFacts {
+	readonly kind: "repo" | "worktree" | "dir";
+	readonly repo: string | null;
+	readonly branch: string | null;
+	readonly detached: boolean;
+}
+
+/** What the workspace is, for a row label. Never persisted; read from the dir when needed. */
+export async function gitWorkspaceFacts(workspace: string): Promise<WorkspaceFacts> {
+	try {
+		const found = await gitWorktrees(workspace);
+		const main = found.worktrees[0];
+		if (main === undefined) return { kind: "dir", repo: null, branch: null, detached: false };
+		const here = await canonical(found.current ?? workspace);
+		const mainPath = await canonical(main.path);
+		const current = found.worktrees.find((tree) => tree.path === found.current);
+		return {
+			kind: mainPath === here ? "repo" : "worktree",
+			repo: basename(main.path),
+			branch: current?.branch ?? null,
+			detached: current?.branch === null,
+		};
+	} catch {
+		return { kind: "dir", repo: null, branch: null, detached: false };
+	}
 }
 
 function ensureWithin(root: string, target: string): void {

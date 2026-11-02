@@ -76,8 +76,6 @@ export interface SessionRow {
 	readonly lastMessageAt?: number;
 	readonly lastMessageKind?: PreviewKind;
 	readonly workspace?: string | null;
-	readonly workspaceKind?: "worktree" | "repo" | "dir" | null;
-	readonly workspaceRepo?: string | null;
 	readonly menu?: readonly ContributionItem[];
 	readonly signals?: readonly SessionSignal[];
 }

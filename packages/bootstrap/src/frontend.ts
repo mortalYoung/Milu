@@ -313,6 +313,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 							void dock.refresh();
 							void hydrateTheme();
 							markdown.warm();
+							void sessions.refresh();
 						}
 						return;
 					}

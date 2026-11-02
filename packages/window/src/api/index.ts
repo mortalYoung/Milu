@@ -5,6 +5,8 @@ export type { Connection } from "../connection.ts";
 export { IConnection } from "../connection.ts";
 export { createServiceId, type Service } from "@milu/di";
 export type { SelectionService } from "../selection.ts";
+export { ISessionListService } from "../sessions.ts";
+export type { SessionListService } from "../sessions.ts";
 export { ISelectionService } from "../selection.ts";
 export type { SlotProps } from "../slots.ts";
 export type { Host, SurfaceProps } from "../surfaces.ts";

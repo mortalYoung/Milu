@@ -36,8 +36,6 @@ export interface SessionProfile {
 
 export interface WorkspaceFacts {
 	path: string;
-	kind: "worktree" | "repo" | "dir" | null;
-	repo: string | null;
 }
 
 async function readJson<T>(file: string): Promise<T | null> {
@@ -110,7 +108,7 @@ export function writeReadAt(dir: string, readAt: number): Promise<void> {
 }
 
 export async function writeWorkspace(dir: string, path: string | null): Promise<void> {
-	await writeJson(join(dir, WORKSPACE_FILE), { path, kind: null, repo: null });
+	await writeJson(join(dir, WORKSPACE_FILE), { path });
 }
 
 /** v1's per-chat sandbox file: `{ "mode": "…" }`, absent when the chat never had one. */
@@ -124,8 +122,6 @@ export function writeSandbox(dir: string, mode: string): Promise<void> {
 }
 
 export async function workspaceOf(dir: string): Promise<WorkspaceFacts | null> {
-	const data = await readJson<{ path?: unknown; kind?: unknown; repo?: unknown }>(join(dir, WORKSPACE_FILE));
-	if (typeof data?.path !== "string" || !data.path) return null;
-	const kind = data.kind === "worktree" || data.kind === "repo" || data.kind === "dir" ? data.kind : null;
-	return { path: data.path, kind, repo: typeof data.repo === "string" ? data.repo : null };
+	const data = await readJson<{ path?: unknown }>(join(dir, WORKSPACE_FILE));
+	return typeof data?.path === "string" && data.path ? { path: data.path } : null;
 }

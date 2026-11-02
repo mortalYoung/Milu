@@ -1,5 +1,5 @@
 import { createServiceId, type Service } from "@milu/di";
-import { type Connection, IConnection, ISelectionService, type SelectionService } from "@milu/window/api";
+import { type Connection, IConnection, ISelectionService, ISessionListService, type SelectionService, type SessionListService } from "@milu/window/api";
 import { createStore } from "zustand/vanilla";
 
 import type { GitChange, GitChanges } from "../types.ts";
@@ -60,14 +60,25 @@ export class GitChangesService implements Service {
 	readonly store = createStore<GitViewState>()(() => EMPTY);
 
 	private _stop: (() => void) | null = null;
+	private _rowsStop: (() => void) | null = null;
 
 	constructor(
 		@IConnection private readonly _connection: Connection,
 		@ISelectionService private readonly _selection: SelectionService,
+		@ISessionListService private readonly _sessions: SessionListService,
 	) {}
 
 	initialize(): void {
 		this._stop = this._selection.store.subscribe(() => {
+			this._reset();
+			void this.refresh();
+		});
+		this._rowsStop = this._sessions.store.subscribe((state, previous) => {
+			const session = this._session();
+			if (session === "") return;
+			const current = state.rows.find((row) => row.name === session)?.workspace ?? null;
+			const before = previous.rows.find((row) => row.name === session)?.workspace ?? null;
+			if (current === before) return;
 			this._reset();
 			void this.refresh();
 		});
@@ -77,6 +88,8 @@ export class GitChangesService implements Service {
 	dispose(): void {
 		this._stop?.();
 		this._stop = null;
+		this._rowsStop?.();
+		this._rowsStop = null;
 		this.store.setState({ ...EMPTY }, true);
 	}
 

@@ -32,3 +32,17 @@ export interface GitPatch {
 	readonly diff: string;
 	readonly content: string;
 }
+
+export interface GitWorktree {
+	readonly path: string;
+	/** Short branch name, or null when HEAD is detached. */
+	readonly branch: string | null;
+	readonly head: string | null;
+}
+
+export interface GitWorktrees {
+	readonly repoRoot: string;
+	/** The worktree containing the current workspace, if any. */
+	readonly current: string | null;
+	readonly worktrees: readonly GitWorktree[];
+}

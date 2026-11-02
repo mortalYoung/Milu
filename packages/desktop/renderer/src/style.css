@@ -424,6 +424,29 @@ body.pane-dragging {
 	color: var(--muted);
 }
 
+.workspace-branch {
+	display: inline-flex;
+	flex: none;
+	align-items: center;
+	min-width: 0;
+	max-width: 86px;
+	height: 12px;
+	padding: 0 2.5px;
+	border: 0.5px solid var(--line);
+	border-radius: 2.5px;
+	color: var(--muted);
+	font-family: var(--mono);
+	font-size: 8.5px;
+	line-height: 1;
+}
+
+.workspace-branch > span {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 /* 悬停才显形的省略号；菜单是手写的平铺版本，子菜单到位时整体换掉 */
 .conv-menu {
 	max-height: min(70vh, var(--radix-dropdown-menu-content-available-height, 70vh));
