@@ -2,7 +2,7 @@ import { cp, mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { createServiceId, DisposableStore, Emitter, type Event, type Service } from "@milu/di";
-import { composerDataKey, type ComposerTip, type ComposerWidget, type ContributionItem, type SeqEntry, type SessionRow, type SlotItem } from "@milu/protocol";
+import { composerDataKey, type ComposerTip, type ComposerWidget, type ContributionItem, type SeqEntry, type SessionRow, type SessionSignal, type SlotItem } from "@milu/protocol";
 
 import {
 	COMPOSER_LEFT_POINT,
@@ -11,7 +11,9 @@ import {
 	type ComposerTipItem,
 	type ComposerWidgetItem,
 	SESSION_MENU_POINT,
+	SESSION_SIGNAL_POINT,
 	type SessionMenuItem,
+	type SessionSignalItem,
 	type SessionValue,
 } from "../extensions/types.ts";
 import { clearForking, forkingOf, markForking, profileOf, type SessionProfile, writeProfile } from "../session/files.ts";
@@ -346,10 +348,22 @@ export class SessionService implements Service {
 		return { ...base, action: item.action, ...(item.args === undefined ? {} : { args: item.args }) };
 	}
 
+	private async _signalsOf(session: Session): Promise<SessionSignal[]> {
+		const point = this._contributionService.get<SessionSignalItem>(SESSION_SIGNAL_POINT);
+		const resolved: (SessionSignal & { order: number })[] = [];
+		for (const item of point.all()) {
+			const title = typeof item.title === "function" ? await item.title(session) : item.title;
+			if (!title) continue;
+			resolved.push({ id: item.id, title, ...(item.icon ? { icon: item.icon } : {}), order: item.order ?? 0 });
+		}
+		return resolved.sort((left, right) => left.order - right.order || left.id.localeCompare(right.id)).map(({ id, title, icon }) => ({ id, title, ...(icon ? { icon } : {}) }));
+	}
+
 	private async _rowOf(session: Session): Promise<SessionRow> {
-		const menu = await this._menuOf(session);
+		const [menu, signals] = await Promise.all([this._menuOf(session), this._signalsOf(session)]);
+		const extra = { menu, ...(signals.length === 0 ? {} : { signals }) };
 		try {
-			return { ...(await session.row()), menu };
+			return { ...(await session.row()), ...extra };
 		} catch (error) {
 			console.error(`session "${session.name}" did not open:`, error);
 			const profile = await profileOf(session.root);
@@ -363,7 +377,7 @@ export class SessionService implements Service {
 				...(profile?.pinned ? { pinned: true } : {}),
 				running: session.running,
 				error: reason(error),
-				menu,
+				...extra,
 			};
 		}
 	}

@@ -25,6 +25,7 @@ import {
 	CHAT_PANES_POINT,
 	WELCOME_TIMELINE_POINT,
 	SESSION_MENU_POINT,
+	SESSION_SIGNAL_POINT,
 	WELCOME_ITEMS_POINT,
 	DOCK_VIEWS_POINT,
 	DOCK_BAR_POINT,
@@ -32,6 +33,7 @@ import {
 	WORKSPACE_VIEWS_POINT,
 	type SessionBarItem,
 	type SessionMenuItem,
+	type SessionSignalItem,
 } from "../extensions/types.ts";
 import type { Session } from "../session/session.ts";
 import { IActionService } from "./actions.ts";
@@ -104,6 +106,7 @@ export class ExtensionService implements Service {
 
 	async initialize(): Promise<void> {
 		this._contributionService.declare<SessionMenuItem>(SESSION_MENU_POINT);
+		this._contributionService.declare<SessionSignalItem>(SESSION_SIGNAL_POINT);
 		this._contributionService.declare<SessionBarItem>(SESSION_HEADER_POINT);
 		this._contributionService.declare<SessionBarItem>(SESSION_FOOTER_POINT);
 		this._contributionService.declare<ComposerWidgetItem>(COMPOSER_LEFT_POINT);

@@ -1,4 +1,5 @@
 import {
+	AlarmClock,
 	ArrowDown,
 	ArrowUp,
 	ArrowUpFromLine,
@@ -25,6 +26,7 @@ import {
 	Settings as SettingsIcon,
 	Square,
 	SquarePen,
+	Terminal,
 	Trash2,
 } from "lucide-react";
 import type { ReactNode } from "react";
@@ -59,6 +61,8 @@ export const PlusIcon = sized(Plus);
 export const SquareIcon = sized(Square);
 export const ArrowUpIcon = sized(ArrowUp);
 export const SquarePenIcon = sized(SquarePen);
+export const AlarmClockIcon = sized(AlarmClock);
+export const TerminalIcon = sized(Terminal);
 
 const NAMED: Record<string, (props: { size?: number; className?: string }) => ReactNode> = {
 	info: InfoIcon,
@@ -74,6 +78,8 @@ const NAMED: Record<string, (props: { size?: number; className?: string }) => Re
 	"copy-plus": CopyPlusIcon,
 	"git-fork": GitForkIcon,
 	"arrow-up-from-line": ArrowUpFromLineIcon,
+	"alarm-clock": AlarmClockIcon,
+	terminal: TerminalIcon,
 };
 
 export function IconByName(props: { name?: string; size?: number; className?: string }) {

@@ -2,10 +2,12 @@ import {
 	type ExecutionEnv,
 	type Extension,
 	CHAT_NAME_POINT,
+	SESSION_SIGNAL_POINT,
 	WELCOME_TIMELINE_POINT,
 	type Session,
 	IContributionService,
 	ISessionService,
+	type SessionSignalItem,
 	type SlotItem,
 	ISettingsService,
 	type ToolCall,
@@ -15,7 +17,7 @@ import {
 } from "@milu/core";
 
 import { ScheduleService, IScheduleService } from "./service/index.ts";
-import { type ScheduleDefinition } from "./store.ts";
+import { loadDefinitions, type ScheduleDefinition } from "./store.ts";
 
 export { IScheduleService } from "./service/index.ts";
 
@@ -69,6 +71,22 @@ const scheduleExtension: Extension = {
 
 	activate(context) {
 		const schedule = context.get(IScheduleService);
+
+		context.disposables.add(
+			context
+				.get(IContributionService)
+				.get<SessionSignalItem>(SESSION_SIGNAL_POINT)
+				.contribute({
+					id: "schedule",
+					order: 10,
+					icon: "alarm-clock",
+					title: async (session) => {
+						const definitions = await loadDefinitions(session.root);
+						if (definitions.length === 0) return null;
+						return definitions.length === 1 ? "1 scheduled task" : `${definitions.length} scheduled tasks`;
+					},
+				}),
+		);
 
 		context.disposables.add(
 			context

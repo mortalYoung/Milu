@@ -8,8 +8,10 @@ import {
 	type ToolCall,
 	type ToolMiddleware,
 	type ToolNext,
+	type SessionSignalItem,
 	type ToolResult,
 	IToolService,
+	SESSION_SIGNAL_POINT,
 	Type,
 } from "@milu/core";
 import type { DialogDescriptor } from "@milu/protocol";
@@ -59,6 +61,22 @@ const tasksExtension: Extension = {
 	activate(context) {
 		const tasks = context.get(ITaskService);
 		const tools = context.get(IToolService);
+
+		context.disposables.add(
+			context
+				.get(IContributionService)
+				.get<SessionSignalItem>(SESSION_SIGNAL_POINT)
+				.contribute({
+					id: "tasks",
+					order: 20,
+					icon: "terminal",
+					title: async (session) => {
+						const summary = await tasks.summary(session);
+						if (summary.running === 0) return null;
+						return summary.running === 1 ? "1 running background task" : `${summary.running} running background tasks`;
+					},
+				}),
+		);
 
 		context.disposables.add(
 			context

@@ -16,6 +16,7 @@ import type { ToolService } from "../services/tools.ts";
 import type { Session } from "../session/session.ts";
 
 export const SESSION_MENU_POINT = "session.menu";
+export const SESSION_SIGNAL_POINT = "session.signal";
 export const SESSION_HEADER_POINT = "session.header";
 export const SESSION_FOOTER_POINT = "session.footer";
 export const COMPOSER_LEFT_POINT = "composer.left";
@@ -44,6 +45,13 @@ export interface SessionBarItem {
 	readonly icon?: string;
 	readonly order?: number;
 	readonly action: string;
+}
+
+export interface SessionSignalItem {
+	readonly id: string;
+	readonly order?: number;
+	readonly title: SessionValue<string>;
+	readonly icon?: string;
 }
 
 export interface SessionMenuItemBase {
@@ -81,6 +89,7 @@ export interface ComposerTipItem {
 
 export type ExtensionContributions = {
 	readonly "session.menu"?: readonly SessionMenuItem[];
+	readonly "session.signal"?: readonly SessionSignalItem[];
 	readonly "session.header"?: readonly SessionBarItem[];
 	readonly "session.footer"?: readonly SessionBarItem[];
 	readonly "composer.left"?: readonly ComposerWidgetItem[];

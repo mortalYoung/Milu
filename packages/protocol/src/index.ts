@@ -52,6 +52,12 @@ export const LOG_EVENTS = {
 	shellDone: "shell/done",
 } as const;
 
+export interface SessionSignal {
+	readonly id: string;
+	readonly title: string;
+	readonly icon?: string;
+}
+
 export interface SessionRow {
 	readonly name: string;
 	readonly path: string;
@@ -73,6 +79,7 @@ export interface SessionRow {
 	readonly workspaceKind?: "worktree" | "repo" | "dir" | null;
 	readonly workspaceRepo?: string | null;
 	readonly menu?: readonly ContributionItem[];
+	readonly signals?: readonly SessionSignal[];
 }
 
 export interface ConfirmCopy {
