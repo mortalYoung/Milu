@@ -108,8 +108,9 @@ export function tildifyPath(path: string): string {
 }
 
 export function workspaceLabel(row: SessionRow): string {
-	if (row.workspace && (row.workspaceKind === "worktree" || row.workspaceKind === "repo") && row.workspaceRepo) return tildifyPath(row.workspaceRepo);
-	return formatWorkspacePath(row.workspace ?? "", 30);
+	const path = row.workspace && (row.workspaceKind === "worktree" || row.workspaceKind === "repo") && row.workspaceRepo ? row.workspaceRepo : (row.workspace ?? "");
+	const trimmed = path.replace(/[\\/]+$/, "");
+	return trimmed.split(/[\\/]/).pop() ?? "";
 }
 
 export function formatWorkspacePath(path: string, max = 48): string {

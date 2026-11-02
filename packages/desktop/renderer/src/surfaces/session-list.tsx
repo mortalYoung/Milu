@@ -1,39 +1,186 @@
 import type { ContributionItem, SessionRow } from "@milu/protocol";
-import { activityAt, byPinThenRecency, filterSessions, formatHotkey, type Host, Kbd, KbdGroup, listTime, previewFor, type SurfaceProps, workspaceLabel } from "@milu/window";
+import {
+	activityAt,
+	byPinThenRecency,
+	filterSessions,
+	formatHotkey,
+	type Host,
+	Kbd,
+	KbdGroup,
+	listTime,
+	previewFor,
+	type SessionListView,
+	type SurfaceProps,
+	workspaceLabel,
+} from "@milu/window";
 import { Tip } from "@milu/window/tooltip";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 
 import { mark } from "../boot.ts";
-import { ChevronDownIcon, ChevronRightIcon, FolderTreeIcon, IconByName, MoreVerticalIcon, PanelLeftCloseIcon, SearchIcon } from "../components/icons.tsx";
+import { ChevronDownIcon, ChevronRightIcon, FolderTreeIcon, GitForkIcon, IconByName, MoreVerticalIcon, PanelLeftCloseIcon, PinIcon, SearchIcon } from "../components/icons.tsx";
 import { MiluWordmark } from "../components/MiluWordmark.tsx";
 import { Menu, MenuContent, MenuItems, MenuTrigger } from "../components/row-menu.tsx";
 import { SessionListSkeleton } from "../components/skeletons.tsx";
 
+function previewText(row: SessionRow): string {
+	const text = previewFor(row);
+	return text.startsWith("You: ") ? text.slice(5) : text;
+}
+
+function groupLabel(key: string): string {
+	const trimmed = key.replace(/[\\/]+$/, "");
+	return trimmed.split(/[\\/]/).pop() ?? "";
+}
+
 function Row(props: {
 	host: Host;
 	session: SessionRow;
+	view: SessionListView;
 	selected: boolean;
-	writing: boolean;
 	unread: boolean;
-	leaf?: boolean;
-	childCount?: number;
-	expanded?: boolean;
+	family: string | null;
+	forks: number;
+	showWorkspace: boolean;
 	onSelect: () => void;
-	onToggle?: () => void;
+	onFamily: (name: string | null) => void;
 	onRun: (item: ContributionItem) => void;
 }) {
-	const { session } = props;
-	const pinned = session.pinned === true && props.leaf !== true;
+	const { session, view } = props;
 	const forking = session.forking === true;
+	const pinned = session.pinned === true;
+	const preview = forking ? "forking…" : previewText(session);
+	const familyActive = props.family !== null && (session.name === props.family || session.forkedFrom === props.family);
+	const when = activityAt(session) ? listTime(activityAt(session)) : "";
+	const workspace = workspaceLabel(session);
 	const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
 	const [menuOpen, setMenuOpen] = useState(false);
 	const menuClosedAt = useRef(0);
 	const active = menuOpen || pointer !== null;
 
+	const pin = pinned ? (
+		<span className="inline-flex shrink-0" title="pinned">
+			<PinIcon size={9} className="text-muted" />
+		</span>
+	) : null;
+	const runningDot = session.running ? <span className="work-dot" title="running" /> : null;
+	const unread = props.unread ? <span className="size-[5px] shrink-0 rounded-full bg-ink" title="new messages" /> : null;
+	const workspaceNode =
+		workspace === "" ? (
+			<span className="text-muted-soft">-</span>
+		) : (
+			<span className="inline-flex min-w-0 items-center gap-[3px]" title={session.workspace ?? workspace}>
+				{session.workspaceKind === "worktree" ? <FolderTreeIcon size={9} className="shrink-0" /> : null}
+				<span className="truncate">{workspace}</span>
+			</span>
+		);
+	const forkOf =
+		session.forkedFrom === undefined ? null : (
+			<span className="session-fork session-fork-parent" title={`fork of ${session.forkedFrom}`}>
+				<GitForkIcon size={9} />
+				<span className="max-w-[78px] truncate">{session.forkedFrom}</span>
+			</span>
+		);
+	const signalList = session.signals ?? [];
+	const signals =
+		signalList.length > 0 ? (
+			<span className="flex shrink-0 items-center gap-1">
+				{signalList.map((signal) => (
+					<span key={signal.id} role="img" aria-label={signal.title} title={signal.title} className="inline-flex text-muted">
+						<IconByName name={signal.icon} size={9} />
+					</span>
+				))}
+			</span>
+		) : null;
+	const hasMeta = props.showWorkspace;
+	const forkButton =
+		props.forks > 0 ? (
+			<button
+				type="button"
+				className="session-fork"
+				aria-pressed={props.family === session.name}
+				aria-label={`${props.forks} ${props.forks === 1 ? "fork" : "forks"} — ${props.family === session.name ? "clear family highlight" : "highlight family"}`}
+				title={`${props.forks} ${props.forks === 1 ? "fork" : "forks"} — ${props.family === session.name ? "clear family highlight" : "highlight family"}`}
+				onClick={(event) => {
+					event.stopPropagation();
+					props.onFamily(props.family === session.name ? null : session.name);
+				}}
+				onKeyDown={(event) => event.stopPropagation()}
+			>
+				<GitForkIcon size={9} />
+				<span>{props.forks}</span>
+			</button>
+		) : null;
+	const time = when === "" ? null : <span className="shrink-0 font-mono text-[9.5px] text-muted-soft">{when}</span>;
+
+	const detail = (
+		<span className="flex min-w-0 flex-1 flex-col">
+			<span className="flex min-w-0 items-baseline gap-1.5 font-mono text-[9.5px] leading-[1.3] text-muted">
+				{workspaceNode}
+				<span className="ml-auto flex shrink-0 items-center gap-1.5">
+					{signals}
+					{runningDot}
+					{pin}
+					{time}
+				</span>
+			</span>
+			<span className="mt-0.5 flex min-w-0 items-center gap-1.5">
+				<span className="flex min-w-0 flex-1 items-center gap-1 font-serif text-[15px] font-semibold leading-[1.2] tracking-[-0.005em] text-ink">
+					<span className="truncate">{session.name}</span>
+				</span>
+				{unread}
+				{forkButton}
+				{forkOf}
+			</span>
+			<span className="mt-0.5 truncate font-sans text-[12px] leading-[1.35] text-muted">{preview || "—"}</span>
+		</span>
+	);
+
+	const compact = (
+		<span className="flex min-w-0 flex-1 flex-col">
+			<span className="flex min-w-0 items-center gap-1.5">
+				<span className="flex min-w-0 max-w-[56%] items-center gap-1 font-serif text-[15px] font-semibold leading-[1.2] tracking-[-0.005em] text-ink">
+					<span className="truncate">{session.name}</span>
+				</span>
+				<span className="min-w-0 flex-1 truncate font-sans text-[11.5px] leading-[1.35] text-muted">{preview || "—"}</span>
+				{unread}
+				{forkButton}
+				{forkOf}
+				{signals}
+				{runningDot}
+				{pin}
+				{time}
+			</span>
+			{hasMeta ? (
+				<span className="mt-0.5 flex min-w-0 items-center gap-1.5 font-mono text-[9.5px] leading-[1.3] text-muted">{props.showWorkspace ? workspaceNode : null}</span>
+			) : null}
+		</span>
+	);
+
+	const groupRow = (
+		<span className="flex min-w-0 flex-1 flex-col">
+			<span className="flex min-w-0 items-center gap-1.5">
+				<span className="flex min-w-0 max-w-[56%] items-center gap-1 font-serif text-[14.5px] font-semibold leading-[1.2] tracking-[-0.005em] text-ink">
+					<span className="truncate">{session.name}</span>
+				</span>
+				<span className="min-w-0 flex-1 truncate font-sans text-[11.5px] leading-[1.35] text-muted">{preview || "—"}</span>
+				{unread}
+				{forkButton}
+				{forkOf}
+				{signals}
+				{runningDot}
+				{pin}
+				{time}
+			</span>
+			{hasMeta ? (
+				<span className="mt-0.5 flex min-w-0 items-center gap-1.5 font-mono text-[9.5px] leading-[1.3] text-muted">{props.showWorkspace ? workspaceNode : null}</span>
+			) : null}
+		</span>
+	);
+
 	return (
 		<div
-			className={`group relative flex items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-100 hover:bg-hover${forking ? " cursor-default" : " cursor-pointer"}${props.selected ? " bg-selected" : ""}${active ? " bg-selected ring-1 ring-line-strong ring-inset" : ""}${props.leaf ? " ml-5" : ""}${pinned ? " session-pinned-row" : ""}`}
+			className={`group relative flex cursor-pointer gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-100 hover:bg-hover${forking ? " cursor-default" : ""}${props.selected ? " bg-selected" : ""}${active ? " bg-selected ring-1 ring-line-strong ring-inset" : ""}${familyActive ? " session-family" : ""}`}
 			role="button"
 			tabIndex={0}
 			aria-disabled={forking ? true : undefined}
@@ -52,63 +199,7 @@ function Row(props: {
 				props.onSelect();
 			}}
 		>
-			<span
-				className={`flex size-7 shrink-0 items-center justify-center rounded-full font-serif text-[14px] font-semibold leading-none ${
-					props.selected ? "bg-ink text-canvas" : "border border-line bg-surface text-ink"
-				}`}
-			>
-				<span className="block translate-y-[0.1em] leading-none">{session.name.charAt(0)}</span>
-			</span>
-			<span className="flex min-w-0 flex-1 flex-col leading-tight">
-				<span className="flex min-w-0 items-baseline justify-between gap-2">
-					<span className="flex min-w-0 items-center gap-1.5">
-						<span className="truncate font-serif text-[16px] font-semibold text-ink">{session.name}</span>
-						{props.childCount ? (
-							<button
-								type="button"
-								className="inline-flex h-[15px] shrink-0 cursor-pointer items-center gap-0.5 rounded-full border border-line bg-transparent px-[5px] font-mono text-[10px] leading-none text-muted transition-colors hover:bg-hover hover:text-ink aria-expanded:text-ink"
-								aria-expanded={props.expanded}
-								aria-label={`${props.expanded ? "Collapse" : "Expand"} ${props.childCount} fork${props.childCount === 1 ? "" : "s"} of ${session.name}`}
-								onClick={(event) => {
-									event.stopPropagation();
-									props.onToggle?.();
-								}}
-							>
-								{props.expanded ? <ChevronDownIcon size={9} /> : <ChevronRightIcon size={9} />}
-								{props.childCount}
-							</button>
-						) : null}
-					</span>
-					<span className="whitespace-nowrap font-sans text-[12px] tracking-[0.03em] text-muted">{activityAt(session) ? listTime(activityAt(session)) : ""}</span>
-				</span>
-				<span className="mt-0.5 flex min-w-0 items-center gap-2 font-sans text-[13px] text-muted">
-					<span className="min-w-0 flex-1 truncate">
-						{props.writing || forking ? (
-							<span className="inline-flex items-center gap-[6px] pt-[3px]">
-								<span className="inline-flex items-center gap-[3px]">
-									<span className="work-dot" />
-									<span className="work-dot" />
-									<span className="work-dot" />
-								</span>
-								{forking ? <span className="font-mono text-[10px] tracking-[0.12em] text-muted-soft uppercase">forking…</span> : null}
-							</span>
-						) : (
-							previewFor(session) || "—"
-						)}
-					</span>
-					{props.unread ? (
-						<Tip label="new messages">
-							<span className="inline-block size-1.5 shrink-0 rounded-full bg-signal" />
-						</Tip>
-					) : null}
-				</span>
-				{session.workspace ? (
-					<span className="mt-[3px] flex min-w-0 items-center gap-[3px] font-mono text-[10px] text-muted-soft [&>svg]:shrink-0">
-						{session.workspaceKind === "worktree" ? <FolderTreeIcon size={10} /> : null}
-						<span className="truncate">{workspaceLabel(session)}</span>
-					</span>
-				) : null}
-			</span>
+			{view === "detail" ? detail : view === "groups" ? groupRow : compact}
 			<Menu
 				onOpenChange={(open) => {
 					setMenuOpen(open);
@@ -121,6 +212,7 @@ function Row(props: {
 						className="absolute top-1/2 right-1.5 grid size-6 -translate-y-1/2 cursor-pointer place-items-center rounded border-0 bg-[color-mix(in_srgb,var(--chrome)_80%,transparent)] text-muted opacity-0 transition-opacity duration-100 group-hover:opacity-100 hover:bg-surface hover:text-ink focus-visible:opacity-100 data-[state=open]:opacity-100"
 						aria-label={`More actions for ${session.name}`}
 						onClick={(event) => event.stopPropagation()}
+						onKeyDown={(event) => event.stopPropagation()}
 					>
 						<MoreVerticalIcon size={14} />
 					</button>
@@ -155,6 +247,7 @@ export function SessionListSurface(props: SurfaceProps) {
 	const { host } = props;
 	const rows = useStore(host.sessions.store, (state) => state.rows);
 	const arrived = useStore(host.sessions.store, (state) => state.arrived);
+	const view = useStore(host.sessions.store, (state) => state.view);
 	const selected = useStore(host.selection.store, (state) => state.selected);
 	const searchOpen = useStore(host.workbench.store, (state) => state.searchOpen);
 	const hasData = rows.length > 0 && selected === "";
@@ -167,7 +260,8 @@ export function SessionListSurface(props: SurfaceProps) {
 	const bindings = useStore(host.hotkeys.store, (state) => state.bindings);
 
 	const [query, setQuery] = useState("");
-	const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+	const [family, setFamily] = useState<string | null>(null);
+	const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
 	const [edges, setEdges] = useState({ above: false, below: false });
 	const searchRef = useRef<HTMLInputElement>(null);
 	const rowsRef = useRef<HTMLDivElement>(null);
@@ -208,83 +302,64 @@ export function SessionListSurface(props: SurfaceProps) {
 			element.removeEventListener("scroll", measure);
 			observer.disconnect();
 		};
-	}, [rows, query, expanded, arrived]);
-
-	const roots = useMemo(() => rows.filter((session) => !session.forkedFrom || !rows.some((each) => each.name === session.forkedFrom)).sort(byPinThenRecency), [rows]);
-	/* A fork is never pinned, so its order is only about when it last moved — a pin left over from
-	   before the rule means nothing here. */
-	const leavesByRoot = useMemo(() => {
-		const map = new Map<string, SessionRow[]>();
-		for (const session of rows) {
-			if (!session.forkedFrom) continue;
-			const list = map.get(session.forkedFrom) ?? [];
-			list.push(session);
-			map.set(session.forkedFrom, list);
-		}
-		for (const list of map.values()) list.sort((left, right) => activityAt(right) - activityAt(left) || left.name.localeCompare(right.name));
-		return map;
-	}, [rows]);
+	}, [rows, query, view, family, arrived]);
 
 	const searching = query.trim() !== "";
-	const matched = useMemo(() => new Set(filterSessions(rows, query).map((session) => session.name)), [rows, query]);
-	const visibleRoots = useMemo(() => {
-		if (!searching) return roots;
-		return roots.filter((root) => matched.has(root.name) || (leavesByRoot.get(root.name) ?? []).some((leaf) => matched.has(leaf.name)));
-	}, [roots, leavesByRoot, matched, searching]);
+	const matchedRows = useMemo(() => (searching ? filterSessions(rows, query) : []), [rows, query, searching]);
+	const orderedRows = useMemo(() => [...rows].sort(byPinThenRecency), [rows]);
+	const forkCounts = useMemo(() => {
+		const counts = new Map<string, number>();
+		for (const row of rows) {
+			if (row.forkedFrom === undefined) continue;
+			counts.set(row.forkedFrom, (counts.get(row.forkedFrom) ?? 0) + 1);
+		}
+		return counts;
+	}, [rows]);
+	const ungroupedRows = useMemo(() => rows.filter((row) => !row.workspace).sort(byPinThenRecency), [rows]);
+	const groups = useMemo(() => {
+		const map = new Map<string, SessionRow[]>();
+		for (const row of rows) {
+			if (!row.workspace) continue;
+			const key = row.workspace;
+			const list = map.get(key) ?? [];
+			list.push(row);
+			map.set(key, list);
+		}
+		return [...map.entries()]
+			.map(([key, list]) => ({
+				key,
+				label: groupLabel(key),
+				full: key,
+				rows: [...list].sort(byPinThenRecency),
+				activity: Math.max(...list.map((row) => activityAt(row))),
+			}))
+			.sort((left, right) => right.activity - left.activity || left.label.localeCompare(right.label));
+	}, [rows]);
 
-	const selectedParent = rows.find((session) => session.name === selected)?.forkedFrom;
-	const pinnedRoots = searching ? [] : visibleRoots.filter((root) => root.pinned === true);
-	const restRoots = searching ? visibleRoots : visibleRoots.filter((root) => root.pinned !== true);
-
-	const toggle = (name: string) =>
-		setExpanded((current) => {
+	const toggleGroup = (key: string) =>
+		setCollapsedGroups((current) => {
 			const next = new Set(current);
-			if (next.has(name)) next.delete(name);
-			else next.add(name);
+			if (next.has(key)) next.delete(key);
+			else next.add(key);
 			return next;
 		});
 
-	const renderRoot = (root: SessionRow) => {
-		const leaves = leavesByRoot.get(root.name) ?? [];
-		const isExpanded = root.name === selectedParent || expanded.has(root.name) || (searching && leaves.some((leaf) => matched.has(leaf.name)));
-		return (
-			<div key={root.name}>
-				<Row
-					host={host}
-					session={root}
-					selected={selected === root.name}
-					writing={root.running}
-					unread={(root.lastMessageAt ?? 0) > (root.readAt ?? 0)}
-					childCount={leaves.length}
-					expanded={isExpanded}
-					onSelect={() => {
-						host.workbench.showView(null);
-						void host.selection.select(root.name);
-					}}
-					onToggle={() => toggle(root.name)}
-					onRun={(item) => start(item, root.name)}
-				/>
-				{isExpanded
-					? leaves.map((leaf) => (
-							<Row
-								key={leaf.name}
-								host={host}
-								session={leaf}
-								selected={selected === leaf.name}
-								writing={leaf.running}
-								unread={(leaf.lastMessageAt ?? 0) > (leaf.readAt ?? 0)}
-								leaf
-								onSelect={() => {
-									host.workbench.showView(null);
-									void host.selection.select(leaf.name);
-								}}
-								onRun={(item) => start(item, leaf.name)}
-							/>
-						))
-					: null}
-			</div>
-		);
-	};
+	const rowProps = (session: SessionRow, showWorkspace: boolean) => ({
+		host,
+		session,
+		view,
+		selected: selected === session.name,
+		unread: (session.lastMessageAt ?? 0) > (session.readAt ?? 0),
+		family,
+		forks: forkCounts.get(session.name) ?? 0,
+		showWorkspace,
+		onSelect: () => {
+			host.workbench.showView(null);
+			void host.selection.select(session.name);
+		},
+		onFamily: (name: string | null) => setFamily(name),
+		onRun: (item: ContributionItem) => start(item, session.name),
+	});
 
 	return (
 		<div className="flex h-full min-h-0 flex-col px-3">
@@ -362,7 +437,7 @@ export function SessionListSurface(props: SurfaceProps) {
 					<>
 						{rows.length === 0 ? <div className="px-2 py-1 text-[13px] text-muted">no sessions yet</div> : null}
 
-						{searching && rows.length > 0 && visibleRoots.length === 0 ? (
+						{searching && rows.length > 0 && matchedRows.length === 0 ? (
 							<div className="px-1 py-3">
 								<p className="m-0 text-[13px] text-ink-soft">No sessions match</p>
 								<p className="m-0 mt-1 font-mono text-[10px] text-muted">
@@ -374,46 +449,74 @@ export function SessionListSurface(props: SurfaceProps) {
 						) : null}
 
 						<div className={`edge-fade${edges.above ? " has-above" : ""}${edges.below ? " has-below" : ""} flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto`} ref={rowsRef}>
-							{pinnedRoots.length > 0 ? (
-								<div className="session-pinned">
-									<span className="session-pinned-cap">Pinned</span>
-									{pinnedRoots.map(renderRoot)}
-								</div>
-							) : null}
-							{pinnedRoots.length > 0 && restRoots.length > 0 ? <div className="h-2.5 shrink-0" aria-hidden="true" /> : null}
-							{restRoots.map(renderRoot)}
+							{searching ? (
+								matchedRows.map((session) => <Row key={session.name} {...rowProps(session, true)} />)
+							) : view === "groups" ? (
+								<>
+									{ungroupedRows.map((session) => (
+										<Row key={session.name} {...rowProps(session, false)} />
+									))}
+									{groups.map((group) => {
+										const collapsed = collapsedGroups.has(group.key);
+										return (
+											<div className="flex flex-col gap-0.5" key={group.key}>
+												<div
+													className="sticky top-0 z-[2] flex h-[22px] shrink-0 items-center gap-1.5 border-b border-line bg-chrome px-1.5 font-mono text-[9.5px] text-muted"
+													title={group.full}
+												>
+													<FolderTreeIcon size={10} className="shrink-0 text-muted-soft" />
+													<span className="min-w-0 truncate">{group.label}</span>
+													<button
+														type="button"
+														className="ml-auto grid size-4 shrink-0 cursor-pointer place-items-center rounded border-0 bg-transparent text-muted transition-colors hover:bg-hover hover:text-ink focus-visible:text-ink"
+														aria-expanded={!collapsed}
+														aria-label={`${collapsed ? "Expand" : "Collapse"} ${group.label}`}
+														title={collapsed ? "Expand" : "Collapse"}
+														onClick={() => toggleGroup(group.key)}
+													>
+														{collapsed ? <ChevronRightIcon size={10} /> : <ChevronDownIcon size={10} />}
+													</button>
+												</div>
+												{!collapsed && group.rows.map((session) => <Row key={session.name} {...rowProps(session, false)} />)}
+											</div>
+										);
+									})}
+								</>
+							) : (
+								orderedRows.map((session) => <Row key={session.name} {...rowProps(session, true)} />)
+							)}
 						</div>
 					</>
 				)}
 			</div>
 
-			{footerItems.length === 0 ? null : (
-				<div className="shrink-0 pt-1 pb-2">
-					{footerItems.map((item) => {
-						const binding = bindings.find((each) => each.id === item.action);
-						const keys = binding ? formatHotkey(binding.hotkey, host.hotkeys.platform) : "";
-						return (
-							<Tip key={item.id} label={item.title}>
-								<button
-									type="button"
-									className="flex h-[34px] w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2 text-left text-ink transition-colors duration-100 hover:bg-hover [-webkit-app-region:no-drag]"
-									aria-label={item.title}
-									onClick={() => void host.actions.invoke(item.action ?? "")}
-								>
-									<IconByName name={item.icon} size={15} />
-									{keys === "" ? null : (
-										<KbdGroup className="ml-auto">
-											{keys.split("").map((key, index) => (
-												<Kbd key={index}>{key}</Kbd>
-											))}
-										</KbdGroup>
-									)}
-								</button>
-							</Tip>
-						);
-					})}
-				</div>
-			)}
+			<div className="shrink-0 pt-1 pb-2">
+				{footerItems.length === 0
+					? null
+					: footerItems.map((item) => {
+							const binding = bindings.find((each) => each.id === item.action);
+							const keys = binding ? formatHotkey(binding.hotkey, host.hotkeys.platform) : "";
+							return (
+								<Tip key={item.id} label={item.title}>
+									<button
+										type="button"
+										className="flex h-[34px] w-full cursor-pointer items-center gap-2.5 rounded-md border-0 bg-transparent px-2 text-left text-ink transition-colors duration-100 hover:bg-hover [-webkit-app-region:no-drag]"
+										aria-label={item.title}
+										onClick={() => void host.actions.invoke(item.action ?? "")}
+									>
+										<IconByName name={item.icon} size={15} />
+										{keys === "" ? null : (
+											<KbdGroup className="ml-auto">
+												{keys.split("").map((key, index) => (
+													<Kbd key={index}>{key}</Kbd>
+												))}
+											</KbdGroup>
+										)}
+									</button>
+								</Tip>
+							);
+						})}
+			</div>
 		</div>
 	);
 }

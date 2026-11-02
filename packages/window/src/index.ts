@@ -16,7 +16,7 @@ export { FooterService, IFooterService } from "./footer.ts";
 export { LayoutService, ILayoutService } from "./layout.ts";
 export type { FrontEndService } from "./extensions.ts";
 export { SelectionService, ISelectionService } from "./selection.ts";
-export { SessionListService, ISessionListService } from "./sessions.ts";
+export { SessionListService, ISessionListService, type SessionListView } from "./sessions.ts";
 export { PickerService, IPickerService } from "./picker.ts";
 export { SlotsService, ISlotsService, type SlotComponent } from "./slots.ts";
 export { RowRegistry, RowRegistryId, type RowComponent } from "./rows.ts";

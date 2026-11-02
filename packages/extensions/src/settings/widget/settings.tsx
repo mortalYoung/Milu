@@ -1,7 +1,8 @@
 import type { ThemeMode, ThemeSettings, ThemeState } from "@milu/protocol";
-import type { DialogProps } from "@milu/window/api";
+import type { DialogProps, SessionListView } from "@milu/window/api";
 import { Bell, Check, Folder, Search } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useStore } from "zustand";
 
 import { MCP_LIFECYCLES, type McpOptions } from "../../mcp/types.ts";
 import type { ProviderRow, Settings, SettingsSnapshot } from "../index.ts";
@@ -10,7 +11,7 @@ import { BUTTON_GHOST, BUTTON_PRIMARY, FIELD, InlineChoices, LINK, SheetPanel, S
 
 const CATEGORIES = [
 	{ id: "general", label: "General", intro: "How Milu starts, where partner profiles live, and how it tells you something happened." },
-	{ id: "appearance", label: "Appearance", intro: "One mode, two palettes. Picking a theme applies it at once." },
+	{ id: "appearance", label: "Appearance", intro: "One mode, two palettes, and how the session list reads." },
 	{ id: "providers", label: "Providers", intro: "Keys and endpoints behind the models you can pick. A key is written once and never echoed back." },
 	{ id: "tools", label: "Tools", intro: "Limits for the shell, the web, and MCP servers." },
 	{ id: "skills", label: "Skills", intro: "Where skill folders are looked up, relative to the workspace or home." },
@@ -579,6 +580,7 @@ export function SettingsDialog(props: DialogProps) {
 	const [sandboxConfirm, setSandboxConfirm] = useState<string | null>(null);
 	const [rowError, setRowError] = useState<{ key: string; message: string } | null>(null);
 	const [loadError, setLoadError] = useState<string | null>(null);
+	const sessionView = useStore(props.host.sessions.store, (state) => state.view);
 	const [, setThemeRevision] = useState(0);
 	const scrollRef = useRef<HTMLDivElement>(null);
 	const frame = useRef(0);
@@ -805,16 +807,20 @@ export function SettingsDialog(props: DialogProps) {
 	const searching = q !== "";
 	const fieldMatches = searching ? FIELDS.filter((field) => `${field.title} ${field.description}`.toLowerCase().includes(q)) : [];
 	const themeMatches = searching && `Theme Follow the system, or force light or dark. Each appearance uses its own palette. ${themeNames}`.toLowerCase().includes(q);
+	const layoutMatches = searching && "Session List layout Focus Detail Groups workspace".toLowerCase().includes(q);
 	const providerMatches = searching ? snapshot.providers.filter((provider) => provider.id.toLowerCase().includes(q)) : [];
-	const totalMatches = fieldMatches.length + (themeMatches ? 1 : 0) + providerMatches.length;
+	const totalMatches = fieldMatches.length + (themeMatches ? 1 : 0) + (layoutMatches ? 1 : 0) + providerMatches.length;
 	const catMatches = (id: CategoryId): boolean =>
-		fieldMatches.some((field) => field.category === id) || (id === "appearance" && themeMatches) || (id === "providers" && providerMatches.length > 0);
+		fieldMatches.some((field) => field.category === id) || (id === "appearance" && (themeMatches || layoutMatches)) || (id === "providers" && providerMatches.length > 0);
 	const catMatchCount = (id: CategoryId): number =>
-		fieldMatches.filter((field) => field.category === id).length + (id === "appearance" && themeMatches ? 1 : 0) + (id === "providers" ? providerMatches.length : 0);
+		fieldMatches.filter((field) => field.category === id).length +
+		(id === "appearance" && themeMatches ? 1 : 0) +
+		(id === "appearance" && layoutMatches ? 1 : 0) +
+		(id === "providers" ? providerMatches.length : 0);
 
 	const bandCount = (id: CategoryId): string => {
 		if (id === "providers") return `${snapshot.providers.length} ${snapshot.providers.length === 1 ? "provider" : "providers"}`;
-		if (id === "appearance") return "1 setting";
+		if (id === "appearance") return "2 settings";
 		const count = FIELDS.filter((field) => field.category === id).length;
 		return `${count} ${count === 1 ? "setting" : "settings"}`;
 	};
@@ -1025,6 +1031,29 @@ export function SettingsDialog(props: DialogProps) {
 		/>
 	);
 
+	const sessionLayoutRow = (searchQuery = ""): ReactNode => {
+		const description = "How chats are listed: Focus keeps one preview line; Detail adds a second line; Groups stacks chats by workspace.";
+		return (
+			<SheetRow
+				rowKey="sessionView"
+				title={searchQuery === "" ? "Session List" : highlight("Session List", searchQuery)}
+				description={searchQuery === "" ? description : highlight(description, searchQuery)}
+				control={
+					<InlineChoices<SessionListView>
+						value={sessionView}
+						options={[
+							{ value: "focus", label: "Focus" },
+							{ value: "detail", label: "Detail" },
+							{ value: "groups", label: "Groups" },
+						]}
+						ariaLabel="Session list layout"
+						onChange={(next) => props.host.sessions.setView(next)}
+					/>
+				}
+			/>
+		);
+	};
+
 	const providerRow = (provider: ProviderRow, searchQuery = ""): ReactNode => (
 		<SheetRow
 			key={`search-provider-${provider.id}`}
@@ -1041,7 +1070,13 @@ export function SettingsDialog(props: DialogProps) {
 	);
 
 	const renderBand = (id: CategoryId, searchQuery = ""): ReactNode => {
-		if (id === "appearance") return themeRow(searchQuery);
+		if (id === "appearance")
+			return (
+				<>
+					{themeRow(searchQuery)}
+					{sessionLayoutRow(searchQuery)}
+				</>
+			);
 		if (id === "providers") {
 			return <ProvidersBand snapshot={snapshot} save={saveProviders} open={open} onOpen={setOpen} />;
 		}
@@ -1083,6 +1118,7 @@ export function SettingsDialog(props: DialogProps) {
 					</header>
 					<div>
 						{category.id === "appearance" && themeMatches ? themeRow(q) : null}
+						{category.id === "appearance" && layoutMatches ? sessionLayoutRow(q) : null}
 						{fieldMatches.filter((field) => field.category === category.id).map((field) => renderField(field, q))}
 						{category.id === "providers" ? providerMatches.map((provider) => providerRow(provider, q)) : null}
 					</div>

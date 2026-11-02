@@ -1,4 +1,5 @@
 export type { DialogProps } from "../dialogs.ts";
+export type { SessionListView } from "../sessions.ts";
 export type { FrontEndService } from "../extensions.ts";
 export type { Connection } from "../connection.ts";
 export { IConnection } from "../connection.ts";
