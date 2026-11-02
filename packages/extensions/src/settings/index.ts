@@ -111,7 +111,7 @@ const settingsExtension: Extension = {
 			scope: "app",
 			hotkey: "Mod+,",
 			run: async ({ dialog }) => {
-				await dialog?.({ kind: "custom", id: "settings", title: "Settings" });
+				await dialog?.({ kind: "custom", id: "settings", title: "Settings", dismissOnOutsideClick: false });
 			},
 		});
 

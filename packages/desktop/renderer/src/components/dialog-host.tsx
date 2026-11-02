@@ -13,12 +13,19 @@ export function DialogHost(props: { host: Host }) {
 
 	const custom = shown?.dialog.kind === "custom" ? host.dialogs.get(shown.dialog.id) : undefined;
 	const palette = shown?.dialog.kind === "custom" && shown.dialog.presentation === "palette";
+	const dismissOnOutsideClick = shown?.dialog.kind !== "custom" || shown.dialog.dismissOnOutsideClick !== false;
 
 	return (
 		<Dialog.Root open={pending !== null} modal={!palette} onOpenChange={(open) => (open ? undefined : host.dialogs.resolve(null))}>
 			<Dialog.Portal>
 				{palette ? null : <Dialog.Overlay className="conv-dialog-overlay" />}
-				<Dialog.Content className={palette ? "palette-anchor" : `conv-dialog${custom ? " wide" : ""}`} aria-describedby={undefined}>
+				<Dialog.Content
+					className={palette ? "palette-anchor" : `conv-dialog${custom ? " wide" : ""}`}
+					aria-describedby={undefined}
+					onPointerDownOutside={(event) => {
+						if (!dismissOnOutsideClick) event.preventDefault();
+					}}
+				>
 					{pending?.dialog.kind === "confirm" ? (
 						<>
 							<Dialog.Title className="conv-dialog-title">{pending.dialog.copy.title}</Dialog.Title>
