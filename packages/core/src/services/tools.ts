@@ -88,14 +88,14 @@ export class ToolService implements Service {
 	}
 
 	async tools(session: Session): Promise<readonly AgentTool[]> {
-		const workspace = await this._workspaceOf(session);
 		return this._tools.map((tool) => ({
 			name: tool.name,
 			label: tool.label,
 			description: tool.description,
 			parameters: extend(tool.parameters, this._fields, tool.name),
 			...(tool.executionMode === undefined ? {} : { executionMode: tool.executionMode }),
-			execute: (toolCallId: string, params: unknown, signal?: AbortSignal) => this._run({ session, workspace, toolCallId, name: tool.name, params, signal }),
+			execute: async (toolCallId: string, params: unknown, signal?: AbortSignal) =>
+				this._run({ session, workspace: await this._workspaceOf(session), toolCallId, name: tool.name, params, signal }),
 		}));
 	}
 
