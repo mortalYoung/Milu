@@ -144,7 +144,7 @@ export function StepRow(props: SlotProps) {
 		if (!first || !("step" in first)) return group;
 		return { ...group, rows: [...group.rows, ...first.step.rows] };
 	}, [group, live, session, partial, started]);
-	const [open, setOpen] = useState(() => merged.rows.some((row) => row.tool?.status === "error") || (defaultOpen ?? live));
+	const [open, setOpen] = useState(() => defaultOpen === true);
 	const [openRows, setOpenRows] = useState<ReadonlySet<string>>(() => new Set());
 	const stamp = useHeaderStamp(merged, live);
 	const bodyId = useId();

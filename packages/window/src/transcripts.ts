@@ -186,8 +186,9 @@ export class TranscriptService implements Service {
 				delete started[session];
 				return { ...current, started };
 			}
-			const started = session in current.started ? current.started : { ...current.started, [session]: Date.now() };
-			const stepOpen = current.stepOpen[session] === true ? current.stepOpen : { ...current.stepOpen, [session]: true };
+			const fresh = !(session in current.started);
+			const started = fresh ? { ...current.started, [session]: Date.now() } : current.started;
+			const stepOpen = fresh && session in current.stepOpen ? without(current.stepOpen, [session]) : current.stepOpen;
 			if (started === current.started && stepOpen === current.stepOpen) return current;
 			return { ...current, started, stepOpen };
 		}, true);
