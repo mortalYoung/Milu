@@ -90,6 +90,19 @@ const FIELDS: readonly Field[] = [
 		title: "Continuous Shell Input",
 		description: "Keep shell mode active after sending a command; off leaves shell mode as soon as one is sent.",
 	},
+	{
+		id: "sendWhileRunning",
+		scope: "settings",
+		category: "general",
+		group: "Composer",
+		kind: "segments",
+		title: "Message While Running",
+		description: "Where a message goes while the agent is working. Steer lands after the current turn; Follow-up waits until the run would stop.",
+		options: [
+			{ value: "steering", label: "Steer" },
+			{ value: "follow-up", label: "Follow-up" },
+		],
+	},
 
 	{
 		id: "bash.timeoutSec",

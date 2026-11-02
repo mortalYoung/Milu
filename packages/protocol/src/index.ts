@@ -244,16 +244,19 @@ export interface LayoutState {
 	readonly layout: Layout;
 }
 
-export interface FollowUpItem {
+export type PendingKind = "steering" | "follow-up";
+
+export interface PendingItem {
 	readonly id: string;
 	readonly text: string;
 	readonly at: number;
+	readonly kind: PendingKind;
 	readonly source: "you" | "scheduled" | "peer" | "skill";
 }
 
 export type LiveEvent =
 	| { readonly type: "status"; readonly session: string; readonly running: boolean }
-	| { readonly type: "followup"; readonly session: string; readonly items: readonly FollowUpItem[] }
+	| { readonly type: "pending"; readonly session: string; readonly items: readonly PendingItem[] }
 	| { readonly type: "fork"; readonly session: string; readonly error?: string }
 	| { readonly type: "selection"; readonly selected: string | null }
 	| ({ readonly type: "layout" } & LayoutState)

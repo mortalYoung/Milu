@@ -3,9 +3,9 @@ import { randomUUID } from "node:crypto";
 import type { AgentMessage, AgentToolResult, Entry } from "@earendil-works/pi-agent-core";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { DisposableStore, Emitter, type Event } from "@milu/di";
-import type { PreviewKind, SeqEntry, SessionRow } from "@milu/protocol";
+import type { PendingKind, PreviewKind, SeqEntry, SessionRow } from "@milu/protocol";
 
-import { AgentLoopService, type AgentLoopEvent } from "../services/agent-loop.ts";
+import { AgentLoopService, type AgentLoopEvent, type PendingMessage } from "../services/agent-loop.ts";
 import type { CompactionService } from "../services/compaction.ts";
 import type { ExecutionService } from "../services/execution.ts";
 import type { HookService } from "../services/hooks.ts";
@@ -256,7 +256,9 @@ export class Session {
 	private async _submit(message: AgentMessage): Promise<{ ok: true } | { ok: false; error: string }> {
 		const loop = await this.open();
 		if (loop.isRunning()) {
-			loop.followUp({ ...message, dockId: randomUUID() } as unknown as AgentMessage);
+			const queued = { ...message, pendingId: randomUUID() } as unknown as AgentMessage;
+			if (this._deps.settingsService.get().sendWhileRunning === "steering") loop.steer(queued);
+			else loop.followUp(queued);
 			return { ok: true };
 		}
 		const failure = this._applyModel(loop, await this._modelOf());
@@ -424,12 +426,16 @@ export class Session {
 		return true;
 	}
 
-	followUps(): readonly AgentMessage[] {
-		return this._loop?.followUps() ?? [];
+	pending(): readonly PendingMessage[] {
+		return this._loop?.pending() ?? [];
 	}
 
-	cancelFollowUp(id: string): boolean {
-		return this._loop?.cancelFollowUp(id) ?? false;
+	cancelPending(id: string): boolean {
+		return this._loop?.cancelPending(id) ?? false;
+	}
+
+	convertPending(id: string, kind: PendingKind): boolean {
+		return this._loop?.convertPending(id, kind) ?? false;
 	}
 
 	private _record(loop: AgentLoopService): { dispose(): void } {

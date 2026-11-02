@@ -2,9 +2,10 @@ import type { AgentEvent, AgentMessage, AgentTool } from "@earendil-works/pi-age
 import { Agent } from "@earendil-works/pi-agent-core";
 import type { Api, AssistantMessage, Model, ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { DisposableStore, createServiceId, Emitter, type Event, type Service } from "@milu/di";
+import type { PendingKind } from "@milu/protocol";
 
 import { type AgentReminder, reminderText } from "../session/events.ts";
-import { followUpId } from "../session/followups.ts";
+import { pendingId } from "../session/pending.ts";
 import type { Session } from "../session/session.ts";
 import type { AgentHookPoint, HookService } from "./hooks.ts";
 import type { ModelsService } from "./models.ts";
@@ -13,6 +14,11 @@ import type { ToolService } from "./tools.ts";
 export interface AgentLoopProgress {
 	run: number;
 	turn: number;
+}
+
+export interface PendingMessage {
+	readonly kind: PendingKind;
+	readonly message: AgentMessage;
 }
 
 export type AgentLoopEvent =
@@ -26,7 +32,7 @@ export type AgentLoopEvent =
 	| ({ type: "turn_end" } & AgentLoopProgress)
 	| ({ type: "retry_scheduled"; retry: number; maxRetries: number; delayMs: number; error: string } & AgentLoopProgress)
 	| ({ type: "retry_started"; retry: number } & AgentLoopProgress)
-	| { type: "followups"; items: readonly AgentMessage[] }
+	| { type: "pending"; items: readonly PendingMessage[] }
 	| ({ type: "run_end"; stopped?: boolean; error?: string } & AgentLoopProgress);
 
 export interface AgentLoopRun {
@@ -44,6 +50,7 @@ export class AgentLoopService implements Service {
 	private _running = false;
 	private _stopped = false;
 	private readonly _pending: (string | AgentMessage)[] = [];
+	private readonly _steerings: AgentMessage[] = [];
 	private readonly _followUps: AgentMessage[] = [];
 	/** A failed attempt's tail, held until the retry decision says whether it is final. */
 	private _held: AgentEvent[] = [];
@@ -101,7 +108,7 @@ export class AgentLoopService implements Service {
 			return await this._runWithRetry(input);
 		} finally {
 			this._running = false;
-			this._requeueFollowUps();
+			this._requeuePending();
 			void this._drain();
 		}
 	}
@@ -114,29 +121,59 @@ export class AgentLoopService implements Service {
 			return await this._runWithRetry(null);
 		} finally {
 			this._running = false;
-			this._requeueFollowUps();
+			this._requeuePending();
 			void this._drain();
 		}
+	}
+
+	steer(message: AgentMessage): void {
+		this._steerings.push(message);
+		this._agent.steer(message);
+		this._emitPending();
 	}
 
 	followUp(message: AgentMessage): void {
 		this._followUps.push(message);
 		this._agent.followUp(message);
-		this._emitFollowUps();
+		this._emitPending();
 	}
 
-	followUps(): readonly AgentMessage[] {
-		return [...this._followUps];
+	pending(): readonly PendingMessage[] {
+		return [...this._steerings.map((message) => ({ kind: "steering" as const, message })), ...this._followUps.map((message) => ({ kind: "follow-up" as const, message }))];
 	}
 
-	cancelFollowUp(id: string): boolean {
-		const at = this._followUps.findIndex((item) => followUpId(item) === id);
-		if (at < 0) return false;
-		this._followUps.splice(at, 1);
-		this._agent.clearFollowUpQueue();
-		for (const item of this._followUps) this._agent.followUp(item);
-		this._emitFollowUps();
+	cancelPending(id: string): boolean {
+		const removed = this._take(this._steerings, id) ?? this._take(this._followUps, id);
+		if (removed === null) return false;
+		this._syncQueues();
+		this._emitPending();
 		return true;
+	}
+
+	convertPending(id: string, kind: PendingKind): boolean {
+		const from = kind === "steering" ? this._followUps : this._steerings;
+		const to = kind === "steering" ? this._steerings : this._followUps;
+		if (to.some((item) => pendingId(item) === id)) return true;
+		const message = this._take(from, id);
+		if (message === null) return false;
+		to.push(message);
+		this._syncQueues();
+		this._emitPending();
+		return true;
+	}
+
+	private _take(list: AgentMessage[], id: string): AgentMessage | null {
+		const at = list.findIndex((item) => pendingId(item) === id);
+		if (at < 0) return null;
+		return list.splice(at, 1)[0] ?? null;
+	}
+
+	/** The SDK's queues are opaque, so the mirrors are replayed after every change. */
+	private _syncQueues(): void {
+		this._agent.clearSteeringQueue();
+		this._agent.clearFollowUpQueue();
+		for (const item of this._steerings) this._agent.steer(item);
+		for (const item of this._followUps) this._agent.followUp(item);
 	}
 
 	/** One attempt, then another if the failure hook asks for it — the failed one leaves no trace. */
@@ -245,7 +282,7 @@ export class AgentLoopService implements Service {
 				return;
 			} finally {
 				this._running = false;
-				this._requeueFollowUps();
+				this._requeuePending();
 			}
 		}
 	}
@@ -253,7 +290,7 @@ export class AgentLoopService implements Service {
 	stop(): void {
 		this._stopped = true;
 		this._pending.length = 0;
-		this._clearFollowUps();
+		this._clearQueues();
 		this._agent.abort();
 		this._wake?.();
 	}
@@ -301,7 +338,7 @@ export class AgentLoopService implements Service {
 		this._running = false;
 		this._stopped = false;
 		this._pending.length = 0;
-		this._clearFollowUps();
+		this._clearQueues();
 		this._agent.reset();
 	}
 
@@ -338,30 +375,29 @@ export class AgentLoopService implements Service {
 		return injected;
 	}
 
-	private _emitFollowUps(): void {
-		this._emitter.fire({ type: "followups", items: [...this._followUps] });
+	private _emitPending(): void {
+		this._emitter.fire({ type: "pending", items: this.pending() });
 	}
 
-	private _clearFollowUps(): void {
-		const had = this._followUps.length > 0;
+	private _clearQueues(): void {
+		const had = this._steerings.length > 0 || this._followUps.length > 0;
+		this._steerings.length = 0;
 		this._followUps.length = 0;
-		this._agent.clearFollowUpQueue();
-		if (had) this._emitFollowUps();
+		this._syncQueues();
+		if (had) this._emitPending();
 	}
 
-	private _dropFollowUp(id: string): void {
-		const at = this._followUps.findIndex((item) => followUpId(item) === id);
-		if (at < 0) return;
-		this._followUps.splice(at, 1);
-		this._emitFollowUps();
+	private _dropPending(id: string): void {
+		const removed = this._take(this._steerings, id) ?? this._take(this._followUps, id);
+		if (removed !== null) this._emitPending();
 	}
 
-	/** A follow-up the run never reached starts the next run instead of being lost. */
-	private _requeueFollowUps(): void {
-		if (this._followUps.length === 0) return;
-		this._pending.push(...this._followUps.splice(0));
-		this._agent.clearFollowUpQueue();
-		this._emitFollowUps();
+	/** A message the run never reached starts the next run instead of being lost. */
+	private _requeuePending(): void {
+		if (this._steerings.length === 0 && this._followUps.length === 0) return;
+		this._pending.push(...this._steerings.splice(0), ...this._followUps.splice(0));
+		this._syncQueues();
+		this._emitPending();
 	}
 
 	// ——— pi's events, relayed as ours ———
@@ -393,8 +429,8 @@ export class AgentLoopService implements Service {
 				this._emitter.fire({ type: "message_update", ...progress, message: event.message });
 				return;
 			case "message_end": {
-				const claimed = event.message.role === "user" ? followUpId(event.message) : null;
-				if (claimed !== null) this._dropFollowUp(claimed);
+				const claimed = event.message.role === "user" ? pendingId(event.message) : null;
+				if (claimed !== null) this._dropPending(claimed);
 				this._emitter.fire({ type: "message_end", ...progress, message: event.message });
 				return;
 			}

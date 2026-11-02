@@ -19,7 +19,7 @@ export { Agent } from "@earendil-works/pi-agent-core";
 export { isRetryableAssistantError } from "@earendil-works/pi-ai";
 export type { Entry, StreamFn } from "@earendil-works/pi-agent-core";
 export type { AssistantMessage, Message, Model } from "@earendil-works/pi-ai";
-export type { AgentLoopEvent, AgentLoopRun, AgentLoopService } from "./services/agent-loop.ts";
+export type { AgentLoopEvent, AgentLoopRun, AgentLoopService, PendingMessage } from "./services/agent-loop.ts";
 export { IAgentLoopService } from "./services/agent-loop.ts";
 export { ActionService, IActionService, type Action, type ActionContext, type ActionOutcome } from "./services/actions.ts";
 export { CommandsService, ICommandsService } from "./services/commands.ts";
@@ -88,7 +88,7 @@ export { SelectionService, ISelectionService } from "./services/selection.ts";
 export { SessionService, ISessionService, type SessionEntry, type SessionLoopEvent } from "./services/sessions.ts";
 export { Session, type SessionDeps } from "./session/session.ts";
 export { SessionLog } from "./session/log.ts";
-export { followUpId, followUpView } from "./session/followups.ts";
+export { pendingId, pendingView } from "./session/pending.ts";
 export { projectSlice } from "./session/slice.ts";
 export type { CompactionPlan, CompactionTier } from "./session/compact.ts";
 export {

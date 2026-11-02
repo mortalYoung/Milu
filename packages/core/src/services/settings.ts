@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { createServiceId, type Disposable, Emitter, type Event, type Service } from "@milu/di";
+import type { PendingKind } from "@milu/protocol";
 
 import { IConfigService } from "./config.ts";
 import type { ConfigService } from "./config.ts";
@@ -33,6 +34,8 @@ export interface Settings {
 	providers?: string[];
 	customProviders?: CustomProvider[];
 	rememberSession?: boolean;
+	/** Where a message goes while the agent is still working. */
+	sendWhileRunning?: PendingKind;
 	/** Only what the core decides with: the rest of the file belongs to the extensions that declare it. */
 	compaction?: { thresholdRatio?: number };
 }
@@ -42,7 +45,7 @@ export function expandHome(value: string): string {
 }
 
 function defaults(): Settings {
-	return { partner_profile_path: "~/.partner/", rememberSession: true };
+	return { partner_profile_path: "~/.partner/", rememberSession: true, sendWhileRunning: "follow-up" };
 }
 
 function isSectionObject(value: unknown): value is Record<string, unknown> {

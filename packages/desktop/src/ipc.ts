@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { type Backend, followUpView, SESSION_FOOTER_POINT, SESSION_HEADER_POINT, WELCOME_ITEMS_POINT, type WelcomeItem } from "@milu/core";
+import { type Backend, pendingView, SESSION_FOOTER_POINT, SESSION_HEADER_POINT, WELCOME_ITEMS_POINT, type WelcomeItem } from "@milu/core";
 import {
 	type ContributionItem,
 	type DialogDescriptor,
@@ -102,8 +102,8 @@ export class IpcServer {
 					this._partials.delete(session);
 					return;
 				}
-				if (event.type === "followups") {
-					this._broadcast({ type: "live", event: { type: "followup", session, items: event.items.map(followUpView) } });
+				if (event.type === "pending") {
+					this._broadcast({ type: "live", event: { type: "pending", session, items: event.items.map(({ kind, message }) => pendingView(message, kind)) } });
 					return;
 				}
 				if (event.type === "run_start") this._broadcast({ type: "live", event: { type: "status", session, running: true } });
