@@ -1,4 +1,4 @@
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Pencil } from "lucide-react";
 import type { ReactNode } from "react";
 
 export const FIELD =
@@ -10,88 +10,7 @@ export const BUTTON_PRIMARY = `${BUTTON} bg-ink text-canvas hover:bg-ink/90`;
 
 export const BUTTON_GHOST = `${BUTTON} border border-line text-ink-soft hover:bg-hover hover:text-ink`;
 
-export const LINK = "cursor-pointer border-0 bg-transparent p-0 font-mono text-[10px] text-muted transition-colors duration-100 hover:text-ink";
-
-export function Row(props: { title: ReactNode; description: ReactNode; modified?: boolean; stacked?: boolean; children: ReactNode }) {
-	const head = (
-		<div className="flex items-center gap-2">
-			<span className="font-serif text-[14px] leading-tight text-ink">{props.title}</span>
-			{props.modified ? (
-				<span className="flex items-center gap-1.5">
-					<span className="size-[5px] shrink-0 rounded-full bg-signal" />
-					<span className="font-sans text-[10px] font-medium text-signal">modified</span>
-				</span>
-			) : null}
-		</div>
-	);
-	const body = <div className="mt-1 font-sans text-[12px] leading-snug text-muted">{props.description}</div>;
-	if (props.stacked) {
-		return (
-			<div className="py-3.5">
-				{head}
-				{body}
-				<div className="mt-3">{props.children}</div>
-			</div>
-		);
-	}
-	return (
-		<div className="flex items-center gap-6 py-3.5">
-			<div className="min-w-0 flex-1">
-				{head}
-				{body}
-			</div>
-			<div className="flex shrink-0 items-center gap-1.5">{props.children}</div>
-		</div>
-	);
-}
-
-export function TextField(props: { value: string; onCommit: (next: string) => void; placeholder?: string; ariaLabel?: string; mono?: boolean; width?: string }) {
-	return (
-		<input
-			key={props.value}
-			defaultValue={props.value}
-			className={`${FIELD} ${props.mono ? "font-mono text-[12px]" : ""} ${props.width ?? "w-[200px]"}`}
-			placeholder={props.placeholder}
-			aria-label={props.ariaLabel}
-			spellCheck={false}
-			onBlur={(event) => {
-				const next = event.currentTarget.value;
-				if (next !== props.value) props.onCommit(next);
-			}}
-			onKeyDown={(event) => {
-				if (event.key === "Enter") event.currentTarget.blur();
-				if (event.key === "Escape") {
-					event.currentTarget.value = props.value;
-					event.currentTarget.blur();
-				}
-			}}
-		/>
-	);
-}
-
-export function NumberField(props: { value: number | undefined; onCommit: (next: number) => void; min?: number; max?: number; step?: number; ariaLabel: string }) {
-	const fallback = props.value ?? 0;
-	const settle = (input: HTMLInputElement) => {
-		const parsed = Number.parseInt(input.value, 10);
-		const next = Number.isFinite(parsed) ? Math.max(props.min ?? 0, parsed) : fallback;
-		input.value = String(next);
-		if (next !== fallback) props.onCommit(next);
-	};
-	return (
-		<input
-			key={fallback}
-			type="text"
-			inputMode="numeric"
-			defaultValue={String(fallback)}
-			className={`${FIELD} w-[120px] tabular-nums`}
-			aria-label={props.ariaLabel}
-			onBlur={(event) => settle(event.currentTarget)}
-			onKeyDown={(event) => {
-				if (event.key === "Enter" || event.key === "Escape") event.currentTarget.blur();
-			}}
-		/>
-	);
-}
+export const LINK = "inline-flex min-h-6 cursor-pointer items-center border-0 bg-transparent p-0 font-mono text-[10px] text-muted transition-colors duration-100 hover:text-ink";
 
 export function Switch(props: { checked: boolean; onChange: (next: boolean) => void; ariaLabel: string }) {
 	return (
@@ -100,7 +19,7 @@ export function Switch(props: { checked: boolean; onChange: (next: boolean) => v
 			role="switch"
 			aria-checked={props.checked}
 			aria-label={props.ariaLabel}
-			className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition-colors duration-100 ${props.checked ? "border-ink bg-ink" : "border-line bg-ink/25"}`}
+			className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border transition-colors duration-100 after:absolute after:inset-[-4px] after:rounded-full after:content-[''] ${props.checked ? "border-ink bg-ink" : "border-line bg-ink/25"}`}
 			onClick={() => props.onChange(!props.checked)}
 		>
 			<span className={`block size-4 rounded-full bg-canvas shadow-sm transition-transform duration-100 ${props.checked ? "translate-x-4" : "translate-x-0.5"}`} />
@@ -108,43 +27,77 @@ export function Switch(props: { checked: boolean; onChange: (next: boolean) => v
 	);
 }
 
-export function Select(props: { value: string; options: readonly { value: string; label: string }[]; onChange: (next: string) => void; ariaLabel: string; width?: string }) {
+export function SheetRow(props: { rowKey: string; title: ReactNode; description: ReactNode; control: ReactNode; panel?: ReactNode; inline?: ReactNode }) {
 	return (
-		<span className="relative inline-flex">
-			<select
-				className={`${FIELD} ${props.width ?? "w-[200px]"} cursor-pointer appearance-none pr-7`}
-				value={props.value}
-				aria-label={props.ariaLabel}
-				onChange={(event) => props.onChange(event.currentTarget.value)}
-			>
-				{props.options.map((option) => (
-					<option key={option.value} value={option.value}>
-						{option.label}
-					</option>
-				))}
-			</select>
-			<ChevronDown size={12} className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 text-muted" />
-		</span>
+		<div data-row-key={props.rowKey} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-6 gap-y-2 border-t border-line-soft py-4">
+			<div className="min-w-0">
+				<div className="flex items-center gap-2 font-sans text-[13px] leading-tight font-medium text-ink">{props.title}</div>
+				<div className="mt-0.5 max-w-[56ch] font-sans text-[12px] leading-snug text-muted">{props.description}</div>
+			</div>
+			<div className="flex min-h-7 items-center justify-end gap-2">{props.control}</div>
+			{props.inline === undefined ? null : <div className="col-span-2">{props.inline}</div>}
+			{props.panel === undefined ? null : <div className="col-span-2">{props.panel}</div>}
+		</div>
 	);
 }
 
-export function Segments(props: { value: string; options: readonly { value: string; label: string; hint?: string }[]; onChange: (value: string) => void }) {
+export function SheetPanel(props: { label: string; children: ReactNode }) {
 	return (
-		<div className="grid grid-cols-3 gap-2">
+		<div className="mt-1 rounded-[10px] border border-line bg-canvas p-3.5">
+			<div className="mb-2.5 flex items-center gap-2 font-mono text-[9.5px] tracking-[0.05em] text-muted">
+				<span>{props.label}</span>
+				<span className="ml-auto tracking-[0.04em] text-muted-soft">esc</span>
+			</div>
+			{props.children}
+		</div>
+	);
+}
+
+export function ValueButton(props: { value: string; mono?: boolean; mode?: "panel" | "edit"; expanded?: boolean; onClick: () => void }) {
+	const editing = props.mode === "edit";
+	const Icon = editing ? Pencil : ChevronDown;
+	return (
+		<button
+			type="button"
+			aria-expanded={editing ? undefined : props.expanded}
+			onClick={props.onClick}
+			className={`group -my-1 inline-flex min-h-7 max-w-[300px] cursor-pointer items-center gap-1.5 rounded-[5px] px-1 py-1 text-right font-sans text-[12.5px] leading-tight text-ink-soft transition-colors duration-100 hover:bg-hover hover:text-ink ${props.expanded ? "text-ink" : ""}`}
+		>
+			<span className={`truncate ${props.mono ? "font-mono text-[11.5px] tracking-[-0.01em]" : ""}`}>{props.value}</span>
+			<Icon
+				size={editing ? 12 : 11}
+				className={`shrink-0 transition-[opacity,transform] duration-100 ${editing ? "opacity-0 group-hover:opacity-60 group-focus-visible:opacity-60" : `opacity-40 group-hover:opacity-75 ${props.expanded ? "rotate-180" : ""}`}`}
+			/>
+		</button>
+	);
+}
+
+export function InlineChoices<T extends string | number>(props: {
+	value: T;
+	options: readonly { value: T; label: string; mono?: boolean }[];
+	onChange: (value: T) => void;
+	ariaLabel: string;
+}) {
+	return (
+		<div
+			className="inline-flex items-center gap-0.5 rounded-[8px] p-0.5"
+			style={{ background: "color-mix(in srgb, var(--ink) 4%, transparent)" }}
+			role="group"
+			aria-label={props.ariaLabel}
+		>
 			{props.options.map((option) => {
-				const on = props.value === option.value;
+				const active = option.value === props.value;
 				return (
 					<button
-						key={option.value}
+						key={String(option.value)}
 						type="button"
-						className={`flex h-[38px] cursor-pointer flex-col items-start justify-center gap-0.5 rounded-[8px] border px-2.5 py-1.5 text-left transition-colors duration-100 ${
-							on ? "border-line-strong bg-selected" : "border-line bg-canvas hover:border-ink-soft hover:bg-hover"
-						}`}
-						aria-pressed={on}
+						aria-pressed={active}
 						onClick={() => props.onChange(option.value)}
+						className={`h-[26px] cursor-pointer rounded-[6px] px-2 leading-none whitespace-nowrap transition-colors duration-100 ${
+							option.mono ? "font-mono text-[10.5px] tracking-[-0.01em]" : "font-sans text-[11.5px]"
+						} ${active ? "bg-surface text-ink ring-1 ring-line" : "text-muted hover:bg-hover hover:text-ink"}`}
 					>
-						<span className={`font-sans text-[13px] leading-tight ${on ? "font-medium text-ink" : "text-ink"}`}>{option.label}</span>
-						{option.hint === undefined ? null : <span className="font-sans text-[10px] leading-tight text-muted">{option.hint}</span>}
+						{option.label}
 					</button>
 				);
 			})}
