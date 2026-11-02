@@ -1,5 +1,5 @@
 import type { Notification, SurfaceProps } from "@milu/window/api";
-import { X } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 
@@ -189,8 +189,8 @@ export function ToastOverlay(props: SurfaceProps) {
 					<span className="ledger-count is-bumped" key={visible}>
 						{visible}
 					</span>
-					<button type="button" className="ledger-clear" aria-label="Clear all notifications" onClick={clearAll}>
-						<X size={11} />
+					<button type="button" className="ledger-clear" aria-label="Clear all notifications" title="Clear all" onClick={clearAll}>
+						<Trash2 size={12} strokeWidth={1.7} />
 					</button>
 				</div>
 				<div className="ledger-rows" ref={rows}>
