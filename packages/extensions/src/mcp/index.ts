@@ -1,10 +1,30 @@
-import { IConfigService, type ExecutionEnv, type Extension, ISessionService, ISettingsService, type ToolCall, type ToolResult, IToolService } from "@milu/core";
+import {
+	type AgentHookContext,
+	EVENTS,
+	type ExecutionEnv,
+	type Extension,
+	IConfigService,
+	IHookService,
+	ISessionService,
+	ISettingsService,
+	IToolService,
+	type ToolCall,
+	type ToolResult,
+} from "@milu/core";
 
 import { loadConfig, configPath } from "./config.ts";
 import { grantedServers, setGrantedServer } from "./grants.ts";
 import { type McpParams, McpService, IMcpService, schema } from "./service/index.ts";
 
 export { IMcpService } from "./service/index.ts";
+
+/** The authorized set carried by the last recorded change — the baseline a new change is measured against. */
+function recordedGrants(records: readonly { readonly entry: { readonly type: string; readonly data?: unknown } }[]): string[] {
+	const last = records.at(-1)?.entry;
+	if (last === undefined || last.type !== "custom") return [];
+	const granted = (last.data as { granted?: unknown } | undefined)?.granted;
+	return Array.isArray(granted) ? granted.filter((each): each is string => typeof each === "string") : [];
+}
 
 const mcpExtension: Extension = {
 	id: "mcp",
@@ -73,14 +93,26 @@ const mcpExtension: Extension = {
 		});
 
 		context.actions.register({
-			id: "mcp.partners",
+			id: "mcp.grant",
 			run: async ({ args }) => {
-				const { name, partners } = (args ?? {}) as { name?: unknown; partners?: unknown };
-				if (typeof name !== "string" || name === "" || !Array.isArray(partners)) throw new Error("mcp.partners needs a server name and a partner list");
-				const wanted = new Set(partners.filter((partner): partner is string => typeof partner === "string"));
-				for (const partner of await sessions.names()) await setGrantedServer(sessions.get(partner), name, wanted.has(partner));
+				const { name, partner, granted } = (args ?? {}) as { name?: unknown; partner?: unknown; granted?: unknown };
+				if (typeof name !== "string" || name === "") throw new Error("mcp.grant needs a server name");
+				if (typeof partner !== "string" || partner === "") throw new Error("mcp.grant needs a partner");
+				if (typeof granted !== "boolean") throw new Error("mcp.grant needs granted to be true or false");
+				await setGrantedServer(sessions.get(partner), name, granted);
 			},
 		});
+
+		/* A grant is a file on the chat's own disk, so a change made anywhere — another window, a hand
+		   edit, a chat that was closed at the time — is announced at the next turn rather than missed.
+		   The injected reminder is recorded by the loop, which is what makes it a baseline next time. */
+		const announce = async ({ session, inject }: AgentHookContext): Promise<void> => {
+			const current = await grantedServers(session);
+			const known = recordedGrants(await session.records(EVENTS.mcpChanged));
+			for (const server of current) if (!known.includes(server)) inject({ type: EVENTS.mcpChanged, data: { server, change: "added", granted: current } });
+			for (const server of known) if (!current.includes(server)) inject({ type: EVENTS.mcpChanged, data: { server, change: "removed", granted: current } });
+		};
+		context.disposables.add(context.get(IHookService).on("beforeRequest", announce));
 
 		context.disposables.add(
 			context.get(IToolService).register({

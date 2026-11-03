@@ -159,12 +159,13 @@ const skillsExtension: Extension = {
 		});
 
 		context.actions.register({
-			id: "skills.partners",
+			id: "skills.grant",
 			run: async ({ args }) => {
-				const { name, partners } = (args ?? {}) as { name?: unknown; partners?: unknown };
-				if (typeof name !== "string" || name === "" || !Array.isArray(partners)) throw new Error("skills.partners needs a skill name and a partner list");
-				const wanted = new Set(partners.filter((partner): partner is string => typeof partner === "string"));
-				for (const partner of await sessions.names()) await setGrantedSkill(sessions.get(partner), name, wanted.has(partner));
+				const { name, partner, granted } = (args ?? {}) as { name?: unknown; partner?: unknown; granted?: unknown };
+				if (typeof name !== "string" || name === "") throw new Error("skills.grant needs a skill name");
+				if (typeof partner !== "string" || partner === "") throw new Error("skills.grant needs a partner");
+				if (typeof granted !== "boolean") throw new Error("skills.grant needs granted to be true or false");
+				await setGrantedSkill(sessions.get(partner), name, granted);
 			},
 		});
 

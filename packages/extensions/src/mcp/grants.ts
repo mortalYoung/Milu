@@ -10,7 +10,7 @@ function grantsPath(session: Session): string {
 export async function setGrantedServer(session: Session, name: string, granted: boolean): Promise<void> {
 	const current = await grantedServers(session);
 	const next = granted ? (current.includes(name) ? current : [...current, name]) : current.filter((each) => each !== name);
-	if (granted && next.length === current.length) return;
+	if (next.length === current.length) return;
 	await writeFile(grantsPath(session), `${JSON.stringify({ servers: next }, null, 2)}\n`, "utf8");
 }
 

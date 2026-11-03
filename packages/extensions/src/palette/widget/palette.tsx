@@ -141,9 +141,8 @@ export function PaletteDialog(props: DialogProps) {
 
 	const grant = (row: GrantRow): void => {
 		if (row.alwaysOn || selected === "") return;
-		const action = row.group === "skills" ? "skills.partners" : "mcp.partners";
-		const next = row.granted ? [] : [selected];
-		void host.actions.invoke(action, undefined, { name: row.name, partners: next }).then(loadAccess);
+		const action = row.group === "skills" ? "skills.grant" : "mcp.grant";
+		void host.actions.invoke(action, undefined, { name: row.name, partner: selected, granted: !row.granted }).then(loadAccess);
 	};
 
 	const rows = useMemo<readonly Row[]>(() => {

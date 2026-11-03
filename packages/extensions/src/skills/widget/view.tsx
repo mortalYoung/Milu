@@ -70,13 +70,11 @@ export function SkillsView(props: SurfaceProps) {
 	);
 
 	const toggle = (skill: SkillRow, partner: string): void => {
-		const next = skill.grantedPartners.includes(partner) ? skill.grantedPartners.filter((each) => each !== partner) : [...skill.grantedPartners, partner];
-		void host.actions.invoke("skills.partners", undefined, { name: skill.name, partners: next }).then(load);
+		void host.actions.invoke("skills.grant", undefined, { name: skill.name, partner, granted: !skill.grantedPartners.includes(partner) }).then(load);
 	};
 
 	const toggleServer = (server: ServerRow, partner: string): void => {
-		const next = server.grantedPartners.includes(partner) ? server.grantedPartners.filter((each) => each !== partner) : [...server.grantedPartners, partner];
-		void host.actions.invoke("mcp.partners", undefined, { name: server.name, partners: next }).then(load);
+		void host.actions.invoke("mcp.grant", undefined, { name: server.name, partner, granted: !server.grantedPartners.includes(partner) }).then(load);
 	};
 
 	const read = (skill: SkillRow): void => {
