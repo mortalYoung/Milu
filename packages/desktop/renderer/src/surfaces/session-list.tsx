@@ -87,6 +87,7 @@ function Row(props: {
 		</span>
 	) : null;
 	const runningDot = session.running ? <span className="work-dot" title="running" /> : null;
+	const compactingDot = session.compacting ? <span className="work-ring" title="compacting" /> : null;
 	const unread = props.unread ? <span className="size-[5px] shrink-0 rounded-full bg-ink" title="new messages" /> : null;
 	const workspaceNode =
 		workspace === "" ? (
@@ -147,6 +148,7 @@ function Row(props: {
 				{workspaceNode}
 				<span className="ml-auto flex shrink-0 items-center gap-1.5">
 					{signals}
+					{compactingDot}
 					{runningDot}
 					{pin}
 					{time}
@@ -175,6 +177,7 @@ function Row(props: {
 				{forkButton}
 				{forkOf}
 				{signals}
+				{compactingDot}
 				{runningDot}
 				{pin}
 				{time}
@@ -196,6 +199,7 @@ function Row(props: {
 				{forkButton}
 				{forkOf}
 				{signals}
+				{compactingDot}
 				{runningDot}
 				{pin}
 				{time}

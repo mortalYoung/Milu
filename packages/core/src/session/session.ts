@@ -138,11 +138,13 @@ export class Session {
 
 	readonly onEntry: Event<SeqEntry>;
 	readonly onLoopEvent: Event<AgentLoopEvent>;
+	readonly onCompacting: Event<boolean>;
 
 	private readonly _deps: SessionDeps;
 	private readonly _log: SessionLog;
 	private readonly _entryEmitter = new Emitter<SeqEntry>();
 	private readonly _loopEmitter = new Emitter<AgentLoopEvent>();
+	private readonly _compactingEmitter = new Emitter<boolean>();
 	private readonly _disposables = new DisposableStore();
 	private _loop: AgentLoopService | null = null;
 	private _opening: Promise<AgentLoopService> | null = null;
@@ -153,6 +155,7 @@ export class Session {
 	private _usedTokens: number | null | undefined;
 	private _headerSignature: string | null = null;
 	private _compacted = false;
+	private _compacting = false;
 	private _error: string | null = null;
 	private _prompt = "";
 	private readonly _suspended = new Set<string>();
@@ -166,8 +169,10 @@ export class Session {
 		this._log = new SessionLog(deps.executionService, deps.root);
 		this.onEntry = this._entryEmitter.event;
 		this.onLoopEvent = this._loopEmitter.event;
+		this.onCompacting = this._compactingEmitter.event;
 		this._disposables.add(this._entryEmitter);
 		this._disposables.add(this._loopEmitter);
+		this._disposables.add(this._compactingEmitter);
 		this._disposables.add(this._log);
 		this._disposables.add(this._log.onEntry((entry) => this._entryEmitter.fire(entry)));
 	}
@@ -193,6 +198,7 @@ export class Session {
 			...(workspace ? { workspace: workspace.path } : {}),
 			...(facts.last ? { lastMessage: facts.last.text, lastMessageAt: facts.last.time, lastMessageKind: facts.last.kind } : {}),
 			running: this.running,
+			...(this._compacting ? { compacting: true } : {}),
 			...(forking ? { forking: true } : {}),
 			...(this._error ? { error: this._error } : {}),
 		};
@@ -200,6 +206,10 @@ export class Session {
 
 	get running(): boolean {
 		return this._loop?.isRunning() ?? false;
+	}
+
+	get compacting(): boolean {
+		return this._compacting;
 	}
 
 	/** The live model-visible messages, or nothing before the loop is opened. */
@@ -373,24 +383,37 @@ export class Session {
 	async compact(): Promise<{ shadowed: number } | null> {
 		if (this.running) throw new Error("the chat is busy");
 		if (this.hasSuspended()) throw new Error("an approval is pending");
-		const entries = await this._log.rawEntries();
-		const messages = await this._log.transcript();
-		const plan = await this._deps.compactionService.plan({ session: this, entries, messages });
-		if (!plan) return null;
-		await this._log.record(EVENTS.compaction, {
-			summary: plan.summary,
-			throughEntryId: plan.throughEntryId,
-			shadowedIds: plan.shadowedIds,
-			shadowed: plan.shadowed,
-			tier: plan.tier,
-			timestamp: Date.now(),
-		});
-		this._usedTokens = null;
-		this._compacted = true;
-		const loop = await this.open();
-		loop.restore(await this._log.transcript());
-		await loop.refreshContext();
-		return { shadowed: plan.shadowed };
+		if (this._compacting) throw new Error("a compaction is already running");
+		this._setCompacting(true);
+		try {
+			const entries = await this._log.rawEntries();
+			const messages = await this._log.transcript();
+			const plan = await this._deps.compactionService.plan({ session: this, entries, messages });
+			if (!plan) return null;
+			if (this.running) throw new Error("the chat is busy");
+			await this._log.record(EVENTS.compaction, {
+				summary: plan.summary,
+				throughEntryId: plan.throughEntryId,
+				shadowedIds: plan.shadowedIds,
+				shadowed: plan.shadowed,
+				tier: plan.tier,
+				timestamp: Date.now(),
+			});
+			this._usedTokens = null;
+			this._compacted = true;
+			const loop = await this.open();
+			loop.restore(await this._log.transcript());
+			await loop.refreshContext();
+			return { shadowed: plan.shadowed };
+		} finally {
+			this._setCompacting(false);
+		}
+	}
+
+	private _setCompacting(value: boolean): void {
+		if (this._compacting === value) return;
+		this._compacting = value;
+		this._compactingEmitter.fire(value);
 	}
 
 	async open(): Promise<AgentLoopService> {

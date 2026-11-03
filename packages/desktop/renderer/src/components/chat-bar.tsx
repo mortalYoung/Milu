@@ -22,6 +22,7 @@ export function ChatBar(props: { host: Host }) {
 		void host.slots.load(SLOT_POINTS.chatName, name || undefined);
 	}, [host, name]);
 	const running = useStore(host.sessions.store, (state) => state.rows.find((row) => row.name === name)?.running ?? false);
+	const compacting = useStore(host.sessions.store, (state) => state.rows.find((row) => row.name === name)?.compacting ?? false);
 	const bare = name === "";
 
 	return (
@@ -43,7 +44,12 @@ export function ChatBar(props: { host: Host }) {
 							<span>{name}</span>
 						</button>
 					</Tip>
-					{running ? (
+					{compacting ? (
+						<span className="chat-bar-status">
+							<span className="work-ring" />
+							Compacting…
+						</span>
+					) : running ? (
 						<span className="chat-bar-status">
 							<span className="work-dot" />
 							<span className="work-dot" />

@@ -51,10 +51,16 @@ export interface SessionForkEvent {
 	readonly error?: string;
 }
 
+export interface SessionCompactingEvent {
+	readonly session: string;
+	readonly compacting: boolean;
+}
+
 export class SessionService implements Service {
 	readonly onEntry: Event<SessionEntry>;
 	readonly onLoopEvent: Event<SessionLoopEvent>;
 	readonly onFork: Event<SessionForkEvent>;
+	readonly onCompacting: Event<SessionCompactingEvent>;
 
 	private _partnerRoot = "";
 	private readonly _sessions = new Map<string, Session>();
@@ -62,6 +68,7 @@ export class SessionService implements Service {
 	private readonly _entryEmitter = new Emitter<SessionEntry>();
 	private readonly _loopEmitter = new Emitter<SessionLoopEvent>();
 	private readonly _forkEmitter = new Emitter<SessionForkEvent>();
+	private readonly _compactingEmitter = new Emitter<SessionCompactingEvent>();
 	private readonly _forks = new Map<string, Promise<void>>();
 
 	constructor(
@@ -77,6 +84,7 @@ export class SessionService implements Service {
 		this.onEntry = this._entryEmitter.event;
 		this.onLoopEvent = this._loopEmitter.event;
 		this.onFork = this._forkEmitter.event;
+		this.onCompacting = this._compactingEmitter.event;
 	}
 
 	async initialize(): Promise<void> {
@@ -113,6 +121,7 @@ export class SessionService implements Service {
 		const relays = new DisposableStore();
 		relays.add(session.onEntry((entry) => this._entryEmitter.fire({ session: name, entry })));
 		relays.add(session.onLoopEvent((event) => this._loopEmitter.fire({ session: name, event })));
+		relays.add(session.onCompacting((compacting) => this._compactingEmitter.fire({ session: name, compacting })));
 		this._relays.set(name, relays);
 		return session;
 	}
@@ -223,6 +232,7 @@ export class SessionService implements Service {
 		this._entryEmitter.dispose();
 		this._loopEmitter.dispose();
 		this._forkEmitter.dispose();
+		this._compactingEmitter.dispose();
 		for (const relays of this._relays.values()) relays.dispose();
 		for (const session of this._sessions.values()) session.dispose();
 		this._sessions.clear();

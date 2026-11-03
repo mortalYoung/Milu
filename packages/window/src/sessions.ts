@@ -52,6 +52,10 @@ export class SessionListService implements Service {
 		this.store.setState((state) => ({ ...state, rows: state.rows.map((row) => (row.name === session ? { ...row, running } : row)) }), true);
 	}
 
+	patchCompacting(session: string, compacting: boolean): void {
+		this.store.setState((state) => ({ ...state, rows: state.rows.map((row) => (row.name === session ? { ...row, compacting } : row)) }), true);
+	}
+
 	dispose(): void {}
 }
 

@@ -357,6 +357,10 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 						files.mark(event.path);
 						return;
 					}
+					if (event.type === "compacting") {
+						sessions.patchCompacting(event.session, event.compacting);
+						return;
+					}
 					if (event.type !== "status") return;
 					sessions.patchStatus(event.session, event.running);
 					transcript.markRunning(event.session, event.running);

@@ -478,6 +478,21 @@ body.pane-dragging {
 	animation-delay: 0.4s;
 }
 
+.work-ring {
+	width: 6px;
+	height: 6px;
+	border-radius: 999px;
+	border: 1px solid color-mix(in srgb, var(--accent-teal) 30%, transparent);
+	border-top-color: var(--accent-teal);
+	animation: work-ring 0.9s linear infinite;
+}
+
+@keyframes work-ring {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
 @keyframes work-dot {
 	0%,
 	60%,
@@ -580,6 +595,10 @@ body.pane-dragging {
 	.work-dot {
 		animation: none;
 		opacity: 0.6;
+	}
+	.work-ring {
+		animation: none;
+		opacity: 0.7;
 	}
 }
 

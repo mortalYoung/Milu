@@ -57,6 +57,7 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 	const awaiting = !loaded;
 	const text = useStore(host.transcript.store, (state) => state.drafts[selected] ?? "");
 	const busy = useStore(host.sessions.store, (state) => state.rows.find((row) => row.name === selected)?.running ?? false);
+	const compacting = useStore(host.sessions.store, (state) => state.rows.find((row) => row.name === selected)?.compacting ?? false);
 	const stopping = useStore(host.transcript.store, (state) => state.stopping[selected] === true);
 	const above = useStore(host.slots.store, (state) => state.points[SLOT_POINTS.composerAbove] ?? NO_SLOT_ITEMS);
 	const slotComponents = useStore(host.slots.store, (state) => state.components);
@@ -103,6 +104,7 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 	}, [selected]);
 
 	const submit = async (): Promise<void> => {
+		if (compacting) return;
 		const value = text.trim();
 		if (!value || !selected) return;
 		props.onSent?.();
@@ -310,13 +312,13 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 							<div className="composer-actions-right">
 								{awaiting ? null : <ComposerActions host={host} items={layout.right} />}
 								{showSend ? (
-									<Tip label={stopping ? "Stopping" : busy ? "Stop" : "Send"}>
+									<Tip label={stopping ? "Stopping" : compacting ? "Compacting" : busy ? "Stop" : "Send"}>
 										<button
 											type="button"
 											className={`composer-send${busy ? " composer-stop" : ""}`}
-											aria-label={stopping ? "Stopping" : busy ? "Stop" : "Send"}
-											aria-busy={stopping || undefined}
-											disabled={stopping}
+											aria-label={stopping ? "Stopping" : compacting ? "Compacting" : busy ? "Stop" : "Send"}
+											aria-busy={stopping || compacting || undefined}
+											disabled={stopping || compacting}
 											onClick={() => (busy ? void host.transcript.abort(selected) : void submit())}
 										>
 											{busy ? <SquareIcon size={12} /> : <ArrowUpIcon size={13} />}

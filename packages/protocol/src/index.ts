@@ -69,6 +69,7 @@ export interface SessionRow {
 	readonly pinned?: boolean;
 	readonly readAt?: number;
 	readonly running: boolean;
+	readonly compacting?: boolean;
 	/** The directory is a copy still being written: there is no log to open yet. */
 	readonly forking?: boolean;
 	readonly error?: string;
@@ -261,6 +262,7 @@ export interface PendingItem {
 
 export type LiveEvent =
 	| { readonly type: "status"; readonly session: string; readonly running: boolean }
+	| { readonly type: "compacting"; readonly session: string; readonly compacting: boolean }
 	| { readonly type: "pending"; readonly session: string; readonly items: readonly PendingItem[] }
 	| { readonly type: "fork"; readonly session: string; readonly error?: string }
 	| { readonly type: "selection"; readonly selected: string | null }

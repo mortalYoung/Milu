@@ -87,7 +87,7 @@ export { ILifecycleService, LifecycleService } from "./services/lifecycle.ts";
 export { ModelsService, IModelsService, type ModelRef } from "./services/models.ts";
 export { PromptService, IPromptService } from "./services/prompt.ts";
 export { SelectionService, ISelectionService } from "./services/selection.ts";
-export { SessionService, ISessionService, type SessionEntry, type SessionLoopEvent } from "./services/sessions.ts";
+export { SessionService, ISessionService, type SessionCompactingEvent, type SessionEntry, type SessionLoopEvent } from "./services/sessions.ts";
 export { Session, type SessionDeps } from "./session/session.ts";
 export { SessionLog } from "./session/log.ts";
 export { pendingId, pendingView } from "./session/pending.ts";
