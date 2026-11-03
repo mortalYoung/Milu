@@ -39,6 +39,7 @@ import {
 import type { Session } from "../session/session.ts";
 import { IActionService } from "./actions.ts";
 import type { ActionService } from "./actions.ts";
+import { CapabilityService, ICapabilityService } from "./capabilities.ts";
 import { IComposerService } from "./composer.ts";
 import type { ComposerService } from "./composer.ts";
 import { IConfigService } from "./config.ts";
@@ -81,6 +82,7 @@ export class ExtensionService implements Service {
 	private _activation: Promise<void> = Promise.resolve();
 
 	constructor(
+		@ICapabilityService private readonly _capabilityService: CapabilityService,
 		@IContributionService private readonly _contributionService: ContributionService,
 		@IConfigService private readonly _configService: ConfigService,
 		@IActionService private readonly _actionService: ActionService,
@@ -335,6 +337,7 @@ export class ExtensionService implements Service {
 	}
 
 	private async _callService(id: string, method: string, args: readonly unknown[]): Promise<unknown> {
+		if (id.startsWith("core.")) return this._capabilityService.call(id, method, args);
 		const entry = this._registry.get(id);
 		if (entry === undefined) throw new Error(`service "${id}" is not declared`);
 		if (!entry.methods.includes(method)) throw new Error(`service "${id}" has no method "${method}"`);

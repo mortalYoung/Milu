@@ -47,6 +47,7 @@ export type {
 	HostToolResult,
 } from "./extensions/host.ts";
 export { discoverExtensions, type DiscoveredExtensions, type ExtensionFailure, type ExtensionSource, type LocatedExtension, type WidgetRef } from "./extensions/source.ts";
+export { CapabilityService, ICapabilityService, type CapabilityMethod } from "./services/capabilities.ts";
 export { HookService, IHookService, type AgentHook, type AgentHookContext, type AgentHookPoint } from "./services/hooks.ts";
 export { expandHome } from "./services/settings.ts";
 export {
