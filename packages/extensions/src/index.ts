@@ -36,6 +36,7 @@ export const BUILTIN: Record<string, () => Promise<{ default: Extension }>> = {
 	runtime: () => import("./runtime/index.ts"),
 	models: () => import("./models/index.ts"),
 	meter: () => import("./meter/index.ts"),
+	providers: () => import("./providers/index.ts"),
 	shell: () => import("./shell/index.ts"),
 	tips: () => import("./tips/index.ts"),
 	trajectory: () => import("./trajectory/index.ts"),

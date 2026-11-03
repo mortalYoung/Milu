@@ -1,0 +1,41 @@
+{
+	"name": "milu-deepseek",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"main": "dist/host.js",
+	"milu": {
+		"id": "deepseek",
+		"apiVersion": 1,
+		"widgets": [
+			{
+				"id": "deepseek.spend",
+				"type": "slot",
+				"entry": "dist/spend.js",
+				"export": "SpendChip"
+			},
+			{
+				"id": "deepseek.balance",
+				"type": "widget",
+				"entry": "dist/balance.js",
+				"export": "BalancePill"
+			}
+		],
+		"contributions": {
+			"message.meta": [
+				{
+					"id": "deepseek.spend",
+					"order": 10,
+					"component": "deepseek.spend"
+				}
+			],
+			"composer.right": [
+				{
+					"id": "deepseek.balance",
+					"order": 30,
+					"widget": "deepseek.balance"
+				}
+			]
+		}
+	}
+}

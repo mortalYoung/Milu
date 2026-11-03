@@ -24,6 +24,7 @@ interface Entry {
 interface Record_ {
 	entry: Entry;
 	readonly listeners: Set<() => void>;
+	reload(): void;
 }
 
 const cache = new Map<string, Record_>();
@@ -37,12 +38,19 @@ function recordFor(key: string, load: () => Promise<unknown>): Record_ {
 	const existing = cache.get(key);
 	if (existing) return existing;
 
-	const record: Record_ = { entry: { status: "loading" }, listeners: new Set() };
+	const record: Record_ = {
+		entry: { status: "loading" },
+		listeners: new Set(),
+		reload: () => {
+			publish(record, { status: "loading" });
+			load().then(
+				(data) => publish(record, { status: "ready", data }),
+				(error: unknown) => publish(record, { status: "error", error: error instanceof Error ? error.message : String(error) }),
+			);
+		},
+	};
 	cache.set(key, record);
-	load().then(
-		(data) => publish(record, { status: "ready", data }),
-		(error: unknown) => publish(record, { status: "error", error: error instanceof Error ? error.message : String(error) }),
-	);
+	record.reload();
 	return record;
 }
 
@@ -68,7 +76,13 @@ export function useCommand(): (command: string, ...args: unknown[]) => Promise<u
 	return useWidgetContext().execute;
 }
 
-export function useExtensionData<T>(key: string): { readonly status: "loading" | "ready" | "error"; readonly data: T | undefined; readonly error?: string } {
+export function useExtensionData<T>(key: string): {
+	readonly status: "loading" | "ready" | "error";
+	readonly data: T | undefined;
+	readonly error?: string;
+	/** Ask the extension for the value again — a widget whose number goes stale on a clock uses this. */
+	refresh(): void;
+} {
 	const value = useWidgetContext();
 	const session = useSession();
 	const record = recordFor(`${value.extension}:${key}:${session ?? ""}`, () => value.load(key, session));
@@ -79,5 +93,5 @@ export function useExtensionData<T>(key: string): { readonly status: "loading" |
 		},
 		() => record.entry,
 	);
-	return { status: entry.status, data: entry.data as T | undefined, ...(entry.error === undefined ? {} : { error: entry.error }) };
+	return { status: entry.status, data: entry.data as T | undefined, ...(entry.error === undefined ? {} : { error: entry.error }), refresh: record.reload };
 }
