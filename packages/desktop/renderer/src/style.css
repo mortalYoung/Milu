@@ -1485,6 +1485,20 @@ body.pane-dragging {
 	font-size: 10px;
 	line-height: 1;
 	color: var(--muted);
+	/* the footing's second tier — copy, time, whatever an extension added — follows this one switch */
+	--meta-reveal: 0;
+}
+
+.msg-block:hover .msg-meta,
+.msg-block:has(:focus-visible) .msg-meta,
+.msg-reply:hover .msg-meta,
+.msg-reply:has(:focus-visible) .msg-meta {
+	--meta-reveal: 1;
+}
+
+.msg-meta > :not(.msg-from, .msg-dot) {
+	opacity: var(--meta-reveal);
+	transition: opacity 140ms var(--ease-out);
 }
 
 .msg-block-user .msg-meta {
@@ -1493,8 +1507,6 @@ body.pane-dragging {
 
 .msg-at {
 	font-variant-numeric: tabular-nums;
-	opacity: 0;
-	transition: opacity 140ms var(--ease-out);
 }
 
 .msg-from {
@@ -1521,10 +1533,8 @@ body.pane-dragging {
 	background: transparent;
 	color: var(--muted);
 	cursor: pointer;
-	opacity: 0;
-	transform: translateX(2px);
+	transform: translateX(calc((1 - var(--meta-reveal)) * 2px));
 	transition:
-		opacity 140ms var(--ease-out),
 		transform 140ms var(--ease-out),
 		color 140ms var(--ease-out),
 		background-color 140ms var(--ease-out);
@@ -1533,13 +1543,11 @@ body.pane-dragging {
 .msg-copy:hover {
 	color: var(--ink);
 	background: var(--hover);
-	opacity: 1;
 	transform: none;
 }
 
 .msg-copy:focus-visible {
 	outline: 1px solid var(--ink);
-	opacity: 1;
 	transform: none;
 }
 
@@ -1553,30 +1561,22 @@ body.pane-dragging {
 .msg-block:has(:focus-visible) .msg-copy,
 .msg-reply:hover .msg-copy,
 .msg-reply:has(:focus-visible) .msg-copy {
-	opacity: 1;
 	transform: none;
 }
 
-.msg-block:hover .msg-at,
-.msg-block:has(:focus-visible) .msg-at,
-.msg-reply:hover .msg-at,
-.msg-reply:has(:focus-visible) .msg-at {
-	opacity: 1;
-}
-
 @media (hover: none) {
-	.msg-copy,
-	.msg-at {
-		opacity: 1;
-		transform: none;
+	.msg-meta {
+		--meta-reveal: 1;
 	}
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.msg-copy,
-	.msg-at {
-		transform: none;
+	.msg-meta > :not(.msg-from, .msg-dot) {
 		transition: none;
+	}
+
+	.msg-copy {
+		transform: none;
 	}
 }
 

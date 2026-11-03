@@ -252,6 +252,7 @@ export class IpcServer {
 				[SLOT_POINTS.chatBar]: await this._backend.sessions.slots(SLOT_POINTS.chatBar, selected),
 				[SLOT_POINTS.chatName]: await this._backend.sessions.slots(SLOT_POINTS.chatName, selected),
 				[SLOT_POINTS.chatPanes]: await this._backend.sessions.slots(SLOT_POINTS.chatPanes, selected),
+				[SLOT_POINTS.messageMeta]: await this._backend.sessions.slots(SLOT_POINTS.messageMeta, selected),
 				[SLOT_POINTS.workspaceViews]: await this._backend.sessions.slots(SLOT_POINTS.workspaceViews, selected),
 				[SLOT_POINTS.dockViews]: await this._backend.sessions.slots(SLOT_POINTS.dockViews, selected),
 				[SLOT_POINTS.dockBar]: await this._backend.sessions.slots(SLOT_POINTS.dockBar, selected),

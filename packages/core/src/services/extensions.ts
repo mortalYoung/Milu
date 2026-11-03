@@ -10,6 +10,7 @@ import {
 	COMPOSER_RIGHT_POINT,
 	COMPOSER_TIPS_POINT,
 	COMPOSER_COMMANDS_POINT,
+	MESSAGE_META_POINT,
 	OVERLAY_POINT,
 	type ComposerCommand,
 	type ComposerTipItem,
@@ -122,6 +123,7 @@ export class ExtensionService implements Service {
 		this._contributionService.declare<SlotItem>(DOCK_VIEWS_POINT);
 		this._contributionService.declare<SlotItem>(DOCK_BAR_POINT);
 		this._contributionService.declare<SlotItem>(COMPOSER_ABOVE_POINT);
+		this._contributionService.declare<SlotItem>(MESSAGE_META_POINT);
 		this._contributionService.declare<SlotItem>(OVERLAY_POINT, "global");
 		for (const extension of this._pending) this._register(extension);
 		this._activation = this._activateAll();

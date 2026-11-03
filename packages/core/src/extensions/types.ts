@@ -33,6 +33,7 @@ export const WORKSPACE_VIEWS_POINT = SLOT_POINTS.workspaceViews;
 export const DOCK_VIEWS_POINT = SLOT_POINTS.dockViews;
 export const DOCK_BAR_POINT = SLOT_POINTS.dockBar;
 export const COMPOSER_ABOVE_POINT = SLOT_POINTS.composerAbove;
+export const MESSAGE_META_POINT = SLOT_POINTS.messageMeta;
 export const OVERLAY_POINT = SLOT_POINTS.overlay;
 
 export type { ComposerCommand, SlotItem, WelcomeItem };
@@ -104,6 +105,7 @@ export type ExtensionContributions = {
 	readonly "workspace.views"?: readonly SlotItem[];
 	readonly "dock.views"?: readonly SlotItem[];
 	readonly "dock.bar"?: readonly SlotItem[];
+	readonly "message.meta"?: readonly SlotItem[];
 	readonly "shell.overlay"?: readonly SlotItem[];
 };
 

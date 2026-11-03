@@ -1,4 +1,4 @@
-import { SLOT_POINTS, type SeqEntry } from "@milu/protocol";
+import { type SlotItem, SLOT_POINTS, type SeqEntry } from "@milu/protocol";
 import { type DisplayRow, type Host, type SurfaceProps, type ViewItem, formatHistoryTime, layoutView, liveRowsOf, projectView } from "@milu/window";
 import { Tip } from "@milu/window/api/tooltip";
 import type { MarkdownPort } from "@milu/window/markdown";
@@ -18,6 +18,7 @@ import { TranscriptScroll } from "../scroll-follower.ts";
 const NO_ENTRIES: readonly SeqEntry[] = [];
 const NO_PANES: readonly never[] = [];
 const NO_ROWS: readonly DisplayRow[] = [];
+const NO_ITEMS: readonly SlotItem[] = [];
 
 function CopyButton(props: { text: string }) {
 	const [copied, setCopied] = useState(false);
@@ -39,24 +40,31 @@ function CopyButton(props: { text: string }) {
 	);
 }
 
-function MessageMeta(props: { text: string; time: number; from?: string; className?: string }) {
+/** Extensions say what a message cost, or anything else the row's footing should carry; the shell only makes room. */
+function MessageMeta(props: { host: Host; item: ViewItem; className?: string }) {
+	const items = useStore(props.host.slots.store, (state) => state.points[SLOT_POINTS.messageMeta] ?? NO_ITEMS);
+	const components = useStore(props.host.slots.store, (state) => state.components);
 	return (
 		<div className={props.className === undefined ? "msg-meta" : `msg-meta ${props.className}`}>
-			<CopyButton text={props.text} />
-			{props.from === undefined || props.from === "" ? null : (
+			<CopyButton text={props.item.text} />
+			{props.item.from === undefined || props.item.from === "" ? null : (
 				<>
-					<span className="msg-from">{props.from}</span>
+					<span className="msg-from">{props.item.from}</span>
 					<span className="msg-dot">·</span>
 				</>
 			)}
-			<time className="msg-at" dateTime={new Date(props.time).toISOString()}>
-				{formatHistoryTime(props.time)}
+			{items.map((slot) => {
+				const Widget = components.get(slot.component);
+				return Widget === undefined ? null : <Widget key={slot.id} host={props.host} data={props.item} />;
+			})}
+			<time className="msg-at" dateTime={new Date(props.item.time).toISOString()}>
+				{formatHistoryTime(props.item.time)}
 			</time>
 		</div>
 	);
 }
 
-function UserBubble(props: { item: ViewItem }) {
+function UserBubble(props: { host: Host; item: ViewItem }) {
 	const schedule = props.item.schedule;
 	return (
 		<div className="msg-block msg-block-user" data-entry={props.item.id}>
@@ -70,15 +78,15 @@ function UserBubble(props: { item: ViewItem }) {
 				</div>
 			) : null}
 			<div className="msg-user read-clamp">{props.item.text}</div>
-			<MessageMeta text={props.item.text} time={props.item.time} />
+			<MessageMeta host={props.host} item={props.item} />
 		</div>
 	);
 }
 
-function PeerCard(props: { item: ViewItem; port: MarkdownPort }) {
+function PeerCard(props: { host: Host; item: ViewItem; port: MarkdownPort }) {
 	return (
 		<div className="msg-reply" data-entry={props.item.id}>
-			<MessageMeta text={props.item.text} time={props.item.time} from={props.item.from} className="msg-reply-meta" />
+			<MessageMeta host={props.host} item={props.item} className="msg-reply-meta" />
 			<div className="msg-reply-body read-clamp">
 				<Markdown port={props.port} text={props.item.text} />
 			</div>
@@ -127,7 +135,7 @@ function AssistantBlock(props: { host: Host; item: ViewItem; live?: boolean }) {
 	return (
 		<div className={props.live ? "msg-block msg-block-agent is-live" : "msg-block msg-block-agent"} data-entry={props.item.id}>
 			<Markdown port={props.host.markdown} text={props.item.text} env={env} className="msg-body" plain={props.live} />
-			<MessageMeta text={props.item.text} time={props.item.time} className={props.live ? "invisible" : undefined} />
+			<MessageMeta host={props.host} item={props.item} className={props.live ? "invisible" : undefined} />
 		</div>
 	);
 }
@@ -149,7 +157,7 @@ const TranscriptRow = memo(function TranscriptRow(props: { host: Host; session: 
 				<span>{item.text}</span>
 			</div>
 		);
-	if (item.kind === "user") return item.from ? <PeerCard item={item} port={host.markdown} /> : <UserBubble item={item} />;
+	if (item.kind === "user") return item.from ? <PeerCard host={host} item={item} port={host.markdown} /> : <UserBubble host={host} item={item} />;
 	const Row = host.rows.get(item.kind);
 	if (Row) return createElement(Row, { host, data: { item } });
 	return <AssistantBlock host={host} item={item} />;

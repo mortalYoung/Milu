@@ -121,6 +121,7 @@ export const SLOT_POINTS = {
 	dockBar: "dock.bar",
 	welcomeTimeline: "welcome.timeline",
 	composerAbove: "composer.above",
+	messageMeta: "message.meta",
 	overlay: "shell.overlay",
 } as const;
 
