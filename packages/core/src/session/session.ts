@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { stat } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdir, stat } from "node:fs/promises";
+import { join, resolve } from "node:path";
 
 import type { AgentMessage, AgentToolResult, Entry } from "@earendil-works/pi-agent-core";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
@@ -403,6 +403,9 @@ export class Session {
 	}
 
 	private async _openLoop(): Promise<AgentLoopService> {
+		/* The storage path is in the prompt and is bash's fallback working directory when no workspace
+		   is set, so it has to exist before the first run — not whenever something happens to write. */
+		await mkdir(join(this.root, "storage"), { recursive: true });
 		await this._log.open();
 
 		const loop = new AgentLoopService(this._deps.modelsService, this._deps.toolService, this._deps.hookService, this);

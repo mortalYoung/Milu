@@ -1,3 +1,4 @@
+import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -72,8 +73,12 @@ export class PermissionService implements Service {
 	}
 
 	async env(session: Session, workspace: string | null, mode?: SandboxMode): Promise<ExecutionEnv> {
+		const storage = join(session.root, "storage");
+		/* bash starts here with no workspace, and spawn reports a missing cwd as if the command were
+		   missing — so the directory is made before any policy is handed out. */
+		await mkdir(storage, { recursive: true });
 		return createEnv(
-			{ mode: mode ?? (await this.mode(session)), workspace, storage: join(session.root, "storage"), trash: this.trash() },
+			{ mode: mode ?? (await this.mode(session)), workspace, storage, trash: this.trash() },
 			{
 				sandboxed: this.isConfining(),
 				strictDelete: this._delete ? this._delete.get().strict !== false : true,
