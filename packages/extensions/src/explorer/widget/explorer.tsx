@@ -71,6 +71,20 @@ const isMarkdown = (path: string): boolean => MARKDOWN.has(extensionOf(path));
 
 const relativeOf = (root: string, path: string): string => (root !== "" && path.startsWith(`${root}/`) ? path.slice(root.length + 1) : path);
 
+const ENTITIES: Record<string, string> = { "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'" };
+
+const unescapeHtml = (text: string): string => text.replace(/&(?:amp|lt|gt|quot|#39);/g, (entity) => ENTITIES[entity] ?? entity);
+
+/** The relative images the markdown subset could not resolve on its own, capped so one document cannot flood the reader. */
+function imageSourcesOf(html: string): string[] {
+	const sources = new Set<string>();
+	for (const match of html.matchAll(/data-md-src="([^"]*)"/g)) {
+		const src = unescapeHtml(match[1] ?? "");
+		if (src !== "") sources.add(src);
+	}
+	return [...sources].slice(0, 24);
+}
+
 function Glyph(props: { name: string; className?: string }) {
 	const className = props.className ?? "explorer-row-icon";
 	const extension = extensionOf(props.name);
@@ -525,13 +539,34 @@ function FileReader(props: { host: Host; file: OpenFile; list: ListControls; roo
 	useEffect(() => {
 		if (!render || data === null) return;
 		let alive = true;
-		void host.markdown.renderFull(data.text).then((rendered) => {
-			if (alive) setFull({ path: data.path, html: rendered });
-		});
+		const path = data.path;
+		void (async () => {
+			const rendered = await host.markdown.renderFull(data.text);
+			if (!alive) return;
+			setFull({ path, html: rendered });
+
+			const sources = imageSourcesOf(rendered);
+			if (sources.length === 0 || session === "") return;
+			const images = new Map<string, string>();
+			const resolved = await Promise.all(
+				sources.map(async (src) => {
+					try {
+						const loaded = await host.actions.request<{ dataUrl?: string }>("explorer.image", session, { from: path, path: src });
+						return [src, loaded?.dataUrl] as const;
+					} catch {
+						return [src, undefined] as const;
+					}
+				}),
+			);
+			for (const [src, dataUrl] of resolved) if (dataUrl !== undefined) images.set(src, dataUrl);
+			if (!alive || images.size === 0) return;
+			const withImages = await host.markdown.renderFull(data.text, { images });
+			if (alive) setFull({ path, html: withImages });
+		})();
 		return () => {
 			alive = false;
 		};
-	}, [host, render, data]);
+	}, [host, render, data, session]);
 
 	useEffect(() => {
 		if (data === null || render || language === null) return;

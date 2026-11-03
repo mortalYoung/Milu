@@ -1,4 +1,4 @@
-import { relative } from "node:path";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 
 import { type Extension, IExecutionService, type Session, IWatchService } from "@milu/core";
 
@@ -47,6 +47,19 @@ const BINARY = new Set([
 
 /** A session with no workspace has no tree: the point drops the item instead of rendering an empty pane. */
 const workspaceOnly = async (session: Session): Promise<true | null> => ((await session.workspace()) === null ? null : true);
+
+const IMAGE_MIME: Record<string, string> = {
+	".avif": "image/avif",
+	".bmp": "image/bmp",
+	".gif": "image/gif",
+	".ico": "image/x-icon",
+	".jpeg": "image/jpeg",
+	".jpg": "image/jpeg",
+	".png": "image/png",
+	".svg": "image/svg+xml",
+	".webp": "image/webp",
+};
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
 const extensionOf = (path: string): string => {
 	const at = path.lastIndexOf(".");
@@ -116,6 +129,24 @@ const explorerExtension: Extension = {
 				if (!read.ok) throw new Error(read.error.message);
 				const binary = BINARY.has(extensionOf(path)) || read.value.includes("\u0000");
 				return { data: { path, text: binary ? "" : read.value, size, ...(binary ? { binary: true } : {}) } satisfies ExplorerFile };
+			},
+		});
+
+		context.actions.register({
+			id: "explorer.image",
+			run: async ({ session, args }) => {
+				if (!session) throw new Error("explorer.image needs a session");
+				const { from, path } = (args ?? {}) as { from?: string; path?: string };
+				if (from === undefined || path === undefined) throw new Error("explorer.image needs the document and the image path");
+				const target = isAbsolute(path) ? path : resolve(dirname(from), path);
+				const mime = IMAGE_MIME[extensionOf(target)];
+				if (mime === undefined) throw new Error(`${extensionOf(target) || "this file"} is not an image`);
+				const env = execution.env(await rootOf(session));
+				const info = await env.fileInfo(target);
+				if (info.ok && info.value.size > MAX_IMAGE_BYTES) throw new Error(`image is larger than ${MAX_IMAGE_BYTES / 1024 / 1024} MB`);
+				const read = await env.readBinaryFile(target);
+				if (!read.ok) throw new Error(read.error.message);
+				return { data: { src: path, dataUrl: `data:${mime};base64,${Buffer.from(read.value).toString("base64")}` } };
 			},
 		});
 

@@ -1251,6 +1251,64 @@ body.pane-dragging {
 
 .md img {
 	max-width: 100%;
+	display: inline-block;
+	height: auto;
+	margin: 6px 0;
+	border: 0.5px solid var(--line);
+	border-radius: 4px;
+	vertical-align: middle;
+}
+
+/* Allowlisted HTML from a document: centred blocks, images, disclosures, in-page anchors. */
+.md-center {
+	text-align: center;
+}
+
+.md-image {
+	display: inline-flex;
+	align-items: baseline;
+	gap: 6px;
+	padding: 1px 6px;
+	border: 0.5px dashed var(--line);
+	border-radius: 4px;
+	font-family: var(--sans);
+	font-size: 12px;
+	color: var(--muted);
+	vertical-align: middle;
+}
+
+.md-image::before {
+	content: "image";
+	font-family: var(--mono);
+	font-size: 10px;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+	color: var(--muted-soft);
+}
+
+.md details {
+	margin: 8px 0;
+	padding: 6px 0;
+	border-top: 0.5px solid var(--line);
+	border-bottom: 0.5px solid var(--line);
+}
+
+.md summary {
+	cursor: pointer;
+	font-family: var(--sans);
+	font-size: 13px;
+	font-weight: 500;
+	color: var(--ink-soft);
+}
+
+.md details[open] > summary {
+	margin-bottom: 6px;
+}
+
+.md-anchor {
+	display: block;
+	height: 0;
+	overflow: hidden;
 }
 
 /* ——— transcript rows: a bubble for a prompt, a body for an answer, notes for the steps ——— */

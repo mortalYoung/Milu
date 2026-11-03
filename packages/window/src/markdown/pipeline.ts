@@ -3,6 +3,7 @@ import MarkdownIt, { type MarkdownIt as MarkdownItType } from "markdown-it";
 import { RenderCache } from "./cache.ts";
 import { DEFAULT_PLUGINS } from "./defaults/index.ts";
 import { ensureLanguages, warmLanguages } from "./highlighter.ts";
+import { extractHtmlSubset, restoreHtmlSubset } from "./html.ts";
 import type { MarkdownEnv, MarkdownPort } from "./types.ts";
 import type { MarkdownPlugin, MarkdownTier } from "./types.ts";
 
@@ -126,11 +127,23 @@ export function createMarkdown(plugins: readonly MarkdownPlugin[] = DEFAULT_PLUG
 		return out;
 	};
 
+	/** The allowlisted HTML is drawn around markdown, never passed through raw; a nested body (a
+	 *  `<details>`) comes back here so it renders on the same instance. */
+	const draw = (md: MarkdownItType, text: string, env: MarkdownEnv, tier: MarkdownTier): string => {
+		const { source, slots } = extractHtmlSubset(sourceOf(text, env, tier));
+		const html = htmlOf(md.render(source, env as RenderEnv), env, tier);
+		return restoreHtmlSubset(html, slots, {
+			images: env.images,
+			render: (inner) => draw(md, inner, env, tier),
+			renderInline: (inner) => md.renderInline(inner, env as RenderEnv),
+		});
+	};
+
 	const paint = (md: MarkdownItType, cache: RenderCache, tier: MarkdownTier, text: string, env: MarkdownEnv): string => {
 		const key = cacheKey(text, env);
 		const hit = key === null ? undefined : cache.get(key);
 		if (hit !== undefined) return hit;
-		const html = htmlOf(md.render(sourceOf(text, env, tier), env as RenderEnv), env, tier);
+		const html = draw(md, text, env, tier);
 		if (key !== null) cache.set(key, html);
 		return html;
 	};

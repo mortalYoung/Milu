@@ -2,6 +2,8 @@ import type { MarkdownIt } from "markdown-it";
 
 export interface MarkdownEnv {
 	readonly files?: readonly string[];
+	/** Raw `src` → data URL for images the renderer cannot read from disk itself. */
+	readonly images?: ReadonlyMap<string, string>;
 	readonly session?: string;
 	readonly [key: string]: unknown;
 }
