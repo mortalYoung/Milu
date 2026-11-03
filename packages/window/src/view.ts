@@ -71,6 +71,10 @@ export interface ViewItem {
 	say?: true;
 	live?: true;
 	stopped?: true;
+	/** What this reply cost, when the provider reported it — tokens, and USD from the model catalog. */
+	usage?: { readonly totalTokens: number; readonly cost: number };
+	/** The model that produced it, so a per-message surface can tell one provider's replies apart. */
+	model?: { readonly provider: string; readonly modelId: string };
 	/** The files this run wrote, absolute and inside the workspace — the words a message may link. */
 	files?: readonly string[];
 	escalation?: ViewEscalation;
@@ -176,6 +180,14 @@ interface AssistantBlock {
 	arguments?: unknown;
 }
 
+/** A reply's usage is on the message itself: pi-ai prices it against the model catalog, so nothing is recomputed here. */
+function spendOf(message: { readonly usage?: unknown; readonly provider?: unknown; readonly model?: unknown }): Pick<ViewItem, "usage" | "model"> {
+	const usage = message.usage as { totalTokens?: unknown; cost?: { total?: unknown } } | undefined;
+	const priced = typeof usage?.totalTokens === "number" && typeof usage.cost?.total === "number" ? { usage: { totalTokens: usage.totalTokens, cost: usage.cost.total } } : {};
+	const model = typeof message.provider === "string" && typeof message.model === "string" ? { model: { provider: message.provider, modelId: message.model } } : {};
+	return { ...priced, ...model };
+}
+
 function assistantVisit(entry: LogEntry, out: ViewItem[]): void {
 	if (entry.type !== "message" || entry.message.role !== "assistant") return;
 	const blocks = Array.isArray(entry.message.content) ? (entry.message.content as AssistantBlock[]) : [];
@@ -184,11 +196,13 @@ function assistantVisit(entry: LogEntry, out: ViewItem[]): void {
 	const step = typeof timing?.turnStartTime === "number" && typeof timing?.completedTime === "number" ? { stepMs: Math.max(0, timing.completedTime - timing.turnStartTime) } : {};
 	const stopped = (entry.message as { stopReason?: unknown }).stopReason === "aborted" ? { stopped: true as const } : {};
 	const words = blocks.findIndex((block) => block.type === "text" && String(block.text ?? "").trim() !== "");
+	const spend = spendOf(entry.message);
 	blocks.forEach((block, index) => {
 		const id = index === words || (words === -1 && index === 0) ? entry.id : `${entry.id}-${index}`;
+		const meta = id === entry.id ? spend : {};
 		if (block.type === "text") {
 			const text = String(block.text ?? "").trim();
-			if (text !== "") out.push({ id, kind: "assistant", text, time, ...step, ...stopped });
+			if (text !== "") out.push({ id, kind: "assistant", text, time, ...step, ...stopped, ...meta });
 			return;
 		}
 		if (block.type === "thinking") {
