@@ -205,7 +205,10 @@ export function GitPane(props: SlotProps) {
 					}}
 				>
 					<span className={`git-status ${item.status.toLowerCase()}`}>{item.status}</span>
-					<span className="git-path">{item.path}</span>
+					<span className="git-path">
+						<span className="git-path-dir">{dirName(item.path)}</span>
+						<span className="git-path-name">{baseName(item.path)}</span>
+					</span>
 				</button>
 			))}
 		</Fragment>

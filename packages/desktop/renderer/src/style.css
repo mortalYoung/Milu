@@ -3555,10 +3555,25 @@ body.git-resizing {
 }
 
 .git-path {
+	display: flex;
+	align-items: center;
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+}
+
+.git-path-dir {
+	flex: 0 1 auto;
 	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
-	white-space: nowrap;
+}
+
+.git-path-name {
+	flex: 0 0 auto;
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .git-note {
