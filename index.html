@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>Milu — an agent harness that stays on your machine</title>
+		<meta
+			name="description"
+			content="Pick a chat. It reads files, runs commands, and replies. Every turn is a log; every view is built from it. No account, no server, no telemetry."
+		/>
+		<link rel="icon" href="pixel_milu.png" />
+		<link rel="stylesheet" href="style.css" />
+	</head>
+	<body>
+		<svg class="sprite" aria-hidden="true" focusable="false">
+			<symbol id="w-mark" viewBox="45 40 210 72">
+				<path
+					d="M107.83 44.11c2.57 1.22.97 8.98.61 11.41-1.36 9.26-2.17 18.58-3.61 27.83-.36 2.36-2.56 7.8-.33 9.29 8.95-11.03 15.74-24.62 22.71-36.93 1.33-2.35 5.61-12.3 8.28-10.21.44 4.1-3.07 12.38-4.27 16.59-2.4 8.4-8.58 31.19-6.78 39.02.58 2.57 2.25 3.26 3.28 5.39-.41.44-.81.88-1.22 1.32-4.35-.92-4.66-6-4.93-9.65-.71-9.75 2.86-18.92 4.42-28.34.4-2.44 3.07-7.2 1.51-9.31-6.97 10.04-12.8 21.12-19.33 31.47-1.79 2.84-5.19 9.86-8.67 10.54-2.15-2.13.2-7.28.49-10.03.92-8.7 3.33-17.25 4.04-26 .21-2.56 1.92-6.67.47-8.94-2.63 3.8-3.73 8.9-5.71 13.06-6.11 12.89-19.33 37.12-35.96 37.37-1.95.04-3.51-.32-5.31-1.02-11.28-4.36-1.99-16.66 6.31-17.99 2.42-.39 5.45-2.06 6.98.52-2.42 3.74-12.31.79-15.11 8.68-.53 1.49-.3 3.27.74 4.54 6.89 8.46 21.82-5.27 26.35-10.76 8.77-10.65 13.09-23.26 18.86-35.49 1.19-2.51 3.57-12.01 6.18-12.36Zm94.67 46.05c.46.45.92.89 1.38 1.34-.66 2.88-4.81 7.38-2.38 10.22 4.51-2.02 10.06-10.98 12.32-11.55 2.4.8.6 3.79.35 5.49-.54 3.67.05 6.5 3.65 8.05 6.02 2.62 17.08-4.38 21.68-8.03 1.75-1.39 3.75-4.45 6-4.63 3.1 2.91-8.98 10.53-11.47 11.8-5.74 2.9-13.82 6.66-19.72 2-2.04-1.6-2.12-4.01-3.81-5.71-2.74.51-9.52 9.61-12.34 3.55-.7-1.5.32-3.43-.66-4.69-6.79 5.48-18.58 13.02-27.1 6.77-3.49-2.56-3.53-6.63-5.9-9.7-7.41 6.45-17.36 13.46-27.61 9.84-4.14-1.47-6.21-5.13-5.82-9.41.18-1.98 1.12-6.47 3.76-5.48 1.81 3.04-3.23 7.3.34 10.65 6.63 6.23 17.55-.09 23.22-4.45 1.52-1.17 4.86-2.89 5.53-4.78.83-2.34.09-6.1.2-8.61.2-4.35.85-9.27 2.08-13.45 1.07-3.68 3.24-11.81 8.3-11.38 5.21.45 3.14 7.77 2.61 10.86-1.07 6.22-3.86 12.09-6.26 17.85-.83 1.98-2.4 4.01-2.81 6.13-.41 2.13.21 4.21 1.19 6.08 5.41 10.34 18.8 2.92 25.36-2.17 2.56-1.99 5.12-5.18 7.91-6.59Zm-29-29.51c-4.49 2.63-6.31 14.98-6.76 19.85-.21 2.22-.65 5.19.76 7.08 3.84-5.33 5.38-13.29 6.65-19.63.47-2.36 2-5.89-.65-7.3ZM136.05 82.5c.75 2.36-2.57 4.57-4.69 4.33-1.28-2.21 2.8-5.58 4.69-4.33Z"
+					fill="currentColor"
+					fill-rule="evenodd"
+					stroke="currentColor"
+					stroke-linejoin="round"
+					stroke-width="0.25"
+				/>
+			</symbol>
+			<symbol id="i-search" viewBox="0 0 24 24">
+				<circle cx="11" cy="11" r="7" />
+				<path d="m16.5 16.5 4 4" />
+			</symbol>
+			<symbol id="i-square-pen" viewBox="0 0 24 24">
+				<path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+				<path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z" />
+			</symbol>
+			<symbol id="i-panel-close" viewBox="0 0 24 24">
+				<rect x="3" y="3" width="18" height="18" rx="2" />
+				<path d="M9 3v18" />
+				<path d="m16 15-3-3 3-3" />
+			</symbol>
+			<symbol id="i-folder" viewBox="0 0 24 24">
+				<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+			</symbol>
+			<symbol id="i-folder-tree" viewBox="0 0 24 24">
+				<path d="M20 10a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2.5a1 1 0 0 1-.8-.4l-.9-1.2A1 1 0 0 0 15 3h-2a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z" />
+				<path d="M20 21a1 1 0 0 0 1-1v-3a1 1 0 0 0-1-1h-2.9a1 1 0 0 1-.88-.55l-.42-.85a1 1 0 0 0-.92-.6H13a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1Z" />
+				<path d="M3 5a2 2 0 0 0 2 2h3" />
+				<path d="M3 3v13a2 2 0 0 0 2 2h3" />
+			</symbol>
+			<symbol id="i-file" viewBox="0 0 24 24">
+				<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" />
+				<path d="M14 2v4a2 2 0 0 0 2 2h4" />
+			</symbol>
+			<symbol id="i-terminal" viewBox="0 0 24 24">
+				<path d="m4 17 6-6-6-6" />
+				<path d="M12 19h8" />
+			</symbol>
+			<symbol id="i-pencil" viewBox="0 0 24 24">
+				<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497Z" />
+				<path d="m15 5 4 4" />
+			</symbol>
+			<symbol id="i-wrench" viewBox="0 0 24 24">
+				<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+			</symbol>
+			<symbol id="i-list" viewBox="0 0 24 24"><path d="M3 5h.01M3 12h.01M3 19h.01M8 5h13M8 12h13M8 19h13" /></symbol>
+			<symbol id="i-waypoints" viewBox="0 0 24 24">
+				<path d="m10.586 5.414-5.172 5.172" />
+				<path d="m18.586 13.414-5.172 5.172" />
+				<path d="M6 12h12" />
+				<circle cx="12" cy="20" r="2" />
+				<circle cx="12" cy="4" r="2" />
+				<circle cx="20" cy="12" r="2" />
+				<circle cx="4" cy="12" r="2" />
+			</symbol>
+			<symbol id="i-copy" viewBox="0 0 24 24">
+				<rect x="8" y="8" width="12" height="12" rx="2" />
+				<path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
+			</symbol>
+			<symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5" /></symbol>
+			<symbol id="i-chevron" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6" /></symbol>
+			<symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></symbol>
+			<symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6" /></symbol>
+			<symbol id="i-brain" viewBox="0 0 24 24">
+				<path d="M12 18V5" />
+				<path d="M15 13a4.17 4.17 0 0 1-3-4 4.17 4.17 0 0 1-3 4" />
+				<path d="M17.707 6.294A3 3 0 1 0 12 5a3 3 0 1 0-5.707 1.294" />
+				<path d="M17.996 5.125a4 4 0 0 1 2.526 5.77" />
+				<path d="M18 18a4 4 0 0 0 2-7.465" />
+				<path d="M19.967 17.482a4 4 0 1 1-7.967.517 4 4 0 1 1-7.967-.517" />
+				<path d="M6 18a4 4 0 0 1-2-7.465" />
+				<path d="M6.004 5.125a4 4 0 0 0-2.526 5.77" />
+			</symbol>
+			<symbol id="i-dollar" viewBox="0 0 24 24">
+				<path d="M12 2v20" />
+				<path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+			</symbol>
+			<symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="m5 12 7-7 7 7M12 19V5" /></symbol>
+			<symbol id="i-square" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor" stroke="none" /></symbol>
+			<symbol id="i-replay" viewBox="0 0 24 24">
+				<path d="M3 12a9 9 0 1 0 9-9 9 9 0 0 0-6.36 2.64L3 8" />
+				<path d="M3 3v5h5" />
+			</symbol>
+			<symbol id="i-download" viewBox="0 0 24 24">
+				<path d="M12 3v12" />
+				<path d="m7 10 5 5 5-5" />
+				<path d="M5 21h14" />
+			</symbol>
+			<symbol id="i-github" viewBox="0 0 24 24">
+				<path
+					fill="currentColor"
+					stroke="none"
+					d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"
+				/>
+			</symbol>
+			<symbol id="i-half" viewBox="0 0 24 24">
+				<circle cx="12" cy="12" r="8" />
+				<path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" />
+			</symbol>
+			<symbol id="i-ellipsis" viewBox="0 0 24 24">
+				<circle cx="12" cy="5" r="1.4" fill="currentColor" stroke="none" />
+				<circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
+				<circle cx="12" cy="19" r="1.4" fill="currentColor" stroke="none" />
+			</symbol>
+			<symbol id="i-settings" viewBox="0 0 24 24">
+				<path
+					d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"
+				/>
+				<circle cx="12" cy="12" r="3" />
+			</symbol>
+			<symbol id="i-panel-open" viewBox="0 0 24 24">
+				<rect x="3" y="3" width="18" height="18" rx="2" />
+				<path d="M9 3v18" />
+				<path d="m13 9 3 3-3 3" />
+			</symbol>
+		</svg>
+
+		<header class="nav">
+			<div class="wrap nav-inner">
+				<a class="brand" href="#top" aria-label="Milu — back to top">
+					<img src="pixel_milu.png" alt="" width="24" height="24" />
+					<svg class="wordmark" viewBox="0 0 210 72" role="img" aria-label="Milu"><use href="#w-mark" /></svg>
+				</a>
+				<nav class="nav-links" aria-label="Site">
+					<a href="#demo">Demo</a>
+					<a href="#features">Features</a>
+					<a href="#get">Download</a>
+					<span class="nav-soon">Notes <i>soon</i></span>
+					<a class="nav-github" href="https://github.com/mortalYoung/Milu" target="_blank" rel="noreferrer">GitHub <span class="arrow">↗</span></a>
+					<button class="theme-btn" type="button" aria-label="Toggle light and dark" title="Light / dark">
+						<svg class="ico"><use href="#i-half" /></svg>
+					</button>
+				</nav>
+			</div>
+		</header>
+
+		<main id="top">
+			<section class="hero">
+				<div class="wrap">
+					<p class="eyebrow"><span class="pulse"></span>Local agent harness — macOS</p>
+					<div class="hero-grid">
+						<div class="hero-copy">
+							<h1>An agent harness<br />that stays on your machine.</h1>
+							<p class="lede">Pick a chat. It reads files, runs commands, and replies. Every turn is a log; every view is built from it.</p>
+							<div class="cta-row">
+								<a class="btn btn-primary" href="https://github.com/mortalYoung/Milu" target="_blank" rel="noreferrer">
+									<svg class="ico"><use href="#i-github" /></svg>
+									Source on GitHub
+								</a>
+								<span class="btn btn-secondary is-soon">
+									<svg class="ico"><use href="#i-download" /></svg>
+									Download for macOS
+									<em>soon</em>
+								</span>
+							</div>
+							<p class="micro">No account <span>·</span> no server <span>·</span> no telemetry</p>
+						</div>
+						<div class="hero-notes" aria-hidden="true">
+							<span>Local core</span>
+							<span>One IPC protocol</span>
+							<span>Extensions in and out of process</span>
+						</div>
+					</div>
+				</div>
+			</section>
+
+			<section class="demo" id="demo">
+				<div class="wrap">
+					<div class="demo-stage">
+						<div class="app" aria-label="The Milu app, replaying a real session">
+							<div class="lights" aria-hidden="true"><i></i><i></i><i></i></div>
+
+							<aside class="side">
+								<div class="side-top">
+									<button class="icon-btn" type="button" aria-label="Search chats" title="Search chats (⌘F)">
+										<svg class="ico"><use href="#i-search" /></svg>
+									</button>
+									<span class="side-gap"></span>
+									<button class="icon-btn" type="button" aria-label="New chat" title="New chat">
+										<svg class="ico"><use href="#i-square-pen" /></svg>
+									</button>
+									<button class="icon-btn lg" type="button" id="list-collapse" aria-label="Hide the chat list" title="Hide the chat list (⌘B)">
+										<svg class="ico"><use href="#i-panel-close" /></svg>
+									</button>
+								</div>
+
+								<div class="brand-row">
+									<img src="pixel_milu.png" alt="" width="26" height="26" />
+									<svg class="wordmark" viewBox="0 0 210 72" role="img" aria-label="Milu"><use href="#w-mark" /></svg>
+								</div>
+
+								<div class="rows" id="rows" role="list" aria-label="Chats"></div>
+
+								<div class="side-foot">
+									<button class="foot-row" type="button" title="Settings" aria-label="Settings">
+										<svg class="ico"><use href="#i-settings" /></svg>
+										<span class="foot-keys"><kbd>⌘</kbd><kbd>,</kbd></span>
+									</button>
+								</div>
+							</aside>
+
+							<div
+								class="grip grip-list"
+								id="grip"
+								role="separator"
+								aria-orientation="vertical"
+								aria-label="Resize the chat list"
+								aria-valuemin="200"
+								aria-valuemax="480"
+								aria-valuenow="240"
+								tabindex="0"
+							>
+								<i></i>
+							</div>
+
+							<section class="chat">
+								<header class="chat-bar">
+									<div class="chat-bar-lead">
+										<button class="bar-icon list-expand" type="button" id="list-expand" aria-label="Show the chat list" title="Show the chat list (⌘B)">
+											<svg class="ico"><use href="#i-panel-open" /></svg>
+										</button>
+									</div>
+									<div class="chat-bar-name">
+										<button class="chat-bar-name-text" type="button" aria-label="landing — view details">
+											<span id="bar-name">Landing</span>
+										</button>
+										<span class="chat-bar-status" id="bar-status"><span class="work-dot"></span><span class="work-dot"></span><span class="work-dot"></span>Writing…</span>
+									</div>
+									<div class="chat-bar-tools">
+										<button class="bar-icon" type="button" id="replies-toggle" aria-label="Show Replies" title="Show Replies" aria-pressed="false">
+											<svg class="ico"><use href="#i-list" /></svg>
+										</button>
+										<button class="bar-icon" type="button" id="trajectory-toggle" aria-label="Show Trajectory" title="Show Trajectory" aria-pressed="false">
+											<svg class="ico"><use href="#i-waypoints" /></svg>
+										</button>
+									</div>
+								</header>
+
+								<aside class="replies-pane" id="replies-pane" aria-label="Replies" hidden></aside>
+
+								<aside class="trajectory-pane" id="trajectory-pane" aria-label="Trajectory" hidden>
+									<div class="trajectory-head">
+										<span class="trajectory-title">Trajectory</span>
+										<div class="trajectory-modes" role="group" aria-label="Timeline Projection">
+											<button class="trajectory-mode" type="button" data-mode="slice" aria-pressed="false" aria-label="Model context (slice)" title="Model context (slice)">
+												slice
+											</button>
+											<button class="trajectory-mode" type="button" data-mode="view" aria-pressed="false" aria-label="Chat view" title="Chat view">view</button>
+										</div>
+										<button class="trajectory-close" type="button" aria-label="Close">×</button>
+									</div>
+									<div class="trajectory-list" id="trajectory-list"></div>
+									<div class="trajectory-foot" id="trajectory-foot"></div>
+									<div class="trajectory-pop" id="trajectory-pop" role="dialog" aria-label="Trajectory detail" hidden></div>
+								</aside>
+
+								<div class="transcript" id="transcript">
+									<div class="inner" id="inner"></div>
+								</div>
+
+								<div class="composer-slot">
+									<div class="composer">
+										<div class="composer-row">
+											<div class="starter-row" id="starter-row">
+												<button class="starter" id="starter" type="button" title="Send this question">
+													<span class="starter-mark">?</span><span>What is Milu?</span><span class="starter-go">↵</span>
+												</button>
+											</div>
+											<div class="composer-box">
+												<div class="input-layer">
+													<textarea
+														class="composer-input"
+														rows="1"
+														placeholder="Type a message…"
+														aria-label="Message"
+														disabled
+														title="The composer is disabled in this demo"
+													></textarea>
+												</div>
+												<div class="actions">
+													<button class="composer-icon-btn" type="button" aria-label="Shell mode" title="Shell mode (⇥)">
+														<svg class="ico"><use href="#i-dollar" /></svg>
+													</button>
+													<div class="actions-right">
+														<div class="models" id="models">
+															<button class="composer-icon-btn" type="button" id="models-toggle" aria-label="Model and effort" title="Model and effort">
+																<svg class="ico"><use href="#i-chevron-left" /></svg>
+															</button>
+															<span class="models-label">deepseek-v3.2 · high</span>
+														</div>
+														<button class="meter" type="button" aria-label="Context 34%" title="Context 34%">
+															<svg viewBox="0 0 14 14" width="14" height="14" aria-hidden="true">
+																<circle cx="7" cy="7" r="5.5" fill="none" stroke="var(--line)" stroke-width="2" />
+																<circle
+																	cx="7"
+																	cy="7"
+																	r="5.5"
+																	fill="none"
+																	stroke="var(--ink)"
+																	stroke-width="2"
+																	stroke-linecap="round"
+																	stroke-dasharray="11.75 34.56"
+																	transform="rotate(-90 7 7)"
+																/>
+															</svg>
+														</button>
+														<button class="balance" type="button" title="Priced by the model catalog">$12.40</button>
+													</div>
+												</div>
+											</div>
+										</div>
+									</div>
+								</div>
+							</section>
+						</div>
+					</div>
+
+					<div class="demo-foot">
+						<span>A real session from this repository, replayed</span>
+						<button class="replay" type="button" id="replay">
+							<svg class="ico"><use href="#i-replay" /></svg>
+							<span>Replay</span>
+						</button>
+					</div>
+				</div>
+			</section>
+
+			<section class="features" id="features">
+				<div class="wrap">
+					<div class="section-head">
+						<div>
+							<p class="eyebrow">What it is</p>
+							<h2>Small by design.</h2>
+						</div>
+						<p class="section-sub">One local core, one shell, no server. Every piece is small enough to read — and every view is built from the same append-only log.</p>
+					</div>
+
+					<div class="feature-grid">
+						<article class="feature">
+							<span class="idx">01</span>
+							<h3>Less is more</h3>
+							<p>A minimal prompt, a simple interface, fewer tools. Nothing accumulates by accident.</p>
+						</article>
+						<article class="feature">
+							<span class="idx">02</span>
+							<h3>Everything is a log</h3>
+							<p>Sessions are append-only. Transcript, trajectory, diff and cost are views over the same log.</p>
+						</article>
+						<article class="feature">
+							<span class="idx">03</span>
+							<h3>Permission is a ceiling</h3>
+							<p>A sandbox confines what the agent writes. A wider mode needs a human. <code>rm</code> runs only after the trash has failed.</p>
+						</article>
+						<article class="feature">
+							<span class="idx">04</span>
+							<h3>Memory, per chat</h3>
+							<p>Facts, issues and decisions stay with the chat. Keep talking and it grows into scenes and a persona.</p>
+						</article>
+						<article class="feature">
+							<span class="idx">05</span>
+							<h3>Extensions, in or out of process</h3>
+							<p>Widgets, commands, themes, services. A packaged extension asks the host through capabilities, never handles.</p>
+						</article>
+						<article class="feature">
+							<span class="idx">06</span>
+							<h3>Local, by construction</h3>
+							<p>No account, no server, no telemetry. Keys and data stay on disk.</p>
+						</article>
+					</div>
+				</div>
+			</section>
+
+			<section class="get" id="get">
+				<div class="wrap get-grid">
+					<div class="get-copy">
+						<p class="eyebrow">Get it</p>
+						<h2>Run it on<br />your machine.</h2>
+						<p class="section-sub">No build is shipped yet. The sources are the app — clone, install, start. macOS, Bun and Electron.</p>
+						<div class="cta-row">
+							<a class="btn btn-primary" href="https://github.com/mortalYoung/Milu" target="_blank" rel="noreferrer">
+								<svg class="ico"><use href="#i-github" /></svg>
+								View the source
+							</a>
+							<span class="btn btn-secondary is-soon">
+								<svg class="ico"><use href="#i-download" /></svg>
+								Download for macOS
+								<em>soon</em>
+							</span>
+						</div>
+					</div>
+
+					<div class="get-card">
+						<div class="get-card-head"><span>Terminal</span><span>milu</span></div>
+						<pre class="get-code"><span class="c">$</span> bun install
+<span class="c">$</span> bun run dev <span class="c"># vite + electron</span>
+<span class="c">$</span> bun run check <span class="c"># typecheck, lint, format, boundaries</span></pre>
+						<div class="get-card-foot"><span>macOS</span><span>Electron 44</span><span>Bun</span><span>MIT</span></div>
+					</div>
+				</div>
+			</section>
+		</main>
+
+		<footer class="foot">
+			<div class="wrap">
+				<div class="foot-grid">
+					<div>
+						<a class="foot-brand" href="#top" aria-label="Milu — back to top">
+							<img src="pixel_milu.png" alt="" width="22" height="22" />
+							<svg class="wordmark" viewBox="0 0 210 72" role="img" aria-label="Milu"><use href="#w-mark" /></svg>
+						</a>
+						<p class="foot-tag">An agent harness that stays on your machine.</p>
+					</div>
+					<nav class="foot-links" aria-label="Elsewhere">
+						<a href="https://github.com/mortalYoung/Milu" target="_blank" rel="noreferrer">GitHub</a>
+						<a href="https://github.com/mortalYoung/Milu/issues" target="_blank" rel="noreferrer">Issues</a>
+						<span class="soon">Design notes — soon</span>
+					</nav>
+				</div>
+				<p class="foot-note">
+					<span>Built on pi, Electron and Shiki. © 2026 Milu.</span>
+					<span>No account · no server · no telemetry</span>
+				</p>
+			</div>
+		</footer>
+
+		<script type="module" src="main.js"></script>
+	</body>
+</html>
