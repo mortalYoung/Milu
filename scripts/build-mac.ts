@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdir, readFile, rm, symlink } from "node:fs/promises";
+import { cp, mkdir, readFile, rm, symlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 const ROOT = join(import.meta.dir, "..");
@@ -22,6 +22,8 @@ async function version(): Promise<string> {
 
 const semver = await version();
 const dmg = join(OUT, `Milu-${semver}-arm64.dmg`);
+const rw = join(OUT, `Milu-${semver}-arm64-rw.dmg`);
+const mount = join(OUT, "dmg-mount");
 
 try {
 	console.log(`[build] compiling desktop ${semver}`);
@@ -39,8 +41,21 @@ try {
 	await mkdir(STAGE, { recursive: true });
 	run("ditto", [APP, join(STAGE, "Milu.app")]);
 	await symlink("/Applications", join(STAGE, "Applications"));
-	run("hdiutil", ["create", "-volname", `Milu ${semver}`, "-srcfolder", STAGE, "-ov", "-format", "UDZO", dmg]);
+	run("hdiutil", ["create", "-volname", `Milu ${semver}`, "-srcfolder", STAGE, "-ov", "-format", "UDRW", rw]);
+	await rm(mount, { recursive: true, force: true });
+	await mkdir(mount, { recursive: true });
+	run("hdiutil", ["attach", "-nobrowse", "-readwrite", "-mountpoint", mount, rw]);
+	try {
+		await cp(join(DESKTOP, "build", "icon.icns"), join(mount, ".VolumeIcon.icns"));
+		run("SetFile", ["-a", "C", mount]);
+	} finally {
+		run("hdiutil", ["detach", mount]);
+	}
+	await rm(dmg, { force: true });
+	run("hdiutil", ["convert", rw, "-format", "UDZO", "-o", dmg]);
 	run("hdiutil", ["verify", dmg]);
+	await rm(rw, { force: true });
+	await rm(mount, { recursive: true, force: true });
 	await rm(STAGE, { recursive: true, force: true });
 	console.log(`[build] ${dmg}`);
 } catch (error) {
