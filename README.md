@@ -36,6 +36,7 @@ bun install
 bun run dev             # Vite + Electron, main/preload bundled first
 bun run build           # renderer/dist and dist-electron
 bun run start           # Electron against the built renderer
+bun run site            # the homepage at http://127.0.0.1:4173
 bun run check           # tsc + oxlint + oxfmt + the package boundaries
 ```
 

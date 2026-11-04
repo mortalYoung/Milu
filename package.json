@@ -19,6 +19,7 @@
 		"lint": "oxlint",
 		"lint:fix": "oxlint --fix",
 		"release": "bun scripts/release.ts",
+		"site": "bun scripts/site.ts",
 		"start": "bun run --filter '@milu/desktop' start",
 		"typecheck": "bun run --filter '*' typecheck"
 	},
