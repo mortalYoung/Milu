@@ -1,0 +1,47 @@
+appId: com.milu.app
+productName: Milu
+copyright: Copyright © 2026 Milu
+electronVersion: 44.9.1
+electronDist: node_modules/electron/dist
+directories:
+  output: ../../artifacts/electron-builder
+  buildResources: build
+files:
+  - package.json
+  - dist-electron/**/*
+  - renderer/dist/**/*
+  - build/icon.png
+  - "!node_modules/**/*"
+asar: false
+npmRebuild: false
+nodeGypRebuild: false
+buildDependenciesFromSource: false
+publish: null
+extraMetadata:
+  author: mortalyoung
+  description: An agent harness with a local core
+mac:
+  target:
+    - target: dmg
+      arch:
+        - arm64
+  category: public.app-category.productivity
+  icon: build/icon.icns
+  identity: "-"
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  darkModeSupport: true
+dmg:
+  title: ${productName} ${version}
+  format: UDZO
+  filesystem: HFS+
+  window:
+    width: 540
+    height: 380
+  contents:
+    - x: 140
+      y: 190
+    - x: 400
+      y: 190
+      type: link
+      path: /Applications

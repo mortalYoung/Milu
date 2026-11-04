@@ -22,6 +22,7 @@ A working agent harness.
 ```bash
 bun install
 bun run dev             # Vite + Electron, main/preload bundled first
+bun run build           # package artifacts/Milu-<version>-arm64.dmg
 ```
 
 ## Features

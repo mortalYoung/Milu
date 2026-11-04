@@ -1,6 +1,6 @@
 {
 	"name": "milu",
-	"version": "0.0.0",
+	"version": "0.2.0",
 	"private": true,
 	"description": "An agent harness — a local core behind one IPC protocol, rendered by a desktop shell",
 	"workspaces": [
@@ -9,7 +9,7 @@
 	"type": "module",
 	"scripts": {
 		"boundaries": "bun scripts/boundaries.ts",
-		"build": "bun run --filter '@milu/desktop' build",
+		"build": "bun scripts/build-mac.ts",
 		"check": "bun run typecheck && bun run lint && bun run format:check && bun run boundaries",
 		"dev": "bun scripts/dev.ts",
 		"ext:build": "bun scripts/ext-build.ts",
@@ -26,6 +26,7 @@
 	},
 	"devDependencies": {
 		"@types/bun": "latest",
+		"electron-builder": "^26.18.0",
 		"gh-pages": "^6.3.0",
 		"oxfmt": "^0.73.0",
 		"oxlint": "^1.88.0",
