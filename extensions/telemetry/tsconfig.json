@@ -1,0 +1,14 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"include": ["src"],
+	"compilerOptions": {
+		"lib": ["ESNext", "DOM", "DOM.Iterable"],
+		"jsx": "react",
+		"jsxFactory": "React.createElement",
+		"jsxFragmentFactory": "React.Fragment",
+		"types": [],
+		"paths": {
+			"react": ["../../packages/desktop/node_modules/@types/react"]
+		}
+	}
+}

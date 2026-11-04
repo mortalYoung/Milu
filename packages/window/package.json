@@ -1,0 +1,32 @@
+{
+	"name": "@milu/window",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/index.ts",
+		"./api": "./src/api/index.ts",
+		"./api/tooltip": "./src/api/tooltip.tsx",
+		"./tooltip": "./src/api/tooltip.tsx",
+		"./markdown": "./src/markdown/index.ts",
+		"./markdown/react": "./src/markdown/react.tsx",
+		"./api/markdown": "./src/markdown/index.ts",
+		"./api/markdown/react": "./src/markdown/react.tsx"
+	},
+	"scripts": {
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@milu/di": "workspace:*",
+		"@milu/protocol": "workspace:*",
+		"@radix-ui/react-tooltip": "^1.4.1",
+		"markdown-it": "^15.0.3",
+		"react": "19.3.0",
+		"shiki": "^4.5.0",
+		"zustand": "5.0.15"
+	},
+	"devDependencies": {
+		"@types/markdown-it": "latest",
+		"@types/react": "19.3.0"
+	}
+}

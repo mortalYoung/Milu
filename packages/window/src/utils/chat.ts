@@ -1,0 +1,121 @@
+import type { SessionRow } from "@milu/protocol";
+
+const BOUNDARY = /[/\-_. ]/;
+
+export function fuzzyScore(needle: string, haystack: string): number | null {
+	const n = needle.trim().toLowerCase();
+	if (!n) return 0;
+	const h = haystack.toLowerCase();
+	let score = 0;
+	let from = 0;
+	let previous = -2;
+	for (const ch of n) {
+		const at = h.indexOf(ch, from);
+		if (at === -1) return null;
+		score += at === previous + 1 ? 8 : 1;
+		if (at === 0 || BOUNDARY.test(h[at - 1] ?? "")) score += 6;
+		previous = at;
+		from = at + 1;
+	}
+	return score - (Math.min(h.length, 120) >> 2);
+}
+
+const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+const pad = (n: number) => String(n).padStart(2, "0");
+
+const clockOf = (d: Date) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+function stampOf(d: Date, now: number): string {
+	return `${MONTHS[d.getMonth()]} ${d.getDate()}${d.getFullYear() === new Date(now).getFullYear() ? "" : ` ${d.getFullYear()}`}`;
+}
+
+function dayGap(ts: number, now: number): number {
+	const from = new Date(ts);
+	from.setHours(0, 0, 0, 0);
+	const to = new Date(now);
+	to.setHours(0, 0, 0, 0);
+	return Math.round((to.getTime() - from.getTime()) / 86_400_000);
+}
+
+export interface NextRunParts {
+	readonly day: string;
+	readonly offset: number | null;
+	readonly clock: string;
+}
+
+export function describeNextRun(ts: number, now = Date.now()): NextRunParts {
+	const d = new Date(ts);
+	const days = -dayGap(ts, now);
+	const clock = clockOf(d);
+	if (days === 0) return { day: "", offset: null, clock };
+	return { day: stampOf(d, now), offset: days > 0 ? days : null, clock };
+}
+
+export function listTime(ts: number, now = Date.now()): string {
+	const d = new Date(ts);
+	const days = dayGap(ts, now);
+	if (days === 0) return clockOf(d);
+	if (days >= 1 && days <= 30) return `${days}d ago`;
+	return stampOf(d, now);
+}
+
+export function oneLine(text: string): string {
+	return text.replace(/\s+/g, " ").trim();
+}
+
+export function activityAt(row: SessionRow): number {
+	return row.lastMessageAt ?? row.startedAt ?? row.createdAt;
+}
+
+export function previewFor(row: SessionRow): string {
+	if (row.lastMessage) {
+		const text = oneLine(row.lastMessage);
+		if (row.lastMessageKind === "user") return `You: ${text}`;
+		if (row.lastMessageKind === "command") return `/${text}`;
+		if (row.lastMessageKind === "skill") return `/skill:${text}`;
+		if (row.lastMessageKind === "shell") return `$ ${text}`;
+		return text;
+	}
+	return row.persona?.split("\n").find((line) => line.trim()) ?? "";
+}
+
+export const byPinThenRecency = (a: SessionRow, b: SessionRow) =>
+	Number(b.pinned === true) - Number(a.pinned === true) || activityAt(b) - activityAt(a) || a.name.localeCompare(b.name);
+
+export function filterSessions(rows: readonly SessionRow[], query: string): SessionRow[] {
+	const q = query.trim();
+	if (!q) return [...rows].sort(byPinThenRecency);
+	const hits: { row: SessionRow; name: number | null; persona: number | null; workspace: number | null }[] = [];
+	for (const row of rows) {
+		const name = fuzzyScore(q, row.name);
+		const persona = row.persona ? fuzzyScore(q, row.persona) : null;
+		const workspace = row.workspace ? fuzzyScore(q, row.workspace) : null;
+		if (name !== null || persona !== null || workspace !== null) hits.push({ row, name, persona, workspace });
+	}
+	hits.sort(
+		(a, b) =>
+			Number(b.name !== null) - Number(a.name !== null) ||
+			(b.name ?? 0) - (a.name ?? 0) ||
+			(b.workspace ?? 0) - (a.workspace ?? 0) ||
+			(b.persona ?? 0) - (a.persona ?? 0) ||
+			activityAt(b.row) - activityAt(a.row),
+	);
+	return hits.map(({ row }) => row);
+}
+
+export function tildifyPath(path: string): string {
+	return path.replace(/^\/(?:Users|home)\/[^/]+/, "~");
+}
+
+export function workspaceLabel(row: SessionRow): string {
+	const trimmed = (row.workspace ?? "").replace(/[\\/]+$/, "");
+	return trimmed.split(/[\\/]/).pop() ?? "";
+}
+
+export function formatWorkspacePath(path: string, max = 48): string {
+	const tildified = tildifyPath(path);
+	if (tildified.length <= max) return tildified;
+	const head = tildified.slice(0, Math.ceil(max * 0.45));
+	const tail = tildified.slice(-Math.floor(max * 0.45));
+	return `${head}…${tail}`;
+}

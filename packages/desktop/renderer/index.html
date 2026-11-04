@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="color-scheme" content="light dark" />
+		<title>Milu</title>
+		<script src="/boot.js"></script>
+		<style>
+			/* Only the tokens, the faces and the keys are global. Every rule that shapes the boot frame is nested
+			   under #boot, so it cannot reach the app that mounts into #root once the frame is gone. */
+			:root {
+				color-scheme: light dark;
+				--canvas: light-dark(#faf9f5, #181715);
+				--chrome: light-dark(#f5f0e8, #1f1e1b);
+				--surface: light-dark(#faf9f5, #252320);
+				--ink: light-dark(#141413, #faf9f5);
+				--ink-soft: light-dark(#6c6a64, #a09d96);
+				--muted: light-dark(#6c6a64, #8b8880);
+				--muted-soft: light-dark(#8e8b82, #6e6b64);
+				--line: light-dark(#e6dfd8, color-mix(in srgb, #faf9f5 12%, transparent));
+				--line-strong: light-dark(#c4beb3, #4a4640);
+				--hover: color-mix(in srgb, var(--ink) 7%, transparent);
+				--measure: clamp(720px, 64vw, 980px);
+				--boot-list: 240px;
+				--sans: "Public Sans", ui-sans-serif, system-ui, sans-serif;
+				--mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+				--ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+				--reveal: cubic-bezier(0.4, 0, 0.2, 1);
+			}
+
+			@font-face {
+				font-family: "Public Sans";
+				src: url("/fonts/public-sans.woff2") format("woff2-variations");
+				font-weight: 100 900;
+				font-display: swap;
+			}
+
+			@font-face {
+				font-family: "JetBrains Mono";
+				src: url("/fonts/jetbrains-mono.woff2") format("woff2-variations");
+				font-weight: 100 800;
+				font-display: swap;
+			}
+
+			html,
+			body {
+				height: 100%;
+				margin: 0;
+				background: var(--canvas);
+			}
+
+			#root {
+				height: 100%;
+			}
+
+			#boot {
+				position: fixed;
+				inset: 0;
+				background: var(--canvas);
+				color: var(--ink);
+				font-family: var(--sans);
+				transition: opacity 120ms linear;
+
+				/* ——— the shell, drawn with the geometry the app will paint ——— */
+				& .boot-shell {
+					display: grid;
+					grid-template-columns: var(--boot-list) minmax(0, 1fr);
+					height: 100%;
+				}
+
+				& .boot-rail {
+					display: flex;
+					flex-direction: column;
+					min-height: 0;
+					padding: 0 12px;
+					overflow: hidden;
+					border-right: 1px solid var(--line);
+					background: var(--chrome);
+				}
+
+				& .boot-rail-head {
+					display: flex;
+					flex: none;
+					align-items: center;
+					justify-content: flex-end;
+					gap: 8px;
+					height: 52px;
+					padding-left: 76px;
+					color: var(--muted-soft);
+					-webkit-app-region: drag;
+
+					& span {
+						display: grid;
+						place-items: center;
+						opacity: 0.35;
+					}
+				}
+
+				& .boot-rail-id {
+					display: flex;
+					flex: none;
+					align-items: center;
+					gap: 12px;
+					height: 44px;
+					border-bottom: 1px solid var(--line);
+					color: var(--ink);
+
+					& img {
+						width: 26px;
+						height: 26px;
+						border-radius: 6px;
+						opacity: 0.35;
+					}
+
+					& svg {
+						height: 20px;
+						width: auto;
+						opacity: 0.35;
+					}
+				}
+
+				& .boot-rail-rows {
+					display: flex;
+					flex-direction: column;
+					gap: 2px;
+					padding-top: 8px;
+				}
+
+				& .boot-rail-row {
+					display: flex;
+					align-items: center;
+					gap: 10px;
+					padding: 9px 12px 9px 8px;
+
+					& span:first-child {
+						flex: none;
+						width: 34px;
+						height: 34px;
+						border-radius: 999px;
+						background: color-mix(in srgb, var(--line) 40%, transparent);
+					}
+
+					& span:last-child {
+						display: flex;
+						flex: 1;
+						min-width: 0;
+						flex-direction: column;
+						gap: 11px;
+					}
+
+					& i {
+						display: block;
+						width: 52%;
+						height: 13px;
+						border-radius: 4px;
+						background: color-mix(in srgb, var(--line) 40%, transparent);
+
+						&:last-child {
+							width: 78%;
+							height: 11px;
+						}
+					}
+				}
+
+				& .boot-main {
+					display: flex;
+					flex-direction: column;
+					min-height: 0;
+				}
+
+				& .boot-chat-bar {
+					display: flex;
+					flex: none;
+					align-items: center;
+					height: 52px;
+					-webkit-app-region: drag;
+				}
+
+				& .boot-chat-frame {
+					display: flex;
+					flex: 1;
+					min-height: 0;
+					flex-direction: column;
+					align-items: center;
+					justify-content: center;
+					padding: 22px 24px 12px;
+				}
+
+				& .boot-turns {
+					display: flex;
+					flex-direction: column;
+					gap: 22px;
+					width: var(--measure);
+					max-width: 100%;
+				}
+
+				& .boot-turn {
+					display: flex;
+					flex-direction: column;
+					gap: 9px;
+
+					&.is-user {
+						align-items: flex-end;
+					}
+
+					& i {
+						display: block;
+						width: 68%;
+						height: 12px;
+						border-radius: 4px;
+						background: color-mix(in srgb, var(--line) 45%, transparent);
+						animation: boot-pulse 1.4s ease-in-out infinite;
+
+						&.is-short {
+							width: 44%;
+							animation-delay: 0.15s;
+						}
+
+						&:nth-child(2) {
+							animation-delay: 0.15s;
+						}
+
+						&:nth-child(3) {
+							animation-delay: 0.3s;
+						}
+					}
+
+					&.is-user i {
+						width: 38%;
+						height: 34px;
+						border-radius: 6px;
+					}
+				}
+
+				& .boot-composer-slot {
+					display: flex;
+					flex: none;
+					justify-content: center;
+					padding: 0 24px 12px;
+				}
+
+				& .boot-composer {
+					display: flex;
+					flex-direction: column;
+					gap: 10px;
+					width: calc(var(--measure) + 32px);
+					max-width: 100%;
+					padding: 12px 16px 8px;
+					border: 1px solid var(--line);
+					border-radius: 12px;
+					background: var(--surface);
+
+					& p {
+						margin: 0;
+						font-size: 14px;
+						line-height: 20px;
+						color: var(--muted);
+					}
+
+					& div {
+						display: flex;
+						align-items: center;
+						gap: 6px;
+						height: 26px;
+						padding: 0 2px;
+					}
+
+					& div span {
+						width: 26px;
+						height: 26px;
+						border-radius: 999px;
+						background: color-mix(in srgb, var(--line) 45%, transparent);
+						animation: boot-pulse 1.4s ease-in-out infinite;
+
+						&:last-child {
+							width: 68px;
+							animation-delay: 0.15s;
+						}
+					}
+				}
+
+				/* ——— the hold screen: the whole window, one faint mark, nothing else ——— */
+				& .boot-hold {
+					position: absolute;
+					inset: 0;
+					background: color-mix(in srgb, var(--canvas) 90%, transparent);
+					opacity: 0;
+					pointer-events: none;
+					transition: opacity 320ms var(--reveal);
+					-webkit-app-region: drag;
+					--hold-w: 314px;
+
+					&.is-visible {
+						opacity: 1;
+						pointer-events: auto;
+					}
+
+					& svg {
+						position: absolute;
+						top: 50%;
+						left: 50%;
+						translate: -50% -50%;
+						width: var(--hold-w);
+						height: auto;
+						color: var(--ink);
+						opacity: 0;
+						transition: opacity 560ms var(--reveal);
+
+						& path {
+							opacity: 0.22;
+						}
+					}
+
+					&.is-visible svg {
+						opacity: 1;
+
+						& path {
+							animation: boot-breathe 2.4s ease-in-out infinite;
+						}
+					}
+
+					& button {
+						position: absolute;
+						top: calc(50% + var(--hold-w) * 63.88 / 193.71 / 2 + 34px);
+						left: 50%;
+						translate: -50% 0;
+						height: 30px;
+						padding: 0 14px;
+						border: 1px solid var(--line);
+						border-radius: 6px;
+						background: transparent;
+						color: var(--ink-soft);
+						font-family: var(--mono);
+						font-size: 10px;
+						letter-spacing: 0.08em;
+						text-transform: uppercase;
+						cursor: pointer;
+						-webkit-app-region: no-drag;
+						animation: boot-in 320ms var(--reveal) both;
+						transition:
+							color 120ms var(--ease-out),
+							border-color 120ms var(--ease-out),
+							background-color 120ms var(--ease-out);
+
+						&:hover {
+							color: var(--ink);
+							border-color: var(--line-strong);
+							background: var(--hover);
+						}
+					}
+				}
+
+				/* Reduce motion stops the loops and the travel, not the fades: an opacity ramp is not motion. */
+				@media (prefers-reduced-motion: reduce) {
+					& .boot-turn i,
+					& .boot-composer div span {
+						animation: none;
+						opacity: 0.7;
+					}
+
+					& .boot-hold.is-visible svg path {
+						opacity: 0.45;
+						animation: none;
+					}
+
+					& .boot-hold button {
+						animation-name: boot-fade;
+					}
+				}
+			}
+
+			/* A closed list is a document-level flag, so this one selector stays outside the frame. */
+			html[data-boot-list="closed"] #boot .boot-rail {
+				display: none;
+			}
+
+			@keyframes boot-pulse {
+				0%,
+				100% {
+					opacity: 0.5;
+				}
+				50% {
+					opacity: 1;
+				}
+			}
+
+			@keyframes boot-breathe {
+				0%,
+				100% {
+					opacity: 0.22;
+				}
+				50% {
+					opacity: 0.6;
+				}
+			}
+
+			@keyframes boot-in {
+				from {
+					opacity: 0;
+					transform: translateY(4px);
+				}
+			}
+
+			@keyframes boot-fade {
+				from {
+					opacity: 0;
+				}
+			}
+		</style>
+	</head>
+	<body>
+		<svg width="0" height="0" aria-hidden="true" style="position: absolute">
+			<symbol
+				id="M107.83 44.11c2.57 1.22.97 8.98.61 11.41-1.36 9.26-2.17 18.58-3.61 27.83-.36 2.36-2.56 7.8-.33 9.29 8.95-11.03 15.74-24.62 22.71-36.93 1.33-2.35 5.61-12.3 8.28-10.21.44 4.1-3.07 12.38-4.27 16.59-2.4 8.4-8.58 31.19-6.78 39.02.58 2.57 2.25 3.26 3.28 5.39-.41.44-.81.88-1.22 1.32-4.35-.92-4.66-6-4.93-9.65-.71-9.75 2.86-18.92 4.42-28.34.4-2.44 3.07-7.2 1.51-9.31-6.97 10.04-12.8 21.12-19.33 31.47-1.79 2.84-5.19 9.86-8.67 10.54-2.15-2.13.2-7.28.49-10.03.92-8.7 3.33-17.25 4.04-26 .21-2.56 1.92-6.67.47-8.94-2.63 3.8-3.73 8.9-5.71 13.06-6.11 12.89-19.33 37.12-35.96 37.37-1.95.04-3.51-.32-5.31-1.02-11.28-4.36-1.99-16.66 6.31-17.99 2.42-.39 5.45-2.06 6.98.52-2.42 3.74-12.31.79-15.11 8.68-.53 1.49-.3 3.27.74 4.54 6.89 8.46 21.82-5.27 26.35-10.76 8.77-10.65 13.09-23.26 18.86-35.49 1.19-2.51 3.57-12.01 6.18-12.36Zm94.67 46.05c.46.45.92.89 1.38 1.34-.66 2.88-4.81 7.38-2.38 10.22 4.51-2.02 10.06-10.98 12.32-11.55 2.4.8.6 3.79.35 5.49-.54 3.67.05 6.5 3.65 8.05 6.02 2.62 17.08-4.38 21.68-8.03 1.75-1.39 3.75-4.45 6-4.63 3.1 2.91-8.98 10.53-11.47 11.8-5.74 2.9-13.82 6.66-19.72 2-2.04-1.6-2.12-4.01-3.81-5.71-2.74.51-9.52 9.61-12.34 3.55-.7-1.5.32-3.43-.66-4.69-6.79 5.48-18.58 13.02-27.1 6.77-3.49-2.56-3.53-6.63-5.9-9.7-7.41 6.45-17.36 13.46-27.61 9.84-4.14-1.47-6.21-5.13-5.82-9.41.18-1.98 1.12-6.47 3.76-5.48 1.81 3.04-3.23 7.3.34 10.65 6.63 6.23 17.55-.09 23.22-4.45 1.52-1.17 4.86-2.89 5.53-4.78.83-2.34.09-6.1.2-8.61.2-4.35.85-9.27 2.08-13.45 1.07-3.68 3.24-11.81 8.3-11.38 5.21.45 3.14 7.77 2.61 10.86-1.07 6.22-3.86 12.09-6.26 17.85-.83 1.98-2.4 4.01-2.81 6.13-.41 2.13.21 4.21 1.19 6.08 5.41 10.34 18.8 2.92 25.36-2.17 2.56-1.99 5.12-5.18 7.91-6.59Zm-29-29.51c-4.49 2.63-6.31 14.98-6.76 19.85-.21 2.22-.65 5.19.76 7.08 3.84-5.33 5.38-13.29 6.65-19.63.47-2.36 2-5.89-.65-7.3ZM136.05 82.5c.75 2.36-2.57 4.57-4.69 4.33-1.28-2.21 2.8-5.58 4.69-4.33Z"
+				viewBox="45 40 210 72"
+			>
+				<path
+					d="M107.83 44.11c2.57 1.22.97 8.98.61 11.41-1.36 9.26-2.17 18.58-3.61 27.83-.36 2.36-2.56 7.8-.33 9.29 8.95-11.03 15.74-24.62 22.71-36.93 1.33-2.35 5.61-12.3 8.28-10.21.44 4.1-3.07 12.38-4.27 16.59-2.4 8.4-8.58 31.19-6.78 39.02.58 2.57 2.25 3.26 3.28 5.39-.41.44-.81.88-1.22 1.32-4.35-.92-4.66-6-4.93-9.65-.71-9.75 2.86-18.92 4.42-28.34.4-2.44 3.07-7.2 1.51-9.31-6.97 10.04-12.8 21.12-19.33 31.47-1.79 2.84-5.19 9.86-8.67 10.54-2.15-2.13.2-7.28.49-10.03.92-8.7 3.33-17.25 4.04-26 .21-2.56 1.92-6.67.47-8.94-2.63 3.8-3.73 8.9-5.71 13.06-6.11 12.89-19.33 37.12-35.96 37.37-1.95.04-3.51-.32-5.31-1.02-11.28-4.36-1.99-16.66 6.31-17.99 2.42-.39 5.45-2.06 6.98.52-2.42 3.74-12.31.79-15.11 8.68-.53 1.49-.3 3.27.74 4.54 6.89 8.46 21.82-5.27 26.35-10.76 8.77-10.65 13.09-23.26 18.86-35.49 1.19-2.51 3.57-12.01 6.18-12.36Zm94.67 46.05c.46.45.92.89 1.38 1.34-.66 2.88-4.81 7.38-2.38 10.22 4.51-2.02 10.06-10.98 12.32-11.55 2.4.8.6 3.79.35 5.49-.54 3.67.05 6.5 3.65 8.05 6.02 2.62 17.08-4.38 21.68-8.03 1.75-1.39 3.75-4.45 6-4.63 3.1 2.91-8.98 10.53-11.47 11.8-5.74 2.9-13.82 6.66-19.72 2-2.04-1.6-2.12-4.01-3.81-5.71-2.74.51-9.52 9.61-12.34 3.55-.7-1.5.32-3.43-.66-4.69-6.79 5.48-18.58 13.02-27.1 6.77-3.49-2.56-3.53-6.63-5.9-9.7-7.41 6.45-17.36 13.46-27.61 9.84-4.14-1.47-6.21-5.13-5.82-9.41.18-1.98 1.12-6.47 3.76-5.48 1.81 3.04-3.23 7.3.34 10.65 6.63 6.23 17.55-.09 23.22-4.45 1.52-1.17 4.86-2.89 5.53-4.78.83-2.34.09-6.1.2-8.61.2-4.35.85-9.27 2.08-13.45 1.07-3.68 3.24-11.81 8.3-11.38 5.21.45 3.14 7.77 2.61 10.86-1.07 6.22-3.86 12.09-6.26 17.85-.83 1.98-2.4 4.01-2.81 6.13-.41 2.13.21 4.21 1.19 6.08 5.41 10.34 18.8 2.92 25.36-2.17 2.56-1.99 5.12-5.18 7.91-6.59Zm-29-29.51c-4.49 2.63-6.31 14.98-6.76 19.85-.21 2.22-.65 5.19.76 7.08 3.84-5.33 5.38-13.29 6.65-19.63.47-2.36 2-5.89-.65-7.3ZM136.05 82.5c.75 2.36-2.57 4.57-4.69 4.33-1.28-2.21 2.8-5.58 4.69-4.33Z"
+					fill="currentColor"
+					fill-rule="evenodd"
+					stroke="currentColor"
+					stroke-linejoin="round"
+					stroke-width="0.25"
+				/>
+			</symbol>
+		</svg>
+
+		<div id="boot" role="status" aria-label="Starting" aria-busy="true">
+			<div class="boot-shell">
+				<aside class="boot-rail">
+					<div class="boot-rail-head">
+						<span>
+							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+								<circle cx="11" cy="11" r="7" />
+								<path d="m20 20-3.6-3.6" />
+							</svg>
+						</span>
+						<span>
+							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">
+								<rect x="3" y="4" width="18" height="16" rx="2" />
+								<path d="M9.5 4v16" />
+							</svg>
+						</span>
+					</div>
+					<div class="boot-rail-id">
+						<img src="/pixel_milu.png" alt="" />
+						<svg viewBox="45 40 210 72" aria-hidden="true"><use href="#boot-wordmark" /></svg>
+					</div>
+					<div class="boot-rail-rows">
+						<div class="boot-rail-row">
+							<span></span><span><i></i><i></i></span>
+						</div>
+						<div class="boot-rail-row">
+							<span></span><span><i></i><i></i></span>
+						</div>
+						<div class="boot-rail-row">
+							<span></span><span><i></i><i></i></span>
+						</div>
+						<div class="boot-rail-row">
+							<span></span><span><i></i><i></i></span>
+						</div>
+						<div class="boot-rail-row">
+							<span></span><span><i></i><i></i></span>
+						</div>
+					</div>
+				</aside>
+				<div class="boot-main">
+					<div class="boot-chat-bar"></div>
+					<div class="boot-chat-frame">
+						<div class="boot-turns">
+							<div class="boot-turn is-user"><i></i></div>
+							<div class="boot-turn"><i></i><i class="is-short"></i><i></i></div>
+						</div>
+					</div>
+					<div class="boot-composer-slot">
+						<div class="boot-composer">
+							<p>Type a message…</p>
+							<div><span></span><span></span></div>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<div class="boot-hold" id="boot-hold">
+				<svg viewBox="52.3 44.11 193.71 63.88" role="img" aria-label="Milu">
+					<path
+						d="M107.83 44.11c2.57 1.22.97 8.98.61 11.41-1.36 9.26-2.17 18.58-3.61 27.83-.36 2.36-2.56 7.8-.33 9.29 8.95-11.03 15.74-24.62 22.71-36.93 1.33-2.35 5.61-12.3 8.28-10.21.44 4.1-3.07 12.38-4.27 16.59-2.4 8.4-8.58 31.19-6.78 39.02.58 2.57 2.25 3.26 3.28 5.39-.41.44-.81.88-1.22 1.32-4.35-.92-4.66-6-4.93-9.65-.71-9.75 2.86-18.92 4.42-28.34.4-2.44 3.07-7.2 1.51-9.31-6.97 10.04-12.8 21.12-19.33 31.47-1.79 2.84-5.19 9.86-8.67 10.54-2.15-2.13.2-7.28.49-10.03.92-8.7 3.33-17.25 4.04-26 .21-2.56 1.92-6.67.47-8.94-2.63 3.8-3.73 8.9-5.71 13.06-6.11 12.89-19.33 37.12-35.96 37.37-1.95.04-3.51-.32-5.31-1.02-11.28-4.36-1.99-16.66 6.31-17.99 2.42-.39 5.45-2.06 6.98.52-2.42 3.74-12.31.79-15.11 8.68-.53 1.49-.3 3.27.74 4.54 6.89 8.46 21.82-5.27 26.35-10.76 8.77-10.65 13.09-23.26 18.86-35.49 1.19-2.51 3.57-12.01 6.18-12.36Zm94.67 46.05c.46.45.92.89 1.38 1.34-.66 2.88-4.81 7.38-2.38 10.22 4.51-2.02 10.06-10.98 12.32-11.55 2.4.8.6 3.79.35 5.49-.54 3.67.05 6.5 3.65 8.05 6.02 2.62 17.08-4.38 21.68-8.03 1.75-1.39 3.75-4.45 6-4.63 3.1 2.91-8.98 10.53-11.47 11.8-5.74 2.9-13.82 6.66-19.72 2-2.04-1.6-2.12-4.01-3.81-5.71-2.74.51-9.52 9.61-12.34 3.55-.7-1.5.32-3.43-.66-4.69-6.79 5.48-18.58 13.02-27.1 6.77-3.49-2.56-3.53-6.63-5.9-9.7-7.41 6.45-17.36 13.46-27.61 9.84-4.14-1.47-6.21-5.13-5.82-9.41.18-1.98 1.12-6.47 3.76-5.48 1.81 3.04-3.23 7.3.34 10.65 6.63 6.23 17.55-.09 23.22-4.45 1.52-1.17 4.86-2.89 5.53-4.78.83-2.34.09-6.1.2-8.61.2-4.35.85-9.27 2.08-13.45 1.07-3.68 3.24-11.81 8.3-11.38 5.21.45 3.14 7.77 2.61 10.86-1.07 6.22-3.86 12.09-6.26 17.85-.83 1.98-2.4 4.01-2.81 6.13-.41 2.13.21 4.21 1.19 6.08 5.41 10.34 18.8 2.92 25.36-2.17 2.56-1.99 5.12-5.18 7.91-6.59Zm-29-29.51c-4.49 2.63-6.31 14.98-6.76 19.85-.21 2.22-.65 5.19.76 7.08 3.84-5.33 5.38-13.29 6.65-19.63.47-2.36 2-5.89-.65-7.3ZM136.05 82.5c.75 2.36-2.57 4.57-4.69 4.33-1.28-2.21 2.8-5.58 4.69-4.33Z"
+						fill="currentColor"
+						fill-rule="evenodd"
+						stroke="currentColor"
+						stroke-linejoin="round"
+						stroke-width="0.25"
+					/>
+				</svg>
+				<button type="button" id="boot-retry" hidden>Retry</button>
+			</div>
+		</div>
+		<div id="root"></div>
+
+		<script type="module" src="/src/main.ts"></script>
+	</body>
+</html>

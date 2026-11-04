@@ -1,16 +1,13 @@
 node_modules/
-build/
 dist/
+dist-electron/
+build/
+!packages/desktop/build/
 artifacts/
 .logs/
 *.tsbuildinfo
+
 .env
 .env.local
-dist/
-docs/
-.database/
-design-previews
 
-# Electrobun 2.x Hutch devkit (projected on first sync)
-.hutch/
-.cottontail-tmp/
+.DS_Store

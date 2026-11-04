@@ -1,32 +1,3 @@
 {
-	"compilerOptions": {
-		"lib": ["ESNext", "DOM"],
-		"target": "ESNext",
-		"module": "ESNext",
-		"moduleDetection": "force",
-		"jsx": "react-jsx",
-		"allowJs": true,
-		"moduleResolution": "bundler",
-		"allowImportingTsExtensions": true,
-		"verbatimModuleSyntax": true,
-		"noEmit": true,
-		"strict": true,
-		"skipLibCheck": true,
-		"noFallthroughCasesInSwitch": true,
-		"noUnusedLocals": true,
-		"noUnusedParameters": true,
-		"noPropertyAccessFromIndexSignature": true,
-		// Bun runtime + test declarations (via @types/bun → bun-types).
-		"types": ["bun"],
-		// Electrobun 2.x SDK lives in the Hutch-projected devkit (not npm);
-		// TS 7 removed baseUrl, so paths resolve from this tsconfig's directory.
-		"paths": {
-			"electrobun": ["./.hutch/devkit/api/sdks/main/index.ts"],
-			"electrobun/main": ["./.hutch/devkit/api/sdks/main/index.ts"],
-			"electrobun/main/ui": ["./.hutch/devkit/api/sdks/main/ui/index.ts"],
-			"electrobun/view": ["./.hutch/devkit/api/browser/index.ts"]
-		}
-	},
-	"include": ["src/**/*"],
-	"exclude": ["node_modules", "dist", "build", "../../package/dist"]
+	"compilerOptions": { "experimentalDecorators": true }
 }
