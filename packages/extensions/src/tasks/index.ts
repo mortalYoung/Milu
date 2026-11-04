@@ -75,6 +75,7 @@ const tasksExtension: Extension = {
 						if (summary.running === 0) return null;
 						return summary.running === 1 ? "1 running background task" : `${summary.running} running background tasks`;
 					},
+					count: async (session) => (await tasks.summary(session)).running,
 				}),
 		);
 

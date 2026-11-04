@@ -86,8 +86,6 @@ function Row(props: {
 			<PinIcon size={9} className="text-muted" />
 		</span>
 	) : null;
-	const runningDot = session.running ? <span className="work-dot" title="running" /> : null;
-	const compactingDot = session.compacting ? <span className="work-ring" title="compacting" /> : null;
 	const unread = props.unread ? <span className="size-[5px] shrink-0 rounded-full bg-ink" title="new messages" /> : null;
 	const workspaceNode =
 		workspace === "" ? (
@@ -111,16 +109,38 @@ function Row(props: {
 			</span>
 		);
 	const signalList = session.signals ?? [];
+	const taskSignal = signalList.find((signal) => typeof signal.count === "number" && signal.count > 0);
+	const taskCount = taskSignal?.count ?? 0;
+	const otherSignals = taskSignal === undefined ? signalList : signalList.filter((signal) => signal !== taskSignal);
 	const signals =
-		signalList.length > 0 ? (
+		otherSignals.length > 0 ? (
 			<span className="flex shrink-0 items-center gap-1">
-				{signalList.map((signal) => (
+				{otherSignals.map((signal) => (
 					<span key={signal.id} role="img" aria-label={signal.title} title={signal.title} className="inline-flex text-muted">
 						<IconByName name={signal.icon} size={9} />
 					</span>
 				))}
 			</span>
 		) : null;
+	const live = session.running === true || session.compacting === true;
+	const statusLabel = session.running
+		? `WRITING${taskCount > 0 ? ` +${taskCount}` : ""}`
+		: session.compacting
+			? `COMPACTING${taskCount > 0 ? ` +${taskCount}` : ""}`
+			: taskCount > 0
+				? `${taskCount} TASK${taskCount === 1 ? "" : "S"}`
+				: "";
+	const statusTitle = session.running
+		? `running${taskCount > 0 ? ` · ${taskCount} background task${taskCount === 1 ? "" : "s"}` : ""}`
+		: session.compacting
+			? `compacting${taskCount > 0 ? ` · ${taskCount} background task${taskCount === 1 ? "" : "s"}` : ""}`
+			: (taskSignal?.title ?? "");
+	const status =
+		statusLabel === "" ? null : (
+			<span className={`session-status${live ? " is-live" : ""}`} title={statusTitle}>
+				<span>{statusLabel}</span>
+			</span>
+		);
 	const hasMeta = props.showWorkspace;
 	const forkButton =
 		props.forks > 0 ? (
@@ -148,8 +168,7 @@ function Row(props: {
 				{workspaceNode}
 				<span className="ml-auto flex shrink-0 items-center gap-1.5">
 					{signals}
-					{compactingDot}
-					{runningDot}
+					{status}
 					{pin}
 					{time}
 				</span>
@@ -177,8 +196,7 @@ function Row(props: {
 				{forkButton}
 				{forkOf}
 				{signals}
-				{compactingDot}
-				{runningDot}
+				{status}
 				{pin}
 				{time}
 			</span>
@@ -199,8 +217,7 @@ function Row(props: {
 				{forkButton}
 				{forkOf}
 				{signals}
-				{compactingDot}
-				{runningDot}
+				{status}
 				{pin}
 				{time}
 			</span>
@@ -212,7 +229,7 @@ function Row(props: {
 
 	return (
 		<div
-			className={`group relative flex cursor-pointer gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-100 hover:bg-hover${forking ? " cursor-default" : ""}${props.selected ? " bg-selected" : ""}${active ? " bg-selected ring-1 ring-line-strong ring-inset" : ""}${familyActive ? " session-family" : ""}`}
+			className={`group relative flex cursor-pointer gap-2 rounded-md px-2 py-1.5 text-left transition-colors duration-100 hover:bg-hover${forking ? " cursor-default" : ""}${props.selected ? " bg-selected" : ""}${active ? " bg-selected ring-1 ring-line-strong ring-inset" : ""}${familyActive ? " session-family" : ""}${live ? " session-busy" : ""}`}
 			role="button"
 			tabIndex={0}
 			aria-disabled={forking ? true : undefined}

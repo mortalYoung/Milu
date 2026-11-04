@@ -56,6 +56,7 @@ export interface SessionSignal {
 	readonly id: string;
 	readonly title: string;
 	readonly icon?: string;
+	readonly count?: number;
 }
 
 export interface SessionRow {

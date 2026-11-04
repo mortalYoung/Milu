@@ -53,6 +53,7 @@ export interface SessionSignalItem {
 	readonly order?: number;
 	readonly title: SessionValue<string>;
 	readonly icon?: string;
+	readonly count?: SessionValue<number>;
 }
 
 export interface SessionMenuItemBase {

@@ -364,9 +364,18 @@ export class SessionService implements Service {
 		for (const item of point.all()) {
 			const title = typeof item.title === "function" ? await item.title(session) : item.title;
 			if (!title) continue;
-			resolved.push({ id: item.id, title, ...(item.icon ? { icon: item.icon } : {}), order: item.order ?? 0 });
+			const count = typeof item.count === "function" ? await item.count(session) : item.count;
+			resolved.push({
+				id: item.id,
+				title,
+				...(item.icon ? { icon: item.icon } : {}),
+				...(typeof count === "number" ? { count } : {}),
+				order: item.order ?? 0,
+			});
 		}
-		return resolved.sort((left, right) => left.order - right.order || left.id.localeCompare(right.id)).map(({ id, title, icon }) => ({ id, title, ...(icon ? { icon } : {}) }));
+		return resolved
+			.sort((left, right) => left.order - right.order || left.id.localeCompare(right.id))
+			.map(({ id, title, icon, count }) => ({ id, title, ...(icon ? { icon } : {}), ...(typeof count === "number" ? { count } : {}) }));
 	}
 
 	private async _rowOf(session: Session): Promise<SessionRow> {
