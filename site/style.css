@@ -810,6 +810,10 @@ body.pane-dragging {
 	background: var(--selected);
 }
 
+.row.is-running {
+	background-image: linear-gradient(90deg, color-mix(in srgb, var(--accent-teal) 6%, transparent), transparent 74%);
+}
+
 .row:focus-visible {
 	outline: 1px solid var(--line-strong);
 	outline-offset: -1px;
@@ -860,6 +864,51 @@ body.pane-dragging {
 	border-radius: 50%;
 	background: var(--accent-teal);
 	opacity: 0;
+}
+
+.session-status {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	height: 16px;
+	padding: 0 6px;
+	overflow: hidden;
+	border: 0.5px solid color-mix(in srgb, var(--accent-teal) 30%, transparent);
+	border-radius: var(--r4);
+	background: color-mix(in srgb, var(--accent-teal) 10%, transparent);
+	color: var(--accent-teal);
+	font-family: var(--mono);
+	font-size: 8.5px;
+	line-height: 1;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	white-space: nowrap;
+}
+
+.session-status.is-live::after {
+	content: "";
+	position: absolute;
+	inset: 0 auto 0 0;
+	width: 46%;
+	transform: translateX(-130%);
+	background: linear-gradient(45deg, transparent, color-mix(in srgb, var(--accent-teal) 10%, transparent), transparent);
+	animation: session-shimmer 4s ease-in-out infinite;
+	pointer-events: none;
+}
+
+.session-status > span {
+	position: relative;
+	z-index: 1;
+}
+
+@keyframes session-shimmer {
+	0% {
+		transform: translateX(-130%);
+	}
+	70%,
+	100% {
+		transform: translateX(280%);
+	}
 }
 
 .is-running .work-dot {
@@ -2750,6 +2799,10 @@ body.pane-dragging {
 	}
 	.work-dot {
 		animation: none;
+	}
+	.session-status.is-live::after {
+		animation: none;
+		opacity: 0;
 	}
 	.step-body {
 		transition: none;

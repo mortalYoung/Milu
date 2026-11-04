@@ -233,7 +233,7 @@ function renderSidebar() {
 			: `${icon("folder")}<span class="row-repo">${session.repo}</span>`;
 		return `
 					<div class="row${selectedRow ? " is-selected" : ""}${running ? " is-running" : ""}" role="listitem" tabindex="0" data-id="${session.id}" aria-current="${selectedRow ? "true" : "false"}" aria-label="${session.name}">
-						<div class="row-meta">${workspace}<span class="row-right"><span class="work-dot"></span><span class="when">${session.when}</span></span></div>
+						<div class="row-meta">${workspace}<span class="row-right">${running ? '<span class="session-status is-live"><span>WRITING</span></span>' : ""}<span class="when">${session.when}</span></span></div>
 						<div class="row-name">${session.name}</div>
 						<div class="row-preview">${session.preview}</div>
 						<span class="row-menu" aria-hidden="true">${icon("ellipsis")}</span>
