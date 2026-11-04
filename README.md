@@ -37,8 +37,11 @@ bun run dev             # Vite + Electron, main/preload bundled first
 bun run build           # renderer/dist and dist-electron
 bun run start           # Electron against the built renderer
 bun run site            # the homepage at http://127.0.0.1:4173
+bun run site:deploy     # publish site/ with gh-pages
 bun run check           # tsc + oxlint + oxfmt + the package boundaries
 ```
+
+The first deploy needs Pages enabled once: **Settings → Pages → Deploy from a branch → `gh-pages` / (root)**.
 
 There is no test suite by design; behavior is verified by hand.
 
