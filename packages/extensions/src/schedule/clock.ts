@@ -142,6 +142,15 @@ export class ScheduleClock {
 		return definition;
 	}
 
+	async remove(id: string): Promise<boolean> {
+		const before = this._definitions.length;
+		this._definitions = this._definitions.filter((item) => item.id !== id);
+		if (this._definitions.length === before) return false;
+		await saveDefinitions(this._options.session.root, this._definitions);
+		this._arm();
+		return true;
+	}
+
 	async run(id: string): Promise<RunRecord> {
 		const definition = this._definitions.find((item) => item.id === id);
 		if (!definition) throw new Error(`no schedule "${id}"`);
