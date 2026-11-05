@@ -14,6 +14,7 @@
 		"@milu/core": "workspace:*",
 		"@milu/di": "workspace:*",
 		"@milu/extensions": "workspace:*",
+		"@milu/protocol": "workspace:*",
 		"@milu/window": "workspace:*"
 	},
 	"devDependencies": {
