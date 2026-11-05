@@ -22,8 +22,8 @@ import { loadDefinitions, type ScheduleDefinition } from "./store.ts";
 export { IScheduleService } from "./service/index.ts";
 
 const schema = Type.Object({
-	op: Type.Union([Type.Literal("list"), Type.Literal("create"), Type.Literal("run")], {
-		description: 'What to do: "list" the schedules on this chat, "create" a new one, or "run" one now.',
+	op: Type.Union([Type.Literal("list"), Type.Literal("create"), Type.Literal("run"), Type.Literal("delete")], {
+		description: 'What to do: "list" the schedules on this chat, "create" a new one, "run" one now, or "delete" one.',
 	}),
 	when: Type.Optional(
 		Type.String({
@@ -33,11 +33,11 @@ const schema = Type.Object({
 	),
 	text: Type.Optional(Type.String({ description: "create: what this chat should do when it fires, written as the message it will receive." })),
 	title: Type.Optional(Type.String({ description: "create: a short label a human will read in the schedule list. Defaults to the clock itself." })),
-	id: Type.Optional(Type.String({ description: 'run: the schedule id, as it appears at the start of a list line — e.g. "s1a2b3".' })),
+	id: Type.Optional(Type.String({ description: 'run or delete: the schedule id, as it appears at the start of a list line — e.g. "s1a2b3".' })),
 });
 
 interface ScheduleParams {
-	op: "list" | "create" | "run";
+	op: "list" | "create" | "run" | "delete";
 	when?: string;
 	text?: string;
 	title?: string;
@@ -148,6 +148,7 @@ const scheduleExtension: Extension = {
 					"- list: every schedule on this chat, with its next run and how many times it has fired.\n" +
 					"- create: one new schedule. It runs as a message to this chat, in this workspace, with the permission mode in force at that moment.\n" +
 					"- run: send one now instead of waiting for the clock. Only an active schedule runs; its next fire does not move and the run does not count against the daily cap.\n" +
+					"- delete: remove one schedule from this chat. Its past runs stay in the history; it only stops firing from now on — a run already dispatched cannot be taken back.\n" +
 					"Milu only runs while it is open: a fire that comes due while the app is closed is missed, not queued up (a repeating one runs at most once on restart; a fixed-time one is skipped).\n" +
 					"Ask first when the user has not asked for this themselves.",
 				parameters: schema,
@@ -166,6 +167,13 @@ const scheduleExtension: Extension = {
 						if (!result.ok) return say(`Could not run it: ${result.error}`);
 						if (result.record.status === "dispatched") return say(`Ran ${id} now — the message is in this chat.`);
 						return say(`Tried ${id} now, but it was skipped: ${result.record.error ?? "unknown reason"}.`);
+					}
+
+					if (op === "delete") {
+						if (!id) return say("delete needs `id` — the schedule id from a list line.");
+						const result = await schedule.remove(call.session, id);
+						if (!result.ok) return say(`Could not delete it: ${result.error}`);
+						return say(result.removed ? `Deleted ${id}. Its past runs stay in the history.` : `No schedule "${id}" on this chat — nothing to delete.`);
 					}
 
 					if (!when || !text) return say("create needs both `when` (a 5-field cron expression) and `text` (what to do).");

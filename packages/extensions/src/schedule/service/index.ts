@@ -89,6 +89,12 @@ export class ScheduleService implements Service {
 		return { ok: true, record: await clock.run(id) };
 	}
 
+	async remove(session: Session, id: string): Promise<{ ok: true; removed: boolean } | { ok: false; error: string }> {
+		const clock = await this.clock(session);
+		if (!clock) return { ok: false, error: "scheduling is disabled in settings" };
+		return { ok: true, removed: await clock.remove(id) };
+	}
+
 	async create(session: Session, input: { when: string; text: string; title?: string }): Promise<{ ok: true; definition: ScheduleDefinition } | { ok: false; error: string }> {
 		if (input.text.trim() === "") return { ok: false, error: "a scheduled task needs something to do" };
 		const clock = await this.clock(session);
