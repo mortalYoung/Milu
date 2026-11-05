@@ -403,6 +403,12 @@ body.pane-dragging {
 	white-space: nowrap;
 }
 
+.session-status.is-approval {
+	border-color: color-mix(in srgb, var(--accent-amber) 30%, transparent);
+	background: color-mix(in srgb, var(--accent-amber) 10%, transparent);
+	color: color-mix(in srgb, var(--accent-amber) 50%, var(--ink));
+}
+
 .session-status.is-live::after {
 	content: "";
 	position: absolute;

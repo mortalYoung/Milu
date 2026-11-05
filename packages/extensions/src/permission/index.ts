@@ -1,4 +1,4 @@
-import { type Extension, IHookService, ISettingsService, IToolService, Type } from "@milu/core";
+import { type Extension, IContributionService, IHookService, ISettingsService, IToolService, SESSION_SIGNAL_POINT, type SessionSignalItem, Type } from "@milu/core";
 
 import { PermissionService, IPermissionService } from "./service/index.ts";
 import type { SandboxMode } from "./types.ts";
@@ -28,6 +28,21 @@ const permissionExtension: Extension = {
 	activate(context) {
 		const permission = context.get(IPermissionService);
 		const tools = context.get(IToolService);
+
+		context.disposables.add(
+			context
+				.get(IContributionService)
+				.get<SessionSignalItem>(SESSION_SIGNAL_POINT)
+				.contribute({
+					id: "permission",
+					order: 5,
+					title: async (session) => {
+						const pending = await permission.pending(session);
+						if (pending.length === 0) return null;
+						return "waiting for your approval";
+					},
+				}),
+		);
 
 		context.disposables.add(tools.extend({ tools: ["bash"], properties: escalationFields }));
 		context.disposables.add(tools.use((call, env, next) => permission.intercept(call, env, next)));

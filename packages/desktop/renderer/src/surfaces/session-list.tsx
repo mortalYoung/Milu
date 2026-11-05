@@ -109,9 +109,11 @@ function Row(props: {
 			</span>
 		);
 	const signalList = session.signals ?? [];
-	const taskSignal = signalList.find((signal) => typeof signal.count === "number" && signal.count > 0);
+	const approvalSignal = signalList.find((signal) => signal.id === "permission");
+	const restSignals = approvalSignal === undefined ? signalList : signalList.filter((signal) => signal !== approvalSignal);
+	const taskSignal = restSignals.find((signal) => typeof signal.count === "number" && signal.count > 0);
 	const taskCount = taskSignal?.count ?? 0;
-	const otherSignals = taskSignal === undefined ? signalList : signalList.filter((signal) => signal !== taskSignal);
+	const otherSignals = taskSignal === undefined ? restSignals : restSignals.filter((signal) => signal !== taskSignal);
 	const signals =
 		otherSignals.length > 0 ? (
 			<span className="flex shrink-0 items-center gap-1">
@@ -136,9 +138,18 @@ function Row(props: {
 			? `compacting${taskCount > 0 ? ` · ${taskCount} background task${taskCount === 1 ? "" : "s"}` : ""}`
 			: (taskSignal?.title ?? "");
 	const status =
-		statusLabel === "" ? null : (
-			<span className={`session-status${live ? " is-live" : ""}`} title={statusTitle}>
-				<span>{statusLabel}</span>
+		statusLabel === "" && approvalSignal === undefined ? null : (
+			<span className="flex shrink-0 items-center gap-1">
+				{approvalSignal === undefined ? null : (
+					<span className="session-status is-approval" title={approvalSignal.title}>
+						<span>APPROVAL</span>
+					</span>
+				)}
+				{statusLabel === "" ? null : (
+					<span className={`session-status${live ? " is-live" : ""}`} title={statusTitle}>
+						<span>{statusLabel}</span>
+					</span>
+				)}
 			</span>
 		);
 	const hasMeta = props.showWorkspace;
