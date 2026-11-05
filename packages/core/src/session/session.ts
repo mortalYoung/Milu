@@ -24,6 +24,7 @@ import {
 	readAtOf,
 	recordPrompt,
 	sandboxOf,
+	type SandboxConfig,
 	type SessionModel,
 	tildify,
 	type SessionProfile,
@@ -540,7 +541,7 @@ export class Session {
 		return this._workspaceOf();
 	}
 
-	async sandbox(): Promise<string | null> {
+	async sandbox(): Promise<SandboxConfig> {
 		return sandboxOf(this.root);
 	}
 

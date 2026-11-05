@@ -2,7 +2,18 @@ import { mkdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { type ExecutionEnv, EVENTS, type Session, type SettingsPoint, type SettingsService, type ToolCall, type ToolNext, type ToolResult, type ToolService } from "@milu/core";
+import {
+	type ExecutionEnv,
+	EVENTS,
+	expandHome,
+	type Session,
+	type SettingsPoint,
+	type SettingsService,
+	type ToolCall,
+	type ToolNext,
+	type ToolResult,
+	type ToolService,
+} from "@milu/core";
 import { createServiceId, type Service } from "@milu/di";
 
 import { seatbeltBackend } from "../backends/seatbelt.ts";
@@ -10,6 +21,7 @@ import { movesToTrash } from "../delete-verbs.ts";
 import { createEnv } from "../env.ts";
 import { type EscalationDecision, type EscalationRequest, escalationLog, type EscalationState, readDecisions } from "../escalations.ts";
 import { isStrictlyWider } from "../modes.ts";
+import { packageManagerEnv, PM_CACHE } from "../pm.ts";
 import type { ConfinedArgv, PermissionPolicy, SandboxBackend, SandboxMode } from "../types.ts";
 
 const DELETE_DEFAULTS = { strict: true };
@@ -77,20 +89,28 @@ export class PermissionService implements Service {
 		/* bash starts here with no workspace, and spawn reports a missing cwd as if the command were
 		   missing — so the directory is made before any policy is handed out. */
 		await mkdir(storage, { recursive: true });
-		return createEnv(
-			{ mode: mode ?? (await this.mode(session)), workspace, storage, trash: this.trash() },
-			{
-				sandboxed: this.isConfining(),
-				strictDelete: this._delete ? this._delete.get().strict !== false : true,
-				confine: (policy, argv) => this._confine(policy, argv),
-				onExit: (command, exitCode) => {
-					if (exitCode === 0) return;
-					const failures = this._failures.get(session.name) ?? [];
-					failures.push(command);
-					this._failures.set(session.name, failures.slice(-5));
-				},
+		const saved = await session.sandbox();
+		const cache = expandHome(saved.cache ?? PM_CACHE);
+		await mkdir(cache, { recursive: true });
+		const policy: PermissionPolicy = {
+			mode: mode ?? (await this.mode(session)),
+			workspace,
+			storage,
+			trash: this.trash(),
+			write: [...saved.write.map(expandHome), cache],
+			env: packageManagerEnv(cache),
+		};
+		return createEnv(policy, {
+			sandboxed: this.isConfining(),
+			strictDelete: this._delete ? this._delete.get().strict !== false : true,
+			confine: (each, argv) => this._confine(each, argv),
+			onExit: (command, exitCode) => {
+				if (exitCode === 0) return;
+				const failures = this._failures.get(session.name) ?? [];
+				failures.push(command);
+				this._failures.set(session.name, failures.slice(-5));
 			},
-		);
+		});
 	}
 
 	async intercept(call: ToolCall, _env: ExecutionEnv, next: ToolNext): Promise<ToolResult> {

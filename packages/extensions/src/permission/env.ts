@@ -178,7 +178,7 @@ async function runCommand(
 	if (options.abortSignal?.aborted) return err(new ExecutionError("aborted", "Command aborted"));
 
 	return await new Promise((resolve_) => {
-		const child = spawn(confined.argv[0] ?? "", confined.argv.slice(1), { cwd, env: process.env, detached: true, stdio: ["ignore", "pipe", "pipe"] });
+		const child = spawn(confined.argv[0] ?? "", confined.argv.slice(1), { cwd, env: { ...process.env, ...policy.env }, detached: true, stdio: ["ignore", "pipe", "pipe"] });
 		let stdout = "";
 		let stderr = "";
 		let timedOut = false;

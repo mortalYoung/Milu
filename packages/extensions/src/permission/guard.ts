@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { basename } from "node:path";
 
-import { gitRoots, isInside, isInsideAny } from "./roots.ts";
+import { gitRoots, isInside, isInsideAny, isInsideWriteRoots } from "./roots.ts";
 import type { PermissionCode, PermissionDecision, PermissionPolicy } from "./types.ts";
 
 const SENSITIVE_NAMES: RegExp[] = [/^\.env(?:\.\w+)?$/, /\.pem$/, /\.key$/, /^id_rsa$/, /^id_ed25519$/, /^\.git-credentials$/, /^\.npmrc$/];
@@ -38,7 +38,7 @@ export function checkPath(target: string, op: "read" | "write", policy: Permissi
 	if (op === "write") {
 		const workspace = policy.workspace ?? policy.storage;
 		if (isInside(target, policy.trash)) return ALLOWED;
-		if (!isInside(target, workspace) && !isInsideAny(target, gitRoots(policy.workspace))) {
+		if (!isInside(target, workspace) && !isInsideAny(target, gitRoots(policy.workspace)) && !isInsideWriteRoots(target, policy)) {
 			return deny("outside_workspace", policy.workspace ? "Path is outside the working directory and the storage path" : "Path is outside the storage path");
 		}
 		if (sandboxMounted && policy.mode === "read-only") return deny("read_only_write", "[sandbox: write denied under read-only mode]");

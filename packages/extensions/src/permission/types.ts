@@ -5,6 +5,8 @@ export interface PermissionPolicy {
 	readonly workspace: string | null;
 	readonly storage: string;
 	readonly trash: string;
+	readonly write?: readonly string[];
+	readonly env?: Readonly<Record<string, string>>;
 }
 
 export interface ConfinedArgv {

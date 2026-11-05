@@ -56,7 +56,9 @@ export function gitRoots(workspace: string | null): string[] {
 
 export function writableRoots(policy: PermissionPolicy): string[] {
 	if (policy.mode !== "workspace-write") return [];
-	const roots = [policy.workspace, policy.storage, policy.trash, ...gitRoots(policy.workspace), "/tmp", tmpdir()].filter((root): root is string => root !== null && root !== "");
+	const roots = [policy.workspace, policy.storage, policy.trash, ...(policy.write ?? []), ...gitRoots(policy.workspace), "/tmp", tmpdir()].filter(
+		(root): root is string => root !== null && root !== "",
+	);
 	return [...new Set(roots.map(canonicalPath))];
 }
 
@@ -66,4 +68,8 @@ export function isInside(target: string, root: string): boolean {
 
 export function isInsideAny(target: string, roots: string[]): boolean {
 	return roots.some((root) => isInside(target, root));
+}
+
+export function isInsideWriteRoots(target: string, policy: PermissionPolicy): boolean {
+	return isInsideAny(target, (policy.write ?? []).map(canonicalPath));
 }

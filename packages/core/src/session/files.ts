@@ -111,14 +111,27 @@ export async function writeWorkspace(dir: string, path: string | null): Promise<
 	await writeJson(join(dir, WORKSPACE_FILE), { path });
 }
 
-/** v1's per-chat sandbox file: `{ "mode": "…" }`, absent when the chat never had one. */
-export async function sandboxOf(dir: string): Promise<string | null> {
-	const data = await readJson<{ mode?: unknown }>(join(dir, SANDBOX_FILE));
-	return typeof data?.mode === "string" ? data.mode : null;
+export interface SandboxConfig {
+	readonly mode: string | null;
+	readonly write: readonly string[];
+	readonly cache: string | null;
 }
 
-export function writeSandbox(dir: string, mode: string): Promise<void> {
-	return writeJson(join(dir, SANDBOX_FILE), { mode });
+/** v1's per-chat sandbox file: `{ "mode": "…" }`, absent when the chat never had one. */
+export async function sandboxOf(dir: string): Promise<SandboxConfig> {
+	const data = await readJson<{ mode?: unknown; write?: unknown; cache?: unknown }>(join(dir, SANDBOX_FILE));
+	const write = Array.isArray(data?.write) ? data.write.filter((each): each is string => typeof each === "string" && each.trim() !== "") : [];
+	return {
+		mode: typeof data?.mode === "string" ? data.mode : null,
+		write,
+		cache: typeof data?.cache === "string" && data.cache.trim() !== "" ? data.cache : null,
+	};
+}
+
+export async function writeSandbox(dir: string, mode: string): Promise<void> {
+	const file = join(dir, SANDBOX_FILE);
+	const current = await readJson<Record<string, unknown>>(file);
+	await writeJson(file, { ...current, mode });
 }
 
 export async function workspaceOf(dir: string): Promise<WorkspaceFacts | null> {
