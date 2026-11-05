@@ -42,7 +42,6 @@ function formatBytes(value: number): string {
 	return `${value} B`;
 }
 
-/** A task that never got a process — a spawn error, a refused sandbox — ends "exited" with no code. */
 function failedOf(task: TaskView): boolean {
 	return task.status === "exited" && task.exitCode !== 0;
 }
@@ -53,13 +52,11 @@ function glyphOf(task: TaskView): string {
 	return "—";
 }
 
-/** The glyph says how it ended; the row keeps the clock, and the exact ending waits for the opened block. */
 function whenOf(task: TaskView, now: number, stopping: boolean): string {
 	if (stopping) return "stopping";
 	return elapsed(task.startedAt, task.endedAt ?? now);
 }
 
-/** Both the command and its output may contain backticks; the fence outgrows the longest run so nothing breaks out. */
 function fenced(text: string, language: string): string {
 	const longest = (text.match(/`+/g) ?? []).reduce((most, run) => Math.max(most, run.length), 0);
 	const fence = "`".repeat(Math.max(3, longest + 1));
@@ -73,7 +70,6 @@ function endingOf(task: TaskView): string {
 	return task.exitCode === undefined ? "failed" : task.exitCode === 0 ? "" : `exit ${task.exitCode}`;
 }
 
-/** The glyph is decorative; this is what a screen reader hears instead of it. */
 function spokenOf(task: TaskView): string {
 	if (task.status === "running") return "running";
 	return endingOf(task) || "finished";
@@ -204,7 +200,6 @@ function TaskRow(props: {
 	);
 }
 
-/** A running task keeps writing; the dialog re-reads while it is open so the tail and the clock stay true. */
 const POLL_MS = 1500;
 
 export function TasksDialog(props: DialogProps) {
@@ -254,7 +249,6 @@ export function TasksDialog(props: DialogProps) {
 		return () => window.clearInterval(timer);
 	}, [ready, refresh]);
 
-	/** A stop shows at once; the poll below replaces this with what the service recorded. */
 	const stop = (id: string): void => {
 		if (!data) return;
 		setStopping((current) => new Set(current).add(id));

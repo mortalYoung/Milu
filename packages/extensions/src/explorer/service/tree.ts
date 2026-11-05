@@ -16,7 +16,6 @@ export interface ExplorerTree {
 	readonly dirs: Readonly<Record<string, DirState>>;
 	readonly expanded: ReadonlySet<string>;
 	readonly focus: { readonly path: string; readonly seq: number } | null;
-	/** A line the reader should bring into view; `seq` re-fires a second ask for the same one. */
 	readonly line: { readonly path: string; readonly line: number; readonly seq: number } | null;
 	readonly opened: readonly OpenFile[];
 	readonly activeFile: string | null;
@@ -59,7 +58,6 @@ async function call<T>(connection: Connection, action: string, session: string, 
 
 const reason = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
-/** One owner for the workspace tree: the pane draws it, a file tab asks it to reveal a directory. */
 export class ExplorerTreeService implements Service {
 	readonly store = createStore<ExplorerTree>()(() => EMPTY);
 
@@ -138,7 +136,6 @@ export class ExplorerTreeService implements Service {
 		this._patch((tree) => ({ ...tree, activeFile: path }));
 	}
 
-	/** The neighbour takes over, like editors do. */
 	closeFile(path: string): void {
 		this._patch((tree) => {
 			const index = tree.opened.findIndex((file) => file.path === path);
@@ -198,7 +195,6 @@ export class ExplorerTreeService implements Service {
 		this._patch((tree) => ({ ...tree, line: { path, line, seq: this._seq } }));
 	}
 
-	/** Expand every segment up to `path`, load what is missing, and ask the pane to scroll there. */
 	async focusDir(path: string): Promise<void> {
 		const tree = this.store.getState();
 		const relative = tree.root !== "" && path.startsWith(`${tree.root}/`) ? path.slice(tree.root.length + 1) : path;

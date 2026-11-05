@@ -75,7 +75,6 @@ const ENTITIES: Record<string, string> = { "&amp;": "&", "&lt;": "<", "&gt;": ">
 
 const unescapeHtml = (text: string): string => text.replace(/&(?:amp|lt|gt|quot|#39);/g, (entity) => ENTITIES[entity] ?? entity);
 
-/** The relative images the markdown subset could not resolve on its own, capped so one document cannot flood the reader. */
 function imageSourcesOf(html: string): string[] {
 	const sources = new Set<string>();
 	for (const match of html.matchAll(/data-md-src="([^"]*)"/g)) {
@@ -121,7 +120,6 @@ interface RowMenu {
 	readonly y: number;
 }
 
-/** The tree needs a workspace: without one the explorer is not part of the chrome at all. */
 function useHasWorkspace(host: Host): boolean {
 	const selected = useStore(host.selection.store, (state) => state.selected);
 	return useStore(host.sessions.store, (state) => {
@@ -503,8 +501,6 @@ function FileReader(props: { host: Host; file: OpenFile; list: ListControls; roo
 	const data = loaded !== null && loaded.path === file.path ? loaded.file : null;
 	const error = failed !== null && failed.path === file.path ? failed.message : "";
 	const target = state.line !== null && state.line.path === file.path ? state.line : null;
-	/* A line was asked for: a markdown preview has no rows to land on, so show the source unless the
-	   reader toggled the preview for this very file. */
 	const chosen = markup !== null && markup.path === file.path ? markup.render : null;
 	const render = data !== null && isMarkdown(file.path) && (chosen ?? target === null);
 	const html = full !== null && full.path === file.path ? full.html : "";

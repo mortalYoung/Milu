@@ -106,6 +106,7 @@ export class ExtensionService implements Service {
 		}
 		this._hosts = hosts;
 	}
+	// ——— activation ———
 
 	async initialize(): Promise<void> {
 		this._contributionService.declare<SessionMenuItem>(SESSION_MENU_POINT);
@@ -188,6 +189,7 @@ export class ExtensionService implements Service {
 		}
 		return host.contributionData(key, session);
 	}
+	// ——— the host process ———
 
 	private async _activateAll(): Promise<void> {
 		for (const entry of this._loaded.slice()) {
@@ -324,6 +326,7 @@ export class ExtensionService implements Service {
 	readonly services: ExtensionServices = {
 		get: (id) => this._service(id),
 	};
+	// ——— services across the boundary ———
 
 	private _service(id: string): ExtensionServiceProxy {
 		const entry = this._registry.get(id);

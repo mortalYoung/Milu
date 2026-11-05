@@ -4,7 +4,6 @@ export const SHIKI_THEMES = { light: "github-light", dark: "github-dark" } as co
 
 export const HIGHLIGHT_LIMITS = { tokenizeMaxLineLength: 3000, tokenizeTimeLimit: 500 } as const;
 
-/** The ones a session reaches for before the reader has scrolled anywhere. */
 export const CORE_LANGUAGES = ["ts", "tsx", "bash"];
 
 const LOADERS: Record<string, () => Promise<{ default: LanguageInput }>> = {
@@ -67,7 +66,6 @@ export function getHighlighter(): Promise<HighlighterCore> {
 	return highlighter;
 }
 
-/** A fence language mapped to a grammar we ship, or nothing when it is one we do not. */
 export function resolveLanguage(lang: string): string | null {
 	const key = lang.trim().toLowerCase().replace(/^\./, "");
 	const id = ALIASES[key] ?? key;
@@ -96,7 +94,6 @@ export async function ensureLanguages(langs: Iterable<string>): Promise<void> {
 	);
 }
 
-/** Loading a grammar is half the cost; the other half is the engine compiling it, so warm spends one snippet per language. */
 export async function warmLanguages(): Promise<void> {
 	const core = await getHighlighter();
 	await ensureLanguages(CORE_LANGUAGES);
@@ -116,7 +113,6 @@ function languageClass(lang: string): ShikiTransformer {
 	};
 }
 
-/** Synchronous by design: the caller has already loaded the grammar, and a highlight is cheap once it has. */
 export function highlightWith(core: HighlighterCore, code: string, lang: string): string {
 	const id = resolveLanguage(lang) ?? "text";
 	const key = `${id}\u0000${code}`;
@@ -140,7 +136,6 @@ export function highlightWith(core: HighlighterCore, code: string, lang: string)
 	return html;
 }
 
-/** One HTML string per line, both themes baked into `light-dark()`; empty when the grammar gives up. */
 export function highlightLines(core: HighlighterCore, code: string, lang: string): readonly string[] {
 	const id = resolveLanguage(lang) ?? "text";
 	try {

@@ -1,6 +1,5 @@
 import { api, React } from "./runtime.ts";
 
-/** A reply costs cents at most, so the digits follow the magnitude: a cheap one keeps five. */
 const usd = (value: number): string => {
 	const digits = value < 0.01 ? 5 : value < 1 ? 3 : 2;
 	return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: digits }).format(value);
@@ -14,7 +13,6 @@ interface MessageRow {
 	readonly model?: { readonly provider: string };
 }
 
-/** One reply's price, straight from the row the shell hands over — the host is not asked anything. */
 export function SpendChip() {
 	const { data } = api.useWidget();
 	const row = data as MessageRow | undefined;

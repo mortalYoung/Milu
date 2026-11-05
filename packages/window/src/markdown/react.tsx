@@ -7,7 +7,6 @@ export interface MarkdownProps {
 	readonly text: string;
 	readonly env?: MarkdownEnv;
 	readonly className?: string;
-	/** Start from the fast pass and catch up to the full one (shiki) once the text settles. */
 	readonly plain?: boolean;
 }
 

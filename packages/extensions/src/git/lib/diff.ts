@@ -17,7 +17,6 @@ const MAX_CELLS = 4_000_000;
 
 const NONE: DiffCell = { number: null, text: "", tone: "none" };
 
-/** A trailing newline is not a line; a file that is only one is one empty line. */
 function linesOf(text: string): string[] {
 	if (text === "") return [];
 	const lines = text.split("\n");
@@ -40,10 +39,6 @@ function same(i: number, j: number, left: readonly string[], right: readonly str
 	return { left: { number: i + 1, text: left[i]!, tone: "same" }, right: { number: j + 1, text: right[j]!, tone: "same" } };
 }
 
-/**
- * The two sides aligned row by row, with long unchanged runs folded into a gap that carries what it
- * hid. Null when the pairing would cost more cells than a two-sided view is worth.
- */
 export function splitDiff(original: string, modified: string): readonly SplitRow[] | null {
 	const left = linesOf(original);
 	const right = linesOf(modified);

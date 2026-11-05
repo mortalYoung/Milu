@@ -45,7 +45,6 @@ const BINARY = new Set([
 	".zip",
 ]);
 
-/** A session with no workspace has no tree: the point drops the item instead of rendering an empty pane. */
 const workspaceOnly = async (session: Session): Promise<true | null> => ((await session.workspace()) === null ? null : true);
 
 const IMAGE_MIME: Record<string, string> = {

@@ -9,7 +9,6 @@ interface Entry {
 	timer: NodeJS.Timeout | null;
 }
 
-/** One watcher per path, refcounted by whoever asked, so a preview can follow a file it is showing. */
 export class WatchService implements Service {
 	readonly onChange: Event<string>;
 

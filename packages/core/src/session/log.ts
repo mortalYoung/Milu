@@ -39,7 +39,6 @@ function parseEntry(line: string): Entry | null {
 	}
 }
 
-/** Each chunk of the file from its end, newest first: nothing is kept beyond the chunk being read. */
 async function scanTail(path: string, visit: (fresh: readonly Entry[], whole: boolean) => boolean, cap = SCAN_CAP): Promise<{ whole: boolean }> {
 	const handle = await open(path, "r");
 	try {
@@ -76,7 +75,6 @@ async function scanTail(path: string, visit: (fresh: readonly Entry[], whole: bo
 	}
 }
 
-/** The newest entries, kept: a transcript window needs them all in hand. */
 export async function scanBack(path: string, keep: (newestFirst: readonly Entry[], whole: boolean) => boolean): Promise<{ entries: Entry[]; whole: boolean }> {
 	const entries: Entry[] = [];
 	const result = await scanTail(path, (fresh, whole) => {
@@ -86,7 +84,6 @@ export async function scanBack(path: string, keep: (newestFirst: readonly Entry[
 	return { entries, whole: result.whole };
 }
 
-/** Every entry, read forward in chunks so the file never has to be one string in memory. */
 export async function readEntries(path: string, keep: (entry: Entry) => boolean = () => true): Promise<Entry[]> {
 	const handle = await open(path, "r");
 	try {
@@ -117,7 +114,6 @@ export async function readEntries(path: string, keep: (entry: Entry) => boolean 
 	}
 }
 
-/** A log's header line, read without the rest of the file. */
 async function readHeader(path: string): Promise<{ kind?: string; version?: number; id?: string; createdAt?: number; cwd?: string } | null> {
 	let handle: FileHandle | null = null;
 	try {
@@ -144,7 +140,6 @@ function isSessionHeader(header: Awaited<ReturnType<typeof readHeader>>): header
 	return header?.kind === "header" && header.version === 4 && typeof header.id === "string";
 }
 
-/** The newest log file on disk: listing through the repo reads every file in full just to read its header. */
 async function newestLog(root: string): Promise<string | null> {
 	const candidates: { path: string; at: number }[] = [];
 	const consider = async (path: string): Promise<void> => {
@@ -221,14 +216,12 @@ export class SessionLog {
 		return this._latestPathCache;
 	}
 
-	/** Listing reads every log in the directory in full, so the answer is kept until this log creates another. */
 	private async _latest(): Promise<JsonlSessionMetadata | null> {
 		if (this._latestMeta !== undefined) return this._latestMeta;
 		this._latestMeta = (await this._repo().list({ cwd: this.root }))[0] ?? null;
 		return this._latestMeta;
 	}
 
-	/** The newest log's header and its last bytes — a preview without opening (and parsing) the whole file. */
 	async peek(bytes = TAIL_BYTES): Promise<{ createdAt?: number; tail: Entry[] }> {
 		const path = await this._latestPath();
 		if (path === null) return { tail: [] };
@@ -266,28 +259,20 @@ export class SessionLog {
 		}
 	}
 
-	/** Forget the file this log was reading: the next read finds whatever is on disk now. */
 	invalidate(): void {
 		this._session = null;
 		this._latestMeta = undefined;
 		this._latestPathCache = undefined;
 	}
 
-	/**
-	 * New logs for a copy of this session: the SDK forks each tree, and the log the reader is on has to
-	 * stay the newest one — every fork lands with a fresh mtime, so order alone would no longer say.
-	 */
 	async forkInto(targetRoot: string): Promise<void> {
 		await this.open();
 		const current = await this._latestPath();
 		const sessions = await this._repo().list({ cwd: this.root });
-		/* Whatever the copy brought over is a byte copy of the old logs; the fork replaces it, or the
-		   new session would read the source's own history under its name. */
 		for (const source of sessions) {
 			await rm(join(targetRoot, basename(dirname(source.path))), { recursive: true, force: true });
 			await rm(join(targetRoot, basename(source.path)), { force: true });
 		}
-		/* The fork reads the source log and writes the new one: one env rooted above both directories. */
 		const fs = this._executionService.env(dirname(targetRoot));
 		const target = new JsonlSessionRepo({ fs, sessionsRoot: targetRoot });
 		let forked = "";
@@ -342,10 +327,6 @@ export class SessionLog {
 		return entries.map((entry) => ({ seq: entry.seq, entry })).sort((left, right) => left.seq - right.seq);
 	}
 
-	/**
-	 * Read straight from the file unless the storage is already open for writing. Request headers after the
-	 * first are dropped on the way in: nothing reads them, and they are what made a log 200MB.
-	 */
 	async rawEntries(): Promise<Entry[]> {
 		await this.flush();
 		const path = await this._latestPath();
@@ -371,7 +352,6 @@ export class SessionLog {
 		return projectSliceItems(await this.origin(), options);
 	}
 
-	/** A transcript window, read backwards from the end of the log and never past the scan cap. */
 	async window(options: { mode?: "older" | "newer"; cursor?: string; conversations: number }): Promise<OriginWindow> {
 		const path = await this._latestPath();
 		if (path === null) return { entries: [], total: 0, hasMore: false, reset: false };
@@ -387,7 +367,6 @@ export class SessionLog {
 		return { ...originWindow(projectTail([...scanned.entries].reverse()), { conversations: options.conversations }), hasMore: false };
 	}
 
-	/** The last assistant usage, unless a compaction came after it: the tail answers without the whole log. */
 	async lastUsageTokens(): Promise<number | null> {
 		const path = await this._latestPath();
 		if (path === null) return null;
@@ -406,7 +385,6 @@ export class SessionLog {
 		return found;
 	}
 
-	/** What a resumed loop needs: the newest messages, cut at the newest compaction instead of the whole log. */
 	async tailTranscript(): Promise<AgentMessage[]> {
 		const path = await this._latestPath();
 		if (path === null) return [];

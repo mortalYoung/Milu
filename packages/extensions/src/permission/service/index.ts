@@ -61,7 +61,6 @@ export class PermissionService implements Service {
 		this._sandbox = this._settingsService.declare({ key: SANDBOX_KEY, defaults: SANDBOX_DEFAULT });
 	}
 
-	/** v1's rule: the chat's own `sandbox.json` wins, `defaultSandboxMode` is only the fallback. */
 	async mode(session: Session): Promise<SandboxMode> {
 		const cached = this._modes.get(session.name);
 		if (cached) return cached;
@@ -86,8 +85,6 @@ export class PermissionService implements Service {
 
 	async env(session: Session, workspace: string | null, mode?: SandboxMode): Promise<ExecutionEnv> {
 		const storage = join(session.root, "storage");
-		/* bash starts here with no workspace, and spawn reports a missing cwd as if the command were
-		   missing — so the directory is made before any policy is handed out. */
 		await mkdir(storage, { recursive: true });
 		const saved = await session.sandbox();
 		const cache = expandHome(saved.cache ?? PM_CACHE);

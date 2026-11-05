@@ -18,7 +18,6 @@ export interface GitViewState {
 	readonly repoRoot: string;
 	readonly changes: readonly GitChange[];
 	readonly selected: string | null;
-	/** Bumped on every read, so an open diff re-reads its two sides. */
 	readonly revision: number;
 	readonly listOpen: boolean;
 	readonly listWidth: number;
@@ -26,7 +25,6 @@ export interface GitViewState {
 	readonly wrap: boolean;
 }
 
-/** A change is identified by its path and the side of the index it lives on. */
 export const keyOf = (change: GitChange): string => `${change.staged ? "i" : "w"}${change.path}`;
 
 const stored = (key: string, fallback: boolean): boolean => {
@@ -55,7 +53,6 @@ const EMPTY: GitViewState = {
 
 const reason = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
-/** One owner for the workspace's changes: the dock bar counts them, the pane lists them. */
 export class GitChangesService implements Service {
 	readonly store = createStore<GitViewState>()(() => EMPTY);
 

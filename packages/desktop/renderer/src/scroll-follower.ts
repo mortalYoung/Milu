@@ -31,7 +31,6 @@ function anchorOf(scroller: HTMLElement, content: HTMLElement): Anchor | null {
 	return null;
 }
 
-/** The transcript's one owner of `scrollTop`: pins to the bottom while the reader follows, holds their place while they don't. */
 export class TranscriptScroll {
 	readonly store = createStore<{ following: boolean }>()(() => ({ following: true }));
 
@@ -84,7 +83,6 @@ export class TranscriptScroll {
 		};
 
 		scroller.addEventListener("scroll", onScroll, { passive: true });
-		/** The scroller itself changed height — the composer grew, a column was dragged, the window moved. Pin now, in this frame. */
 		const rejudge = () => {
 			if (this._paused?.current === true) return;
 			if (this.following) {

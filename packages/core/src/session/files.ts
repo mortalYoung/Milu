@@ -81,7 +81,6 @@ export function writeModel(dir: string, model: SessionModel): Promise<void> {
 	return writeJson(join(dir, MODEL_FILE), model);
 }
 
-/** While this file exists the session is a copy still being written: it has no log to read yet. */
 export function forkingOf(dir: string): Promise<{ from?: unknown } | null> {
 	return readJson<{ from?: unknown }>(join(dir, FORKING_FILE));
 }
@@ -117,7 +116,6 @@ export interface SandboxConfig {
 	readonly cache: string | null;
 }
 
-/** v1's per-chat sandbox file: `{ "mode": "…" }`, absent when the chat never had one. */
 export async function sandboxOf(dir: string): Promise<SandboxConfig> {
 	const data = await readJson<{ mode?: unknown; write?: unknown; cache?: unknown }>(join(dir, SANDBOX_FILE));
 	const write = Array.isArray(data?.write) ? data.write.filter((each): each is string => typeof each === "string" && each.trim() !== "") : [];

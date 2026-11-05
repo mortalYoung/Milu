@@ -8,7 +8,6 @@ export interface RowComponent {
 	readonly component: ComponentType<SlotProps>;
 }
 
-/** Row renderers by view kind (`tool`, `thinking`, `say`), so an extension can own how a kind looks. */
 export class RowRegistry implements Service {
 	private readonly _rows = new Map<string, ComponentType<SlotProps>>();
 

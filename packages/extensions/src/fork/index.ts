@@ -13,7 +13,6 @@ const forkExtension: Extension = {
 				order: 40,
 				group: "copy",
 				icon: "git-fork",
-				/* A branch of a branch is a branch: the source has to be a root chat. */
 				title: async (session) => ((await forked(session)) ? null : "Fork"),
 				disabled: async (session) => session.running || (await session.forking()),
 				action: "fork.chat",
@@ -40,8 +39,6 @@ const forkExtension: Extension = {
 	},
 
 	activate(context) {
-		/* The copy returns before it is written, so the chat is not openable yet — the front end lands
-		   in it when the `fork` event says the directory is done. */
 		context.actions.register({
 			id: "fork.chat",
 			run: async ({ session, sessions }) => {

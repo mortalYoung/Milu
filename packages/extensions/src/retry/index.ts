@@ -3,7 +3,6 @@ import { type Extension, IHookService, isRetryableAssistantError } from "@milu/c
 const DEFAULT_MAX_RETRIES = 2;
 const DEFAULT_BASE_DELAY_MS = 500;
 
-/** `settings.json` may set either field; anything it leaves out comes from the defaults. */
 interface RetryPolicy {
 	readonly maxRetries: number;
 	readonly baseDelayMs: number;
@@ -20,8 +19,6 @@ const retryExtension: Extension = {
 			context.settings.declare<RetryPolicy>({ key: "retry", defaults: { maxRetries: DEFAULT_MAX_RETRIES, baseDelayMs: DEFAULT_BASE_DELAY_MS } }),
 		);
 		const hooks = context.get(IHookService);
-		/* The policy is ours; the loop only knows how to retry. Anything outside the classifier's list
-		   (quota, billing, a broken request) fails at once instead of spending the budget. */
 		context.disposables.add(
 			hooks.onFailure((failure, retry) => {
 				const { maxRetries, baseDelayMs } = policy.get();

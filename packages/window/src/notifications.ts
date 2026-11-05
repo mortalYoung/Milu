@@ -9,7 +9,6 @@ export interface Notification {
 	readonly body: string;
 	readonly tone: NotificationTone;
 	readonly createdAt: number;
-	/** The session the row is about — a row that carries one opens it when clicked. */
 	readonly session?: string;
 }
 

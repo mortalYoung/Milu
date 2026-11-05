@@ -10,7 +10,6 @@ const pinExtension: Extension = {
 				id: "pin",
 				order: 10,
 				group: "state",
-				/* A fork is a branch of a chat, not a chat of its own: the pin belongs to what it forked from. */
 				title: async (session) => {
 					const profile = await session.profile();
 					if (profile?.forkedFrom !== undefined) return null;

@@ -1,5 +1,4 @@
 interface ProviderAccounts {
-	/** The host answers with a plain snapshot, or null when this chat runs somewhere it has no account facts for. */
 	balance(session: string | null): Promise<unknown>;
 }
 
@@ -17,7 +16,6 @@ export default {
 				try {
 					return await accounts.balance(session);
 				} catch {
-					/* No key, no account, no network — the pill simply is not drawn. */
 					return null;
 				}
 			}),

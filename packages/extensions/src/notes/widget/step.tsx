@@ -37,7 +37,6 @@ interface Stamp {
 	readonly duration: string;
 }
 
-/** Zero is not a measurement worth printing: a step that took no time says "Completed", not "Completed in 0s". */
 function span(ms: number): string {
 	const seconds = Math.max(0, Math.round(ms / 1000));
 	if (seconds === 0) return "";
@@ -74,7 +73,6 @@ function latestOf(rows: readonly ViewItem[]): Latest | null {
 	return { id: item.id, icon: null, label: "", detail: oneLine(item.text), failed: false };
 }
 
-/** "Running for 12s" while it streams, "Thought for 12s" when it only thought, "Completed in 12s" once the last row is in. */
 function useHeaderStamp(group: StepGroup, live: boolean): Stamp {
 	const first = group.rows[0]?.time ?? 0;
 	const last = group.rows[group.rows.length - 1]?.time ?? first;
@@ -97,7 +95,6 @@ function useHeaderStamp(group: StepGroup, live: boolean): Stamp {
 	return took === "" ? { label: "Completed", duration: "" } : { label: "Completed in", duration: took };
 }
 
-/** The same edge logic the session list uses: a mask appears only when there is more content past the edge. */
 function useScrollEdges<T extends HTMLElement>(): readonly [RefObject<T | null>, string] {
 	const ref = useRef<T>(null);
 	const [edges, setEdges] = useState({ above: false, below: false });

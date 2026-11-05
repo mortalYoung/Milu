@@ -5,13 +5,11 @@ export type ToastPlacement = "topright" | "bottomright";
 export const DEFAULT_TOAST_PLACEMENT: ToastPlacement = "topright";
 export const DEFAULT_TOAST_DURATION_MS = 4000;
 
-/** v1 wrote lowercase; a person may type camelCase. Anything else falls back to the default. */
 export function placementOf(value: unknown): ToastPlacement {
 	const text = String(value ?? "").toLowerCase();
 	return text === "bottomright" ? "bottomright" : DEFAULT_TOAST_PLACEMENT;
 }
 
-/** 0 is a real choice — the row waits for a dismiss — so only a value that is not a number falls back. */
 export function durationOf(value: unknown): number {
 	const parsed = typeof value === "number" ? value : Number.parseFloat(String(value ?? ""));
 	return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : DEFAULT_TOAST_DURATION_MS;

@@ -23,7 +23,6 @@ export function projectOrigin(raw: readonly Entry[]): Entry[] {
 	return out;
 }
 
-/** A tail has no real first header, so a tail keeps none of them. */
 export function projectTail(entries: readonly Entry[]): Entry[] {
 	return entries.filter((entry) => usable(entry) && !isRequestHeader(entry));
 }
@@ -48,7 +47,6 @@ export interface OriginWindow {
 	readonly reset: boolean;
 }
 
-/** The newest conversations from a tail of the log; null when the tail does not hold enough of them. */
 export function tailWindow(entries: readonly Entry[], conversations: number, whole: boolean): OriginWindow | null {
 	const origin = whole ? projectOrigin(entries) : projectTail(entries);
 	if (!whole && conversationStarts(origin).length <= conversations) return null;

@@ -1,9 +1,3 @@
-/**
- * A small allowlist of HTML that documents actually use, lifted out of the source before markdown-it
- * sees it and put back as **constructed** tags afterwards. `html: false` stays on: source markup is
- * never copied through, so there is nothing to sanitize and no script to strip.
- */
-
 const SLOT_OPEN = "\uE000";
 const SLOT_CLOSE = "\uE001";
 const SLOT_RE = /\uE000(\d+)\uE001/g;
@@ -17,11 +11,8 @@ const FENCE_RE = /(^|\n)(`{3,}|~{3,})[^\n]*\n[\s\S]*?(?:\n\2[^\n]*|$)/g;
 const CODE_SPAN_RE = /(`+)(?!`)([\s\S]*?)(?<!`)\1(?!`)/g;
 
 export interface HtmlSubsetContext {
-	/** Raw `src` → data URL, for relative images the renderer itself cannot read. */
 	readonly images?: ReadonlyMap<string, string>;
-	/** Render a slice of markdown through the same pipeline (a `<details>` body). */
 	readonly render: (source: string) => string;
-	/** Render a single line as inline markdown (a `<summary>` label). */
 	readonly renderInline: (source: string) => string;
 }
 
@@ -32,7 +23,6 @@ export interface HtmlSlot {
 
 const escapeHtml = (text: string): string => text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
-/** Attribute names are matched, never trusted: anything not listed here is dropped. */
 function attributesOf(raw: string | undefined): Record<string, string> {
 	const out: Record<string, string> = {};
 	if (!raw) return out;
@@ -43,7 +33,6 @@ function attributesOf(raw: string | undefined): Record<string, string> {
 	return out;
 }
 
-/** Only the schemes a document may link to; control characters cannot smuggle a scheme past this. */
 function safeHref(raw: string | undefined): string | null {
 	if (raw === undefined) return null;
 	// oxlint-disable-next-line no-control-regex
@@ -61,7 +50,6 @@ export function renderImageHtml(src: string, alt: string, attrs: Record<string, 
 	const resolved = images?.get(src);
 	if (resolved) return `<img src="${escapeHtml(resolved)}" alt="${escapeHtml(alt)}"${width}${height} loading="lazy">`;
 	if (/^https?:/i.test(src)) return `<img src="${escapeHtml(src)}" alt="${escapeHtml(alt)}"${width}${height} loading="lazy" referrerpolicy="no-referrer">`;
-	// A relative path names a file the view cannot read on its own; it becomes a chip that says so.
 	return `<span class="md-image" data-md-src="${escapeHtml(src)}" title="${escapeHtml(alt || src)}">${escapeHtml(alt || src)}</span>`;
 }
 
@@ -69,11 +57,6 @@ function linkHtml(href: string | null, inner: string): string {
 	return href === null ? inner : `<a href="${escapeHtml(href)}">${inner}</a>`;
 }
 
-/**
- * Replace recognised HTML with placeholders. Later passes cannot see earlier ones: a placeholder
- * carries no `<`, and a `<details>` body is kept as source (not scanned) so nested markup inside it
- * goes through the pipeline later, in order.
- */
 export function extractHtmlSubset(source: string): { source: string; slots: HtmlSlot[] } {
 	const slots: HtmlSlot[] = [];
 	if (!source.includes("<")) return { source, slots };
@@ -91,23 +74,19 @@ export function extractHtmlSubset(source: string): { source: string; slots: Html
 
 	let out = source.replace(FENCE_RE, stash).replace(CODE_SPAN_RE, stash);
 
-	// <div align="center"> … </div>
 	out = out.replace(new RegExp(`${BLOCK_LEAD}<div\\s+([^>]*?)>([\\s\\S]*?)<\\/div>${BLOCK_TAIL}`, "gim"), (match, lead: string, rawAttrs: string, inner: string) => {
 		const align = (attributesOf(rawAttrs)["align"] ?? "").trim().toLowerCase();
 		if (align !== "center") return match;
 		return lead + hold(true, (ctx) => `<div class="md-center">${ctx.render(inner)}</div>`);
 	});
 
-	// <h1>…</h1> through <h6>
 	out = out.replace(
 		new RegExp(`${BLOCK_LEAD}<h([1-6])(?:\\s[^>]*)?>([\\s\\S]*?)<\\/h\\2>${BLOCK_TAIL}`, "gim"),
 		(_match, lead: string, level: string, inner: string) => lead + hold(true, (ctx) => `<h${level}>${ctx.renderInline(inner)}</h${level}>`),
 	);
 
-	// <sub>…</sub> / <sup>…</sup>
 	out = out.replace(/<(sub|sup)(?:\s[^>]*)?>([\s\S]*?)<\/\1>/gi, (_match, tag: string, inner: string) => hold(false, (ctx) => `<${tag}>${ctx.renderInline(inner)}</${tag}>`));
 
-	// <details open?> … <summary>…</summary> …body… </details>
 	out = out.replace(
 		new RegExp(`${BLOCK_LEAD}<details(\\s[^>]*?)?>([\\s\\S]*?)<\\/details>${BLOCK_TAIL}`, "gim"),
 		(_match, lead: string, rawAttrs: string | undefined, inner: string) => {
@@ -125,14 +104,12 @@ export function extractHtmlSubset(source: string): { source: string; slots: Html
 		},
 	);
 
-	// <a name="x"></a> / <a id="x"></a> — an in-page jump target, invisible by nature.
 	out = out.replace(/<a\s+(?:name|id)\s*=\s*(?:"([^"]*)"|'([^']*)')\s*>\s*<\/a>/gi, (_match, double: string | undefined, single: string | undefined) => {
 		const id = (double ?? single ?? "").trim();
 		if (id === "") return "";
 		return hold(true, () => `<a id="${escapeHtml(id)}" class="md-anchor" aria-hidden="true"></a>`);
 	});
 
-	// <a href="…"><img …></a> — the docs-table screenshot.
 	out = out.replace(/<a\s+([^>]*?)>\s*(<img\s+[^>]*?>)\s*<\/a>/gi, (_match, linkAttrs: string, imgTag: string) => {
 		const href = safeHref(attributesOf(linkAttrs)["href"]);
 		const img = attributesOf(imgTag.replace(/^<img/i, ""));
@@ -140,14 +117,12 @@ export function extractHtmlSubset(source: string): { source: string; slots: Html
 		return hold(false, (ctx) => linkHtml(href, renderImageHtml(src, img["alt"] ?? "", img, ctx.images)));
 	});
 
-	// <img …> on its own.
 	out = out.replace(/<img\s+[^>]*?>/gi, (tag) => {
 		const img = attributesOf(tag.replace(/^<img/i, ""));
 		const src = img["src"] ?? "";
 		return hold(false, (ctx) => renderImageHtml(src, img["alt"] ?? "", img, ctx.images));
 	});
 
-	// <a href="…">text</a> with plain text inside.
 	out = out.replace(/<a\s+([^>]*?)>([^<]*)<\/a>/gi, (_match, linkAttrs: string, text: string) => {
 		const href = safeHref(attributesOf(linkAttrs)["href"]);
 		const label = text.trim();
@@ -160,7 +135,6 @@ export function extractHtmlSubset(source: string): { source: string; slots: Html
 	return { source: out.replace(CODE_RE, (_match, digits: string) => code[Number(digits)] ?? ""), slots };
 }
 
-/** Put the constructed tags back, unwrapping the paragraph markdown-it wrapped around block slots. */
 export function restoreHtmlSubset(html: string, slots: readonly HtmlSlot[], ctx: HtmlSubsetContext): string {
 	if (slots.length === 0) return html;
 	const filled = html.replace(BLOCK_SLOT_RE, (match, digits: string) => {

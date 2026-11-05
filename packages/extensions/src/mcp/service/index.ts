@@ -82,7 +82,6 @@ export class McpService implements Service {
 		}));
 	}
 
-	/** Every server the manager knows, granted or not — what the access surface lists. */
 	allStatuses(): readonly McpServerStatus[] {
 		return this._manager.statuses();
 	}

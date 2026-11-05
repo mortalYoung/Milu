@@ -18,7 +18,6 @@ import { recordBootMarks } from "./boot.ts";
 import { widgetUrl } from "./widget-url.ts";
 
 const DIALOG_TIMEOUT_MS = 5 * 60_000;
-/** Tokens arrive far faster than a frame; keep the latest partial per session and flush on this beat. */
 const PARTIAL_INTERVAL_MS = 32;
 
 interface ServerEvent {
@@ -141,6 +140,7 @@ export class IpcServer {
 		this._askings.clear();
 		this._windows.clear();
 	}
+	// ——— the two entries ———
 
 	readonly connect = async (event: IpcMainInvokeEvent): Promise<Snapshot> => {
 		const sender = event.sender;
@@ -162,6 +162,7 @@ export class IpcServer {
 			return { ok: false, error: { code: "handler_failed", message: reason(error) } };
 		}
 	};
+	// ——— events out ———
 
 	private _queuePartial(session: string, message: unknown): void {
 		this._partials.set(session, message);
@@ -208,6 +209,7 @@ export class IpcServer {
 	private _ordered<T extends { readonly id: string; readonly order?: number }>(point: string): readonly T[] {
 		return [...this._backend.contributions.get<T>(point).all()].sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.id.localeCompare(right.id));
 	}
+	// ——— the handlers ———
 
 	private async _extensionData(params: Params<"extensionData">): Promise<Result<"extensionData">> {
 		return { data: await this._backend.extensions.data(params.extension, params.key, params.session) };
@@ -342,7 +344,6 @@ export class IpcServer {
 		return { sessions, selected: this._backend.selection.selected };
 	}
 
-	/** The chat on screen in a focused window — the same test v1 used before raising a system notification. */
 	private _looking(session: string): boolean {
 		if (this._backend.selection.selected !== session) return false;
 		for (const sender of this._windows) {
@@ -351,7 +352,6 @@ export class IpcServer {
 		return false;
 	}
 
-	/** v1's menu, with the items v2 actually has; each one asks the window to run the action it names. */
 	private _installMenu(): void {
 		const hasSession = this._backend.selection.selected !== null;
 		const command = (action: string) => () => this._broadcast({ type: "live", event: { type: "command", action } });
@@ -431,7 +431,6 @@ export class IpcServer {
 		Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 	}
 
-	/** A system banner. A platform that refuses it is logged, never rerouted into the in-app tray. */
 	private _notify(message: { readonly title: string; readonly body: string; readonly subtitle?: string; readonly session?: string }): void {
 		const { title, body, subtitle, session } = message;
 		if (!Notification.isSupported()) {
@@ -448,7 +447,6 @@ export class IpcServer {
 		notification.show();
 	}
 
-	/** A click on a banner brings the window forward and switches to the session the banner was about. */
 	private _reveal(session: string): void {
 		for (const sender of this._windows) {
 			if (sender.isDestroyed()) continue;

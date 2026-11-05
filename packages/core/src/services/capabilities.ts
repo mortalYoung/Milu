@@ -2,11 +2,6 @@ import { createServiceId, type Disposable, type Service } from "@milu/di";
 
 export type CapabilityMethod = (...args: readonly unknown[]) => unknown;
 
-/**
- * What an out-of-process extension may ask the host to do. A capability is a name and a few methods —
- * never a service: the child sends plain values and gets plain values back, and anything that cannot
- * cross the process boundary is refused here rather than surfacing as a broken promise in the child.
- */
 export class CapabilityService implements Service {
 	private readonly _capabilities = new Map<string, ReadonlyMap<string, CapabilityMethod>>();
 

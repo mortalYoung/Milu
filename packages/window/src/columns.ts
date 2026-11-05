@@ -41,16 +41,7 @@ function stored(key: string, fallback: number, min: number, max: number): number
 
 const inFlow = (width: number) => (width > 0 ? width + GRIP_WIDTH : 0);
 
-export function shellLayout(input: {
-	row: number;
-	listWidth: number;
-	listOpen: boolean;
-	listOverride: boolean;
-	dockOpen: boolean;
-	dockWidth: number;
-	/** A flow width to hold on to while it still fits — the dock must not move when the sidebar opens or closes. */
-	dockKeep?: number;
-}): Columns {
+export function shellLayout(input: { row: number; listWidth: number; listOpen: boolean; listOverride: boolean; dockOpen: boolean; dockWidth: number; dockKeep?: number }): Columns {
 	const row = input.row;
 	const listPref = clamp(input.listWidth, LIST_MIN, LIST_MAX);
 	const dockPref = Math.max(DOCK_MIN, input.dockWidth);
@@ -63,13 +54,11 @@ export function shellLayout(input: {
 		};
 	}
 
-	/* The sidebar only stays in flow while every column can keep its minimum; below that it folds first. */
 	const listCanFlow = input.listOpen && row >= LIST_MIN + GRIP_WIDTH + WORKBENCH_MIN + (input.dockOpen ? DOCK_MIN + GRIP_WIDTH : 0);
 	const list = listCanFlow ? listPref : 0;
 	const dockCanFlow = input.dockOpen && row >= DOCK_MIN + GRIP_WIDTH + WORKBENCH_MIN + (listCanFlow ? LIST_MIN + GRIP_WIDTH : 0);
 
 	const workbenchWith = (listWidth: number, dockWidth: number) => row - inFlow(listWidth) - inFlow(dockWidth);
-	/* Shrink order: the transcript gives way first, then the dock down to its minimum, then the sidebar. */
 	const placed = (() => {
 		let dock = dockCanFlow ? dockPref : 0;
 		if (dock > 0 && workbenchWith(list, dock) < WORKBENCH_MIN) dock = Math.max(DOCK_MIN, dock - (WORKBENCH_MIN - workbenchWith(list, dock)));

@@ -6,7 +6,6 @@ interface LinkToken {
 	readonly type: string;
 }
 
-/** Markdown-it renders a flat token stream: a `link_open` still unmatched at this index means we are inside one. */
 function insideLink(tokens: readonly LinkToken[], index: number): boolean {
 	let depth = 0;
 	for (let at = 0; at < index; at += 1) {
