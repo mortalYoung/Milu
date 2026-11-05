@@ -3,7 +3,6 @@ import type { MarkdownIt } from "markdown-it";
 import { renderImageHtml } from "../html.ts";
 import type { MarkdownEnv, MarkdownPlugin } from "../types.ts";
 
-/** `![]()` lands here, and the HTML `<img>` shapes land in the subset extractor: one resolver for both. */
 export function installImages(md: MarkdownIt): void {
 	md.renderer.rules["image"] = (tokens, index, options, env, self) => {
 		const token = tokens[index];

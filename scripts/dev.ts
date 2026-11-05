@@ -59,9 +59,7 @@ async function waitFor(url: string): Promise<void> {
 		try {
 			const response = await fetch(url);
 			if (response.ok) return;
-		} catch {
-			// vite is still starting
-		}
+		} catch {}
 		await new Promise((resolve) => setTimeout(resolve, 200));
 	}
 	throw new Error(`renderer did not start at ${url}`);

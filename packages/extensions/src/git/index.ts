@@ -7,7 +7,6 @@ import { IPermissionService } from "../permission/index.ts";
 import { gitChanges, gitFileSides, gitPatch, gitWorktreeAdd, gitWorktreeRemove, gitWorktrees, gitWorkspaceFacts } from "./lib/git.ts";
 import type { GitChanges } from "./types.ts";
 
-/** A session with no workspace has no repository: the point drops the item instead of rendering an empty pane. */
 const workspaceOnly = async (session: Session): Promise<true | null> => ((await session.workspace()) === null ? null : true);
 
 const rootOf = async (session: Session): Promise<string> => {

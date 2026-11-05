@@ -12,13 +12,10 @@ export interface PaletteFiles {
 	readonly truncated: boolean;
 }
 
-/** Enough for a quick-open list, small enough that the walk can stop early. */
 const LIMIT = 50;
-/** Matches kept before ranking: a shallow `index.html` farm must not push `src/index.tsx` out. */
 const CANDIDATE_LIMIT = 2000;
 const TIME_BUDGET_MS = 2000;
 
-/** Case-insensitive subsequence test — the same shape the palette ranks with, cheap enough for the walk. */
 function matches(needle: string, haystack: string): boolean {
 	const n = needle.trim().toLowerCase();
 	if (n === "") return true;

@@ -75,7 +75,6 @@ export async function gitignoreOf(root: string): Promise<IgnorePattern[]> {
 	}
 }
 
-/** A path is ignored when its nearest matching pattern ignores it, walking from the root down. */
 export function isIgnoredPath(relativePath: string, kind: ExplorerEntry["kind"], patterns: readonly IgnorePattern[]): boolean {
 	if (patterns.length === 0) return false;
 	const parts = relativePath.split("/");

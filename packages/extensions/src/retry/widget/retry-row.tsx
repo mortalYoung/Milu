@@ -6,7 +6,6 @@ function seconds(ms: number): string {
 	return `${(ms / 1000).toFixed(ms % 1000 === 0 ? 0 : 1)}s`;
 }
 
-/** One line where a reply was interrupted and restarted: how far into the budget, how long the wait, why. */
 export function RetryRow(props: SlotProps) {
 	const item = (props.data as { item?: ViewItem } | undefined)?.item;
 	const retry = item?.retry;

@@ -43,7 +43,6 @@ const detail = (snapshot: BalanceSnapshot): string =>
 		.map((info) => `${money(info.total, info.currency)}\n  granted ${money(info.granted, info.currency)} · topped up ${money(info.toppedUp, info.currency)}`)
 		.join("\n");
 
-/** The account's remaining balance — the host fetches it, so the key never reaches this process. */
 export function BalancePill() {
 	const session = api.useSession();
 	const data = api.useExtensionData<BalanceSnapshot | null>("balance");

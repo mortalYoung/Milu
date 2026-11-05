@@ -3,7 +3,6 @@ import { join } from "node:path";
 
 import type { Session } from "@milu/core";
 
-/** v1's per-chat grant file: `{ "skills": ["dws"] }`. */
 function grantsPath(session: Session): string {
 	return join(session.root, "granted-skills.json");
 }

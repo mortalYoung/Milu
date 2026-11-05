@@ -5,7 +5,6 @@ export interface FilesState {
 	readonly changed: Readonly<Record<string, number>>;
 }
 
-/** Files the core is watching: a bump means the tab showing that path should read it again. */
 export class FileEventsService implements Service {
 	readonly store = createStore<FilesState>()(() => ({ changed: {} }));
 

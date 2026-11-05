@@ -3,7 +3,6 @@ import { useEffect } from "react";
 
 import { IExplorerTreeService } from "../../explorer/service/tree.ts";
 
-/** One delegated handler for every chip the markdown plugin drew — the button itself carries the path. */
 export function MentionsMount(props: SlotProps) {
 	const { host } = props;
 	useEffect(() => {

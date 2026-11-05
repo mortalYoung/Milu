@@ -18,7 +18,6 @@ import { type McpParams, McpService, IMcpService, schema } from "./service/index
 
 export { IMcpService } from "./service/index.ts";
 
-/** The authorized set carried by the last recorded change — the baseline a new change is measured against. */
 function recordedGrants(records: readonly { readonly entry: { readonly type: string; readonly data?: unknown } }[]): string[] {
 	const last = records.at(-1)?.entry;
 	if (last === undefined || last.type !== "custom") return [];
@@ -103,9 +102,6 @@ const mcpExtension: Extension = {
 			},
 		});
 
-		/* A grant is a file on the chat's own disk, so a change made anywhere — another window, a hand
-		   edit, a chat that was closed at the time — is announced at the next turn rather than missed.
-		   The injected reminder is recorded by the loop, which is what makes it a baseline next time. */
 		const announce = async ({ session, inject }: AgentHookContext): Promise<void> => {
 			const current = await grantedServers(session);
 			const known = recordedGrants(await session.records(EVENTS.mcpChanged));

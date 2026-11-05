@@ -37,7 +37,6 @@ const STATUS = "min-w-0 truncate font-mono text-[10px] text-muted";
 const KEYS = "ml-auto flex items-center gap-3 font-sans text-[10px] whitespace-nowrap text-muted";
 const KEY_ITEM = "inline-flex items-center gap-[5px]";
 
-/** `path#35` · `path#35-40` · `path.ts:35` · `path.ts:35-40` (the column is dropped). */
 function parseFileQuery(query: string): { path: string; range?: { start: number; end: number } } {
 	const trimmed = query.trim();
 	const at = trimmed.indexOf("#");

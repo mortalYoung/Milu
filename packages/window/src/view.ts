@@ -71,11 +71,8 @@ export interface ViewItem {
 	say?: true;
 	live?: true;
 	stopped?: true;
-	/** What this reply cost, when the provider reported it — tokens, and USD from the model catalog. */
 	usage?: { readonly totalTokens: number; readonly cost: number };
-	/** The model that produced it, so a per-message surface can tell one provider's replies apart. */
 	model?: { readonly provider: string; readonly modelId: string };
-	/** The files this run wrote, absolute and inside the workspace — the words a message may link. */
 	files?: readonly string[];
 	escalation?: ViewEscalation;
 	shell?: ViewShell;
@@ -180,7 +177,6 @@ interface AssistantBlock {
 	arguments?: unknown;
 }
 
-/** A reply's usage is on the message itself: pi-ai prices it against the model catalog, so nothing is recomputed here. */
 function spendOf(message: { readonly usage?: unknown; readonly provider?: unknown; readonly model?: unknown }): Pick<ViewItem, "usage" | "model"> {
 	const usage = message.usage as { totalTokens?: unknown; cost?: { total?: unknown } } | undefined;
 	const priced = typeof usage?.totalTokens === "number" && typeof usage.cost?.total === "number" ? { usage: { totalTokens: usage.totalTokens, cost: usage.cost.total } } : {};
@@ -397,7 +393,6 @@ function rewindVisit(entry: LogEntry, out: ViewItem[]): void {
 	}
 }
 
-/** A retry is one row: scheduled shows the wait, started turns the same row to its past tense. */
 function retryScheduledVisit(entry: LogEntry, out: ViewItem[]): void {
 	if (entry.type !== "custom") return;
 	const data = entry.data as { retry?: unknown; maxRetries?: unknown; delayMs?: unknown; error?: unknown; timestamp?: unknown } | undefined;
@@ -449,7 +444,6 @@ export function rowKindOf(item: ViewItem): string {
 	return item.kind;
 }
 
-/** The in-flight assistant message, laid out exactly as the finished rows will be: steps above, the words last. */
 export function liveRowsOf(message: PartialMessage, time: number): DisplayRow[] {
 	if (message.role !== "assistant") return [];
 	const blocks = Array.isArray(message.content) ? (message.content as AssistantBlock[]) : [];
@@ -583,7 +577,6 @@ function workspacePath(path: string, baseDir: string): string {
 	return `${baseDir.endsWith("/") ? baseDir.slice(0, -1) : baseDir}/${path}`;
 }
 
-/** Collapse `.` and `..` without a path module: this file runs in the renderer, which has no node. */
 function normalizePath(path: string): string {
 	const absolute = path.startsWith("/");
 	const segments: string[] = [];
@@ -605,11 +598,6 @@ function insideWorkspace(path: string, baseDir: string): boolean {
 	return target === root || target.startsWith(`${root}/`);
 }
 
-/**
- * What each reply wrote: the run's `write` / `edit` calls that landed without error, made absolute and
- * kept inside the workspace, attached to the last assistant message that carried words. A mention the
- * markdown layer can link, and a list no one can invent by writing `../` in a tool call.
- */
 export function attachMentionFiles(entries: readonly LogEntry[], items: readonly ViewItem[], baseDir: string | null): void {
 	if (baseDir === null || baseDir === "") return;
 	const calls = new Map<string, { run: string; path: string | null }>();

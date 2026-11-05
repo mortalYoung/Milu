@@ -17,7 +17,6 @@ interface Target {
 	readonly target: "browser" | "node";
 }
 
-/** What the manifest points at, and nothing else: a `.tsx` next to a widget is a module it imports, not a build. */
 async function targets(root: string, manifest: Manifest): Promise<Target[]> {
 	const out: Target[] = [];
 	for (const widget of manifest.milu?.widgets ?? []) {

@@ -89,7 +89,6 @@ export class ModelsService implements Service {
 		return getSupportedThinkingLevels(model);
 	}
 
-	/** The model a session with none of its own runs, when a default is configured. */
 	defaultRef(): ModelRef | null {
 		const value = this._settingsService.get().defaultModel;
 		return value !== undefined && value.provider !== "" ? value : null;

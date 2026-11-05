@@ -5,7 +5,6 @@ export interface WireError {
 	readonly message: string;
 }
 
-/** The in-flight assistant message as it crosses the wire: enough to render, not pi's whole shape. */
 export interface PartialMessage {
 	readonly role: string;
 	readonly content: unknown;
@@ -71,7 +70,6 @@ export interface SessionRow {
 	readonly readAt?: number;
 	readonly running: boolean;
 	readonly compacting?: boolean;
-	/** The directory is a copy still being written: there is no log to open yet. */
 	readonly forking?: boolean;
 	readonly error?: string;
 	readonly lastMessage?: string;

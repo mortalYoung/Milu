@@ -95,6 +95,7 @@ export class SessionService implements Service {
 	get partnerRoot(): string {
 		return this._partnerRoot;
 	}
+	// ——— the chats on disk ———
 
 	async list(): Promise<readonly SessionRow[]> {
 		const rows = await Promise.all((await this._names()).map((name) => this._rowOf(this.get(name))));
@@ -135,7 +136,6 @@ export class SessionService implements Service {
 		return this._names();
 	}
 
-	/** Up to 64 characters, case-insensitive, the way a session name has always been chosen. */
 	private async _nameFor(base: string, used: readonly string[]): Promise<string> {
 		const taken = new Set(used.map((name) => name.toLowerCase()));
 		const trimmed = base.slice(0, 64);
@@ -146,11 +146,8 @@ export class SessionService implements Service {
 			if (!taken.has(candidate.toLowerCase())) return candidate;
 		}
 	}
+	// ——— copies and forks ———
 
-	/**
-	 * A copy of a chat, directory and all. `fork` makes it a branch of the source; `duplicate` keeps
-	 * the source's own parent, so copying a fork yields a sibling.
-	 */
 	async copy(name: string, mode: "fork" | "duplicate"): Promise<string> {
 		if (this.running(name)) throw new Error(`"${name}" is still running; wait for it to finish`);
 		const source = await this.ensure(name);
@@ -160,7 +157,6 @@ export class SessionService implements Service {
 		const dir = join(this._partnerRoot, target);
 		const next: SessionProfile = { ...(profile ?? { name, createdAt: Date.now() }), name: target, createdAt: Date.now(), ...(mode === "fork" ? { forkedFrom: name } : {}) };
 		delete next.pinned;
-		/* The chat appears at once and says it is being written; the copy itself runs behind this return. */
 		await mkdir(dir, { recursive: true });
 		await writeProfile(dir, next);
 		await markForking(dir, name);
@@ -179,15 +175,12 @@ export class SessionService implements Service {
 	}
 
 	private async _fill(source: Session, dir: string, profile: SessionProfile): Promise<void> {
-		/* The logs are rewritten by the fork itself, so the copy leaves them out — a chat's history is
-		   most of its bytes and copying it twice is the whole cost of this operation. */
 		await cp(source.root, dir, { recursive: true, filter: (from) => !from.endsWith(".tmp") && !from.endsWith(".jsonl") });
 		await writeProfile(dir, profile);
 		await source.forkInto(dir);
 		await clearForking(dir);
 	}
 
-	/** A fork that never finished is not a chat: its directory only holds half a copy. */
 	private async _discardIncomplete(): Promise<void> {
 		for (const name of await this._names()) {
 			const dir = join(this._partnerRoot, name);
@@ -238,6 +231,7 @@ export class SessionService implements Service {
 		this._sessions.clear();
 		this._relays.clear();
 	}
+	// ——— the slots around a chat ———
 
 	async slots(point: string, session?: Session | null): Promise<SlotItem[]> {
 		const source = this._contributionService.get<SlotItem>(point);

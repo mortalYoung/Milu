@@ -6,7 +6,6 @@ import type { GitChange, GitChangeStatus, GitPatch, GitSides, GitWorktree, GitWo
 
 const MAX_BUFFER = 32 * 1024 * 1024;
 
-/** The same ceiling the explorer previews by; a diff is not the place to read a bigger file. */
 const MAX_SIDE_BYTES = 512 * 1024;
 
 interface RunResult {
@@ -36,7 +35,6 @@ function run(cwd: string, args: readonly string[]): Promise<RunResult> {
 
 const text = (bytes: Buffer): string => bytes.toString("utf8");
 
-/** The repository the workspace sits in, or null when git does not know the path as one. */
 async function repoRootOf(workspace: string): Promise<string | null> {
 	const result = await run(workspace, ["rev-parse", "--show-toplevel"]);
 	if (result.code === 0) {
@@ -111,7 +109,6 @@ function parseWorktrees(stdout: string): GitWorktree[] {
 	return worktrees;
 }
 
-/** Every worktree of the repo this workspace sits in, and the one containing the workspace. */
 export async function gitWorktrees(workspace: string): Promise<GitWorktrees> {
 	const repoRoot = await rootOrThrow(workspace);
 	const result = await run(repoRoot, ["worktree", "list", "--porcelain"]);
@@ -127,7 +124,6 @@ export async function gitWorktrees(workspace: string): Promise<GitWorktrees> {
 	return { repoRoot, current: containing[0]?.path ?? null, worktrees };
 }
 
-/** Create a worktree; an existing branch is checked out, a new one starts from base. */
 export async function gitWorktreeAdd(workspace: string, path: string, branch: string, base: string): Promise<void> {
 	const ref = `refs/heads/${branch}`;
 	const checked = await run(workspace, ["show-ref", "--verify", "--quiet", ref]);
@@ -153,7 +149,6 @@ export interface WorkspaceFacts {
 	readonly detached: boolean;
 }
 
-/** What the workspace is, for a row label. Never persisted; read from the dir when needed. */
 export async function gitWorkspaceFacts(workspace: string): Promise<WorkspaceFacts> {
 	try {
 		const found = await gitWorktrees(workspace);
@@ -178,7 +173,6 @@ function ensureWithin(root: string, target: string): void {
 	if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) throw new Error("path escapes the repository root");
 }
 
-/** Text, or a note that the bytes are not text (or are too big to read as one). */
 function sideOf(bytes: Buffer | null): { text: string; binary: boolean; tooLarge: boolean } {
 	if (bytes === null) return { text: "", binary: false, tooLarge: false };
 	if (bytes.byteLength > MAX_SIDE_BYTES) return { text: "", binary: false, tooLarge: true };
@@ -190,7 +184,6 @@ function sideOf(bytes: Buffer | null): { text: string; binary: boolean; tooLarge
 	}
 }
 
-/** A trailing newline is not a line, matching how the reader counts them. */
 function lineCount(text: string): number {
 	if (text === "") return 0;
 	const lines = text.split("\n");
@@ -198,11 +191,6 @@ function lineCount(text: string): number {
 	return lines.length;
 }
 
-/**
- * Both ends of a change: a staged change runs HEAD against the index, an unstaged one runs the index
- * against the working file. A rename reads its old name from the other end, so it does not arrive as
- * "everything added".
- */
 export async function gitFileSides(workspace: string, path: string, options: { staged?: boolean; from?: string } = {}): Promise<GitSides> {
 	const repoRoot = await rootOrThrow(workspace);
 	const target = resolve(repoRoot, path);
@@ -225,8 +213,6 @@ export async function gitFileSides(workspace: string, path: string, options: { s
 	const numstat = await run(repoRoot, args);
 	const [add, del] = (text(numstat.stdout).split("\n")[0] ?? "").split("\t");
 	const counted = { add: Number(add) || 0, del: Number(del) || 0 };
-	/* An untracked file is in no diff at all, so `--numstat` has nothing to say: the whole file is the
-	   addition, and the whole old file is the removal. */
 	if (counted.add === 0 && counted.del === 0 && !original.binary && !modified.binary) {
 		if (original.text === "" && modified.text !== "") counted.add = lineCount(modified.text);
 		else if (modified.text === "" && original.text !== "") counted.del = lineCount(original.text);
@@ -242,7 +228,6 @@ export async function gitFileSides(workspace: string, path: string, options: { s
 	};
 }
 
-/** The unified patch, for the one-column view and for a file a two-sided read cannot hold. */
 export async function gitPatch(workspace: string, path: string, options: { staged?: boolean } = {}): Promise<GitPatch> {
 	const repoRoot = await rootOrThrow(workspace);
 	const target = resolve(repoRoot, path);

@@ -38,7 +38,6 @@ interface ListControls {
 	readonly toggle: () => void;
 }
 
-/** The tree needs a workspace: without one the changes are not part of the chrome at all. */
 function useHasWorkspace(host: Host): boolean {
 	const selected = useStore(host.selection.store, (state) => state.selected);
 	return useStore(host.sessions.store, (state) => {
@@ -55,8 +54,6 @@ export function GitButton(props: SlotProps) {
 	const active = useStore(host.dock.store, (current) => current.active);
 	const open = visible && active === "git";
 	const count = state.changes.length;
-	/* No entry for a clean tree: nothing to show is the whole point of the button. A read that failed
-	   still shows — a broken repository is worth one line of chrome. */
 	const worth = state.status === "error" || (state.status === "ready" && count > 0);
 	if (!hasWorkspace || !worth) return null;
 	return (
@@ -127,7 +124,6 @@ export function GitPane(props: SlotProps) {
 		void service.refresh();
 	}, [service]);
 
-	/* The entry is gone once the tree is clean, so a view left showing nothing hands the dock back. */
 	useEffect(() => {
 		if (!hasWorkspace || !shown || state.status !== "ready" || state.changes.length > 0) return;
 		host.dock.select("explorer");
@@ -414,7 +410,6 @@ function DiffPane(props: { host: Host; session: string; change: GitChange; list:
 	);
 }
 
-/** Lines of one side as the highlighter painted them; null until the grammar arrives. */
 function usePainted(text: string, language: string | null): readonly string[] | null {
 	const [painted, setPainted] = useState<{ text: string; lines: readonly string[] } | null>(null);
 	useEffect(() => {

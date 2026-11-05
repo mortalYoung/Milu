@@ -80,7 +80,6 @@ export function useExtensionData<T>(key: string): {
 	readonly status: "loading" | "ready" | "error";
 	readonly data: T | undefined;
 	readonly error?: string;
-	/** Ask the extension for the value again — a widget whose number goes stale on a clock uses this. */
 	refresh(): void;
 } {
 	const value = useWidgetContext();

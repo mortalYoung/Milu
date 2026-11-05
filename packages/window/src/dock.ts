@@ -27,7 +27,6 @@ export interface DockState {
 	readonly opened: readonly DockTab[];
 }
 
-/** The contributed views first, then whatever a session opened into the dock. */
 export function dockTabs(views: readonly SlotItem[], opened: readonly DockTab[]): readonly DockTab[] {
 	return [
 		...views.map((item) => ({
@@ -64,7 +63,6 @@ export class DockService implements Service {
 			void this._slots.load(DOCK_VIEWS_POINT, this._session()).catch(() => undefined);
 		});
 		const stopSlots = this._slots.store.subscribe(() => this.sync());
-		/* Shrunk out of flow: the dock folds instead of floating uninvited (a manual open can still float). */
 		const stopColumns = this._columns.store.subscribe(() => {
 			const mode = this._columns.store.getState().columns.dock.mode;
 			const previous = this._dockMode;
@@ -90,7 +88,6 @@ export class DockService implements Service {
 		this.sync();
 	}
 
-	/** Show the dock on this view, or hide it when it already is the one showing. */
 	toggleView(key: string): void {
 		const state = this.store.getState();
 		if (state.visible && state.active === key) {
@@ -106,7 +103,6 @@ export class DockService implements Service {
 		});
 	}
 
-	/** Re-read the contributed views: extensions settle after the first snapshot. */
 	async refresh(): Promise<void> {
 		await this._slots.load(DOCK_VIEWS_POINT, this._session()).catch(() => undefined);
 		this.sync();
@@ -140,7 +136,6 @@ export class DockService implements Service {
 		this.sync();
 	}
 
-	/** Keeps the active tab real and the dock column showing only when there is something to show. */
 	sync(): void {
 		const state = this.store.getState();
 		const tabs = this.tabs();

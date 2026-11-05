@@ -31,7 +31,6 @@ export function useComposerData<T>(
 	return { status: entry.status, data: entry.data?.[key] as T | undefined, session, refresh };
 }
 
-/** Refresh when the session's newest entry matches, or when a run of it ends: the widget decides, not the host. */
 export function useComposerRefresh(host: Host, session: string, refresh: () => void, when: (entry: SeqEntry["entry"]) => boolean): void {
 	const tail = useStore(host.transcript.store, (state) => {
 		const log = state.logs[session];

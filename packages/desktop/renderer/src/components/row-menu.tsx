@@ -9,7 +9,6 @@ export const MenuTrigger = DropdownMenu.Trigger;
 
 const EDGE = 8;
 
-/** Keeps a box inside the window: Radix places it, this measures where it landed and nudges it back. */
 function useInViewport<T extends HTMLElement>(): React.RefObject<T | null> {
 	const box = useRef<T>(null);
 

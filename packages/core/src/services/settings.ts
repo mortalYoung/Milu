@@ -34,9 +34,7 @@ export interface Settings {
 	providers?: string[];
 	customProviders?: CustomProvider[];
 	rememberSession?: boolean;
-	/** Where a message goes while the agent is still working. */
 	sendWhileRunning?: PendingKind;
-	/** Only what the core decides with: the rest of the file belongs to the extensions that declare it. */
 	compaction?: { thresholdRatio?: number };
 }
 

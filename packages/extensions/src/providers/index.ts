@@ -42,7 +42,6 @@ async function fetchBalance(key: string): Promise<{ available: boolean; infos: r
 	return { available: body.is_available !== false, infos };
 }
 
-/** The account behind a chat's provider, and the one read that says how much of it is left. */
 export class ProviderAccounts {
 	private readonly _snapshots = new Map<string, BalanceSnapshot>();
 	private readonly _inflight = new Map<string, Promise<BalanceSnapshot>>();
@@ -53,7 +52,6 @@ export class ProviderAccounts {
 		private readonly _sessions: SessionService,
 	) {}
 
-	/** Null means "this chat runs somewhere we have no account facts for" — the caller renders nothing. */
 	async balance(name: string | null): Promise<BalanceSnapshot | null> {
 		const provider = await this._providerOf(name);
 		if (provider !== "deepseek") return null;
@@ -73,7 +71,6 @@ export class ProviderAccounts {
 			this._snapshots.set(provider, snapshot);
 			return snapshot;
 		} catch {
-			/* A failed read keeps the last answer: a stale number beats a pill that vanishes. */
 			return this._snapshots.get(provider) ?? null;
 		}
 	}

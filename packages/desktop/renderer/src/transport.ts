@@ -20,7 +20,6 @@ function bridge(): Bridge {
 const READY_TIMEOUT_MS = 10_000;
 const RETRY_MS = 50;
 
-/** The window loads before the backend does; a request that arrives early waits for the handlers instead of failing. */
 async function whenListening<T>(run: () => Promise<T>): Promise<T> {
 	const deadline = Date.now() + READY_TIMEOUT_MS;
 	for (;;) {

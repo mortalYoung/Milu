@@ -52,7 +52,6 @@ export class AgentLoopService implements Service {
 	private readonly _pending: (string | AgentMessage)[] = [];
 	private readonly _steerings: AgentMessage[] = [];
 	private readonly _followUps: AgentMessage[] = [];
-	/** A failed attempt's tail, held until the retry decision says whether it is final. */
 	private _held: AgentEvent[] = [];
 	private _releasing = false;
 	private _retries = 0;
@@ -168,7 +167,6 @@ export class AgentLoopService implements Service {
 		return list.splice(at, 1)[0] ?? null;
 	}
 
-	/** The SDK's queues are opaque, so the mirrors are replayed after every change. */
 	private _syncQueues(): void {
 		this._agent.clearSteeringQueue();
 		this._agent.clearFollowUpQueue();
@@ -176,7 +174,6 @@ export class AgentLoopService implements Service {
 		for (const item of this._followUps) this._agent.followUp(item);
 	}
 
-	/** One attempt, then another if the failure hook asks for it — the failed one leaves no trace. */
 	private async _runWithRetry(input: string | AgentMessage | null): Promise<AgentLoopRun> {
 		let next = input;
 		this._retries = 0;
@@ -232,7 +229,6 @@ export class AgentLoopService implements Service {
 		return error ? { error } : {};
 	}
 
-	/** Give the failed attempt back to whoever listens — the records are written from here. */
 	private _release(): void {
 		const held = this._held;
 		this._held = [];
@@ -250,7 +246,6 @@ export class AgentLoopService implements Service {
 		if (last !== undefined && last.role === "assistant" && (last as { stopReason?: unknown }).stopReason === "error") this._agent.state.messages = messages.slice(0, -1);
 	}
 
-	/** The backoff, woken early by `stop()` so an aborted retry does not wait out its delay. */
 	private _idle(ms: number): Promise<void> {
 		if (ms <= 0) return Promise.resolve();
 		return new Promise<void>((resolve) => {
@@ -392,7 +387,6 @@ export class AgentLoopService implements Service {
 		if (removed !== null) this._emitPending();
 	}
 
-	/** A message the run never reached starts the next run instead of being lost. */
 	private _requeuePending(): void {
 		if (this._steerings.length === 0 && this._followUps.length === 0) return;
 		this._pending.push(...this._steerings.splice(0), ...this._followUps.splice(0));

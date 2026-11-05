@@ -9,7 +9,6 @@ function textWidth(element: HTMLElement, text: string): number {
 	return context.measureText(text).width;
 }
 
-/** Budget in characters, from the average width of the text itself: "M" is twice a Han glyph and wider than most letters, so neither fits everyone. */
 function useBudget(ref: RefObject<HTMLElement | null>, text: string): number {
 	const [budget, setBudget] = useState(0);
 	useEffect(() => {
@@ -28,7 +27,6 @@ function useBudget(ref: RefObject<HTMLElement | null>, text: string): number {
 	return budget;
 }
 
-/** One line, elided in the middle: the head says what it is about, the tail says where it got to. */
 function middle(text: string, budget: number): { head: string; tail: string; elided: boolean } {
 	const points = [...oneLine(text)];
 	if (points.length <= budget) return { head: points.join(""), tail: "", elided: false };
@@ -48,7 +46,6 @@ function Middle(props: { text: string; budget: number }) {
 	);
 }
 
-/** A line that spends whatever room it is given and cuts out of its middle, keeping both ends readable. */
 export function Elide(props: { text: string; className?: string }) {
 	const line = useRef<HTMLSpanElement>(null);
 	const budget = useBudget(line, props.text);

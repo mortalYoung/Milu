@@ -3,14 +3,8 @@ export interface MentionTarget {
 	readonly line?: number;
 }
 
-/** `path:12` or `path#12-20` — the line a mention points at; a range lands on its first line. */
 const WITH_RANGE = /^(.+?)[:#](\d+)(?:-(\d+))?$/;
 
-/**
- * The file an inline code token names: itself when it is in the list, otherwise a suffix exactly one
- * file ends with. Two candidates and nothing is claimed — a link that might go to the wrong file is
- * worse than plain code.
- */
 export function resolveMentionToken(token: string, files: readonly string[]): MentionTarget | undefined {
 	const value = token.trim();
 	const match = WITH_RANGE.exec(value);

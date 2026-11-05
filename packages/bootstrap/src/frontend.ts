@@ -90,10 +90,11 @@ async function widgetEntries(connection: Connection): Promise<readonly WidgetEnt
 export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	const connection = new Connection(deps.transport);
 	const set = await loadWidgets(await widgetEntries(connection));
-	/* Plugins arrive with the widgets, so the port is built here — after them, before anything renders. */
 	const markdown: Markdown = createMarkdown([...DEFAULT_PLUGINS, ...set.markdown]);
 
 	let container: InstantiationService;
+	// ——— the container ———
+
 	const services = new ServiceCollection();
 	services.set(IConnection, connection);
 	for (const service of set.services) {
@@ -169,6 +170,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	let started = false;
 	let applying = false;
 	let hydrated = false;
+	// ——— what the shell applies ———
 
 	const apply = (snapshot: Snapshot): void => {
 		applying = true;
@@ -188,8 +190,8 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 		hydrated = true;
 		shell(snapshot.sessions);
 	};
+	// ——— the first paint ———
 
-	/** The session list is the biggest commit at boot: hold it until the chat has painted. */
 	const shell = (rows: readonly SessionRow[]): void => {
 		const name = selection.store.getState().selected;
 		let applied = false;

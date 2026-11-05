@@ -15,11 +15,9 @@ export interface AgentHookContext {
 
 export type AgentHook = (context: AgentHookContext) => void | Promise<void>;
 
-/** A run that failed, asked before anything about it is written down. */
 export interface AgentFailureContext {
 	readonly session: Session;
 	readonly message: AssistantMessage;
-	/** 1-based: the retry this decision would schedule. */
 	readonly attempt: number;
 }
 
@@ -28,7 +26,6 @@ export interface AgentRetryDecision {
 	readonly maxRetries: number;
 }
 
-/** Answer by calling `retry` — the first listener that does decides, the rest are not asked. */
 export type AgentFailureHook = (context: AgentFailureContext, retry: (decision: AgentRetryDecision) => void) => void | Promise<void>;
 
 export class HookService implements Service {
@@ -68,7 +65,6 @@ export class HookService implements Service {
 		};
 	}
 
-	/** Null means nobody wants this run retried: the failure is final. */
 	async askRetry(context: AgentFailureContext): Promise<AgentRetryDecision | null> {
 		let decision: AgentRetryDecision | null = null;
 		for (const listener of this._failures.slice()) {

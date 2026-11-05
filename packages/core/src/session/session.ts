@@ -213,7 +213,6 @@ export class Session {
 		return this._compacting;
 	}
 
-	/** The live model-visible messages, or nothing before the loop is opened. */
 	messages(): readonly AgentMessage[] {
 		return this._loop?.messages() ?? [];
 	}
@@ -291,7 +290,6 @@ export class Session {
 		});
 	}
 
-	/** A send that never reaches the loop still says why — once, in the log, where a reload finds it. */
 	private async _failBeforeRun(message: AgentMessage | null, failure: string): Promise<void> {
 		this._error = null;
 		if (message !== null) await this._log.append(message);
@@ -427,8 +425,6 @@ export class Session {
 	}
 
 	private async _openLoop(): Promise<AgentLoopService> {
-		/* The storage path is in the prompt and is bash's fallback working directory when no workspace
-		   is set, so it has to exist before the first run — not whenever something happens to write. */
 		await mkdir(join(this.root, "storage"), { recursive: true });
 		await this._log.open();
 
@@ -566,10 +562,6 @@ export class Session {
 		return this._profileOf();
 	}
 
-	/**
-	 * Everything read from the directory before a fork finished writing it is stale — the row was
-	 * already reading a session whose log, workspace and model had not been copied yet.
-	 */
 	invalidate(): void {
 		this._log.invalidate();
 		this._profile = undefined;
@@ -583,12 +575,10 @@ export class Session {
 		return (await forkingOf(this.root)) !== null;
 	}
 
-	/** The log side of a copy; the directory and the profile belong to the caller. */
 	async forkInto(target: string): Promise<void> {
 		await this._log.forkInto(target);
 	}
 
-	/** A fork becomes a root chat: the branch keeps its history and stops being a branch. */
 	async promote(): Promise<void> {
 		const profile = (await this._profileOf()) ?? { name: this.name, createdAt: Date.now() };
 		if (profile.forkedFrom === undefined) throw new Error(`"${this.name}" is already a root chat`);
@@ -705,7 +695,6 @@ export class Session {
 		});
 	}
 
-	/** A header that matches the last one would only cost bytes; the log keeps the first and every change. */
 	private _requestHeader(): Record<string, unknown> | null {
 		const prompt = this.systemPrompt();
 		const tools = (this._loop?.tools() ?? []).map((tool) => ({ name: tool.name, description: tool.description, parameters: tool.parameters }));
@@ -715,7 +704,6 @@ export class Session {
 		return { systemPrompt: prompt, toolNames: tools.map((tool) => tool.name), tools, timestamp: Date.now() };
 	}
 
-	/** Hands the model to the loop; returns why it could not, and a run that needed it must not start. */
 	private _applyModel(loop: AgentLoopService, model: SessionModel | null): string | null {
 		try {
 			loop.setModel(this._deps.modelsService.resolve(model ?? undefined));
@@ -747,7 +735,6 @@ export class Session {
 		return { ...(peek.createdAt ? { startedAt: peek.createdAt } : {}), last };
 	}
 
-	/** The tail missed (a long run of tool records at the end): read deeper, still bounded. */
 	private async _lastVisible(): Promise<LastVisible | null> {
 		return lastVisible((await this._log.peek(DEEP_TAIL_BYTES)).tail);
 	}

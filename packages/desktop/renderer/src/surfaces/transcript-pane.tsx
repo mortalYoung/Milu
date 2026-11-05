@@ -40,7 +40,6 @@ function CopyButton(props: { text: string }) {
 	);
 }
 
-/** Extensions say what a message cost, or anything else the row's footing should carry; the shell only makes room. */
 function MessageMeta(props: { host: Host; item: ViewItem; className?: string }) {
 	const items = useStore(props.host.slots.store, (state) => state.points[SLOT_POINTS.messageMeta] ?? NO_ITEMS);
 	const components = useStore(props.host.slots.store, (state) => state.components);
@@ -175,7 +174,6 @@ function SpeakingDots() {
 	);
 }
 
-/** The one component that re-renders while a reply streams; the rows behind it stay put. */
 function StreamTail(props: {
 	host: Host;
 	session: string;

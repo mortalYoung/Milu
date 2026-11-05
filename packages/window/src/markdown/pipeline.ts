@@ -13,10 +13,8 @@ export interface Markdown extends MarkdownPort {
 
 const CACHE_LIMIT = 200;
 
-/** Markdown-it's own env type is not exported; this is the shape its `render` takes. */
 type RenderEnv = NonNullable<Parameters<MarkdownItType["render"]>[1]>;
 
-/** Every fence's language, read by markdown-it itself: indented, nested and metad fence info all land the same way. */
 function fenceLanguages(md: MarkdownItType, source: string): string[] {
 	const out: string[] = [];
 	for (const token of md.parse(source, {})) {
@@ -33,7 +31,6 @@ function idle(): Promise<void> {
 	});
 }
 
-/** One highlight at a time, each starting in its own idle slot: a transcript of code blocks never lands as one long task. */
 function queue(): <T>(job: () => Promise<T>) => Promise<T> {
 	let tail: Promise<unknown> = Promise.resolve();
 	return (job) => {
@@ -60,10 +57,6 @@ function ordered(plugins: readonly MarkdownPlugin[]): readonly MarkdownPlugin[] 
 	return sorted;
 }
 
-/**
- * What a render depends on, as one cache key: the text, plus the env a plugin reads. Only `files` is
- * known to be stable string data today — anything else keeps the render uncached rather than guess.
- */
 function cacheKey(text: string, env: MarkdownEnv): string | null {
 	const keys = Object.keys(env);
 	if (keys.length === 0) return text;
@@ -127,8 +120,6 @@ export function createMarkdown(plugins: readonly MarkdownPlugin[] = DEFAULT_PLUG
 		return out;
 	};
 
-	/** The allowlisted HTML is drawn around markdown, never passed through raw; a nested body (a
-	 *  `<details>`) comes back here so it renders on the same instance. */
 	const draw = (md: MarkdownItType, text: string, env: MarkdownEnv, tier: MarkdownTier): string => {
 		const { source, slots } = extractHtmlSubset(sourceOf(text, env, tier));
 		const html = htmlOf(md.render(source, env as RenderEnv), env, tier);
