@@ -299,7 +299,9 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 			disposables.add(
 				connection.onEntry(({ session, entry }) => {
 					transcript.append(session, entry);
-					if (entry.entry.type !== "custom" || (entry.entry.customType !== LOG_EVENTS.taskStart && entry.entry.customType !== LOG_EVENTS.taskEnd)) return;
+					if (entry.entry.type !== "custom") return;
+					const kind = entry.entry.customType;
+					if (kind !== LOG_EVENTS.taskStart && kind !== LOG_EVENTS.taskEnd && kind !== LOG_EVENTS.escalationRequest && kind !== LOG_EVENTS.escalationDecision) return;
 					void sessions.refresh();
 				}),
 			);
