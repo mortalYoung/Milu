@@ -1,8 +1,8 @@
 import { appendFile, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { isAbsolute, join, resolve } from "node:path";
 
-import type { ExecutionEnv, FileInfo, FileKind } from "@earendil-works/pi-agent-core";
-import { err, ExecutionError, FileError, ok } from "@earendil-works/pi-agent-core";
+import { err, ExecutionError, FileError, ok } from "../tools/result.ts";
+import type { ExecutionEnv, FileInfo, FileKind } from "./types.ts";
 
 type FileResult<T> = { ok: true; value: T } | { ok: false; error: FileError };
 

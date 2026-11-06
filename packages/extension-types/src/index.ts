@@ -1,6 +1,6 @@
-import type { AgentToolResult, ExecutionEnv } from "@earendil-works/pi-agent-core";
-import type { TSchema } from "@earendil-works/pi-ai";
+import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@earendil-works/pi-agent-core";
 import type { BrowserCommand, DialogDescriptor, Hotkey, Theme, WidgetType } from "@milu/protocol";
+import type { TSchema } from "typebox";
 
 export type {
 	BrowserCommand,
@@ -18,8 +18,7 @@ export type {
 	WelcomeItem,
 	WidgetType,
 } from "@milu/protocol";
-export type { ExecutionEnv } from "@earendil-works/pi-agent-core";
-export type { TSchema } from "@earendil-works/pi-ai";
+export type { TSchema } from "typebox";
 
 export interface Disposable {
 	dispose(): void;
@@ -125,3 +124,81 @@ export interface Extension {
 	readonly contributions?: { readonly [point: string]: readonly unknown[] | undefined };
 	activate?(context: ExtensionContext): void | Promise<void>;
 }
+
+export type FileKind = "file" | "directory" | "symlink";
+
+export interface FileInfo {
+	readonly name: string;
+	readonly path: string;
+	readonly kind: FileKind;
+	readonly size: number;
+	readonly mtimeMs: number;
+}
+
+export type Result<TValue, TError> = { readonly ok: true; readonly value: TValue } | { readonly ok: false; readonly error: TError };
+
+export type FileErrorCode = "aborted" | "not_found" | "permission_denied" | "not_directory" | "is_directory" | "invalid" | "not_supported" | "unknown";
+
+export interface FileError extends Error {
+	readonly code: FileErrorCode;
+	readonly path?: string;
+}
+
+export type ExecutionErrorCode = "aborted" | "timeout" | "shell_unavailable" | "spawn_error" | "callback_error" | "unknown";
+
+export interface ExecutionError extends Error {
+	readonly code: ExecutionErrorCode;
+}
+
+export interface ShellExecOptions {
+	readonly cwd?: string;
+	readonly env?: Record<string, string>;
+	readonly inheritEnv?: boolean;
+	readonly timeout?: number;
+	readonly abortSignal?: AbortSignal;
+	readonly onStdout?: (chunk: string) => void;
+	readonly onStderr?: (chunk: string) => void;
+}
+
+export interface FileSystem {
+	readonly cwd: string;
+	absolutePath(path: string, abortSignal?: AbortSignal): Promise<Result<string, FileError>>;
+	joinPath(parts: string[], abortSignal?: AbortSignal): Promise<Result<string, FileError>>;
+	readTextFile(path: string, abortSignal?: AbortSignal): Promise<Result<string, FileError>>;
+	readTextLines(path: string, options?: { readonly maxLines?: number; readonly abortSignal?: AbortSignal }): Promise<Result<string[], FileError>>;
+	readBinaryFile(path: string, abortSignal?: AbortSignal): Promise<Result<Uint8Array, FileError>>;
+	writeFile(path: string, content: string | Uint8Array, abortSignal?: AbortSignal): Promise<Result<void, FileError>>;
+	appendFile(path: string, content: string | Uint8Array, abortSignal?: AbortSignal): Promise<Result<void, FileError>>;
+	renameFile(sourcePath: string, destinationPath: string, abortSignal?: AbortSignal): Promise<Result<void, FileError>>;
+	fileInfo(path: string, abortSignal?: AbortSignal): Promise<Result<FileInfo, FileError>>;
+	listDir(path: string, abortSignal?: AbortSignal): Promise<Result<FileInfo[], FileError>>;
+	canonicalPath(path: string, abortSignal?: AbortSignal): Promise<Result<string, FileError>>;
+	exists(path: string, abortSignal?: AbortSignal): Promise<Result<boolean, FileError>>;
+	createDir(path: string, options?: { readonly recursive?: boolean; readonly abortSignal?: AbortSignal }): Promise<Result<void, FileError>>;
+	remove(path: string, options?: { readonly recursive?: boolean; readonly force?: boolean; readonly abortSignal?: AbortSignal }): Promise<Result<void, FileError>>;
+	createTempDir(prefix?: string, abortSignal?: AbortSignal): Promise<Result<string, FileError>>;
+	createTempFile(options?: { readonly prefix?: string; readonly suffix?: string; readonly abortSignal?: AbortSignal }): Promise<Result<string, FileError>>;
+}
+
+export interface Shell {
+	exec(command: string, options?: ShellExecOptions): Promise<Result<{ readonly stdout: string; readonly stderr: string; readonly exitCode: number }, ExecutionError>>;
+	cleanup(): Promise<void>;
+}
+
+export interface ExecutionEnv extends FileSystem, Shell {}
+
+export interface ExecutionToolContext {
+	readonly env: ExecutionEnv;
+}
+
+type ToolParams<TParameters extends TSchema, TDetails> = Parameters<AgentTool<TParameters, TDetails>["execute"]>[1];
+
+export type AgentHarnessTool<TContext extends object | undefined, TParameters extends TSchema = TSchema, TDetails = unknown> = Omit<AgentTool<TParameters, TDetails>, "execute"> & {
+	execute(
+		toolCallId: string,
+		params: ToolParams<TParameters, TDetails>,
+		signal: AbortSignal | undefined,
+		onUpdate: AgentToolUpdateCallback<TDetails> | undefined,
+		context: TContext,
+	): Promise<AgentToolResult<TDetails>>;
+};
