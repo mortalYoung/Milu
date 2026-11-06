@@ -1,7 +1,10 @@
 import type { CustomModel, CustomProvider, Extension, ExtensionContext, Settings } from "@milu/core";
+import { expandHome } from "@milu/core";
 
 import { IMcpService } from "../mcp/index.ts";
 import type { McpOptions } from "../mcp/types.ts";
+import { resolveExemptRoot } from "../permission/roots.ts";
+import { resolveSandboxEnv } from "../permission/sandbox-env.ts";
 
 export type { CustomModel, CustomProvider, Settings };
 
@@ -127,6 +130,12 @@ const settingsExtension: Extension = {
 				for (const [provider, key] of Object.entries(credentials ?? {})) {
 					if (key === null) await context.config.deleteApiKey(provider);
 					else await context.config.setApiKey(provider, key);
+				}
+				if (patch && ("sandboxExemptRoot" in patch || "sandboxEnv" in patch)) {
+					const merged = { ...(context.settings.get() as unknown as Record<string, unknown>), ...(patch as Record<string, unknown>) };
+					const configured = merged["sandboxExemptRoot"] ?? "~/Milu/Permissions";
+					if (typeof configured !== "string" || configured.trim() === "") throw new Error('settings "sandboxExemptRoot" must be a non-empty string');
+					resolveSandboxEnv(merged["sandboxEnv"] ?? {}, resolveExemptRoot(expandHome(configured.trim())));
 				}
 				if (patch) await context.settings.update(patch);
 			},

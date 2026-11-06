@@ -21,7 +21,7 @@ const CATEGORIES = [
 ] as const;
 
 type CategoryId = (typeof CATEGORIES)[number]["id"];
-type FieldKind = "text" | "number" | "switch" | "segments" | "duration" | "sandbox" | "path" | "dirs" | "select";
+type FieldKind = "text" | "number" | "switch" | "segments" | "duration" | "sandbox" | "path" | "dirs" | "select" | "env";
 
 interface Field {
 	readonly id: string;
@@ -258,6 +258,23 @@ const FIELDS: readonly Field[] = [
 		options: SANDBOX,
 	},
 	{
+		id: "sandboxExemptRoot",
+		scope: "settings",
+		category: "permission",
+		kind: "path",
+		title: "Exempt Root",
+		description: "The only directory a sandboxed command may write outside the workspace. Tools point their own stores inside it.",
+	},
+	{
+		id: "sandboxEnv",
+		scope: "settings",
+		category: "permission",
+		kind: "env",
+		title: "Sandbox Environment",
+		description: "Extra variables for every sandboxed command. Names are upper case; values may use $MILU_PERMISSION_HOME and must stay inside the exempt root.",
+		mono: true,
+	},
+	{
 		id: "delete.strict",
 		scope: "settings",
 		category: "permission",
@@ -367,6 +384,10 @@ function displayValue(field: Field, value: unknown): string {
 		case "dirs": {
 			const count = Array.isArray(value) ? value.length : 0;
 			return count === 0 ? "None" : count === 1 ? "1 directory" : `${count} directories`;
+		}
+		case "env": {
+			const count = typeof value === "object" && value !== null ? Object.keys(value).length : 0;
+			return count === 0 ? "None" : count === 1 ? "1 variable" : `${count} variables`;
 		}
 		case "switch":
 			return value === true ? "On" : "Off";
@@ -510,6 +531,65 @@ function DirsEditor(props: { values: readonly string[]; onCommit: (next: string[
 			))}
 			<button type="button" className={`${LINK} justify-self-start`} onClick={() => setRows([...rows, ""])}>
 				+ add directory
+			</button>
+		</div>
+	);
+}
+
+function EnvEditor(props: { values: Readonly<Record<string, string>>; onCommit: (next: Record<string, string>) => void }) {
+	const [rows, setRows] = useState<readonly (readonly [string, string])[]>(() => Object.entries(props.values));
+
+	const commit = (next: readonly (readonly [string, string])[]): void => {
+		const cleaned = next.map(([name, value]) => [name.trim(), value] as const).filter(([name]) => name !== "");
+		const object = Object.fromEntries(cleaned);
+		setRows(cleaned);
+		if (!eq(object, props.values)) props.onCommit(object);
+	};
+
+	const edit = (index: number, next: readonly [string, string]): void => {
+		setRows(rows.map((row, at) => (at === index ? next : row)));
+	};
+
+	const reset = (input: HTMLInputElement): void => {
+		setRows(Object.entries(props.values));
+		input.blur();
+	};
+
+	return (
+		<div className="grid gap-2">
+			{rows.map(([name, value], index) => (
+				<div className="flex items-center gap-2" key={index}>
+					<input
+						className={`${FIELD} w-[168px] font-mono text-[12px]`}
+						value={name}
+						aria-label={`Variable name ${index + 1}`}
+						spellCheck={false}
+						onChange={(event) => edit(index, [event.currentTarget.value, value])}
+						onBlur={() => commit(rows)}
+						onKeyDown={(event) => {
+							if (event.key === "Enter") event.currentTarget.blur();
+							if (event.key === "Escape") reset(event.currentTarget);
+						}}
+					/>
+					<input
+						className={`${FIELD} min-w-0 flex-1 font-mono text-[12px]`}
+						value={value}
+						aria-label={`Variable value ${index + 1}`}
+						spellCheck={false}
+						onChange={(event) => edit(index, [name, event.currentTarget.value])}
+						onBlur={() => commit(rows)}
+						onKeyDown={(event) => {
+							if (event.key === "Enter") event.currentTarget.blur();
+							if (event.key === "Escape") reset(event.currentTarget);
+						}}
+					/>
+					<button type="button" className={LINK} aria-label={`remove variable ${index + 1}`} onClick={() => commit(rows.filter((_, at) => at !== index))}>
+						×
+					</button>
+				</div>
+			))}
+			<button type="button" className={`${LINK} justify-self-start`} onClick={() => setRows([...rows, ["", ""]])}>
+				+ add variable
 			</button>
 		</div>
 	);
@@ -969,6 +1049,12 @@ export function SettingsDialog(props: DialogProps) {
 						<DirsEditor
 							key={Array.isArray(value) ? (value as string[]).join("|") : ""}
 							values={Array.isArray(value) ? (value as string[]) : []}
+							onCommit={(next) => saveField(field, next)}
+						/>
+					) : field.kind === "env" ? (
+						<EnvEditor
+							key={typeof value === "object" && value !== null ? JSON.stringify(value) : ""}
+							values={typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, string>) : {}}
 							onCommit={(next) => saveField(field, next)}
 						/>
 					) : field.kind === "select" ? (
