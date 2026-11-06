@@ -26,7 +26,7 @@ function nearestDotGit(start: string): string | null {
 	}
 }
 
-function canonicalCandidate(path: string): string {
+export function canonicalCandidate(path: string): string {
 	let current = path;
 	const tail: string[] = [];
 	for (;;) {

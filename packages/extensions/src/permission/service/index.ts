@@ -1,6 +1,6 @@
 import { chmod, mkdir, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 
 import {
 	type ExecutionEnv,
@@ -18,12 +18,12 @@ import { createServiceId, type Service } from "@milu/di";
 
 import { seatbeltBackend } from "../backends/seatbelt.ts";
 import { movesToTrash } from "../delete-verbs.ts";
-import { dwsEnv } from "../dws.ts";
 import { createEnv } from "../env.ts";
 import { type EscalationDecision, type EscalationRequest, escalationLog, type EscalationState, readDecisions } from "../escalations.ts";
 import { isStrictlyWider } from "../modes.ts";
 import { packageManagerEnv, PM_CACHE } from "../pm.ts";
 import { resolveExemptRoot } from "../roots.ts";
+import { resolveSandboxEnv } from "../sandbox-env.ts";
 import type { ConfinedArgv, PermissionPolicy, SandboxBackend, SandboxMode } from "../types.ts";
 
 const DELETE_DEFAULTS = { strict: true };
@@ -36,6 +36,8 @@ const SANDBOX_DEFAULT: SandboxMode = "workspace-write";
 
 const EXEMPT_KEY = "sandboxExemptRoot";
 const EXEMPT_DEFAULT = "~/Milu/Permissions";
+
+const ENV_KEY = "sandboxEnv";
 
 const BACKENDS: readonly SandboxBackend[] = process.platform === "darwin" ? [seatbeltBackend] : [];
 
@@ -52,6 +54,7 @@ export class PermissionService implements Service {
 	private _delete: SettingsPoint<{ strict: boolean }> | null = null;
 	private _sandbox: SettingsPoint<SandboxMode> | null = null;
 	private _exempt: SettingsPoint<string> | null = null;
+	private _envMap: SettingsPoint<Record<string, string>> | null = null;
 	private readonly _modes = new Map<string, SandboxMode>();
 	private readonly _nonce = Date.now().toString(36);
 	private _seq = 0;
@@ -66,6 +69,7 @@ export class PermissionService implements Service {
 		this._delete = this._settingsService.declare({ key: "delete", defaults: DELETE_DEFAULTS });
 		this._sandbox = this._settingsService.declare({ key: SANDBOX_KEY, defaults: SANDBOX_DEFAULT });
 		this._exempt = this._settingsService.declare({ key: EXEMPT_KEY, defaults: EXEMPT_DEFAULT });
+		this._envMap = this._settingsService.declare({ key: ENV_KEY, defaults: {} });
 	}
 
 	async mode(session: Session): Promise<SandboxMode> {
@@ -99,15 +103,9 @@ export class PermissionService implements Service {
 		const configured = this._exempt?.get() ?? EXEMPT_DEFAULT;
 		if (typeof configured !== "string" || configured.trim() === "") throw new Error(`settings "${EXEMPT_KEY}" must be a non-empty string`);
 		const exemptRoot = resolveExemptRoot(expandHome(configured.trim()));
-		const dwsRoot = join(exemptRoot, ".dws");
-		const dws = dwsEnv(dwsRoot);
-		const dwsConfig = dws["DWS_CONFIG_DIR"];
-		const dwsKeychain = dws["DWS_KEYCHAIN_DIR"];
-		const dwsPerf = dirname(dws["DWS_PERF_REPORT"]);
-		await mkdir(dwsConfig, { recursive: true, mode: 0o700 });
-		await mkdir(dwsKeychain, { recursive: true, mode: 0o700 });
-		await mkdir(dwsPerf, { recursive: true, mode: 0o700 });
-		for (const dir of [exemptRoot, dwsRoot, dwsConfig, dwsKeychain, dwsPerf]) await chmod(dir, 0o700);
+		const extra = resolveSandboxEnv(this._envMap?.get() ?? {}, exemptRoot);
+		await mkdir(exemptRoot, { recursive: true, mode: 0o700 });
+		await chmod(exemptRoot, 0o700);
 		const resolved = await realpath(exemptRoot);
 		if (resolved !== exemptRoot) throw new Error(`settings "${EXEMPT_KEY}" resolves to ${resolved}; the exemption root must not be a symlink`);
 		const policy: PermissionPolicy = {
@@ -116,7 +114,7 @@ export class PermissionService implements Service {
 			storage,
 			trash: this.trash(),
 			write: [...saved.write.map(expandHome), cache, exemptRoot],
-			env: { ...packageManagerEnv(cache), ...dws },
+			env: { ...packageManagerEnv(cache), ...extra, MILU_PERMISSION_HOME: exemptRoot },
 		};
 		return createEnv(policy, {
 			sandboxed: this.isConfining(),
