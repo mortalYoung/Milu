@@ -1,6 +1,6 @@
 import type { AgentEvent, AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
 import { Agent } from "@earendil-works/pi-agent-core";
-import type { Api, AssistantMessage, Model, ModelThinkingLevel } from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, Message, Model, ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { DisposableStore, createServiceId, Emitter, type Event, type Service } from "@milu/di";
 import type { PendingKind } from "@milu/protocol";
 
@@ -56,6 +56,7 @@ export class AgentLoopService implements Service {
 	private _releasing = false;
 	private _retries = 0;
 	private _wake: (() => void) | null = null;
+	private _prompt = "";
 
 	constructor(
 		private readonly _modelsService: ModelsService,
@@ -67,6 +68,13 @@ export class AgentLoopService implements Service {
 			streamFn: this._modelsService.stream,
 			followUpMode: "one-at-a-time",
 			steeringMode: "one-at-a-time",
+			convertToLlm: (messages) => {
+				const out = messages.filter(
+					(message): message is Message => message.role === "system" || message.role === "user" || message.role === "assistant" || message.role === "toolResult",
+				);
+				if (this._prompt.trim() === "") return out;
+				return [{ role: "system", content: [{ type: "text", text: this._prompt }], timestamp: Date.now() }, ...out];
+			},
 			transformContext: async (messages) => {
 				const injected = await this._emit("beforeRequest", messages);
 				if (injected.length === 0) return messages;
@@ -295,11 +303,11 @@ export class AgentLoopService implements Service {
 	}
 
 	systemPrompt(): string {
-		return this._agent.state.systemPrompt;
+		return this._prompt;
 	}
 
 	setSystemPrompt(prompt: string): void {
-		this._agent.state.systemPrompt = prompt;
+		this._prompt = prompt;
 	}
 
 	modelContextWindow(): number | null {

@@ -1,5 +1,7 @@
-import type { AgentHarnessTool, AgentTool, ExecutionToolContext } from "@earendil-works/pi-agent-core";
-import type { TSchema } from "@earendil-works/pi-ai";
+import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { TSchema } from "typebox";
+
+import type { AgentHarnessTool, ExecutionToolContext } from "./types.ts";
 
 export function bindEnv<TContext extends ExecutionToolContext, TParameters extends TSchema, TDetails>(
 	tool: AgentHarnessTool<TContext, TParameters, TDetails>,

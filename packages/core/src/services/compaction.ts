@@ -1,5 +1,6 @@
-import type { AgentMessage, Entry } from "@earendil-works/pi-agent-core";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { createServiceId, type Disposable, type Service } from "@milu/di";
+import type { Entry } from "@milu/protocol";
 
 import { type CompactionPlan, planCompaction } from "../session/compact.ts";
 import type { Session } from "../session/session.ts";

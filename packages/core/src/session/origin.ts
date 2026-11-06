@@ -1,4 +1,4 @@
-import type { Entry } from "@earendil-works/pi-agent-core";
+import type { Entry } from "@milu/protocol";
 
 import { EVENTS } from "./events.ts";
 

@@ -2,10 +2,10 @@ import { randomUUID } from "node:crypto";
 import { mkdir, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
-import type { AgentMessage, AgentToolResult, Entry } from "@earendil-works/pi-agent-core";
+import type { AgentMessage, AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { DisposableStore, Emitter, type Event } from "@milu/di";
-import type { PendingKind, PreviewKind, SeqEntry, SessionRow } from "@milu/protocol";
+import type { Entry, PendingKind, PreviewKind, SeqEntry, SessionRow } from "@milu/protocol";
 
 import { AgentLoopService, type AgentLoopEvent, type PendingMessage } from "../services/agent-loop.ts";
 import type { CompactionService } from "../services/compaction.ts";
@@ -690,7 +690,6 @@ export class Session {
 			...(message.details === undefined ? {} : { details: message.details }),
 			...(message.usage === undefined ? {} : { usage: message.usage }),
 			isError: message.isError === true,
-			...(Array.isArray(message.addedToolNames) ? { addedToolNames: message.addedToolNames } : {}),
 			timestamp: Date.now(),
 		});
 	}
