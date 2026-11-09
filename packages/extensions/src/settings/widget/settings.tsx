@@ -179,7 +179,7 @@ const FIELDS: readonly Field[] = [
 		kind: "select",
 		title: "MCP Default Lifecycle",
 		description: "Lifecycle used for servers that do not set their own.",
-		options: MCP_LIFECYCLES.map((value) => ({ value, label: value })),
+		options: MCP_LIFECYCLES.map((value) => ({ value, label: value.charAt(0).toUpperCase() + value.slice(1) })),
 	},
 	{
 		id: "maxBufferSize",
@@ -705,6 +705,38 @@ export function SettingsDialog(props: DialogProps) {
 		scrollRef.current?.scrollTo({ top: 0, behavior: "auto" });
 	}, [query]);
 
+	useEffect(() => {
+		if (open === null) return;
+		const dismissOutside = (event: PointerEvent): void => {
+			const target = event.target;
+			if (target instanceof Element && target.closest(`[data-select="${open}"], [data-row-key="${open}"]`) !== null) return;
+			setOpen(null);
+		};
+		window.addEventListener("pointerdown", dismissOutside, { capture: true });
+		return () => window.removeEventListener("pointerdown", dismissOutside, { capture: true });
+	}, [open]);
+
+	useEffect(() => {
+		const dismissLocal = (event: KeyboardEvent): void => {
+			if (event.key !== "Escape" || event.defaultPrevented) return;
+			const panel = open;
+			const editingRow = editing;
+			const confirming = sandboxConfirm;
+			const text = query;
+			if (panel === null && editingRow === null && confirming === null && text === "") return;
+			event.preventDefault();
+			event.stopPropagation();
+			if (panel !== null) setOpen(null);
+			else if (editingRow !== null) {
+				setEditing(null);
+				setEditError(null);
+			} else if (confirming !== null) setSandboxConfirm(null);
+			else setQuery("");
+		};
+		window.addEventListener("keydown", dismissLocal, { capture: true });
+		return () => window.removeEventListener("keydown", dismissLocal, { capture: true });
+	}, [open, editing, sandboxConfirm, query]);
+
 	const refresh = async (): Promise<void> => {
 		const next = await props.host.actions.request<SettingsSnapshot>("settings.collect");
 		if (!next) return;
@@ -967,6 +999,41 @@ export function SettingsDialog(props: DialogProps) {
 				);
 		} else if (field.kind === "number" || field.kind === "text" || field.kind === "path") {
 			control = editing === key ? renderInlineInput(field) : <ValueButton value={displayValue(field, value)} mono={mono} mode="edit" onClick={() => startEdit(field)} />;
+		} else if (field.kind === "select") {
+			const active = String(value ?? "");
+			control = (
+				<div className="relative" data-select={key}>
+					<ValueButton value={displayValue(field, value)} mode="panel" expanded={open === key} onClick={() => setOpen(open === key ? null : key)} />
+					{open === key ? (
+						<div
+							role="listbox"
+							aria-label={field.title}
+							className="absolute top-full right-0 z-20 mt-1 w-[196px] rounded-[8px] border border-line bg-surface p-1"
+							style={{ boxShadow: "0 8px 24px color-mix(in srgb, var(--ink) 12%, transparent)" }}
+						>
+							{(field.options ?? []).map((option) => {
+								const chosen = active === option.value;
+								return (
+									<button
+										key={option.value}
+										type="button"
+										role="option"
+										aria-selected={chosen}
+										className={`${optionRowClass(chosen)} min-h-7 font-mono text-[11.5px]`}
+										onClick={() => {
+											saveField(field, option.value);
+											setOpen(null);
+										}}
+									>
+										<span>{option.label}</span>
+										{chosen ? <Check size={12} className="ml-auto" /> : null}
+									</button>
+								);
+							})}
+						</div>
+					) : null}
+				</div>
+			);
 		} else {
 			control = <ValueButton value={displayValue(field, value)} mode="panel" expanded={open === key} onClick={() => setOpen(open === key ? null : key)} />;
 		}
@@ -1009,7 +1076,7 @@ export function SettingsDialog(props: DialogProps) {
 		const inline = messages.length === 0 ? undefined : <div className="grid gap-1.5">{messages}</div>;
 
 		const panel =
-			open === key ? (
+			(field.kind === "dirs" || field.kind === "env") && open === key ? (
 				<SheetPanel label={label}>
 					{field.kind === "dirs" ? (
 						<DirsEditor
@@ -1017,35 +1084,13 @@ export function SettingsDialog(props: DialogProps) {
 							values={Array.isArray(value) ? (value as string[]) : []}
 							onCommit={(next) => saveField(field, next)}
 						/>
-					) : field.kind === "env" ? (
+					) : (
 						<EnvEditor
 							key={typeof value === "object" && value !== null ? JSON.stringify(value) : ""}
 							values={typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, string>) : {}}
 							onCommit={(next) => saveField(field, next)}
 						/>
-					) : field.kind === "select" ? (
-						<div className="grid gap-0.5">
-							{(field.options ?? []).map((option) => {
-								const active = String(value ?? "") === option.value;
-								return (
-									<button
-										key={option.value}
-										type="button"
-										role="radio"
-										aria-checked={active}
-										className={optionRowClass(active)}
-										onClick={() => {
-											saveField(field, option.value);
-											setOpen(null);
-										}}
-									>
-										<span className="font-mono text-[11.5px]">{option.label}</span>
-										{active ? <Check size={12} className="ml-auto" /> : null}
-									</button>
-								);
-							})}
-						</div>
-					) : null}
+					)}
 				</SheetPanel>
 			) : undefined;
 
@@ -1204,36 +1249,7 @@ export function SettingsDialog(props: DialogProps) {
 	};
 
 	return (
-		<div
-			className="flex h-[min(760px,88vh)] w-[min(1080px,calc(100vw-64px))] flex-col overflow-hidden bg-surface font-sans text-ink"
-			onKeyDown={(event) => {
-				if (event.key !== "Escape") return;
-				if (open !== null) {
-					event.preventDefault();
-					event.stopPropagation();
-					setOpen(null);
-					return;
-				}
-				if (editing !== null) {
-					event.preventDefault();
-					event.stopPropagation();
-					setEditing(null);
-					setEditError(null);
-					return;
-				}
-				if (sandboxConfirm !== null) {
-					event.preventDefault();
-					event.stopPropagation();
-					setSandboxConfirm(null);
-					return;
-				}
-				if (query !== "") {
-					event.preventDefault();
-					event.stopPropagation();
-					setQuery("");
-				}
-			}}
-		>
+		<div className="flex h-[min(760px,88vh)] w-[min(1080px,calc(100vw-64px))] flex-col overflow-hidden bg-surface font-sans text-ink">
 			<header className="flex h-14 shrink-0 items-center gap-3 border-b border-line px-5 pr-12">
 				<h2 className="m-0 font-serif text-[17px] font-semibold text-ink">Settings</h2>
 				<p className="m-0 font-sans text-[12px] text-muted-soft">Saved as you go.</p>
