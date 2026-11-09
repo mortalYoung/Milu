@@ -17,7 +17,7 @@ import type { WatchService } from "./services/watch.ts";
 
 export { Agent } from "@earendil-works/pi-agent-core";
 export { isRetryableAssistantError } from "@earendil-works/pi-ai";
-export type { Entry, StreamFn } from "@earendil-works/pi-agent-core";
+export type { StreamFn } from "@earendil-works/pi-agent-core";
 export type { AssistantMessage, Message, Model } from "@earendil-works/pi-ai";
 export type { AgentLoopEvent, AgentLoopRun, AgentLoopService, PendingMessage } from "./services/agent-loop.ts";
 export { IAgentLoopService } from "./services/agent-loop.ts";
@@ -108,7 +108,7 @@ export {
 export type { SandboxConfig, SessionModel, SessionProfile, WorkspaceFacts } from "./session/files.ts";
 export { SettingsService, ISettingsService, type CustomModel, type CustomProvider, type DefaultModel, type Settings, type SettingsPoint } from "./services/settings.ts";
 export { ThemesService, IThemesService } from "./services/themes.ts";
-export type { Theme, ThemeAppearance, ThemeMode, ThemeSettings, ThemeState, ThemeTokenKey, ThemeTokens } from "@milu/protocol";
+export type { Entry, Theme, ThemeAppearance, ThemeMode, ThemeSettings, ThemeState, ThemeTokenKey, ThemeTokens } from "@milu/protocol";
 export { ToolService, IToolService, type Tool, type ToolCall, type ToolFields, type ToolMiddleware, type ToolNext, type ToolResult } from "./services/tools.ts";
 export {
 	bindEnv,

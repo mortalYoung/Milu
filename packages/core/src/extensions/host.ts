@@ -1,6 +1,6 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
-import type { TSchema } from "@earendil-works/pi-ai";
 import type { Theme } from "@milu/protocol";
+import type { TSchema } from "typebox";
 
 import type { AgentHookPoint } from "../services/hooks.ts";
 import type { AgentReminder } from "../session/events.ts";

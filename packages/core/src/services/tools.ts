@@ -1,7 +1,8 @@
-import type { AgentTool, AgentToolResult, ExecutionEnv } from "@earendil-works/pi-agent-core";
-import type { TSchema } from "@earendil-works/pi-ai";
+import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import { createServiceId, type Disposable, type Service } from "@milu/di";
+import type { TSchema } from "typebox";
 
+import type { ExecutionEnv } from "../execution/types.ts";
 import type { Session } from "../session/session.ts";
 import { IConfigService } from "./config.ts";
 import type { ConfigService } from "./config.ts";

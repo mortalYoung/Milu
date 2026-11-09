@@ -1,9 +1,9 @@
 import { resolve } from "node:path";
 
-import type { ExecutionEnv } from "@earendil-works/pi-agent-core";
 import { createServiceId, type Service } from "@milu/di";
 
 import { LocalExecutionEnv } from "../execution/local-env.ts";
+import type { ExecutionEnv } from "../execution/types.ts";
 
 export class ExecutionService implements Service {
 	private readonly _envs = new Map<string, LocalExecutionEnv>();

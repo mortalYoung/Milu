@@ -1,5 +1,3 @@
-import type { Entry } from "@earendil-works/pi-agent-core";
-
 export interface WireError {
 	readonly code: string;
 	readonly message: string;
@@ -9,6 +7,54 @@ export interface PartialMessage {
 	readonly role: string;
 	readonly content: unknown;
 }
+
+export interface MessageUsage {
+	readonly input: number;
+	readonly output: number;
+	readonly cacheRead: number;
+	readonly cacheWrite: number;
+	readonly totalTokens: number;
+	readonly reasoning?: number;
+}
+
+export interface EntryMessage {
+	readonly role: string;
+	readonly content?: unknown;
+	readonly timestamp?: number;
+	readonly usage?: MessageUsage;
+}
+
+export interface EntryBase {
+	readonly type: string;
+	readonly id: string;
+	readonly seq: number;
+	readonly parentId: string | null;
+	readonly timestamp: number;
+}
+
+export interface MessageEntry extends EntryBase {
+	readonly type: "message";
+	readonly message: EntryMessage;
+}
+
+export interface CustomEntry extends EntryBase {
+	readonly type: "custom";
+	readonly customType: string;
+	readonly data?: unknown;
+}
+
+export interface ModelChangeEntry extends EntryBase {
+	readonly type: "model_change";
+	readonly provider: string;
+	readonly modelId: string;
+}
+
+export interface ActiveToolsEntry extends EntryBase {
+	readonly type: "active_tools_change";
+	readonly activeToolNames: string[];
+}
+
+export type Entry = MessageEntry | CustomEntry | ModelChangeEntry | ActiveToolsEntry;
 
 export interface SeqEntry {
 	readonly seq: number;

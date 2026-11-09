@@ -1,14 +1,14 @@
 import { open, readdir, rm, stat, utimes, type FileHandle } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 
-import type { AgentMessage, Entry, JsonlSessionMetadata } from "@earendil-works/pi-agent-core";
-import { JsonlSessionRepo, type Session } from "@earendil-works/pi-agent-core";
+import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { Emitter, type Event } from "@milu/di";
-import type { SeqEntry } from "@milu/protocol";
+import type { Entry, SeqEntry } from "@milu/protocol";
 
 import type { ExecutionService } from "../services/execution.ts";
 import { EVENTS } from "./events.ts";
 import { forkingOf } from "./files.ts";
+import { JsonlSessionRepo, type JsonlSession, type JsonlSessionMetadata } from "./jsonl.ts";
 import { originWindow, projectOrigin, projectTail, tailWindow, type OriginWindow } from "./origin.ts";
 import { projectSlice, projectSliceItems, type SliceItem } from "./slice.ts";
 import { textOf } from "./text.ts";
@@ -169,8 +169,8 @@ async function newestLog(root: string): Promise<string | null> {
 export class SessionLog {
 	readonly onEntry: Event<SeqEntry>;
 
-	private _session: Session<JsonlSessionMetadata> | null = null;
-	private _opening: Promise<Session<JsonlSessionMetadata>> | null = null;
+	private _session: JsonlSession | null = null;
+	private _opening: Promise<JsonlSession> | null = null;
 	private _queue: Promise<void> = Promise.resolve();
 	private _disposed = false;
 	private _latestMeta: JsonlSessionMetadata | null | undefined;
@@ -196,7 +196,7 @@ export class SessionLog {
 		}
 	}
 
-	private async _open(): Promise<Session<JsonlSessionMetadata>> {
+	private async _open(): Promise<JsonlSession> {
 		const repo = this._repo();
 		const path = await this._latestPath();
 		const header = path === null ? null : await readHeader(path);
@@ -435,7 +435,7 @@ export class SessionLog {
 		return result;
 	}
 
-	private _sessionOrThrow(): Session<JsonlSessionMetadata> {
+	private _sessionOrThrow(): JsonlSession {
 		if (!this._session) throw new Error(`log ${this.root} is not open`);
 		return this._session;
 	}
