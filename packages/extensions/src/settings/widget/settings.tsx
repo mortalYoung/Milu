@@ -540,9 +540,9 @@ function EnvEditor(props: { values: Readonly<Record<string, string>>; onCommit: 
 	const [rows, setRows] = useState<readonly (readonly [string, string])[]>(() => Object.entries(props.values));
 
 	const commit = (next: readonly (readonly [string, string])[]): void => {
-		const cleaned = next.map(([name, value]) => [name.trim(), value] as const).filter(([name]) => name !== "");
-		const object = Object.fromEntries(cleaned);
-		setRows(cleaned);
+		setRows(next);
+		const named = next.filter(([name]) => name.trim() !== "");
+		const object = Object.fromEntries(named.map(([name, value]) => [name.trim(), value] as const));
 		if (!eq(object, props.values)) props.onCommit(object);
 	};
 
@@ -558,9 +558,9 @@ function EnvEditor(props: { values: Readonly<Record<string, string>>; onCommit: 
 	return (
 		<div className="grid gap-2">
 			{rows.map(([name, value], index) => (
-				<div className="flex items-center gap-2" key={index}>
+				<div className="grid grid-cols-[168px_minmax(0,1fr)_auto] items-center gap-2" key={index}>
 					<input
-						className={`${FIELD} w-[168px] font-mono text-[12px]`}
+						className={`${FIELD} font-mono text-[12px]`}
 						value={name}
 						aria-label={`Variable name ${index + 1}`}
 						spellCheck={false}
@@ -572,7 +572,7 @@ function EnvEditor(props: { values: Readonly<Record<string, string>>; onCommit: 
 						}}
 					/>
 					<input
-						className={`${FIELD} min-w-0 flex-1 font-mono text-[12px]`}
+						className={`${FIELD} min-w-0 font-mono text-[12px]`}
 						value={value}
 						aria-label={`Variable value ${index + 1}`}
 						spellCheck={false}
@@ -654,6 +654,7 @@ export function SettingsDialog(props: DialogProps) {
 	const [query, setQuery] = useState("");
 	const [activeBand, setActiveBand] = useState<CategoryId>("general");
 	const [open, setOpen] = useState<string | null>(null);
+	const [expanded, setExpanded] = useState<string | null>(null);
 	const [editing, setEditing] = useState<string | null>(null);
 	const [editText, setEditText] = useState("");
 	const [editError, setEditError] = useState<string | null>(null);
@@ -663,7 +664,6 @@ export function SettingsDialog(props: DialogProps) {
 	const sessionView = useStore(props.host.sessions.store, (state) => state.view);
 	const [, setThemeRevision] = useState(0);
 	const scrollRef = useRef<HTMLDivElement>(null);
-	const frame = useRef(0);
 	const picking = useRef(false);
 
 	useEffect(() => {
@@ -795,14 +795,6 @@ export function SettingsDialog(props: DialogProps) {
 		return true;
 	};
 
-	const scrollToBand = (id: CategoryId): void => {
-		const element = scrollRef.current;
-		const band = element?.querySelector<HTMLElement>(`#band-${id}`);
-		if (!element || !band) return;
-		const top = band.getBoundingClientRect().top - element.getBoundingClientRect().top + element.scrollTop;
-		element.scrollTo({ top, behavior: "smooth" });
-	};
-
 	const scrollToRow = (rowKey: string): void => {
 		const element = scrollRef.current;
 		const row = element?.querySelector<HTMLElement>(`[data-row-key="${rowKey}"]`);
@@ -813,38 +805,18 @@ export function SettingsDialog(props: DialogProps) {
 
 	const selectBand = (id: CategoryId): void => {
 		setQuery("");
-		requestAnimationFrame(() => scrollToBand(id));
+		setActiveBand(id);
+		requestAnimationFrame(() => scrollRef.current?.scrollTo({ top: 0, behavior: "auto" }));
 	};
 
 	const focusProvider = (id: string): void => {
 		setQuery("");
+		setActiveBand("providers");
 		requestAnimationFrame(() => {
 			scrollToRow(`provider:${id}`);
 			setOpen(`provider:${id}`);
 		});
 	};
-
-	const onScroll = (): void => {
-		if (frame.current) return;
-		frame.current = requestAnimationFrame(() => {
-			frame.current = 0;
-			const element = scrollRef.current;
-			if (!element) return;
-			const top = element.getBoundingClientRect().top;
-			let active = CATEGORIES[0].id as CategoryId;
-			for (const entry of CATEGORIES) {
-				const band = element.querySelector<HTMLElement>(`#band-${entry.id}`);
-				if (band !== null && band.getBoundingClientRect().top - top <= 56) active = entry.id;
-			}
-			setActiveBand(active);
-		});
-	};
-
-	useEffect(() => {
-		return () => {
-			if (frame.current) cancelAnimationFrame(frame.current);
-		};
-	}, []);
 
 	if (draft === null || snapshot === null || mcp === null) {
 		return (
@@ -892,17 +864,11 @@ export function SettingsDialog(props: DialogProps) {
 	const totalMatches = fieldMatches.length + (themeMatches ? 1 : 0) + (layoutMatches ? 1 : 0) + providerMatches.length;
 	const catMatches = (id: CategoryId): boolean =>
 		fieldMatches.some((field) => field.category === id) || (id === "appearance" && (themeMatches || layoutMatches)) || (id === "providers" && providerMatches.length > 0);
-	const catMatchCount = (id: CategoryId): number =>
-		fieldMatches.filter((field) => field.category === id).length +
-		(id === "appearance" && themeMatches ? 1 : 0) +
-		(id === "appearance" && layoutMatches ? 1 : 0) +
-		(id === "providers" ? providerMatches.length : 0);
-
-	const bandCount = (id: CategoryId): string => {
-		if (id === "providers") return `${snapshot.providers.length} ${snapshot.providers.length === 1 ? "provider" : "providers"}`;
-		if (id === "appearance") return "2 settings";
-		const count = FIELDS.filter((field) => field.category === id).length;
-		return `${count} ${count === 1 ? "setting" : "settings"}`;
+	const current = CATEGORIES.find((entry) => entry.id === activeBand) ?? CATEGORIES[0];
+	const bandCount = (id: CategoryId): number => {
+		if (id === "providers") return snapshot.providers.length;
+		if (id === "appearance") return 2;
+		return FIELDS.filter((field) => field.category === id).length;
 	};
 
 	const renderInlineInput = (field: Field): ReactNode => (
@@ -1083,10 +1049,29 @@ export function SettingsDialog(props: DialogProps) {
 				</SheetPanel>
 			) : undefined;
 
+		const base = field.scope === "mcp" ? undefined : at(snapshot.defaults, field.id);
+		const accent = base !== undefined && !eq(value, base);
+		const shown = expanded === key;
+		const action = (
+			<button
+				type="button"
+				aria-label={shown ? `Hide details for ${field.title}` : `Show details for ${field.title}`}
+				aria-expanded={shown}
+				className="shrink-0 cursor-pointer border-0 bg-transparent p-0.5 font-mono text-[10px] leading-none text-muted-soft opacity-40 transition-opacity duration-100 hover:text-ink hover:opacity-100 focus-visible:opacity-100"
+				onClick={() => setExpanded(shown ? null : key)}
+			>
+				i
+			</button>
+		);
+
 		return (
 			<SheetRow
 				key={key}
 				rowKey={key}
+				variant="pill"
+				accent={accent}
+				action={action}
+				descriptionFull={shown}
 				title={searchQuery === "" ? field.title : highlight(field.title, searchQuery)}
 				description={searchQuery === "" ? field.description : highlight(field.description, searchQuery)}
 				control={control}
@@ -1099,6 +1084,7 @@ export function SettingsDialog(props: DialogProps) {
 	const themeRow = (searchQuery = ""): ReactNode => (
 		<SheetRow
 			rowKey="theme"
+			variant="pill"
 			title={searchQuery === "" ? "Theme" : highlight("Theme", searchQuery)}
 			description={
 				searchQuery === ""
@@ -1122,6 +1108,7 @@ export function SettingsDialog(props: DialogProps) {
 		return (
 			<SheetRow
 				rowKey="sessionView"
+				variant="pill"
 				title={searchQuery === "" ? "Session List" : highlight("Session List", searchQuery)}
 				description={searchQuery === "" ? description : highlight(description, searchQuery)}
 				control={
@@ -1144,6 +1131,7 @@ export function SettingsDialog(props: DialogProps) {
 		<SheetRow
 			key={`search-provider-${provider.id}`}
 			rowKey={`provider:${provider.id}`}
+			variant="pill"
 			title={searchQuery === "" ? provider.id : highlight(provider.id, searchQuery)}
 			description={
 				<span>
@@ -1176,7 +1164,7 @@ export function SettingsDialog(props: DialogProps) {
 		}
 		return [...groups.entries()].map(([name, list]) => (
 			<div key={name}>
-				{name === "" ? null : <div className="mt-4 mb-px font-mono text-[9px] tracking-[0.14em] text-muted-soft uppercase">{name}</div>}
+				{name === "" ? null : <div className="mt-5 mb-1 font-mono text-[9px] tracking-[0.14em] text-muted-soft uppercase">{name}</div>}
 				{list.map((field) => renderField(field, searchQuery))}
 			</div>
 		));
@@ -1191,26 +1179,28 @@ export function SettingsDialog(props: DialogProps) {
 				</div>
 			);
 		}
-		return CATEGORIES.map((category, index) => {
-			if (!catMatches(category.id)) return null;
-			return (
-				<section key={category.id} id={`band-${category.id}`}>
-					<header className="sticky top-0 z-10 flex items-baseline gap-3 border-b border-line bg-surface pt-[18px] pb-[9px]">
-						<span className="font-mono text-[9px] tracking-[0.14em] text-muted-soft">{String(index + 1).padStart(2, "0")}</span>
-						<h2 className="m-0 font-serif text-[21px] leading-tight font-medium tracking-[-0.015em] text-ink">{category.label}</h2>
-						<span className="ml-auto font-mono text-[9px] tracking-[0.06em] text-muted-soft">
-							{catMatchCount(category.id)} {catMatchCount(category.id) === 1 ? "match" : "matches"}
-						</span>
-					</header>
-					<div>
-						{category.id === "appearance" && themeMatches ? themeRow(q) : null}
-						{category.id === "appearance" && layoutMatches ? sessionLayoutRow(q) : null}
-						{fieldMatches.filter((field) => field.category === category.id).map((field) => renderField(field, q))}
-						{category.id === "providers" ? providerMatches.map((provider) => providerRow(provider, q)) : null}
-					</div>
-				</section>
+		const rows: ReactNode[] = [];
+		for (const category of CATEGORIES) {
+			if (!catMatches(category.id)) continue;
+			rows.push(
+				<div className="mt-5 mb-1 font-mono text-[9px] tracking-[0.14em] text-muted-soft uppercase" key={`head-${category.id}`}>
+					{category.label}
+				</div>,
 			);
-		});
+			if (category.id === "appearance") {
+				if (themeMatches) rows.push(themeRow(q));
+				if (layoutMatches) rows.push(sessionLayoutRow(q));
+				continue;
+			}
+			if (category.id === "providers") {
+				for (const provider of providerMatches) rows.push(providerRow(provider, q));
+				continue;
+			}
+			for (const field of fieldMatches) {
+				if (field.category === category.id) rows.push(renderField(field, q));
+			}
+		}
+		return <div className="w-full">{rows}</div>;
 	};
 
 	return (
@@ -1246,13 +1236,40 @@ export function SettingsDialog(props: DialogProps) {
 		>
 			<header className="flex h-14 shrink-0 items-center gap-3 border-b border-line px-5 pr-12">
 				<h2 className="m-0 font-serif text-[17px] font-semibold text-ink">Settings</h2>
-				<p className="m-0 font-sans text-[12px] text-muted">Saved as you go.</p>
+				<p className="m-0 font-sans text-[12px] text-muted-soft">Saved as you go.</p>
+				<div className="relative ml-auto w-[228px]">
+					<Search size={13} className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-muted" />
+					<input
+						autoFocus
+						className={`${FIELD} h-8 pl-8 ${searching ? "pr-14" : ""}`}
+						placeholder="Search settings"
+						aria-label="Search settings"
+						spellCheck={false}
+						value={query}
+						onChange={(event) => {
+							setQuery(event.currentTarget.value);
+							setOpen(null);
+						}}
+						onKeyDown={(event) => {
+							if (event.key === "Escape" && query.trim() !== "") {
+								event.preventDefault();
+								event.stopPropagation();
+								setQuery("");
+							}
+						}}
+					/>
+					{searching ? <span className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 font-mono text-[10px] text-muted-soft">{totalMatches}</span> : null}
+				</div>
 			</header>
 
 			<div className="flex min-h-0 flex-1">
-				<nav className="hidden w-[216px] shrink-0 flex-col gap-0.5 border-r border-line px-3 pt-4 pb-3.5 md:flex" aria-label="Settings sections">
+				<nav
+					className="hidden w-[208px] shrink-0 flex-col gap-0.5 px-3 pt-4 pb-3.5 md:flex"
+					style={{ background: "color-mix(in srgb, var(--ink) 3%, transparent)" }}
+					aria-label="Settings sections"
+				>
 					<div className="px-2.5 pb-2 font-mono text-[9px] tracking-[0.14em] text-muted-soft uppercase">Sections</div>
-					{CATEGORIES.map((entry, index) => {
+					{CATEGORIES.map((entry) => {
 						const active = !searching && activeBand === entry.id;
 						const matched = searching && catMatches(entry.id);
 						return (
@@ -1265,61 +1282,23 @@ export function SettingsDialog(props: DialogProps) {
 								}`}
 								onClick={() => selectBand(entry.id)}
 							>
-								<span className="w-[15px] shrink-0 font-mono text-[9px] text-muted-soft">{String(index + 1).padStart(2, "0")}</span>
 								{entry.label}
-								{matched ? <span className="ml-auto size-[5px] shrink-0 rounded-full bg-signal" /> : null}
+								<span className="ml-auto font-mono text-[9.5px] text-muted-soft">{bandCount(entry.id)}</span>
+								{matched ? <span className="size-[5px] shrink-0 rounded-full bg-signal" /> : null}
 							</button>
 						);
 					})}
 				</nav>
 
 				<div className="flex min-w-0 flex-1 flex-col">
-					<div className="shrink-0 px-6 pt-3 pb-2 md:px-10">
-						<div className="relative">
-							<Search size={14} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted" />
-							<input
-								autoFocus
-								className={`${FIELD} h-9 pr-20 pl-9`}
-								placeholder="Search settings"
-								aria-label="Search settings"
-								spellCheck={false}
-								value={query}
-								onChange={(event) => {
-									setQuery(event.currentTarget.value);
-									setOpen(null);
-								}}
-								onKeyDown={(event) => {
-									if (event.key === "Escape" && query.trim() !== "") {
-										event.preventDefault();
-										event.stopPropagation();
-										setQuery("");
-									}
-								}}
-							/>
-							{searching ? (
-								<span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 font-mono text-[10px] text-muted">
-									{totalMatches} {totalMatches === 1 ? "match" : "matches"}
-								</span>
-							) : null}
+					{searching ? null : (
+						<div className="shrink-0 px-8 pt-5 pb-1">
+							<h3 className="m-0 font-sans text-[16px] font-semibold tracking-[-0.01em] text-ink">{current.label}</h3>
+							<p className="mt-1 mb-0 max-w-[62ch] font-sans text-[12px] leading-relaxed text-muted">{current.intro}</p>
 						</div>
-					</div>
-
-					<div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto px-6 pb-8 md:px-10">
-						<div className="mx-auto w-full max-w-[860px]">
-							{searching
-								? renderSearch()
-								: CATEGORIES.map((entry, index) => (
-										<section key={entry.id} id={`band-${entry.id}`}>
-											<header className="sticky top-0 z-10 flex items-baseline gap-3 border-b border-line bg-surface pt-[22px] pb-[9px]">
-												<span className="font-mono text-[9px] tracking-[0.14em] text-muted-soft">{String(index + 1).padStart(2, "0")}</span>
-												<h2 className="m-0 font-serif text-[23px] leading-tight font-medium tracking-[-0.015em] text-ink">{entry.label}</h2>
-												<span className="ml-auto font-mono text-[9px] tracking-[0.06em] text-muted-soft">{bandCount(entry.id)}</span>
-											</header>
-											<p className="mt-3 mb-1.5 max-w-[60ch] font-sans text-[12.5px] leading-relaxed text-muted">{entry.intro}</p>
-											{renderBand(entry.id)}
-										</section>
-									))}
-						</div>
+					)}
+					<div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-8 pb-8">
+						<div className="w-full">{searching ? renderSearch() : renderBand(activeBand)}</div>
 					</div>
 				</div>
 			</div>

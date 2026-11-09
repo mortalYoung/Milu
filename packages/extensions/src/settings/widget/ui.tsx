@@ -27,12 +27,35 @@ export function Switch(props: { checked: boolean; onChange: (next: boolean) => v
 	);
 }
 
-export function SheetRow(props: { rowKey: string; title: ReactNode; description: ReactNode; control: ReactNode; panel?: ReactNode; inline?: ReactNode }) {
+export function SheetRow(props: {
+	rowKey: string;
+	title: ReactNode;
+	description: ReactNode;
+	control: ReactNode;
+	panel?: ReactNode;
+	inline?: ReactNode;
+	variant?: "rule" | "pill";
+	accent?: boolean;
+	action?: ReactNode;
+	descriptionFull?: boolean;
+}) {
+	const pill = props.variant === "pill";
 	return (
-		<div data-row-key={props.rowKey} className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-6 gap-y-2 border-t border-line-soft py-4">
+		<div
+			data-row-key={props.rowKey}
+			className={`grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-6 gap-y-2 ${
+				pill ? "-mx-3 rounded-[9px] px-3 py-2.5 transition-colors duration-100 hover:bg-hover" : "border-t border-line-soft py-4"
+			}`}
+		>
 			<div className="min-w-0">
-				<div className="flex items-center gap-2 font-sans text-[13px] leading-tight font-medium text-ink">{props.title}</div>
-				<div className="mt-0.5 max-w-[56ch] font-sans text-[12px] leading-snug text-muted">{props.description}</div>
+				<div className="flex items-center gap-2 font-sans text-[13px] leading-tight font-medium text-ink">
+					{props.accent === true ? <span className="size-[5px] shrink-0 rounded-full bg-accent-teal" /> : null}
+					{props.title}
+					{props.action}
+				</div>
+				<div className={`mt-0.5 max-w-[56ch] font-sans text-[12px] leading-snug text-muted ${pill && props.descriptionFull !== true ? "line-clamp-1" : ""}`}>
+					{props.description}
+				</div>
 			</div>
 			<div className="flex min-h-7 items-center justify-end gap-2">{props.control}</div>
 			{props.inline === undefined ? null : <div className="col-span-2">{props.inline}</div>}
