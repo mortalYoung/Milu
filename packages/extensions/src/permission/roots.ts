@@ -1,6 +1,6 @@
 import { readFileSync, realpathSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname, join, resolve, sep } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 
 import type { PermissionPolicy } from "./types.ts";
 
@@ -24,6 +24,61 @@ function nearestDotGit(start: string): string | null {
 			dir = parent;
 		}
 	}
+}
+
+export function canonicalCandidate(path: string): string {
+	let current = path;
+	const tail: string[] = [];
+	for (;;) {
+		try {
+			return [realpathSync(current), ...tail].join(sep);
+		} catch {
+			const parent = dirname(current);
+			if (parent === current) return path;
+			tail.unshift(basename(current));
+			current = parent;
+		}
+	}
+}
+
+const EXEMPT_DENIED = ["/System", "/Library", "/Applications", "/bin", "/sbin", "/usr", "/etc", "/private", "/var", "/tmp", "/Volumes", "/cores", "/Network"];
+
+function deniedRoots(): string[] {
+	const home = homedir();
+	return [
+		...EXEMPT_DENIED,
+		join(home, "Library"),
+		join(home, "Library", "Keychains"),
+		join(home, "Library", "Application Support"),
+		join(home, ".config"),
+		join(home, ".cache"),
+		join(home, ".local"),
+		join(home, ".ssh"),
+		join(home, ".gnupg"),
+		join(home, ".aws"),
+		join(home, ".kube"),
+		join(home, ".Trash"),
+		join(home, "Desktop"),
+		join(home, "Documents"),
+		join(home, "Downloads"),
+		join(home, "Movies"),
+		join(home, "Music"),
+		join(home, "Pictures"),
+	];
+}
+
+export function resolveExemptRoot(value: string): string {
+	if (value === "" || !isAbsolute(value)) throw new Error(`settings "sandboxExemptRoot" must be an absolute path, got "${value}"`);
+	const path = canonicalCandidate(resolve(value));
+	const home = canonicalPath(homedir());
+	if (path === "/" || path === home) throw new Error(`settings "sandboxExemptRoot" must not be ${path}`);
+	for (const denied of deniedRoots()) {
+		const root = canonicalPath(denied);
+		if (root === "/") continue;
+		if (isInside(path, root)) throw new Error(`settings "sandboxExemptRoot" must not be inside ${denied}`);
+		if (isInside(root, path)) throw new Error(`settings "sandboxExemptRoot" must not cover ${denied}`);
+	}
+	return path;
 }
 
 export function gitRoots(workspace: string | null): string[] {
