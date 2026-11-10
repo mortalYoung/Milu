@@ -63,8 +63,8 @@ export interface SessionDetails extends SessionSummary {
 	readonly cacheShare: number | null;
 	readonly context: { readonly used: number; readonly window: number; readonly percent: number } | null;
 	readonly size: SessionSize;
-	readonly model: { readonly provider: string; readonly modelId?: string } | null;
-	readonly resolved: { readonly provider: string; readonly modelId: string } | null;
+	readonly model: { readonly provider: string; readonly modelId?: string; readonly name?: string } | null;
+	readonly resolved: { readonly provider: string; readonly modelId: string; readonly name: string } | null;
 	readonly models: readonly ModelChoiceGroup[];
 	readonly efforts: readonly string[];
 	readonly effort: string;
@@ -213,16 +213,24 @@ export async function collectDetails(session: Session, sources: DetailsSources):
 				.filter((group) => group.models.length > 0)
 		: [];
 	let efforts: readonly string[] = [];
-	let resolved: { provider: string; modelId: string } | null = null;
+	let resolved: { provider: string; modelId: string; name: string } | null = null;
 	if (sources.models) {
 		try {
 			const runnable = sources.models.resolve(model ?? undefined);
-			resolved = { provider: runnable.provider, modelId: runnable.id };
+			resolved = { provider: runnable.provider, modelId: runnable.id, name: runnable.name };
 			efforts = [...sources.models.supportedThinkingLevels(runnable)];
 		} catch {
 			efforts = [];
 		}
 	}
+
+	const picked = model
+		? {
+				provider: model.provider,
+				...(model.modelId === undefined ? {} : { modelId: model.modelId }),
+				name: groups.find((group) => group.provider === model.provider)?.models.find((each) => each.id === model.modelId)?.name,
+			}
+		: null;
 
 	return {
 		...summary,
@@ -231,7 +239,7 @@ export async function collectDetails(session: Session, sources: DetailsSources):
 		cacheShare: usage && billed > 0 ? (usage.cacheRead / billed) * 100 : null,
 		context: contextUsage ? { used: contextUsage.used, window: contextUsage.window, percent: contextUsage.percent } : null,
 		size,
-		model: model ? { provider: model.provider, ...(model.modelId === undefined ? {} : { modelId: model.modelId }) } : null,
+		model: picked,
 		resolved,
 		models: groups,
 		efforts,

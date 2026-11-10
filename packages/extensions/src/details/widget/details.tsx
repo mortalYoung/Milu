@@ -143,7 +143,7 @@ export function SessionDetailsDialog(props: DialogProps) {
 	];
 	const usage = details?.usage ?? null;
 	const sizeParts = details?.size.parts.map((part) => `${part.label} · ${formatBytes(part.bytes)}`).join("\n");
-	const modelLabel = details?.model?.modelId ?? details?.resolved?.modelId ?? (details ? "default" : "—");
+	const modelLabel = details?.model?.name ?? details?.resolved?.name ?? (details ? "default" : "—");
 	const sandbox = details ? sandboxLabel(details.sandbox) : "—";
 
 	async function setModel(provider: string, modelId?: string): Promise<void> {
@@ -286,8 +286,8 @@ export function SessionDetailsDialog(props: DialogProps) {
 										value={modelLabel}
 										tip={
 											details.model
-												? `${details.model.provider} · ${details.model.modelId ?? "default"}`
-												: `default · ${details.resolved?.provider ?? "—"} · ${details.resolved?.modelId ?? "—"}`
+												? `${details.model.provider} · ${details.model.name ?? "default"}`
+												: `default · ${details.resolved?.provider ?? "—"} · ${details.resolved?.name ?? "—"}`
 										}
 									>
 										<ModelMenu groups={details.models} model={details.model} onSelect={(provider, modelId) => void setModel(provider, modelId)} />

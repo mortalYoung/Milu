@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useStore } from "zustand";
 
 import { MCP_LIFECYCLES, type McpOptions } from "../../mcp/types.ts";
+import { ProviderMark } from "../../provider-marks.tsx";
 import type { ProviderRow, Settings, SettingsSnapshot } from "../index.ts";
 import { ProvidersBand } from "./providers.tsx";
 import { BUTTON_GHOST, BUTTON_PRIMARY, FIELD, InlineChoices, LINK, SheetPanel, SheetRow, Switch, ValueButton } from "./ui.tsx";
@@ -655,6 +656,8 @@ export function SettingsDialog(props: DialogProps) {
 	const [activeBand, setActiveBand] = useState<CategoryId>("general");
 	const [open, setOpen] = useState<string | null>(null);
 	const [expanded, setExpanded] = useState<string | null>(null);
+	const [providerDetail, setProviderDetail] = useState(false);
+	const [providerFocus, setProviderFocus] = useState<string | null>(null);
 	const [editing, setEditing] = useState<string | null>(null);
 	const [editText, setEditText] = useState("");
 	const [editError, setEditError] = useState<string | null>(null);
@@ -827,27 +830,18 @@ export function SettingsDialog(props: DialogProps) {
 		return true;
 	};
 
-	const scrollToRow = (rowKey: string): void => {
-		const element = scrollRef.current;
-		const row = element?.querySelector<HTMLElement>(`[data-row-key="${rowKey}"]`);
-		if (!element || !row) return;
-		const top = row.getBoundingClientRect().top - element.getBoundingClientRect().top + element.scrollTop;
-		element.scrollTo({ top: Math.max(0, top - 96), behavior: "auto" });
-	};
-
 	const selectBand = (id: CategoryId): void => {
 		setQuery("");
 		setActiveBand(id);
+		setProviderDetail(false);
 		requestAnimationFrame(() => scrollRef.current?.scrollTo({ top: 0, behavior: "auto" }));
 	};
 
 	const focusProvider = (id: string): void => {
 		setQuery("");
 		setActiveBand("providers");
-		requestAnimationFrame(() => {
-			scrollToRow(`provider:${id}`);
-			setOpen(`provider:${id}`);
-		});
+		setProviderDetail(true);
+		setProviderFocus(id);
 	};
 
 	if (draft === null || snapshot === null || mcp === null) {
@@ -1008,7 +1002,7 @@ export function SettingsDialog(props: DialogProps) {
 						<div
 							role="listbox"
 							aria-label={field.title}
-							className="absolute top-full right-0 z-20 mt-1 w-[196px] rounded-[8px] border border-line bg-surface p-1"
+							className="absolute top-full right-0 z-20 mt-1 max-h-64 w-[196px] overflow-y-auto rounded-[8px] border border-line bg-surface p-1"
 							style={{ boxShadow: "0 8px 24px color-mix(in srgb, var(--ink) 12%, transparent)" }}
 						>
 							{(field.options ?? []).map((option) => {
@@ -1177,14 +1171,22 @@ export function SettingsDialog(props: DialogProps) {
 			key={`search-provider-${provider.id}`}
 			rowKey={`provider:${provider.id}`}
 			variant="pill"
-			title={searchQuery === "" ? provider.id : highlight(provider.id, searchQuery)}
+			title={
+				<span className="inline-flex items-center gap-2">
+					<ProviderMark provider={provider.id} size={13} className="text-ink-soft" />
+					{searchQuery === "" ? provider.id : highlight(provider.id, searchQuery)}
+					{provider.name === undefined ? null : <span className="truncate text-[11.5px] font-normal text-muted">{provider.name}</span>}
+				</span>
+			}
 			description={
 				<span>
 					<span className="font-mono text-[10.5px] tracking-[-0.01em]">{provider.baseUrl ?? "—"}</span>
-					<span> · {provider.modelCount} models</span>
+					<span> · {provider.models.length} models</span>
 				</span>
 			}
-			control={<ValueButton value={provider.configured ? "Key set" : "No key"} mode="panel" onClick={() => focusProvider(provider.id)} />}
+			control={
+				<ValueButton value={provider.auth === "oauth" ? "OAuth" : provider.auth === "api_key" ? "Key set" : "No key"} mode="panel" onClick={() => focusProvider(provider.id)} />
+			}
 		/>
 	);
 
@@ -1197,7 +1199,20 @@ export function SettingsDialog(props: DialogProps) {
 				</>
 			);
 		if (id === "providers") {
-			return <ProvidersBand snapshot={snapshot} save={saveProviders} open={open} onOpen={setOpen} />;
+			return (
+				<ProvidersBand
+					key={providerFocus ?? "providers"}
+					snapshot={snapshot}
+					save={saveProviders}
+					refresh={refresh}
+					action={(id, args) => props.host.actions.request(id, undefined, args)}
+					focus={providerFocus}
+					onDetail={(detail) => {
+						setProviderDetail(detail);
+						if (!detail) setProviderFocus(null);
+					}}
+				/>
+			);
 		}
 		const fields = FIELDS.filter((field) => field.category === id);
 		const groups = new Map<string, Field[]>();
@@ -1307,7 +1322,7 @@ export function SettingsDialog(props: DialogProps) {
 				</nav>
 
 				<div className="flex min-w-0 flex-1 flex-col">
-					{searching ? null : (
+					{searching || (activeBand === "providers" && providerDetail) ? null : (
 						<div className="shrink-0 px-8 pt-5 pb-1">
 							<h3 className="m-0 font-sans text-[16px] font-semibold tracking-[-0.01em] text-ink">{current.label}</h3>
 							<p className="mt-1 mb-0 max-w-[62ch] font-sans text-[12px] leading-relaxed text-muted">{current.intro}</p>

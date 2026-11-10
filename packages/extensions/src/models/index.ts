@@ -2,7 +2,12 @@ import type { Extension, ModelRef, ModelsService, Session, SettingsService } fro
 
 export interface ModelGroup {
 	readonly provider: string;
-	readonly models: readonly { readonly id: string; readonly name: string }[];
+	readonly models: readonly {
+		readonly id: string;
+		readonly name: string;
+		readonly contextWindow?: number;
+		readonly cost?: { readonly input: number; readonly output: number };
+	}[];
 }
 
 export interface ModelWidgetData {
@@ -18,7 +23,15 @@ let services: { readonly models: ModelsService; readonly settings: SettingsServi
 
 function groupsOf(models: ModelsService, settings: SettingsService): ModelGroup[] {
 	return (settings.get().providers ?? [])
-		.map((provider) => ({ provider, models: models.available(provider).map((model) => ({ id: model.id, name: model.name })) }))
+		.map((provider) => ({
+			provider,
+			models: models.available(provider).map((model) => ({
+				id: model.id,
+				name: model.name,
+				...(model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow }),
+				cost: { input: model.cost.input, output: model.cost.output },
+			})),
+		}))
 		.filter((group) => group.models.length > 0);
 }
 
@@ -30,16 +43,18 @@ async function modelDataOf(session: Session): Promise<ModelWidgetData | null> {
 
 	const chosen = await session.model();
 	let resolved: ModelRef | null = null;
+	let label = "no model";
 	let efforts: string[] = [];
 	try {
 		const model = models.resolve(chosen ?? undefined);
 		resolved = { provider: model.provider, modelId: model.id };
+		label = model.name;
 		efforts = [...models.supportedThinkingLevels(model)];
 	} catch {
 		efforts = [];
 	}
 
-	return { label: resolved?.modelId ?? "no model", effort: session.thinkingLevel(), efforts, groups, selected: chosen, resolved };
+	return { label, effort: session.thinkingLevel(), efforts, groups, selected: chosen, resolved };
 }
 
 const modelsExtension: Extension = {

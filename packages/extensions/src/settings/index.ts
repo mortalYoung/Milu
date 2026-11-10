@@ -1,19 +1,42 @@
 import type { CustomModel, CustomProvider, Extension, ExtensionContext, Settings } from "@milu/core";
 import { expandHome } from "@milu/core";
+import type { AuthEventText, AuthLoginState, AuthPromptText } from "@milu/protocol";
 
 import { IMcpService } from "../mcp/index.ts";
 import type { McpOptions } from "../mcp/types.ts";
 import { resolveExemptRoot } from "../permission/roots.ts";
 import { resolveSandboxEnv } from "../permission/sandbox-env.ts";
+import { canSignIn, createLogin } from "./login.ts";
 
 export type { CustomModel, CustomProvider, Settings };
+export type { AuthEventText, AuthLoginState, AuthPromptText };
+
+export interface AddableProvider {
+	readonly id: string;
+	readonly name?: string;
+	readonly baseUrl?: string;
+	readonly modelCount: number;
+	readonly signIn?: { readonly label: string; readonly subscription: boolean };
+}
+
+export interface ModelRow {
+	readonly id: string;
+	readonly name?: string;
+	readonly contextWindow?: number;
+	readonly maxTokens?: number;
+	readonly input?: readonly string[];
+	readonly cost?: { readonly input: number; readonly output: number };
+	readonly custom: boolean;
+}
 
 export interface ProviderRow {
 	readonly id: string;
-	readonly configured: boolean;
+	readonly name?: string;
 	readonly baseUrl?: string;
-	readonly modelCount: number;
 	readonly custom: boolean;
+	readonly auth: "api_key" | "oauth" | "unset";
+	readonly signIn?: { readonly label: string; readonly subscription: boolean };
+	readonly models: readonly ModelRow[];
 }
 
 export interface SettingsSnapshot {
@@ -21,9 +44,9 @@ export interface SettingsSnapshot {
 	readonly defaults: Readonly<Record<string, unknown>>;
 	readonly mcp: McpOptions;
 	readonly providers: readonly ProviderRow[];
-	readonly addable: readonly string[];
+	readonly addable: readonly AddableProvider[];
 	readonly modelOptions: readonly ModelOptionGroup[];
-	readonly effective: { readonly provider: string; readonly modelId: string } | null;
+	readonly effective: { readonly provider: string; readonly modelId: string; readonly name: string } | null;
 }
 
 export interface ModelOptionGroup {
@@ -36,7 +59,12 @@ export interface SettingsPatch {
 	readonly credentials?: Readonly<Record<string, string | null>>;
 }
 
-function providerRows(context: ExtensionContext): { providers: ProviderRow[]; addable: string[] } {
+function displayName(context: ExtensionContext, id: string): { name?: string } {
+	const name = context.models.name(id);
+	return name === undefined || name === id ? {} : { name };
+}
+
+function providerRows(context: ExtensionContext): { providers: ProviderRow[]; addable: AddableProvider[] } {
 	const values = context.settings.get();
 	const custom = values.customProviders ?? [];
 	const added = values.providers ?? [];
@@ -44,15 +72,42 @@ function providerRows(context: ExtensionContext): { providers: ProviderRow[]; ad
 	for (const def of custom) if (!ids.includes(def.id)) ids.push(def.id);
 	const providers = ids.map((id) => {
 		const baseUrl = context.models.baseUrl(id);
+		const def = custom.find((entry) => entry.id === id);
+		const credential = context.config.credential(id);
+		const oauth = context.models.authMethods(id).oauth;
+		const declared = new Set((def?.models ?? []).map((model) => model.id));
+		const models = context.models.available(id).map((model) => ({
+			id: model.id,
+			...(model.name === model.id ? {} : { name: model.name }),
+			...(model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow }),
+			...(model.maxTokens === undefined ? {} : { maxTokens: model.maxTokens }),
+			input: model.input,
+			cost: { input: model.cost.input, output: model.cost.output },
+			custom: declared.has(model.id),
+		}));
 		return {
 			id,
-			configured: context.config.apiKey(id) !== undefined,
+			...displayName(context, id),
 			...(baseUrl === undefined ? {} : { baseUrl }),
-			modelCount: context.models.available(id).length,
-			custom: custom.some((def) => def.id === id),
+			custom: def !== undefined,
+			auth: credential === undefined ? ("unset" as const) : credential.type,
+			...(oauth === undefined || !canSignIn(id) ? {} : { signIn: { label: oauth.name, subscription: oauth.subscription } }),
+			models,
 		};
 	});
-	const addable = [...context.models.known(), ...custom.map((def) => def.id)].filter((id) => !ids.includes(id) && context.models.available(id).length > 0);
+	const addable = [...context.models.known(), ...custom.map((def) => def.id)]
+		.filter((id) => !ids.includes(id) && context.models.available(id).length > 0)
+		.map((id) => {
+			const baseUrl = context.models.baseUrl(id);
+			const oauth = context.models.authMethods(id).oauth;
+			return {
+				id,
+				...displayName(context, id),
+				...(baseUrl === undefined ? {} : { baseUrl }),
+				modelCount: context.models.available(id).length,
+				...(oauth === undefined || !canSignIn(id) ? {} : { signIn: { label: oauth.name, subscription: oauth.subscription } }),
+			};
+		});
 	return { providers, addable };
 }
 
@@ -75,10 +130,10 @@ function modelOptions(context: ExtensionContext, providers: readonly ProviderRow
 		.filter((group) => group.models.length > 0);
 }
 
-function runnable(context: ExtensionContext): { provider: string; modelId: string } | null {
+function runnable(context: ExtensionContext): { provider: string; modelId: string; name: string } | null {
 	try {
 		const model = context.models.resolve();
-		return { provider: model.provider, modelId: model.id };
+		return { provider: model.provider, modelId: model.id, name: model.name };
 	} catch {
 		return null;
 	}
@@ -109,6 +164,8 @@ const settingsExtension: Extension = {
 	},
 
 	activate(context) {
+		const login = createLogin(context.models);
+
 		context.actions.register({
 			id: "settings.open",
 			scope: "app",
@@ -145,6 +202,30 @@ const settingsExtension: Extension = {
 			id: "settings.mcp",
 			run: async ({ args }) => {
 				await context.get(IMcpService).saveOptions(args as McpOptions);
+			},
+		});
+
+		context.actions.register({
+			id: "settings.loginStart",
+			run: async ({ args }) => ({ data: await login.start((args as { provider: string }).provider) }),
+		});
+
+		context.actions.register({
+			id: "settings.loginPoll",
+			run: async () => ({ data: login.state() }),
+		});
+
+		context.actions.register({
+			id: "settings.loginAnswer",
+			run: async ({ args }) => {
+				login.answer((args as { value?: string | null }).value ?? null);
+			},
+		});
+
+		context.actions.register({
+			id: "settings.logout",
+			run: async ({ args }) => {
+				await context.models.logout((args as { provider: string }).provider);
 			},
 		});
 	},

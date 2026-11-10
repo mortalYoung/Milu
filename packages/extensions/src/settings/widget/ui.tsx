@@ -4,11 +4,25 @@ import type { ReactNode } from "react";
 export const FIELD =
 	"h-8 w-full rounded-md border border-line bg-surface px-2.5 font-sans text-[13px] text-ink outline-none transition-colors duration-100 placeholder:text-muted focus-visible:border-ink";
 
-export const BUTTON = "h-8 shrink-0 cursor-pointer rounded-md px-2.5 font-sans text-[12px] font-medium transition-colors duration-100 disabled:cursor-default disabled:opacity-40";
+const BUTTON_BASE = "shrink-0 cursor-pointer rounded-md font-sans font-medium transition-colors duration-100 disabled:cursor-default disabled:opacity-40";
 
-export const BUTTON_PRIMARY = `${BUTTON} bg-ink text-canvas hover:bg-ink/90`;
+const BUTTON_SIZES = { small: "h-7 px-2 text-[11px]", medium: "h-8 px-2.5 text-[12px]" } as const;
 
-export const BUTTON_GHOST = `${BUTTON} border border-line text-ink-soft hover:bg-hover hover:text-ink`;
+const BUTTON_KINDS = {
+	primary: "bg-ink text-canvas hover:bg-ink/90",
+	ghost: "border border-line text-ink-soft hover:bg-hover hover:text-ink",
+	danger: "border border-signal/45 text-signal hover:bg-signal/10",
+} as const;
+
+export function button(kind: keyof typeof BUTTON_KINDS, size: keyof typeof BUTTON_SIZES = "medium"): string {
+	return `${BUTTON_BASE} ${BUTTON_KINDS[kind]} ${BUTTON_SIZES[size]}`;
+}
+
+export const BUTTON_PRIMARY = button("primary");
+
+export const BUTTON_GHOST = button("ghost");
+
+export const BUTTON_DANGER = button("danger");
 
 export const LINK = "inline-flex min-h-6 cursor-pointer items-center border-0 bg-transparent p-0 font-mono text-[10px] text-muted transition-colors duration-100 hover:text-ink";
 

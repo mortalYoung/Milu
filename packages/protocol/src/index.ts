@@ -144,6 +144,40 @@ export type DialogDescriptor =
 			readonly dismissOnOutsideClick?: boolean;
 	  };
 
+export interface AuthChoice {
+	readonly id: string;
+	readonly label: string;
+	readonly description?: string;
+}
+
+export type AuthPromptText =
+	| { readonly kind: "text" | "secret" | "manual_code"; readonly message: string; readonly placeholder?: string }
+	| { readonly kind: "select"; readonly message: string; readonly options: readonly AuthChoice[] };
+
+export interface AuthLink {
+	readonly url: string;
+	readonly label?: string;
+}
+
+export type AuthEventText =
+	| { readonly kind: "info" | "progress"; readonly message: string; readonly links?: readonly AuthLink[] }
+	| { readonly kind: "auth_url"; readonly url: string; readonly instructions?: string }
+	| { readonly kind: "device_code"; readonly userCode: string; readonly verificationUri: string };
+
+export interface AuthLoginState {
+	readonly provider: string;
+	readonly label: string;
+	readonly status: "running" | "done" | "failed" | "cancelled";
+	readonly events: readonly AuthEventText[];
+	readonly prompt: AuthPromptText | null;
+	readonly error?: string;
+}
+
+export interface AuthLoginHandlers {
+	readonly notify: (event: AuthEventText) => void;
+	readonly prompt: (prompt: AuthPromptText) => Promise<string>;
+}
+
 export interface ContributionItem {
 	readonly id: string;
 	readonly title: string;
