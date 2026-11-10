@@ -88,21 +88,6 @@ export class DockService implements Service {
 		this.sync();
 	}
 
-	toggleView(key: string): void {
-		const state = this.store.getState();
-		if (state.visible && state.active === key) {
-			this.toggle();
-			return;
-		}
-		if (this.tabs().some((tab) => tab.key === key)) {
-			this.select(key);
-			return;
-		}
-		void this.refresh().then(() => {
-			if (this.tabs().some((tab) => tab.key === key)) this.select(key);
-		});
-	}
-
 	async refresh(): Promise<void> {
 		await this._slots.load(DOCK_VIEWS_POINT, this._session()).catch(() => undefined);
 		this.sync();

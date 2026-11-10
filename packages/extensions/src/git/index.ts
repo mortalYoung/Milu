@@ -103,14 +103,12 @@ const gitExtension: Extension = {
 	apiVersion: 1,
 
 	widgets: [
-		{ id: "git.bar", type: "slot", entry: "./widget/git.tsx", export: "GitButton" },
 		{ id: "git.head", type: "slot", entry: "./widget/git.tsx", export: "GitHead" },
 		{ id: "git.pane", type: "slot", entry: "./widget/git.tsx", export: "GitPane" },
 		{ id: "git.changes", type: "service", entry: "./widget/service.ts" },
 	],
 
 	contributions: {
-		"chat.bar": [{ id: "git", order: 41, component: "git.bar", data: workspaceOnly }],
 		"dock.bar": [{ id: "git", order: 20, component: "git.head", data: workspaceOnly }],
 		"dock.views": [{ id: "git", order: 30, component: "git.pane", title: "Changes", icon: "git-branch", data: workspaceOnly }],
 	},

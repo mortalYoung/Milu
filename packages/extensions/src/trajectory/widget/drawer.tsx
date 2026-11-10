@@ -110,7 +110,7 @@ export function TrajectoryDrawer(props: { host: Host; service: TrajectoryService
 	const error = useStore(service.store, (state) => state.error);
 
 	const [selectedKey, setSelectedKey] = useState<string | null>(null);
-	const [popTop, setPopTop] = useState<number | null>(null);
+	const [pop, setPop] = useState<{ readonly top: number; readonly inside: boolean } | null>(null);
 	const scroller = useRef<HTMLDivElement>(null);
 	const drawer = useRef<HTMLElement>(null);
 	const popover = useRef<HTMLDivElement>(null);
@@ -176,19 +176,24 @@ export function TrajectoryDrawer(props: { host: Host; service: TrajectoryService
 
 	useEffect(() => {
 		if (selectedKey === null) {
-			setPopTop(null);
+			setPop(null);
 			return;
 		}
-		const row = scroller.current?.querySelector(`[data-row="${CSS.escape(selectedKey)}"]`);
-		const height = popover.current?.offsetHeight ?? 240;
-		if (!row || !drawer.current) {
-			setPopTop(8);
-			return;
-		}
-		const rowRect = row.getBoundingClientRect();
-		const drawerRect = drawer.current.getBoundingClientRect();
-		const centre = rowRect.top + rowRect.height / 2 - drawerRect.top;
-		setPopTop(Math.min(Math.max(centre - height / 2, 8), Math.max(8, drawerRect.height - height - 8)));
+		const element = drawer.current;
+		if (element === null) return;
+		const place = (): void => {
+			const rect = element.getBoundingClientRect();
+			const row = scroller.current?.querySelector(`[data-row="${CSS.escape(selectedKey)}"]`);
+			const width = popover.current?.offsetWidth ?? 380;
+			const height = popover.current?.offsetHeight ?? 240;
+			const centre = row ? row.getBoundingClientRect().top + row.getBoundingClientRect().height / 2 - rect.top : 8 + height / 2;
+			const top = Math.min(Math.max(centre - height / 2, 8), Math.max(8, rect.height - height - 8));
+			setPop({ top, inside: rect.left < width + 22 });
+		};
+		place();
+		const observer = new ResizeObserver(place);
+		observer.observe(element);
+		return () => observer.disconnect();
 	}, [selectedKey]);
 
 	useEffect(() => {
@@ -251,7 +256,7 @@ export function TrajectoryDrawer(props: { host: Host; service: TrajectoryService
 
 	return (
 		<aside
-			className="absolute top-[var(--bar-h)] right-0 bottom-0 z-30 flex w-[440px] max-w-[72vw] flex-col border-l border-line bg-surface py-4 animate-[trajectory-in_220ms_cubic-bezier(0.23,1,0.32,1)] motion-reduce:animate-none"
+			className="absolute top-[var(--bar-h)] right-0 bottom-0 z-30 flex w-[440px] max-w-full flex-col border-l border-line bg-surface py-4 animate-[trajectory-in_220ms_cubic-bezier(0.23,1,0.32,1)] motion-reduce:animate-none"
 			ref={drawer}
 			aria-label="Trajectory"
 		>
@@ -344,10 +349,12 @@ export function TrajectoryDrawer(props: { host: Host; service: TrajectoryService
 				<span className="font-mono">{footText}</span>
 			</div>
 
-			{selected !== null && popTop !== null ? (
+			{selected !== null && pop !== null ? (
 				<div
-					className="absolute right-[calc(100%+14px)] z-20 flex max-h-[calc(100vh-24px)] w-[min(380px,54vw)] flex-col rounded-md border border-line bg-surface shadow-[0_4px_12px_color-mix(in_srgb,var(--ink)_12%,transparent)]"
-					style={{ top: `${popTop}px` }}
+					className={`absolute z-20 flex max-h-[calc(100%-16px)] flex-col rounded-md border border-line bg-surface shadow-[0_4px_12px_color-mix(in_srgb,var(--ink)_12%,transparent)] ${
+						pop.inside ? "inset-x-2" : "right-[calc(100%+14px)] w-[min(380px,54vw)]"
+					}`}
+					style={{ top: `${pop.top}px` }}
 					ref={popover}
 					role="dialog"
 					aria-label="Trajectory detail"

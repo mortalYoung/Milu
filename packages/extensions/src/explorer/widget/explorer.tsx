@@ -1,9 +1,6 @@
 import type { Host, SlotProps } from "@milu/window/api";
 import { ensureLanguages, getHighlighter, highlightLines, resolveLanguage } from "@milu/window/api/markdown";
-import { Tip } from "@milu/window/api/tooltip";
 import {
-	ChevronLeft,
-	ChevronRight,
 	Copy,
 	File,
 	FileCode2,
@@ -12,9 +9,10 @@ import {
 	FileText,
 	Folder,
 	FolderOpen,
-	FolderTree,
 	MessageSquareQuote,
 	PanelLeft,
+	PanelLeftClose,
+	PanelLeftOpen,
 	Pilcrow,
 	WrapText,
 	X,
@@ -109,7 +107,7 @@ function ListToggle(props: { shown: boolean; onToggle: () => void }) {
 			title={props.shown ? "Collapse the list" : "Show the list"}
 			onClick={props.onToggle}
 		>
-			{props.shown ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
+			{props.shown ? <PanelLeftClose size={12} /> : <PanelLeftOpen size={12} />}
 		</button>
 	);
 }
@@ -126,31 +124,6 @@ function useHasWorkspace(host: Host): boolean {
 		const row = state.rows.find((each) => each.name === selected);
 		return selected !== "" && row !== undefined && row.workspace != null;
 	});
-}
-
-export function ExplorerButton(props: SlotProps) {
-	const { host } = props;
-	const hasWorkspace = useHasWorkspace(host);
-	const visible = useStore(host.dock.store, (state) => state.visible);
-	const active = useStore(host.dock.store, (state) => state.active);
-	const open = visible && active === "explorer";
-	if (!hasWorkspace) return null;
-	return (
-		<>
-			<span aria-hidden className="mx-0.5 h-4 w-px shrink-0 bg-line" />
-			<Tip label="Explorer (⌘J)">
-				<button
-					type="button"
-					className={`flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full border-0 text-ink transition-colors duration-150 hover:bg-hover ${open ? "bg-hover" : "bg-transparent"}`}
-					aria-label="Toggle explorer"
-					aria-pressed={open}
-					onClick={() => host.dock.toggleView("explorer")}
-				>
-					<FolderTree size={15} />
-				</button>
-			</Tip>
-		</>
-	);
 }
 
 export function ExplorerHead(props: SlotProps) {

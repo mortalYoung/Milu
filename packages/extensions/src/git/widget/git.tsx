@@ -1,7 +1,7 @@
 import type { Host, SlotProps } from "@milu/window/api";
 import { ensureLanguages, getHighlighter, highlightLines, resolveLanguage } from "@milu/window/api/markdown";
 import { Tip } from "@milu/window/api/tooltip";
-import { ChevronLeft, ChevronRight, Columns2, GitBranch, PanelLeft, RefreshCw, WrapText } from "lucide-react";
+import { Columns2, PanelLeft, PanelLeftClose, PanelLeftOpen, RefreshCw, WrapText } from "lucide-react";
 import { Fragment, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 
@@ -44,32 +44,6 @@ function useHasWorkspace(host: Host): boolean {
 		const row = state.rows.find((each) => each.name === selected);
 		return selected !== "" && row !== undefined && row.workspace != null;
 	});
-}
-
-export function GitButton(props: SlotProps) {
-	const { host } = props;
-	const hasWorkspace = useHasWorkspace(host);
-	const state = useStore(host.get(IGitChangesService).store);
-	const visible = useStore(host.dock.store, (current) => current.visible);
-	const active = useStore(host.dock.store, (current) => current.active);
-	const open = visible && active === "git";
-	const count = state.changes.length;
-	const worth = state.status === "error" || (state.status === "ready" && count > 0);
-	if (!hasWorkspace || !worth) return null;
-	return (
-		<Tip label="Changes (⌘J)">
-			<button
-				type="button"
-				className={`relative flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full border-0 text-ink transition-colors duration-150 hover:bg-hover ${open ? "bg-hover" : "bg-transparent"}`}
-				aria-label="Toggle changes"
-				aria-pressed={open}
-				onClick={() => host.dock.toggleView("git")}
-			>
-				<GitBranch size={15} />
-				{count > 0 ? <span className="git-badge">{count > 99 ? "99+" : count}</span> : null}
-			</button>
-		</Tip>
-	);
 }
 
 export function GitHead(props: SlotProps) {
@@ -361,7 +335,7 @@ function DiffPane(props: { host: Host; session: string; change: GitChange; list:
 					title={props.list.shown ? "Collapse the list" : "Show the list"}
 					onClick={props.list.toggle}
 				>
-					{props.list.shown ? <ChevronLeft size={12} /> : <ChevronRight size={12} />}
+					{props.list.shown ? <PanelLeftClose size={12} /> : <PanelLeftOpen size={12} />}
 				</button>
 				<div className="git-diff-title">
 					<span className="git-file-name">{baseName(change.path)}</span>

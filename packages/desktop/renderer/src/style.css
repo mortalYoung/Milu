@@ -172,7 +172,7 @@ body {
 	gap: 8px;
 	flex: none;
 	height: var(--bar-h);
-	padding: 0 calc(var(--page-gutter) - 6px);
+	padding: 0 calc(var(--page-gutter) + 40px) 0 calc(var(--page-gutter) - 6px);
 	border-bottom: 0.5px solid var(--line);
 	background: var(--surface);
 	-webkit-app-region: drag;
@@ -183,21 +183,46 @@ body {
 	-webkit-app-region: no-drag;
 }
 
-.dock-hide {
+.dock-tabs {
 	display: flex;
+	align-self: stretch;
 	align-items: center;
-	border: 0;
-	border-radius: var(--r6);
-	background: transparent;
-	padding: 5px 6px;
-	font: inherit;
-	color: var(--muted-soft);
-	cursor: pointer;
+	gap: 2px;
+	flex: none;
 }
 
-.dock-hide:hover {
-	background: var(--hover);
+.dock-tab {
+	position: relative;
+	display: flex;
+	align-items: center;
+	padding: 0 8px;
+	border: 0;
+	background: transparent;
+	font-family: var(--mono);
+	font-size: 10px;
+	letter-spacing: 0.12em;
+	text-transform: uppercase;
+	color: var(--muted-soft);
+	cursor: pointer;
+	transition: color 120ms var(--ease-out);
+}
+
+.dock-tab:hover {
+	color: var(--ink-soft);
+}
+
+.dock-tab.on {
 	color: var(--ink);
+}
+
+.dock-tab.on::after {
+	content: "";
+	position: absolute;
+	right: 8px;
+	bottom: -0.5px;
+	left: 8px;
+	height: 1px;
+	background: var(--ink);
 }
 
 .dock-body {
@@ -299,6 +324,14 @@ body.pane-dragging {
 
 .layout-row:has(.grip.dragging) .column {
 	transition: none;
+}
+
+.dock-toggle {
+	position: absolute;
+	top: 10px;
+	right: var(--page-gutter);
+	z-index: 25;
+	-webkit-app-region: no-drag;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -858,6 +891,10 @@ body.pane-dragging {
 	container-type: inline-size;
 }
 
+.layout-row:has(.column.dock.closed) .chat-bar {
+	padding-right: calc(var(--page-gutter) + 40px);
+}
+
 .chat-bar.is-bare {
 	border-bottom-color: transparent;
 }
@@ -890,16 +927,16 @@ body.pane-dragging {
 	display: flex;
 	align-items: center;
 	min-width: 0;
-	max-width: min(46%, calc(100% - 288px));
+	max-width: min(46%, calc(100% - 2 * var(--bar-side, 144px)));
 	transform: translate(-50%, -50%);
 }
 
 .chat-bar-name:has(.chat-bar-status) {
-	max-width: 38%;
+	max-width: min(38%, calc(100% - 2 * var(--bar-side, 144px)));
 }
 
 .chat-bar-name:has(.chat-bar-sched) {
-	max-width: 38%;
+	max-width: min(38%, calc(100% - 2 * var(--bar-side, 144px)));
 }
 
 .chat-bar-name-text {
@@ -931,9 +968,11 @@ body.pane-dragging {
 }
 
 .chat-bar-status {
+	flex: none;
 	display: inline-flex;
 	align-items: center;
 	gap: 3px;
+	white-space: nowrap;
 	margin-left: 8px;
 	padding-left: 8px;
 	border-left: 0.5px solid var(--line);
@@ -953,6 +992,44 @@ body.pane-dragging {
 	align-items: center;
 	gap: 4px;
 	flex: none;
+}
+
+.bar-overflow {
+	position: relative;
+	display: flex;
+	align-items: center;
+	flex: none;
+}
+
+.bar-sep {
+	flex: none;
+	width: 1px;
+	height: 16px;
+	margin: 0 2px;
+	background: var(--line);
+}
+
+.bar-overflow-menu {
+	position: absolute;
+	top: calc(100% + 6px);
+	right: 0;
+	z-index: 60;
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	padding: 4px;
+	border: 0.5px solid var(--line);
+	border-radius: var(--r8);
+	background: var(--surface);
+	box-shadow: 0 12px 32px color-mix(in srgb, var(--ink) 14%, transparent);
+	-webkit-app-region: no-drag;
+	animation: menu-in 140ms var(--ease-out) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.bar-overflow-menu {
+		animation: none;
+	}
 }
 
 .bar-icon {
@@ -2356,6 +2433,7 @@ body.pane-dragging {
 .composer-box {
 	width: 100%;
 	min-width: 0;
+	container-type: inline-size;
 	position: relative;
 	z-index: 1;
 	border: 0.5px solid var(--line);
@@ -2404,6 +2482,7 @@ body.pane-dragging {
 	display: flex;
 	align-items: center;
 	gap: 4px;
+	min-width: 0;
 	padding: 2px 6px 8px;
 }
 
@@ -2411,7 +2490,15 @@ body.pane-dragging {
 	display: flex;
 	align-items: center;
 	gap: 8px;
+	min-width: 0;
 	margin-left: auto;
+}
+
+@container (max-width: 440px) {
+	.models-pill-label,
+	.models-pill-effort {
+		display: none;
+	}
 }
 
 .composer-icon-btn {
@@ -3218,6 +3305,7 @@ body.git-resizing {
 	font-family: var(--mono);
 	font-size: 10px;
 	letter-spacing: 0.12em;
+	text-align: right;
 	text-transform: uppercase;
 	color: var(--muted);
 }

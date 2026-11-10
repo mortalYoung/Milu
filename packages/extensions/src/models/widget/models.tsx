@@ -151,11 +151,14 @@ export function ModelsWidget(props: WidgetProps) {
 				<button
 					type="button"
 					aria-label={resolved === null ? "Pick a model" : `Model ${data.label}, effort ${data.effort}`}
-					className="inline-flex h-[26px] max-w-[240px] cursor-pointer items-center gap-1.5 rounded-full border-0 bg-transparent px-2 text-muted-soft transition-colors duration-100 hover:bg-hover hover:text-ink data-[state=open]:bg-hover data-[state=open]:text-ink motion-reduce:transition-none"
+					title={resolved === null ? "Pick a model" : `${data.label}${data.effort === "" ? "" : ` · ${data.effort}`}`}
+					className="inline-flex h-[26px] min-w-0 max-w-[240px] cursor-pointer items-center gap-1.5 rounded-full border-0 bg-transparent px-2 text-muted-soft transition-colors duration-100 hover:bg-hover hover:text-ink data-[state=open]:bg-hover data-[state=open]:text-ink motion-reduce:transition-none"
 				>
 					{resolved === null ? null : <ProviderMark provider={resolved.provider} size={13} className="text-ink-soft" />}
-					<span className={`truncate font-mono text-[11px] ${resolved === null ? "text-muted-soft" : "text-ink-soft"}`}>{current}</span>
-					{resolved === null || data.effort === "" ? null : <span className="shrink-0 font-mono text-[11px] text-muted">· {data.effort}</span>}
+					<span className={`${resolved === null ? "" : "models-pill-label "}truncate font-mono text-[11px] ${resolved === null ? "text-muted-soft" : "text-ink-soft"}`}>
+						{current}
+					</span>
+					{resolved === null || data.effort === "" ? null : <span className="models-pill-effort shrink-0 font-mono text-[11px] text-muted">· {data.effort}</span>}
 					<ChevronDown size={11} className={`shrink-0 opacity-45 transition-transform duration-100 motion-reduce:transition-none ${open ? "rotate-180" : ""}`} />
 				</button>
 			</Popover.Trigger>

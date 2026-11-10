@@ -19,6 +19,7 @@ import {
 	PanelLeft,
 	PanelLeftClose,
 	PanelLeftOpen,
+	PanelRight,
 	Pin,
 	PinOff,
 	Plus,
@@ -40,6 +41,7 @@ export const SearchIcon = sized(Search);
 export const PanelLeftCloseIcon = sized(PanelLeftClose);
 export const PanelLeftIcon = sized(PanelLeft);
 export const PanelLeftOpenIcon = sized(PanelLeftOpen);
+export const PanelRightIcon = sized(PanelRight);
 export const ChevronRightIcon = sized(ChevronRight);
 export const ChevronDownIcon = sized(ChevronDown);
 export const FolderTreeIcon = sized(FolderTree);

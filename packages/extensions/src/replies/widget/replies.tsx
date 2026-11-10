@@ -23,7 +23,7 @@ export function RepliesButton(props: SurfaceProps) {
 		<Tip label={wording}>
 			<button
 				type="button"
-				className={`flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full border-0 text-ink transition-colors duration-150 hover:bg-hover ${open ? "bg-hover" : "bg-transparent"}`}
+				className={`replies-toggle flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full border-0 text-ink transition-colors duration-150 hover:bg-hover ${open ? "bg-hover" : "bg-transparent"}`}
 				aria-label={wording}
 				aria-pressed={open}
 				onClick={() => service.toggle()}
@@ -61,11 +61,31 @@ export function RepliesPane(props: SurfaceProps) {
 		return () => cancelAnimationFrame(frame);
 	}, [open, rows]);
 
+	useEffect(() => {
+		if (!open) return;
+		const onPointerDown = (event: PointerEvent) => {
+			const target = event.target;
+			if (!(target instanceof Element) || target.closest(".replies-pane, .replies-toggle") !== null) return;
+			service.close();
+		};
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (event.key !== "Escape") return;
+			event.preventDefault();
+			service.close();
+		};
+		document.addEventListener("pointerdown", onPointerDown);
+		document.addEventListener("keydown", onKeyDown);
+		return () => {
+			document.removeEventListener("pointerdown", onPointerDown);
+			document.removeEventListener("keydown", onKeyDown);
+		};
+	}, [open, service]);
+
 	if (!open) return null;
 
 	return (
 		<aside
-			className="absolute top-[calc(var(--bar-h,52px)+8px)] right-4 z-20 flex max-h-[65vh] w-[246px] flex-col overflow-hidden rounded-md border border-line bg-surface shadow-[0_6px_20px_color-mix(in_srgb,var(--ink)_8%,transparent)]"
+			className="replies-pane absolute top-[calc(var(--bar-h,52px)+8px)] right-4 z-20 flex max-h-[65vh] w-[246px] flex-col overflow-hidden rounded-md border border-line bg-surface shadow-[0_6px_20px_color-mix(in_srgb,var(--ink)_8%,transparent)]"
 			aria-label="Replies"
 		>
 			<div className="flex items-baseline justify-between border-b border-line px-4 pt-3 pb-2">

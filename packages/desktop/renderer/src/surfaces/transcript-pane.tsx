@@ -14,6 +14,7 @@ import { ArrowDownIcon, CheckIcon, CopyIcon } from "../components/icons.tsx";
 import { TranscriptSkeleton } from "../components/skeletons.tsx";
 import { Welcome } from "../components/welcome.tsx";
 import { TranscriptScroll } from "../scroll-follower.ts";
+import { useImageEnv } from "./image-env.ts";
 
 const NO_ENTRIES: readonly SeqEntry[] = [];
 const NO_PANES: readonly never[] = [];
@@ -128,9 +129,8 @@ function EscalationCard(props: { item: ViewItem; host: Host; session: string }) 
 	);
 }
 
-function AssistantBlock(props: { host: Host; item: ViewItem; live?: boolean }) {
-	const files = props.item.files;
-	const env = useMemo(() => (files === undefined ? undefined : { files }), [files]);
+function AssistantBlock(props: { host: Host; session: string; item: ViewItem; live?: boolean }) {
+	const env = useImageEnv(props.host, props.session, props.item.text, props.item.files);
 	return (
 		<div className={props.live ? "msg-block msg-block-agent is-live" : "msg-block msg-block-agent"} data-entry={props.item.id}>
 			<Markdown port={props.host.markdown} text={props.item.text} env={env} className="msg-body" plain={props.live} />
@@ -159,7 +159,7 @@ const TranscriptRow = memo(function TranscriptRow(props: { host: Host; session: 
 	if (item.kind === "user") return item.from ? <PeerCard host={host} item={item} port={host.markdown} /> : <UserBubble host={host} item={item} />;
 	const Row = host.rows.get(item.kind);
 	if (Row) return createElement(Row, { host, data: { item } });
-	return <AssistantBlock host={host} item={item} />;
+	return <AssistantBlock host={host} session={session} item={item} />;
 });
 
 function SpeakingDots() {
@@ -197,7 +197,7 @@ function StreamTail(props: {
 				"step" in row ? (
 					Step && <Step key={`s:${row.step.key}`} host={props.host} data={{ group: row.step, live: true, onOpenChange: props.onStepOpenChange, onAlign: props.onAlign }} />
 				) : (
-					<AssistantBlock key={`i:${row.item.id}`} host={props.host} item={row.item} live />
+					<AssistantBlock key={`i:${row.item.id}`} host={props.host} session={props.session} item={row.item} live />
 				),
 			)}
 		</>

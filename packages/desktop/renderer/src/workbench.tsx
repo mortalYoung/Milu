@@ -5,7 +5,7 @@ import { useStore } from "zustand";
 
 import { mark } from "./boot.ts";
 import { DialogHost } from "./components/dialog-host.tsx";
-import { DockColumn } from "./components/dock.tsx";
+import { DockColumn, DockToggle } from "./components/dock.tsx";
 import { Grip } from "./components/grip.tsx";
 import { SessionListSkeleton, TranscriptSkeleton } from "./components/skeletons.tsx";
 
@@ -145,6 +145,8 @@ export function Workbench(props: { host: Host }) {
 			) : null}
 
 			<DockColumn host={host} />
+
+			<DockToggle host={host} />
 
 			<DialogHost host={host} />
 		</div>
