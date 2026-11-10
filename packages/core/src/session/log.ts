@@ -361,7 +361,10 @@ export class SessionLog {
 			if (options.cursor !== undefined && !entries.some((entry) => entry.id === options.cursor)) return null;
 			return originWindow(whole ? projectOrigin(entries) : projectTail(entries), options);
 		};
-		const scanned = await scanBack(path, (newestFirst, whole) => pick(newestFirst, whole) !== null);
+		const scanned = await scanBack(path, (newestFirst, whole) => {
+			const found = pick(newestFirst, whole);
+			return found !== null && (found.hasMore || whole);
+		});
 		const found = pick(scanned.entries, scanned.whole);
 		if (found !== null) return found;
 		return { ...originWindow(projectTail([...scanned.entries].reverse()), { conversations: options.conversations }), hasMore: false };

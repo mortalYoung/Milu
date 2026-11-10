@@ -1106,6 +1106,7 @@ body.pane-dragging {
 	min-height: 0;
 	overflow-y: auto;
 	overflow-anchor: none;
+	container-type: inline-size;
 	padding: 0 var(--page-gutter) 20px;
 }
 
@@ -2277,7 +2278,7 @@ body.pane-dragging {
 	}
 }
 
-@media (max-width: 760px) {
+@container (max-width: 560px) {
 	.step-families {
 		display: none;
 	}
