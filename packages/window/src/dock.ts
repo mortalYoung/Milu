@@ -2,13 +2,14 @@ import { createServiceId, type Service } from "@milu/di";
 import type { SlotItem } from "@milu/protocol";
 import { createStore } from "zustand/vanilla";
 
-import { type ColumnsService, IColumnsService } from "./columns.ts";
+import { type ColumnsService, IColumnsService, shellLayout } from "./columns.ts";
 import { type SelectionService, ISelectionService } from "./selection.ts";
 import { type SlotsService, ISlotsService } from "./slots.ts";
 
 export const DOCK_VIEWS_POINT = "dock.views";
 
 const VISIBLE_KEY = "milu.dock.visible";
+const SLIDE_MS = 160;
 const ACTIVE_KEY = "milu.dock.active";
 const NO_VIEWS: readonly SlotItem[] = [];
 
@@ -21,10 +22,18 @@ export interface DockTab {
 	readonly pinned: boolean;
 }
 
+export type DockPhase = "in" | "out";
+
+export interface DockSlide {
+	readonly dir: DockPhase;
+	readonly width: number;
+}
+
 export interface DockState {
 	readonly visible: boolean;
 	readonly active: string | null;
 	readonly opened: readonly DockTab[];
+	readonly slide: DockSlide | null;
 }
 
 export function dockTabs(views: readonly SlotItem[], opened: readonly DockTab[]): readonly DockTab[] {
@@ -46,7 +55,10 @@ export class DockService implements Service {
 		visible: localStorage.getItem(VISIBLE_KEY) === "1",
 		active: localStorage.getItem(ACTIVE_KEY),
 		opened: [],
+		slide: null,
 	}));
+
+	private _slide: ReturnType<typeof setTimeout> | null = null;
 
 	private readonly _disposables: { dispose(): void }[] = [];
 	private _dockMode: string | null = null;
@@ -84,8 +96,48 @@ export class DockService implements Service {
 
 	toggle(): void {
 		const state = this.store.getState();
-		this.store.setState({ ...state, visible: !state.visible }, true);
-		this.sync();
+		if (state.slide !== null) return;
+		if (state.visible) {
+			this.store.setState({ ...state, slide: { dir: "out", width: this._widthOf(this._columns.store.getState().columns.dock.width) } }, true);
+			this._columns.setDockAvailable(false);
+			this._later(() => {
+				this.store.setState({ ...this.store.getState(), visible: false, slide: null }, true);
+				this.sync();
+			});
+			return;
+		}
+		this.store.setState({ ...state, visible: true, slide: { dir: "in", width: this._widthOf(0) } }, true);
+		this._later(() => {
+			this.store.setState({ ...this.store.getState(), slide: null }, true);
+			this.sync();
+		});
+	}
+
+	private _widthOf(fallback: number): number {
+		const state = this._columns.store.getState();
+		const laid = shellLayout({
+			row: state.row,
+			listWidth: state.listWidth,
+			listOpen: state.listOpen,
+			listOverride: state.listOverride,
+			dockOpen: true,
+			dockWidth: state.dockWidth,
+		});
+		const width = laid.dock.width > 0 ? laid.dock.width : state.dockWidth;
+		return Math.round(width > 0 ? width : fallback);
+	}
+
+	private _later(step: () => void): void {
+		this._stop();
+		this._slide = setTimeout(() => {
+			this._slide = null;
+			step();
+		}, SLIDE_MS);
+	}
+
+	private _stop(): void {
+		if (this._slide !== null) clearTimeout(this._slide);
+		this._slide = null;
 	}
 
 	async refresh(): Promise<void> {
@@ -96,14 +148,16 @@ export class DockService implements Service {
 	select(key: string): void {
 		const state = this.store.getState();
 		if (state.active === key && state.visible) return;
-		this.store.setState({ ...state, active: key, visible: true }, true);
+		this._stop();
+		this.store.setState({ ...state, active: key, visible: true, slide: null }, true);
 		this.sync();
 	}
 
 	open(tab: Omit<DockTab, "pinned">): void {
 		const state = this.store.getState();
 		const known = state.opened.some((each) => each.key === tab.key);
-		this.store.setState({ ...state, opened: known ? state.opened : [...state.opened, { ...tab, pinned: false }], active: tab.key, visible: true }, true);
+		this._stop();
+		this.store.setState({ ...state, opened: known ? state.opened : [...state.opened, { ...tab, pinned: false }], active: tab.key, visible: true, slide: null }, true);
 		this.sync();
 	}
 
@@ -132,9 +186,10 @@ export class DockService implements Service {
 	}
 
 	dispose(): void {
+		this._stop();
 		for (const disposable of this._disposables) disposable.dispose();
 		this._disposables.length = 0;
-		this.store.setState({ visible: true, active: null, opened: [] }, true);
+		this.store.setState({ visible: true, active: null, opened: [], slide: null }, true);
 	}
 
 	private _session(): string | undefined {

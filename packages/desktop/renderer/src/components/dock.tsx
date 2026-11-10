@@ -27,6 +27,8 @@ export function DockColumn(props: { host: Host }) {
 	const dock = useStore(host.columns.store, (state) => state.columns.dock);
 	const opened = useStore(host.dock.store, (state) => state.opened);
 	const active = useStore(host.dock.store, (state) => state.active);
+	const slide = useStore(host.dock.store, (state) => state.slide);
+	const configured = useStore(host.columns.store, (state) => state.dockWidth);
 	const views = useStore(host.slots.store, (state) => state.points[DOCK_VIEWS_POINT] ?? NO_VIEWS);
 	const barItems = useStore(host.slots.store, (state) => state.points[SLOT_POINTS.dockBar] ?? NO_ITEMS);
 	const components = useStore(host.slots.store, (state) => state.components);
@@ -37,8 +39,13 @@ export function DockColumn(props: { host: Host }) {
 
 	return (
 		<div
-			className={`column dock${dock.mode === "overlay" ? " floating" : ""}${dock.mode === "closed" ? " closed" : ""}`}
-			style={{ "--dock-width": dock.mode === "closed" ? "0px" : `${dock.width}px` } as CSSProperties}
+			className={`column dock${dock.mode === "overlay" ? " floating" : ""}${dock.mode === "closed" ? " closed" : ""}${slide === null ? "" : ` sliding ${slide.dir}`}`}
+			style={
+				{
+					"--dock-width": dock.mode === "closed" ? "0px" : `${dock.width}px`,
+					"--dock-slide-width": `${slide === null ? configured : slide.width}px`,
+				} as CSSProperties
+			}
 			inert={dock.mode === "closed"}
 		>
 			<div className="dock-bar">

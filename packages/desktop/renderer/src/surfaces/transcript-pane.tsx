@@ -17,6 +17,7 @@ import { TranscriptScroll } from "../scroll-follower.ts";
 import { useImageEnv } from "./image-env.ts";
 
 const NO_ENTRIES: readonly SeqEntry[] = [];
+const STEP_NARROW = 560;
 const NO_PANES: readonly never[] = [];
 const NO_ROWS: readonly DisplayRow[] = [];
 const NO_ITEMS: readonly SlotItem[] = [];
@@ -266,6 +267,15 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 		mark("data");
 	}, [hasData]);
 
+	const [narrow, setNarrow] = useState(false);
+	useEffect(() => {
+		const element = scroll.current;
+		if (element === null) return;
+		const observer = new ResizeObserver(() => setNarrow(element.clientWidth < STEP_NARROW));
+		observer.observe(element);
+		return () => observer.disconnect();
+	}, [view]);
+
 	const hasMore = useStore(host.transcript.store, (state) => state.hasMore[selected] ?? false);
 	const loadingOlder = useStore(host.transcript.store, (state) => state.loadingOlder[selected] ?? false);
 	const loadOlder = () => {
@@ -315,7 +325,7 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 				) : (
 					<div className="chat-column">
 						<div className="transcript-view">
-							<div className="transcript" ref={scroll}>
+							<div className="transcript" ref={scroll} data-narrow={narrow ? "" : undefined}>
 								<div className="transcript-inner" ref={inner}>
 									{hasMore ? (
 										<div className="load-earlier-wrap">

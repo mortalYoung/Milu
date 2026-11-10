@@ -77,12 +77,22 @@ export function ChatBar(props: { host: Host }) {
 		const left = lead.current;
 		const right = tools.current;
 		if (header === null || left === null || right === null) return;
+		let side = 0;
+		let compact = false;
 		const measure = (): void => {
 			const box = header.getBoundingClientRect();
 			const leadEdge = left.getBoundingClientRect().right - box.left + 8;
 			const toolsEdge = box.right - right.getBoundingClientRect().left + 8;
-			header.style.setProperty("--bar-side", `${Math.ceil(Math.max(leadEdge, toolsEdge))}px`);
-			setNarrow(box.width < BAR_COMPACT);
+			const next = Math.ceil(Math.max(leadEdge, toolsEdge));
+			if (next !== side) {
+				side = next;
+				header.style.setProperty("--bar-side", `${next}px`);
+			}
+			const tight = box.width < BAR_COMPACT;
+			if (tight !== compact) {
+				compact = tight;
+				setNarrow(tight);
+			}
 		};
 		measure();
 		const observer = new ResizeObserver(measure);
