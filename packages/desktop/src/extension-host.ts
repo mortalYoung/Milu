@@ -14,6 +14,8 @@ import type {
 	HostToolCall,
 	HostToolResult,
 	Theme,
+	WindowDescriptor,
+	WindowMenuItem,
 } from "@milu/core";
 import { app, utilityProcess } from "electron";
 
@@ -70,6 +72,16 @@ class UtilityExtensionHost implements ExtensionHost {
 			} else if (message.method === "settings") {
 				const { key, defaults } = message.params as { key: string; defaults: unknown };
 				this._child.postMessage({ id: message.id, ok: true, result: this._sink.settings(key, defaults) });
+			} else if (message.method === "createWindow") {
+				this._settle(message.id, this._sink.createWindow(message.params as WindowDescriptor));
+			} else if (message.method === "closeWindow") {
+				this._settle(message.id, this._sink.closeWindow((message.params as { window: string }).window));
+			} else if (message.method === "setClickThrough") {
+				const { window, ignore } = message.params as { window: string; ignore: boolean };
+				this._settle(message.id, this._sink.setClickThrough(window, ignore));
+			} else if (message.method === "showMenu") {
+				const { window, items } = message.params as { window: string; items: readonly WindowMenuItem[] };
+				this._settle(message.id, this._sink.menu(window, items));
 			} else {
 				this._child.postMessage({ id: message.id, ok: true, result: null });
 			}
@@ -120,6 +132,13 @@ class UtilityExtensionHost implements ExtensionHost {
 
 	dispose(): void {
 		this._child.kill();
+	}
+
+	private _settle(id: number, work: Promise<unknown>): void {
+		void work.then(
+			(result) => this._child.postMessage({ id, ok: true, result }),
+			(error: unknown) => this._child.postMessage({ id, ok: false, error: error instanceof Error ? error.message : String(error) }),
+		);
 	}
 
 	private _call(method: HostRequest["method"], params: unknown): Promise<unknown> {

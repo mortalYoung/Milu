@@ -16,6 +16,7 @@ export { FooterService, IFooterService } from "./footer.ts";
 export { LayoutService, ILayoutService } from "./layout.ts";
 export type { FrontEndService } from "./extensions.ts";
 export { SelectionService, ISelectionService } from "./selection.ts";
+export { MotionService, IMotionService, type WindowMotion } from "./motion.ts";
 export { SessionListService, ISessionListService, type SessionListView } from "./sessions.ts";
 export { PickerService, IPickerService } from "./picker.ts";
 export { SlotsService, ISlotsService, type SlotComponent } from "./slots.ts";
@@ -26,6 +27,7 @@ export { IThemeService, ThemeService, type ThemeOption, type ThemeSnapshot } fro
 export { TranscriptService, ITranscriptService, type TranscriptState } from "./transcripts.ts";
 export { WelcomeService, IWelcomeService } from "./welcome.ts";
 export { loadWidgets, type WidgetFailure, type WidgetSet } from "./widgets.tsx";
+export { ExtensionSurface, WidgetBoundary } from "./extension-surface.tsx";
 export { WorkbenchService, IWorkbenchService } from "./workbench.ts";
 export { Kbd, KbdGroup } from "./api/kbd.tsx";
 export {

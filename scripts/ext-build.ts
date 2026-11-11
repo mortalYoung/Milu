@@ -8,7 +8,10 @@ const EXTENSIONS = join(ROOT, "extensions");
 interface Manifest {
 	readonly name?: string;
 	readonly main?: string;
-	readonly milu?: { readonly widgets?: readonly { readonly entry?: string }[] };
+	readonly milu?: {
+		readonly widgets?: readonly { readonly entry?: string }[];
+		readonly windows?: readonly { readonly module?: string }[];
+	};
 }
 
 interface Target {
@@ -23,6 +26,11 @@ async function targets(root: string, manifest: Manifest): Promise<Target[]> {
 		if (typeof widget.entry !== "string") continue;
 		const stem = basename(widget.entry).replace(/\.js$/, "");
 		out.push({ entry: join(root, "src", `${stem}.tsx`), outfile: join(root, widget.entry), target: "browser" });
+	}
+	for (const window of manifest.milu?.windows ?? []) {
+		if (typeof window.module !== "string") continue;
+		const stem = basename(window.module).replace(/\.js$/, "");
+		out.push({ entry: join(root, "src", `${stem}.tsx`), outfile: join(root, window.module), target: "browser" });
 	}
 	if (typeof manifest.main === "string") {
 		const stem = basename(manifest.main).replace(/\.js$/, "");

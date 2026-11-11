@@ -1,5 +1,5 @@
 import type { CustomModel, CustomProvider, Extension, ExtensionContext, Settings } from "@milu/core";
-import { expandHome } from "@milu/core";
+import { expandHome, IExtensionService } from "@milu/core";
 import type { AuthEventText, AuthLoginState, AuthPromptText } from "@milu/protocol";
 
 import { IMcpService } from "../mcp/index.ts";
@@ -42,6 +42,7 @@ export interface ProviderRow {
 export interface SettingsSnapshot {
 	readonly values: Settings;
 	readonly defaults: Readonly<Record<string, unknown>>;
+	readonly extensions: readonly string[];
 	readonly mcp: McpOptions;
 	readonly providers: readonly ProviderRow[];
 	readonly addable: readonly AddableProvider[];
@@ -145,6 +146,7 @@ async function collect(context: ExtensionContext): Promise<SettingsSnapshot> {
 	return {
 		values: effective(context.settings.get(), defaults),
 		defaults,
+		extensions: context.get(IExtensionService).loaded(),
 		mcp: await context.get(IMcpService).options(),
 		providers,
 		addable,

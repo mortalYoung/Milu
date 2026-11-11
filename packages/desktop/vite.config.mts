@@ -43,14 +43,18 @@ function widgetManifest(inputs: Record<string, string>): Plugin {
 
 export default defineConfig(async () => {
 	const inputs = await widgetInputs();
+	const windowEntry = join(DESKTOP, "renderer/src/window.tsx");
 	return {
 		root: "renderer",
-		plugins: [react(), tailwindcss(), widgetManifest(inputs)],
+		plugins: [react(), tailwindcss(), widgetManifest({ ...inputs, window: windowEntry })],
 		base: "./",
 		build: {
 			outDir: "dist",
 			emptyOutDir: true,
-			rollupOptions: { input: { index: join(DESKTOP, "renderer/index.html"), ...inputs }, preserveEntrySignatures: "strict" },
+			rollupOptions: {
+				input: { index: join(DESKTOP, "renderer/index.html"), window: windowEntry, ...inputs },
+				preserveEntrySignatures: "strict",
+			},
 		},
 		server: {
 			host: "127.0.0.1",

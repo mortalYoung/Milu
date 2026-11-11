@@ -30,6 +30,18 @@ export { ContributionPoint, ContributionService, IContributionService, type Cont
 export { ExecutionService, IExecutionService } from "./services/execution.ts";
 export { ExtensionService, IExtensionService } from "./services/extensions.ts";
 export { declareExtensionServices } from "./extensions/services.ts";
+export {
+	IWindowHost,
+	scopedWindows,
+	type HostedWindows,
+	type ScopedWindows,
+	type WindowAnchor,
+	type WindowDeclaration,
+	type WindowDescriptor,
+	type WindowHost,
+	type WindowMenuItem,
+	type WindowPlacement,
+} from "./extensions/windows.ts";
 export { diskSource } from "./extensions/disk-source.ts";
 export type { HostHookPoint } from "./extensions/host.ts";
 export { EXTENSION_API_VERSION, type ExtensionManifest, type ManifestWidget } from "./extensions/manifest.ts";
@@ -46,7 +58,15 @@ export type {
 	HostToolCall,
 	HostToolResult,
 } from "./extensions/host.ts";
-export { discoverExtensions, type DiscoveredExtensions, type ExtensionFailure, type ExtensionSource, type LocatedExtension, type WidgetRef } from "./extensions/source.ts";
+export {
+	discoverExtensions,
+	type DiscoveredExtensions,
+	type ExtensionFailure,
+	type ExtensionSource,
+	type LocatedExtension,
+	type WidgetRef,
+	type WindowRef,
+} from "./extensions/source.ts";
 export { CapabilityService, ICapabilityService, type CapabilityMethod } from "./services/capabilities.ts";
 export { HookService, IHookService, type AgentHook, type AgentHookContext, type AgentHookPoint } from "./services/hooks.ts";
 export { expandHome } from "./services/settings.ts";
@@ -137,6 +157,7 @@ export interface BackendConfig {
 	root: string;
 	workspace: string;
 	hosts?: import("./extensions/host.ts").ExtensionHostFactory;
+	windows?: import("./extensions/windows.ts").WindowHost;
 }
 
 export interface Backend extends Disposable {

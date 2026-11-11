@@ -21,7 +21,9 @@ import {
 	DockService,
 	IDockService,
 	FileEventsService,
+	MotionService,
 	IFileEventsService,
+	IMotionService,
 	CommandRegistry,
 	CommandRegistryId,
 	ComposerService,
@@ -69,6 +71,7 @@ export interface FrontEndDeps {
 	readonly triggers?: readonly ComposerTriggerComponent[];
 	readonly commands?: BrowserCommands;
 	readonly platform: Platform;
+	readonly passive?: boolean;
 	readonly mark?: (name: string) => void;
 }
 
@@ -116,6 +119,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	services.set(IColumnsService, new SyncDescriptor(ColumnsService));
 	services.set(IDockService, new SyncDescriptor(DockService));
 	services.set(IFileEventsService, new SyncDescriptor(FileEventsService));
+	services.set(IMotionService, new SyncDescriptor(MotionService));
 	services.set(IWorkbenchService, new SyncDescriptor(WorkbenchService));
 	services.set(SurfaceRegistryId, new SyncDescriptor(SurfaceRegistry, [deps.components ?? []]));
 	services.set(WidgetRegistryId, new SyncDescriptor(WidgetRegistry, [set.widgets]));
@@ -155,6 +159,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	const widgets = container.get(WidgetRegistryId);
 	const layout = container.get(ILayoutService);
 	const theme = container.get(IThemeService);
+	const motion = container.get(IMotionService);
 
 	const disposables = new DisposableStore();
 	disposables.add(markdown);
@@ -242,6 +247,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 			markdown,
 			layout,
 			theme,
+			motion,
 			get: (id) => container.get(id),
 		},
 		start() {
@@ -261,22 +267,36 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 				}),
 			});
 			const marking = new Set<string>();
+			const markRead = (): void => {
+				if (deps.passive === true) return;
+				if (document.visibilityState !== "visible" || !document.hasFocus()) return;
+				const name = selection.store.getState().selected;
+				if (name === "" || marking.has(name)) return;
+				const row = sessions.get(name);
+				if (row === undefined || (row.lastMessageAt ?? 0) <= (row.readAt ?? 0)) return;
+				marking.add(name);
+				void connection
+					.request("read", { session: name })
+					.then(({ readAt }) => sessions.patchRead(name, readAt))
+					.catch(() => undefined)
+					.finally(() => marking.delete(name));
+			};
 			disposables.add({
 				dispose: sessions.store.subscribe(() => {
 					const dropped = transcript.retain(sessions.store.getState().rows);
 					for (const name of dropped) composerData.drop(name);
 					const name = selection.store.getState().selected;
 					if (name !== "" && dropped.includes(name)) void transcript.open(name);
-					if (name === "" || marking.has(name)) return;
-					const row = sessions.get(name);
-					if (row === undefined || (row.lastMessageAt ?? 0) <= (row.readAt ?? 0)) return;
-					marking.add(name);
-					void connection
-						.request("read", { session: name })
-						.then(({ readAt }) => sessions.patchRead(name, readAt))
-						.catch(() => undefined)
-						.finally(() => marking.delete(name));
+					markRead();
 				}),
+			});
+			window.addEventListener("focus", markRead);
+			window.addEventListener("visibilitychange", markRead);
+			disposables.add({
+				dispose: () => {
+					window.removeEventListener("focus", markRead);
+					window.removeEventListener("visibilitychange", markRead);
+				},
 			});
 			disposables.add(connection.onSnapshot(apply));
 			const hydrateTheme = async (): Promise<void> => {
@@ -333,6 +353,10 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 						selection.apply(event.selected);
 						return;
 					}
+					if (event.type === "read") {
+						sessions.patchRead(event.session, event.readAt);
+						return;
+					}
 					if (event.type === "composer") {
 						composer.apply(event.session, event.mode);
 						return;
@@ -363,6 +387,10 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 					}
 					if (event.type === "compacting") {
 						sessions.patchCompacting(event.session, event.compacting);
+						return;
+					}
+					if (event.type === "motion") {
+						motion.apply(event.window, event.drag, event.look);
 						return;
 					}
 					if (event.type !== "status") return;

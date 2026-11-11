@@ -118,6 +118,7 @@ export interface SessionRow {
 	readonly compacting?: boolean;
 	readonly forking?: boolean;
 	readonly error?: string;
+	readonly errorAt?: number;
 	readonly lastMessage?: string;
 	readonly lastMessageAt?: number;
 	readonly lastMessageKind?: PreviewKind;
@@ -346,13 +347,15 @@ export type LiveEvent =
 	| { readonly type: "pending"; readonly session: string; readonly items: readonly PendingItem[] }
 	| { readonly type: "fork"; readonly session: string; readonly error?: string }
 	| { readonly type: "selection"; readonly selected: string | null }
+	| { readonly type: "read"; readonly session: string; readonly readAt: number }
 	| ({ readonly type: "layout" } & LayoutState)
 	| { readonly type: "composer"; readonly session: string; readonly mode: ComposerMode }
 	| { readonly type: "dialog"; readonly id: string; readonly dialog: DialogDescriptor }
 	| { readonly type: "lifecycle"; readonly phase: LifecyclePhase }
 	| { readonly type: "settings" }
 	| { readonly type: "command"; readonly action: string }
-	| { readonly type: "file"; readonly path: string };
+	| { readonly type: "file"; readonly path: string }
+	| { readonly type: "motion"; readonly window: string; readonly drag: "left" | "right" | null; readonly look: number | null };
 
 export interface BootMark {
 	readonly name: string;
@@ -395,6 +398,7 @@ export interface Methods {
 	extensionData: { params: { extension: string; key: string; session: string | null }; result: { data: unknown } };
 	layout: { params: Record<string, never>; result: LayoutState };
 	layoutSet: { params: { layout: Layout }; result: LayoutState };
+	moveWindow: { params: { dx: number; dy: number }; result: Record<string, never> };
 }
 
 export type MethodName = keyof Methods;

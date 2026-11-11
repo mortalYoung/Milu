@@ -3,6 +3,8 @@ import { join } from "node:path";
 
 import type { WidgetType } from "@milu/protocol";
 
+import type { WindowDeclaration } from "./windows.ts";
+
 export const EXTENSION_API_VERSION = 1;
 
 const WIDGET_TYPES: readonly WidgetType[] = ["slot", "widget", "dialog", "trigger", "service", "row", "markdown"];
@@ -23,6 +25,7 @@ export interface ExtensionManifest {
 	readonly id: string;
 	readonly apiVersion: number;
 	readonly widgets: readonly ManifestWidget[];
+	readonly windows: readonly WindowDeclaration[];
 	readonly services: readonly ManifestService[];
 	readonly contributions: Readonly<Record<string, readonly unknown[]>>;
 }
@@ -89,6 +92,24 @@ function asContributions(value: unknown): Readonly<Record<string, readonly unkno
 	return contributions as Readonly<Record<string, readonly unknown[]>>;
 }
 
+function asWindows(value: unknown, extensionId: string): readonly WindowDeclaration[] {
+	if (value === undefined) return [];
+	if (!Array.isArray(value)) throw new Error(`"milu.windows" is not an array`);
+	return value.map((item, index) => {
+		const window = asRecord(item, `milu.windows[${index}]`);
+		const id = window["id"];
+		if (typeof id !== "string" || id === "") throw new Error(`milu.windows[${index}].id is not a string`);
+		if (!id.startsWith(`${extensionId}.`)) throw new Error(`milu.windows[${index}].id "${id}" is outside the "${extensionId}." namespace`);
+		const file = (field: "document" | "module"): string => {
+			const path = window[field];
+			if (typeof path !== "string" || path === "") throw new Error(`milu.windows[${index}].${field} is not a string`);
+			if (path.startsWith("/") || path.split("/").includes("..")) throw new Error(`milu.windows[${index}].${field} must stay inside the package`);
+			return path;
+		};
+		return { id, document: file("document"), module: file("module") };
+	});
+}
+
 export async function readManifest(root: string, name: string): Promise<ExtensionManifest> {
 	const manifest = JSON.parse(await readFile(join(root, "package.json"), "utf8")) as Record<string, unknown>;
 	const milu = asRecord(manifest["milu"] ?? {}, `"milu" in ${name}/package.json`);
@@ -103,6 +124,7 @@ export async function readManifest(root: string, name: string): Promise<Extensio
 		id,
 		apiVersion,
 		widgets: asWidgets(milu["widgets"]),
+		windows: asWindows(milu["windows"], id),
 		services: asServices(milu["services"], id),
 		contributions: asContributions(milu["contributions"]),
 	};

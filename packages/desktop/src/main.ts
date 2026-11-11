@@ -3,12 +3,14 @@ import { join, normalize, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { createBackend } from "@milu/bootstrap";
-import type { WidgetRef } from "@milu/core";
+import type { WindowRef } from "@milu/core";
 import { app, BrowserWindow, ipcMain, nativeTheme, net, protocol, shell } from "electron";
 
 import { bootMark } from "./boot.ts";
 import { extensionHostFactory } from "./extension-host.ts";
+import { FloatingWindows } from "./floating-windows.ts";
 import { IpcServer } from "./ipc.ts";
+import { bootUrl, widgetUrl } from "./widget-url.ts";
 import { DEFAULT_WINDOW_STATE, readRememberSession, readWindowState, WINDOW_MIN, writeWindowState } from "./window-state.ts";
 
 const DEV_URL = process.env["MILU_DEV_URL"];
@@ -19,19 +21,19 @@ const SCHEME = "milu";
 
 protocol.registerSchemesAsPrivileged([{ scheme: SCHEME, privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 
-function extensionFile(widgets: readonly WidgetRef[], id: string, rest: string): string | null {
-	const widget = widgets.find((each) => each.extension === id);
-	if (!widget || widget.root === undefined) return null;
-	const root = normalize(widget.root);
+function extensionFile(roots: Readonly<Record<string, string>>, id: string, rest: string): string | null {
+	const found = roots[id];
+	if (found === undefined) return null;
+	const root = normalize(found);
 	const path = normalize(join(root, rest));
 	return path.startsWith(root + sep) ? path : null;
 }
 
-function serveRenderer(directory: string, widgets: () => readonly WidgetRef[]): void {
+function serveRenderer(directory: string, roots: () => Readonly<Record<string, string>>): void {
 	protocol.handle(SCHEME, async (request) => {
 		const pathname = decodeURIComponent(new URL(request.url).pathname);
 		const extension = /^\/extensions\/([^/]+)\/(.+)$/.exec(pathname);
-		const path = extension ? extensionFile(widgets(), extension[1] ?? "", extension[2] ?? "") : normalize(join(directory, pathname));
+		const path = extension ? extensionFile(roots(), extension[1] ?? "", extension[2] ?? "") : normalize(join(directory, pathname));
 		if (path === null) return new Response("not found", { status: 404 });
 		if (!extension && path !== directory && !path.startsWith(directory + sep)) return new Response("forbidden", { status: 403 });
 		let response: Response;
@@ -55,8 +57,40 @@ async function main(): Promise<void> {
 	const icon = join(appDir, "build/icon.png");
 	let backend: Awaited<ReturnType<typeof createBackend>> | null = null;
 	let ipc: IpcServer | null = null;
-	serveRenderer(join(appDir, "renderer/dist"), () => backend?.extensions.widgets() ?? []);
-	const creating = createBackend({ root: CONFIG_ROOT, workspace: WORKSPACE, hosts: extensionHostFactory });
+	serveRenderer(join(appDir, "renderer/dist"), () => backend?.extensions.roots() ?? {});
+	const target = DEV_URL === undefined ? `${SCHEME}://app/` : `${DEV_URL.replace(/\/+$/, "")}/`;
+	const absolute = (path: string | undefined): string | undefined => (path === undefined ? undefined : /^[a-z]+:/i.test(path) ? path : `${target}${path.replace(/^\/+/, "")}`);
+	const windows = (): readonly WindowRef[] => backend?.extensions.windows() ?? [];
+	const preamble =
+		DEV_URL === undefined
+			? undefined
+			: [
+					`const loaded = await import(${JSON.stringify(`${target}@react-refresh`)});`,
+					"const runtime = loaded.default ?? loaded;",
+					"runtime.injectIntoGlobalHook(window);",
+					"window.$RefreshReg$ = () => {};",
+					"window.$RefreshSig$ = () => (type) => type;",
+					"window.__vite_plugin_react_preamble_installed__ = true;",
+				].join("\n");
+	const floating = new FloatingWindows({
+		root: CONFIG_ROOT,
+		preload: join(appDir, "dist-electron/preload.cjs"),
+		windows,
+		asset: async (extension, root, file) => absolute(await widgetUrl(extension, file, root)),
+		boot: async () => absolute(await bootUrl()),
+		dispatch: (action, args) => {
+			if (ipc === null || window.isDestroyed()) return;
+			void ipc
+				.dispatch(window.webContents, action, args)
+				.then((result) => {
+					if (!result.ok) console.error(`[milu] window action "${action}" failed: ${result.error ?? "unknown"}`);
+				})
+				.catch((error: unknown) => console.error(`[milu] window action "${action}" failed`, error));
+		},
+		notify: (window, drag, look) => ipc?.motion(window, drag, look),
+		...(preamble === undefined ? {} : { preamble }),
+	});
+	const creating = createBackend({ root: CONFIG_ROOT, workspace: WORKSPACE, hosts: extensionHostFactory, windows: floating });
 	let attach!: (server: IpcServer) => void;
 	const listening = new Promise<IpcServer>((resolve) => {
 		attach = resolve;
@@ -133,6 +167,7 @@ async function main(): Promise<void> {
 	window.on("unmaximize", remember);
 	window.on("close", flush);
 	app.on("before-quit", flush);
+	app.on("before-quit", () => floating.dispose());
 
 	window.on("closed", () => {
 		app.off("before-quit", flush);
@@ -154,7 +189,7 @@ async function main(): Promise<void> {
 		if (phase === "ready") bootMark("ready");
 	});
 	if (started.lifecycle.phase === "ready") bootMark("ready");
-	ipc = new IpcServer(started);
+	ipc = new IpcServer(started, floating);
 	ipc.start();
 	attach(ipc);
 	await loading;

@@ -16,6 +16,7 @@ import type { HeaderService } from "./header.ts";
 import type { HotkeysService } from "./hotkeys.ts";
 import type { LayoutService } from "./layout.ts";
 import type { MarkdownPort } from "./markdown/types.ts";
+import type { MotionService } from "./motion.ts";
 import type { NotificationService } from "./notifications.ts";
 import type { PickerService } from "./picker.ts";
 import type { RowRegistry } from "./rows.ts";
@@ -64,6 +65,7 @@ export interface Host {
 	readonly layout: LayoutService;
 	readonly files: FileEventsService;
 	readonly theme: ThemeService;
+	readonly motion: MotionService;
 	readonly get: <T extends Service>(id: ServiceId<T>) => T;
 }
 

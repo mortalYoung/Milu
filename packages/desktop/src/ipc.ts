@@ -30,6 +30,10 @@ interface ServerEvent {
 
 type Handlers = { [K in MethodName]: (params: Params<K>, sender: WebContents) => Promise<Result<K>> };
 
+export interface WindowMover {
+	moveBy(sender: WebContents, dx: number, dy: number): void;
+}
+
 function reason(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
@@ -43,7 +47,10 @@ export class IpcServer {
 	private readonly _handlers: Handlers;
 	private _started = false;
 
-	constructor(private readonly _backend: Backend) {
+	constructor(
+		private readonly _backend: Backend,
+		private readonly _floating?: WindowMover,
+	) {
 		this._handlers = {
 			transcript: (params) => this._transcript(params),
 			origin: (params) => this._origin(params),
@@ -71,6 +78,11 @@ export class IpcServer {
 			extensions: () => this._extensions(),
 			layout: () => this._layout(),
 			layoutSet: (params) => this._layoutSet(params),
+			moveWindow: async (params, sender) => {
+				if (this._floating === undefined) throw new Error("this build has no floating windows");
+				this._floating.moveBy(sender, params.dx, params.dy);
+				return {};
+			},
 		};
 	}
 
@@ -172,6 +184,10 @@ export class IpcServer {
 			for (const [name, latest] of this._partials) this._broadcast({ type: "partial", session: name, message: latest });
 			this._partials.clear();
 		}, PARTIAL_INTERVAL_MS);
+	}
+
+	motion(window: string, drag: "left" | "right" | null, look: number | null): void {
+		this._broadcast({ type: "live", event: { type: "motion", window, drag, look } });
 	}
 
 	private _send(sender: WebContents, message: ServerEvent): void {
@@ -475,11 +491,16 @@ export class IpcServer {
 		const session = await this._backend.sessions.ensure(params.session);
 		const readAt = (await session.row()).lastMessageAt ?? Date.now();
 		await session.markRead(readAt);
+		this._broadcast({ type: "live", event: { type: "read", session: params.session, readAt } });
 		return { readAt };
 	}
 
 	private async _select(params: Params<"select">): Promise<Result<"select">> {
 		return { selected: await this._backend.selection.select(params.session) };
+	}
+
+	dispatch(sender: WebContents, action: string, args?: unknown): Promise<Result<"invoke">> {
+		return this._invoke(args === undefined ? { action } : { action, args }, sender);
 	}
 
 	private async _invoke(params: Params<"invoke">, sender: WebContents): Promise<Result<"invoke">> {

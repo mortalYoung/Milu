@@ -17,7 +17,7 @@ export type { ComposerTriggerProps } from "../composer-triggers.ts";
 export { Kbd, KbdGroup } from "./kbd.tsx";
 export { TooltipProvider, Tip } from "./tooltip.tsx";
 export { useComposerData, useComposerRefresh } from "./composer.ts";
-export { useCommand, useExtensionData, useSession, useWidget, type ExtensionWidgetProps } from "./widget.ts";
+export { activityOf, useCommand, useExtensionData, useSession, useSessionActivity, useWidget, useWindowMotion, type ExtensionWidgetProps, type SessionActivity } from "./widget.ts";
 export {
 	activityAt,
 	byPinThenRecency,

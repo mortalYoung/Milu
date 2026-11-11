@@ -13,6 +13,7 @@ import { BUTTON_GHOST, BUTTON_PRIMARY, FIELD, InlineChoices, LINK, SheetPanel, S
 const CATEGORIES = [
 	{ id: "general", label: "General", intro: "How Milu starts, where partner profiles live, and how it tells you something happened." },
 	{ id: "appearance", label: "Appearance", intro: "One mode, two palettes, and how the session list reads." },
+	{ id: "pet", label: "Pet", intro: "Whether the desktop pet is on, how large it is, and whether it turns its head toward the pointer.", requires: "pet" },
 	{ id: "providers", label: "Providers", intro: "Keys and endpoints behind the models you can pick. A key is written once and never echoed back." },
 	{ id: "tools", label: "Tools", intro: "Limits for the shell, the web, and MCP servers." },
 	{ id: "skills", label: "Skills", intro: "Where skill folders are looked up, relative to the workspace or home." },
@@ -22,6 +23,9 @@ const CATEGORIES = [
 ] as const;
 
 type CategoryId = (typeof CATEGORIES)[number]["id"];
+
+type Category = { readonly id: string; readonly requires?: string };
+
 type FieldKind = "text" | "number" | "switch" | "segments" | "duration" | "sandbox" | "path" | "dirs" | "select" | "env";
 
 interface Field {
@@ -84,6 +88,32 @@ const FIELDS: readonly Field[] = [
 		min: 0,
 	},
 	{ id: "rememberSession", scope: "settings", category: "general", kind: "switch", title: "Remember Last Session", description: "Reopen the last chat and window size on launch." },
+	{
+		id: "petEnabled",
+		scope: "settings",
+		category: "pet",
+		kind: "switch",
+		title: "Pet",
+		description: "Show the desktop pet. Off hides it and closes its window.",
+	},
+	{
+		id: "petSize",
+		scope: "settings",
+		category: "pet",
+		kind: "number",
+		title: "Size",
+		description: "Sprite edge in pixels; a thin transparent ring around it stays for dragging.",
+		min: 64,
+		unit: "px",
+	},
+	{
+		id: "petFollow",
+		scope: "settings",
+		category: "pet",
+		kind: "switch",
+		title: "Follow Cursor",
+		description: "Turn the pet's head toward the pointer. Off leaves it resting in idle.",
+	},
 	{
 		id: "shellContinuous",
 		scope: "settings",
@@ -880,17 +910,22 @@ export function SettingsDialog(props: DialogProps) {
 	}
 
 	const theme = themeOf(draft);
+	const bands = CATEGORIES.filter((entry) => {
+		const need = (entry as Category).requires;
+		return need === undefined || snapshot.extensions.includes(need);
+	});
+	const visible = new Set<string>(bands.map((entry) => entry.id));
 	const themeNames = [...props.host.theme.themes("light"), ...props.host.theme.themes("dark")].map((entry) => entry.name).join(" ");
 	const q = query.trim().toLowerCase();
 	const searching = q !== "";
-	const fieldMatches = searching ? FIELDS.filter((field) => `${field.title} ${field.description}`.toLowerCase().includes(q)) : [];
+	const fieldMatches = searching ? FIELDS.filter((field) => visible.has(field.category) && `${field.title} ${field.description}`.toLowerCase().includes(q)) : [];
 	const themeMatches = searching && `Theme Follow the system, or force light or dark. Each appearance uses its own palette. ${themeNames}`.toLowerCase().includes(q);
 	const layoutMatches = searching && "Session List layout Focus Detail Groups workspace".toLowerCase().includes(q);
 	const providerMatches = searching ? snapshot.providers.filter((provider) => provider.id.toLowerCase().includes(q)) : [];
 	const totalMatches = fieldMatches.length + (themeMatches ? 1 : 0) + (layoutMatches ? 1 : 0) + providerMatches.length;
 	const catMatches = (id: CategoryId): boolean =>
 		fieldMatches.some((field) => field.category === id) || (id === "appearance" && (themeMatches || layoutMatches)) || (id === "providers" && providerMatches.length > 0);
-	const current = CATEGORIES.find((entry) => entry.id === activeBand) ?? CATEGORIES[0];
+	const current = bands.find((entry) => entry.id === activeBand) ?? CATEGORIES[0];
 	const bandCount = (id: CategoryId): number => {
 		if (id === "providers") return snapshot.providers.length;
 		if (id === "appearance") return 2;
@@ -1240,7 +1275,7 @@ export function SettingsDialog(props: DialogProps) {
 			);
 		}
 		const rows: ReactNode[] = [];
-		for (const category of CATEGORIES) {
+		for (const category of bands) {
 			if (!catMatches(category.id)) continue;
 			rows.push(
 				<div className="mt-5 mb-1 font-mono text-[9px] tracking-[0.14em] text-muted-soft uppercase" key={`head-${category.id}`}>
@@ -1300,7 +1335,7 @@ export function SettingsDialog(props: DialogProps) {
 					aria-label="Settings sections"
 				>
 					<div className="px-2.5 pb-2 font-mono text-[9px] tracking-[0.14em] text-muted-soft uppercase">Sections</div>
-					{CATEGORIES.map((entry) => {
+					{bands.map((entry) => {
 						const active = !searching && activeBand === entry.id;
 						const matched = searching && catMatches(entry.id);
 						return (

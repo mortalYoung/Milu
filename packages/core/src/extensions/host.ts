@@ -4,6 +4,7 @@ import type { TSchema } from "typebox";
 
 import type { AgentHookPoint } from "../services/hooks.ts";
 import type { AgentReminder } from "../session/events.ts";
+import type { WindowDescriptor, WindowMenuItem, WindowPlacement } from "./windows.ts";
 
 export interface HostTool {
 	readonly name: string;
@@ -50,8 +51,11 @@ export type ChildRequest =
 	| { readonly id: number; readonly method: "provideData"; readonly params: { readonly key: string } }
 	| { readonly id: number; readonly method: "callService"; readonly params: { readonly service: string; readonly method: string; readonly args: readonly unknown[] } }
 	| { readonly id: number; readonly method: "implementService"; readonly params: { readonly service: string; readonly methods: readonly string[] } }
-	| { readonly id: number; readonly method: "settings"; readonly params: { readonly key: string; readonly defaults: unknown } };
-
+	| { readonly id: number; readonly method: "settings"; readonly params: { readonly key: string; readonly defaults: unknown } }
+	| { readonly id: number; readonly method: "createWindow"; readonly params: WindowDescriptor }
+	| { readonly id: number; readonly method: "closeWindow"; readonly params: { readonly window: string } }
+	| { readonly id: number; readonly method: "setClickThrough"; readonly params: { readonly window: string; readonly ignore: boolean } }
+	| { readonly id: number; readonly method: "showMenu"; readonly params: { readonly window: string; readonly items: readonly WindowMenuItem[] } };
 export type HostResponse = { readonly id: number; readonly ok: true; readonly result: unknown } | { readonly id: number; readonly ok: false; readonly error: string };
 
 export type ChildResponse = { readonly id: number; readonly ok: true; readonly result: unknown } | { readonly id: number; readonly ok: false; readonly error: string };
@@ -65,6 +69,10 @@ export interface HostSink {
 	data(key: string): void;
 	service(service: string, methods: readonly string[]): void;
 	call(service: string, method: string, args: readonly unknown[]): Promise<unknown>;
+	createWindow(descriptor: WindowDescriptor): Promise<WindowPlacement>;
+	closeWindow(window: string): Promise<void>;
+	setClickThrough(window: string, ignore: boolean): Promise<void>;
+	menu(window: string, items: readonly WindowMenuItem[]): Promise<void>;
 	exited(error: string): void;
 }
 

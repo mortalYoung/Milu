@@ -34,7 +34,7 @@ export function diskSource(dir: string): ExtensionSource {
 					const root = join(dir, "node_modules", ...name.split("/"));
 					try {
 						const manifest = await readManifest(root, name);
-						const extension = { id: manifest.id, apiVersion: manifest.apiVersion, widgets: manifest.widgets, contributions: manifest.contributions };
+						const extension = { id: manifest.id, apiVersion: manifest.apiVersion, widgets: manifest.widgets, windows: manifest.windows, contributions: manifest.contributions };
 						return { ref: name, root, entry: resolve(name), services: manifest.services, module: Promise.resolve({ default: extension }) };
 					} catch (error) {
 						return { ref: name, root, module: Promise.reject(error as Error) };

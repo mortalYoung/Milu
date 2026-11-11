@@ -1,6 +1,6 @@
 import { pathToFileURL } from "node:url";
 
-import type { ChildRequest, ChildResponse, HostAction, HostRequest, HostResponse, HostTool, HostToolCall, Theme } from "@milu/core";
+import type { ChildRequest, ChildResponse, HostAction, HostedWindows, HostRequest, HostResponse, HostTool, HostToolCall, Theme, WindowMenuItem, WindowPlacement } from "@milu/core";
 
 interface Port {
 	postMessage(message: unknown): void;
@@ -19,6 +19,7 @@ const tools = new Map<string, (call: HostToolCall) => Promise<{ content: unknown
 const actions = new Map<string, (call: { args?: unknown; session: string | null }) => unknown>();
 const hooks = new Map<string, (context: { messages: readonly unknown[]; session: string; inject(reminder: unknown): void }) => unknown>();
 const settings = new Map<string, unknown>();
+const settingWatchers = new Map<string, Set<() => void>>();
 const data = new Map<string, (session: string | null) => unknown>();
 const services = new Map<string, Record<string, (...args: readonly unknown[]) => unknown>>();
 const disposables: { dispose(): void }[] = [];
@@ -49,6 +50,18 @@ function extensionContext(id: string) {
 		get: () => {
 			throw new Error("this extension runs out of process — host services are not available yet");
 		},
+		windows: {
+			create: (descriptor) => callHost("createWindow", descriptor) as Promise<WindowPlacement>,
+			close: async (window) => {
+				await callHost("closeWindow", { window });
+			},
+			setClickThrough: async (window, ignore) => {
+				await callHost("setClickThrough", { window, ignore });
+			},
+			menu: async (window, items: readonly WindowMenuItem[]) => {
+				await callHost("showMenu", { window, items });
+			},
+		} satisfies HostedWindows,
 		themes: {
 			register(theme: Theme) {
 				void callHost("registerTheme", theme);
@@ -58,10 +71,25 @@ function extensionContext(id: string) {
 		settings: {
 			declare(request: { key: string; defaults: unknown }) {
 				if (!settings.has(request.key)) settings.set(request.key, request.defaults);
-				void callHost("settings", request)
-					.then((stored) => settings.set(request.key, stored ?? request.defaults))
+				const loaded = callHost("settings", request)
+					.then((stored) => {
+						settings.set(request.key, stored ?? request.defaults);
+					})
 					.catch(() => {});
-				return { get: () => settings.get(request.key) ?? request.defaults };
+				return {
+					get: () => settings.get(request.key) ?? request.defaults,
+					when: loaded,
+					watch(listener: () => void) {
+						const listeners = settingWatchers.get(request.key) ?? new Set<() => void>();
+						settingWatchers.set(request.key, listeners);
+						listeners.add(listener);
+						return {
+							dispose: () => {
+								listeners.delete(listener);
+							},
+						};
+					},
+				};
 			},
 		},
 		services: {
@@ -131,6 +159,7 @@ port.on("message", (event) => {
 	}
 	if (message.method === "settingsChanged") {
 		settings.set(message.params.key, message.params.value);
+		for (const listener of settingWatchers.get(message.params.key) ?? []) listener();
 		return;
 	}
 	void (async () => {

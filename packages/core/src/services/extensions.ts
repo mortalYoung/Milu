@@ -3,7 +3,7 @@ import type { ExtensionStatus, ExtensionFailureText } from "@milu/protocol";
 
 import type { ExtensionHost, ExtensionHostFactory } from "../extensions/host.ts";
 import { EXTENSION_API_VERSION, isManifestData } from "../extensions/manifest.ts";
-import type { DiscoveredExtensions, ExtensionFailure, WidgetRef } from "../extensions/source.ts";
+import type { DiscoveredExtensions, ExtensionFailure, WidgetRef, WindowRef } from "../extensions/source.ts";
 import type { ExtensionServiceProxy, ExtensionServices } from "../extensions/types.ts";
 import {
 	COMPOSER_LEFT_POINT,
@@ -36,6 +36,7 @@ import {
 	type SessionMenuItem,
 	type SessionSignalItem,
 } from "../extensions/types.ts";
+import { scopedWindows, type ScopedWindows, type WindowHost } from "../extensions/windows.ts";
 import type { Session } from "../session/session.ts";
 import { IActionService } from "./actions.ts";
 import type { ActionService } from "./actions.ts";
@@ -72,7 +73,10 @@ export class ExtensionService implements Service {
 	private readonly _pending: readonly Extension[];
 	private readonly _failures: ExtensionFailure[];
 	private readonly _windows: readonly WidgetRef[];
+	private readonly _declaredWindows: readonly WindowRef[];
+	private readonly _roots: Readonly<Record<string, string>>;
 	private readonly _hosts: ExtensionHostFactory | undefined;
+	private readonly _windowsHost: WindowHost | undefined;
 	private readonly _hosted: ReadonlyMap<string, string>;
 	private readonly _declaredServices = new Set<string>();
 	private readonly _registry = new Map<string, { readonly owner: string; readonly methods: readonly string[] }>();
@@ -95,16 +99,20 @@ export class ExtensionService implements Service {
 		@IInstantiationService private readonly _services: IInstantiationService,
 		deps: ExtensionDeps,
 		hosts?: ExtensionHostFactory,
+		windows?: WindowHost,
 	) {
 		this._pending = deps.extensions;
 		this._failures = [...deps.failures];
 		this._windows = deps.widgets;
+		this._declaredWindows = deps.windows;
+		this._roots = deps.roots;
 		this._hosted = new Map(deps.hosted.map((hosted) => [hosted.id, hosted.entry]));
 		for (const service of deps.services) {
 			this._registry.set(service.id, { owner: service.extension, methods: service.methods });
 			this._declaredServices.add(service.id);
 		}
 		this._hosts = hosts;
+		this._windowsHost = windows;
 	}
 	// ——— activation ———
 
@@ -154,6 +162,7 @@ export class ExtensionService implements Service {
 			composer: this._composerService,
 			tools: this._toolService,
 			services: this.services,
+			...(this._windowsHost === undefined ? {} : { windows: scopedWindows(this._windowsHost, extension.id) }),
 		};
 
 		this._loaded.push({ extension, disposables, context });
@@ -180,6 +189,11 @@ export class ExtensionService implements Service {
 
 	private async _dataOf(id: string, key: string, session: Session): Promise<unknown> {
 		return this.data(id, key, session.name);
+	}
+
+	private _windowsFor(owner: string): ScopedWindows {
+		if (this._windowsHost === undefined) throw new Error("this build has no floating windows");
+		return scopedWindows(this._windowsHost, owner);
 	}
 
 	async data(extension: string, key: string, session: string | null): Promise<unknown> {
@@ -265,6 +279,10 @@ export class ExtensionService implements Service {
 					this._registry.set(service, { owner: id, methods });
 				},
 				call: (service, method, args) => this._callService(service, method, args),
+				createWindow: (descriptor) => this._windowsFor(id).create(descriptor),
+				closeWindow: (window) => this._windowsFor(id).close(window),
+				setClickThrough: (window, ignore) => this._windowsFor(id).setClickThrough(window, ignore),
+				menu: (window, items) => this._windowsFor(id).menu(window, items),
 				exited: (error) => {
 					round.dispose();
 					for (const [name, entry] of this._registry) if (entry.owner === id && !this._declaredServices.has(name)) this._registry.delete(name);
@@ -309,6 +327,14 @@ export class ExtensionService implements Service {
 
 	widgets(): readonly WidgetRef[] {
 		return this._windows;
+	}
+
+	windows(): readonly WindowRef[] {
+		return this._declaredWindows;
+	}
+
+	roots(): Readonly<Record<string, string>> {
+		return this._roots;
 	}
 
 	status(): { readonly extensions: readonly ExtensionStatus[]; readonly failures: readonly ExtensionFailureText[] } {

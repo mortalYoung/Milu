@@ -24,3 +24,9 @@ export async function widgetUrl(extension: string, entry: string, root?: string)
 	const file = (await files())[key];
 	return file === undefined ? undefined : `/${file}`;
 }
+
+export async function bootUrl(): Promise<string | undefined> {
+	if (DEV_URL !== undefined) return `${DEV_URL}/src/window.tsx`;
+	const file = (await files())["window"];
+	return file === undefined ? undefined : `/${file}`;
+}

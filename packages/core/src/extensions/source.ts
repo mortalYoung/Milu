@@ -2,6 +2,7 @@ import type { ExtensionWidget } from "@milu/extension-types";
 
 import { EXTENSION_API_VERSION, type ManifestService } from "./manifest.ts";
 import type { Extension } from "./types.ts";
+import type { WindowDeclaration } from "./windows.ts";
 
 export interface LocatedExtension {
 	readonly ref: string;
@@ -25,6 +26,11 @@ export interface WidgetRef extends ExtensionWidget {
 	readonly root?: string;
 }
 
+export interface WindowRef extends WindowDeclaration {
+	readonly extension: string;
+	readonly root?: string;
+}
+
 export interface ExtensionSource {
 	readonly id: string;
 	readonly fatal: boolean;
@@ -39,6 +45,8 @@ export interface ExtensionFailure {
 export interface DiscoveredExtensions {
 	readonly extensions: readonly Extension[];
 	readonly widgets: readonly WidgetRef[];
+	readonly windows: readonly WindowRef[];
+	readonly roots: Readonly<Record<string, string>>;
 	readonly hosted: readonly HostedExtension[];
 	readonly services: readonly ServiceDeclaration[];
 	readonly failures: readonly ExtensionFailure[];
@@ -47,6 +55,8 @@ export interface DiscoveredExtensions {
 export async function discoverExtensions(sources: readonly ExtensionSource[]): Promise<DiscoveredExtensions> {
 	const extensions: Extension[] = [];
 	const widgets: WidgetRef[] = [];
+	const windows: WindowRef[] = [];
+	const roots: Record<string, string> = {};
 	const hosted: HostedExtension[] = [];
 	const services: ServiceDeclaration[] = [];
 	const failures: ExtensionFailure[] = [];
@@ -71,7 +81,9 @@ export async function discoverExtensions(sources: readonly ExtensionSource[]): P
 				if (owner) throw new Error(`extension "${extension.id}" is declared by both ${owner} and ${ref}`);
 				claimed.set(extension.id, ref);
 				extensions.push(extension);
+				if (item.root !== undefined) roots[extension.id] = item.root;
 				for (const widget of extension.widgets ?? []) widgets.push({ ...widget, extension: extension.id, ...(item.root === undefined ? {} : { root: item.root }) });
+				for (const window of extension.windows ?? []) windows.push({ ...window, extension: extension.id, ...(item.root === undefined ? {} : { root: item.root }) });
 				if (item.entry !== undefined) hosted.push({ id: extension.id, entry: item.entry });
 				for (const service of item.services ?? []) services.push({ extension: extension.id, ...service });
 			} catch (error) {
@@ -82,7 +94,7 @@ export async function discoverExtensions(sources: readonly ExtensionSource[]): P
 		}
 	}
 
-	return { extensions, widgets, hosted, services, failures };
+	return { extensions, widgets, windows, roots, hosted, services, failures };
 }
 
 function reason(error: unknown): string {

@@ -67,7 +67,7 @@ export async function createBackend(config: BackendConfig): Promise<Backend> {
 	services.set(ICommandsService, new SyncDescriptor(CommandsService));
 	services.set(IComposerService, new SyncDescriptor(ComposerService));
 	services.set(ICompactionService, new SyncDescriptor(CompactionService));
-	services.set(IExtensionService, new SyncDescriptor(ExtensionService, [discovered, config.hosts]));
+	services.set(IExtensionService, new SyncDescriptor(ExtensionService, [discovered, config.hosts, config.windows]));
 	services.set(ISessionService, new SyncDescriptor(SessionService));
 	services.set(ISelectionService, new SyncDescriptor(SelectionService));
 	services.set(ILifecycleService, new SyncDescriptor(LifecycleService));

@@ -14,6 +14,7 @@ import type { ModelsService } from "../services/models.ts";
 import type { SettingsService } from "../services/settings.ts";
 import type { ToolService } from "../services/tools.ts";
 import type { Session } from "../session/session.ts";
+import type { ScopedWindows, WindowDeclaration } from "./windows.ts";
 
 export const SESSION_MENU_POINT = "session.menu";
 export const SESSION_SIGNAL_POINT = "session.signal";
@@ -128,6 +129,7 @@ export interface ExtensionContext extends ContractContext {
 	readonly settings: SettingsService;
 	readonly composer: ComposerService;
 	readonly tools: ToolService;
+	readonly windows?: ScopedWindows;
 }
 
 export interface ExtensionServiceDeclaration<T extends Service = Service> extends ContractServiceDeclaration {
@@ -137,6 +139,7 @@ export interface ExtensionServiceDeclaration<T extends Service = Service> extend
 
 export interface Extension extends ContractExtension {
 	readonly widgets?: readonly ExtensionWidget[];
+	readonly windows?: readonly WindowDeclaration[];
 	readonly services?: readonly ExtensionServiceDeclaration[];
 	readonly contributions?: ExtensionContributions;
 	activate?(context: ExtensionContext): void | Promise<void>;

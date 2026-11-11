@@ -1,0 +1,35 @@
+{
+	"name": "milu-pet",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"main": "dist/host.js",
+	"milu": {
+		"id": "pet",
+		"apiVersion": 1,
+		"windows": [
+			{
+				"id": "pet.float",
+				"document": "window.html",
+				"module": "dist/window.js"
+			}
+		],
+		"widgets": [
+			{
+				"id": "pet.overlay",
+				"type": "slot",
+				"entry": "dist/overlay.js",
+				"export": "PetOverlay"
+			}
+		],
+		"contributions": {
+			"shell.overlay": [
+				{
+					"id": "pet",
+					"order": 60,
+					"component": "pet.overlay"
+				}
+			]
+		}
+	}
+}

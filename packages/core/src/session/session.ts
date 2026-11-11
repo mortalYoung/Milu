@@ -158,6 +158,7 @@ export class Session {
 	private _compacted = false;
 	private _compacting = false;
 	private _error: string | null = null;
+	private _errorAt = 0;
 	private _prompt = "";
 	private readonly _suspended = new Set<string>();
 
@@ -201,7 +202,7 @@ export class Session {
 			running: this.running,
 			...(this._compacting ? { compacting: true } : {}),
 			...(forking ? { forking: true } : {}),
-			...(this._error ? { error: this._error } : {}),
+			...(this._error ? { error: this._error, ...(this._errorAt > 0 ? { errorAt: this._errorAt } : {}) } : {}),
 		};
 	}
 
@@ -286,12 +287,14 @@ export class Session {
 	private _launch(loop: AgentLoopService, message: AgentMessage): void {
 		void loop.run(message).catch((error: unknown) => {
 			this._error = error instanceof Error ? error.message : String(error);
+			this._errorAt = Date.now();
 			console.error(`session ${this.name}: run failed:`, error);
 		});
 	}
 
 	private async _failBeforeRun(message: AgentMessage | null, failure: string): Promise<void> {
 		this._error = null;
+		this._errorAt = 0;
 		if (message !== null) await this._log.append(message);
 		await this._log.record(EVENTS.agentEnd, { reason: "error", error: failure, timestamp: Date.now() });
 	}
@@ -350,6 +353,7 @@ export class Session {
 		if (loop.isRunning()) return;
 		void loop.continue().catch((error: unknown) => {
 			this._error = error instanceof Error ? error.message : String(error);
+			this._errorAt = Date.now();
 			console.error(`session ${this.name}: continue failed:`, error);
 		});
 	}
@@ -364,6 +368,7 @@ export class Session {
 		this._usedTokens = null;
 		this._compacted = false;
 		this._error = null;
+		this._errorAt = 0;
 	}
 
 	private async _autoCompact(): Promise<void> {
@@ -487,6 +492,7 @@ export class Session {
 				}
 				case "run_start":
 					this._error = null;
+					this._errorAt = 0;
 					record(EVENTS.agentStart, { run: event.run, timestamp });
 					return;
 				case "run_end": {
