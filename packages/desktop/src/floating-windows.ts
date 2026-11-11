@@ -145,8 +145,7 @@ export class FloatingWindows implements WindowHost {
 		});
 		this._startLook();
 		window.on("closed", () => {
-			if (this._held.get(key)?.window === window) this._held.delete(key);
-			this._cancel(key);
+			if (this._held.get(key)?.window === window) this._forget(key, descriptor.id);
 		});
 
 		const query = new URLSearchParams({ extension: owner, id: descriptor.id, module, data: JSON.stringify(descriptor.data ?? null) });
@@ -169,13 +168,8 @@ export class FloatingWindows implements WindowHost {
 	async close(owner: string, id: string): Promise<void> {
 		const key = keyOf(owner, id);
 		const held = this._held.get(key);
-		if (held === undefined) return;
-		this._held.delete(key);
-		this._cancel(key);
-		this._dragging.delete(id);
-		this._look.delete(id);
-		this._lastX.delete(key);
-		if (!held.window.isDestroyed()) held.window.close();
+		this._forget(key, id);
+		if (held !== undefined && !held.window.isDestroyed()) held.window.close();
 	}
 
 	find(owner: string, id: string): string | undefined {
@@ -287,6 +281,19 @@ export class FloatingWindows implements WindowHost {
 		this._held.clear();
 		for (const timer of this._timers.values()) clearTimeout(timer);
 		this._timers.clear();
+		for (const timer of this._dragTimers.values()) clearTimeout(timer);
+		this._dragTimers.clear();
+	}
+
+	private _forget(key: string, id: string): void {
+		this._held.delete(key);
+		this._cancel(key);
+		const dragging = this._dragTimers.get(key);
+		if (dragging !== undefined) clearTimeout(dragging);
+		this._dragTimers.delete(key);
+		this._dragging.delete(id);
+		this._look.delete(id);
+		this._lastX.delete(key);
 	}
 
 	private _remember(key: string, window: BrowserWindow): void {
