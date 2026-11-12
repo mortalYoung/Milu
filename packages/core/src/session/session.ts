@@ -303,6 +303,10 @@ export class Session {
 		await this._log.record(type, data);
 	}
 
+	async replay(messages: readonly AgentMessage[]): Promise<void> {
+		for (const message of messages) await this._log.append(message);
+	}
+
 	suspend(toolCallId: string): void {
 		this._suspended.add(toolCallId);
 	}

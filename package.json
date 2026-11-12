@@ -8,6 +8,7 @@
 	],
 	"type": "module",
 	"scripts": {
+		"bench:memory": "bun scripts/memory-bench.ts",
 		"boundaries": "bun scripts/boundaries.ts",
 		"build": "bun scripts/build-mac.ts",
 		"check": "bun run typecheck && bun run lint && bun run format:check && bun run boundaries",

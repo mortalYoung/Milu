@@ -1,0 +1,45 @@
+{
+	"name": "memory-bench sample",
+	"questions": [
+		{
+			"id": "sample-sandbox",
+			"ability": "single-session",
+			"history": [
+				{ "role": "user", "content": "我们决定把沙箱默认模式定成 workspace-write，read-only 只给外部仓库用。", "at": "2026-02-01T09:00:00Z" },
+				{ "role": "assistant", "content": "记下了：默认 workspace-write，read-only 只对外部仓库。", "at": "2026-02-01T09:00:20Z" },
+				{ "role": "user", "content": "顺便把 bash 超时从 30 秒改成 15 秒。", "at": "2026-02-01T09:05:00Z" },
+				{ "role": "assistant", "content": "已改，超时 15 秒。", "at": "2026-02-01T09:05:20Z" },
+				{ "role": "user", "content": "再看一眼 transcript 的 LOAD EARLIER，翻页还是只能翻一次。", "at": "2026-02-02T10:00:00Z" },
+				{ "role": "assistant", "content": "根因是反向扫描的停止条件太早，改成按 hasMore 判断。", "at": "2026-02-02T10:03:00Z" },
+				{ "role": "user", "content": "dock 的 header 只留一个入口，别在 explore/git 里再放按钮。", "at": "2026-02-03T11:00:00Z" },
+				{ "role": "assistant", "content": "收到，header 只留 Dock 开关，视图切换挪进抽屉。", "at": "2026-02-03T11:02:00Z" },
+				{ "role": "user", "content": "再确认下 providers 页面用表格还是 chip？", "at": "2026-02-03T11:30:00Z" },
+				{ "role": "assistant", "content": "用表格：id / context / input / cost 四列。", "at": "2026-02-03T11:31:00Z" },
+				{ "role": "user", "content": "好，那发布前记得跑一遍三门。", "at": "2026-02-03T11:40:00Z" },
+				{ "role": "assistant", "content": "typecheck、lint、format:check。", "at": "2026-02-03T11:41:00Z" }
+			],
+			"question": "这个项目沙箱的默认模式定的是什么？",
+			"answer": "workspace-write"
+		},
+		{
+			"id": "sample-bash",
+			"ability": "single-session",
+			"history": [
+				{ "role": "user", "content": "bash 工具的默认超时我们讨论过一轮，最后定 15 秒还是 30 秒？", "at": "2026-02-04T08:00:00Z" },
+				{ "role": "assistant", "content": "需要确认，先把背景放这儿。", "at": "2026-02-04T08:00:30Z" },
+				{ "role": "user", "content": "约定是 15 秒，超过就报超时。", "at": "2026-02-04T08:01:00Z" },
+				{ "role": "assistant", "content": "记下了：bash 默认超时 15 秒。", "at": "2026-02-04T08:01:20Z" },
+				{ "role": "user", "content": "另外 sandboxEnv 里只放 DWS_ 开头的变量。", "at": "2026-02-04T08:10:00Z" },
+				{ "role": "assistant", "content": "收到，只放 DWS_ 前缀。", "at": "2026-02-04T08:10:20Z" },
+				{ "role": "user", "content": "settings 落盘用小写 kebab。", "at": "2026-02-05T09:00:00Z" },
+				{ "role": "assistant", "content": "好，落盘统一小写 kebab。", "at": "2026-02-05T09:00:20Z" },
+				{ "role": "user", "content": "继续看 memory 的 scenes 上限。", "at": "2026-02-05T09:30:00Z" },
+				{ "role": "assistant", "content": "默认 15 篇，超过就只能往已有场景里塞。", "at": "2026-02-05T09:31:00Z" },
+				{ "role": "user", "content": "先记着，回头重构。", "at": "2026-02-05T09:32:00Z" },
+				{ "role": "assistant", "content": "已记录。", "at": "2026-02-05T09:32:20Z" }
+			],
+			"question": "bash 工具的默认超时是多少秒？",
+			"answer": "15"
+		}
+	]
+}
