@@ -32,7 +32,7 @@ bun run build           # package artifacts/Milu-<version>-arm64.dmg
 - **Optional workspace** — run a chat with no workspace at all for statistics or other
   global work.
 - **Memory** — each chat keeps its own memory, split into facts, issues and decisions.
-  Keep talking and it grows into scenes, SOPs and a persona that sounds like you.
+  Keep talking and it grows into SOPs and a persona that sounds like you.
 - **Long-term chat** — memory and cache hits wired in, so one chat per partner always
   works in context.
 - **Keyboard** — `⌘P` opens a palette over chats, files and access: switch chat, jump to a

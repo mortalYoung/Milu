@@ -41,9 +41,9 @@ function sendMessage(ctx: SliceContext): void {
 	push(ctx, textMessage("user", typeof data["text"] === "string" ? data["text"] : "", stamp(ctx.entry, data)));
 }
 
-function memoryContext(ctx: SliceContext): void {
-	const data = custom(ctx.entry, EVENTS.memoryContext);
-	if (!data || typeof data["text"] !== "string" || data["text"].length === 0) return;
+function carriedReminder(ctx: SliceContext): void {
+	const data = (ctx.entry.type === "custom" ? (ctx.entry.data ?? {}) : {}) as Record<string, unknown>;
+	if (typeof data["text"] !== "string" || data["text"].length === 0) return;
 	push(ctx, textMessage("user", data["text"], stamp(ctx.entry, data)));
 }
 
@@ -150,12 +150,14 @@ function rewind(ctx: SliceContext): void {
 
 const BY_CUSTOM: Record<string, (ctx: SliceContext) => void> = {
 	[EVENTS.sendMessage]: sendMessage,
-	[EVENTS.memoryContext]: memoryContext,
+	[EVENTS.memoryContext]: carriedReminder,
+	[EVENTS.personaReminder]: carriedReminder,
 	[EVENTS.peerMessage]: reminder,
 	[EVENTS.timeGapReminder]: reminder,
 	[EVENTS.contextChanged]: reminder,
 	[EVENTS.instructionsChanged]: reminder,
 	[EVENTS.mcpChanged]: reminder,
+	[EVENTS.sopReminder]: reminder,
 	[EVENTS.toolResult]: toolResult,
 	[EVENTS.compaction]: compaction,
 	[EVENTS.rewind]: rewind,

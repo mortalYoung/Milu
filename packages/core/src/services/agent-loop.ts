@@ -39,6 +39,14 @@ export interface AgentLoopRun {
 	error?: string;
 }
 
+function beforeTrailingUser(messages: readonly AgentMessage[], injected: readonly AgentMessage[]): AgentMessage[] {
+	const last = messages.length - 1;
+	const message = messages[last];
+	const tail = message as { role?: string; reminder?: unknown } | undefined;
+	if (!message || tail?.role !== "user" || tail.reminder !== undefined) return [...messages, ...injected];
+	return [...messages.slice(0, last), ...injected, message];
+}
+
 export class AgentLoopService implements Service {
 	readonly events: Event<AgentLoopEvent>;
 
@@ -75,11 +83,7 @@ export class AgentLoopService implements Service {
 				if (this._prompt.trim() === "") return out;
 				return [{ role: "system", content: [{ type: "text", text: this._prompt }], timestamp: Date.now() }, ...out];
 			},
-			transformContext: async (messages) => {
-				const injected = await this._emit("beforeRequest", messages);
-				if (injected.length === 0) return messages;
-				return [...messages, ...injected];
-			},
+			transformContext: async (messages) => [...(await this._emit("beforeRequest", messages))],
 		});
 		this.events = this._emitter.event;
 		this._disposables.add(this._emitter);
@@ -353,10 +357,6 @@ export class AgentLoopService implements Service {
 		await this._emit("afterCompact", this._agent.state.messages);
 	}
 
-	private inject(messages: readonly AgentMessage[]): void {
-		this._agent.state.messages = [...this._agent.state.messages, ...messages];
-	}
-
 	dispose(): void {
 		this._disposables.dispose();
 	}
@@ -373,9 +373,10 @@ export class AgentLoopService implements Service {
 			injected.push({ role: "user", content: text, timestamp, reminder: reminder.type } as AgentMessage);
 			this._emitter.fire({ type: "reminder", reminder });
 		}
-		if (injected.length === 0) return [];
-		this.inject(injected);
-		return injected;
+		if (injected.length === 0) return messages;
+		const arranged = point === "beforeRequest" ? beforeTrailingUser(messages, injected) : [...messages, ...injected];
+		this._agent.state.messages = arranged;
+		return arranged;
 	}
 
 	private _emitPending(): void {

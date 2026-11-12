@@ -1,275 +1,198 @@
 import { randomUUID } from "node:crypto";
-import { appendFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { type AgentTool, type Model, type StreamFn, Type } from "@milu/core";
 
 import { createMemoryAgent } from "./agent.ts";
 import { runRalphLoop } from "./loop.ts";
-import { changedScenes, foldScenes, readSceneLines, type SceneRevision, type SceneState } from "./scenes";
-import { appendMemoryRun, ensureMemoryDir, type MemoryRecord, memoryDir, type MemoryRunLog, type MemoryRunReason, readMemoryLines } from "./store.ts";
+import { appendMemoryRun, atomsAfter, ensureMemoryDir, memoryDir, type MemoryRecord, type MemoryRunLog, type MemoryRunReason, readMemoryLines, readWatermarks } from "./store.ts";
 
-export interface PersonaVersion {
-	id: string;
-	createdAt: number;
-	kind: "persona";
-	version: number;
-	content: string;
-	sourceSceneIds: string[];
-	throughSceneRevId: string;
-	throughMemoryId: string;
-	reason: "bootstrap" | "threshold" | "explicit" | "manual";
+export const personaPath = (dir: string) => join(memoryDir(dir), "persona.md");
+export const MAX_PERSONA_CONTENT = 1200;
+export const MAX_PERSONA_LINE = 120;
+export const PERSONA_SECTIONS = ["Relationship", "Taste"] as const;
+const MAX_RELATIONSHIP = 4;
+const MAX_TASTE = 6;
+const MAX_TASTE_GROUP = 3;
+
+const FORBIDDEN: readonly { pattern: RegExp; why: string }[] = [
+	{ pattern: /\/Users\//, why: "absolute paths belong in the atoms, not in the persona" },
+	{ pattern: /0x[0-9a-f]{7,}/i, why: "commit ids belong in the atoms, not in the persona" },
+	{ pattern: /已办/, why: "task progress belongs in the atoms" },
+	{ pattern: /未\s*push/, why: "branch state belongs in the atoms" },
+];
+
+export interface PersonaMeta {
+	readonly rev: number;
+	readonly updated: string;
+	readonly throughAtom: string;
+	readonly sources: readonly string[];
 }
 
-export const PERSONA_EVERY_N = 50;
-export const MAX_PERSONA_CONTENT = 2000;
-const PERSONA_SECTIONS = ["Basic Anchors", "Interest Map", "Interaction Protocol", "Cognitive Core"];
-
-export const personaFilePath = (dir: string) => join(memoryDir(dir), "persona.jsonl");
-export const personaViewPath = (dir: string) => join(memoryDir(dir), "views", "persona.md");
-
-export async function ensurePersonaFile(dir: string): Promise<void> {
-	if (!(await ensureMemoryDir(dir))) return;
-	await appendFile(personaFilePath(dir), "", "utf8");
+export interface PersonaDoc {
+	readonly meta: PersonaMeta;
+	readonly header: string;
+	readonly body: string;
+	readonly content: string;
 }
 
-export async function readPersonaLines(dir: string): Promise<PersonaVersion[]> {
-	try {
-		const raw = await readFile(personaFilePath(dir), "utf8");
-		const out: PersonaVersion[] = [];
-		for (const line of raw.split("\n")) {
-			if (!line.trim()) continue;
-			try {
-				const parsed = JSON.parse(line) as PersonaVersion;
-				if (parsed && typeof parsed.id === "string" && parsed.kind === "persona") out.push(parsed);
-			} catch {}
-		}
-		return out;
-	} catch {
-		return [];
-	}
-}
-
-export async function appendPersonaLines(dir: string, versions: PersonaVersion[]): Promise<void> {
-	if (versions.length === 0) return;
-	if (!(await ensureMemoryDir(dir))) return;
-	await appendFile(personaFilePath(dir), versions.map((version) => JSON.stringify(version)).join("\n") + "\n", "utf8");
-}
-
-export function latestPersona(versions: PersonaVersion[]): PersonaVersion | null {
-	let latest: PersonaVersion | null = null;
-	for (const version of versions) {
-		if (!latest || version.version >= latest.version) latest = version;
-	}
-	return latest;
-}
-
-export interface PersonaTrigger {
-	run: boolean;
-	reason: "bootstrap" | "threshold" | "explicit" | null;
-	newMemories: MemoryRecord[];
-	changedScenes: SceneState[];
-}
-
-export async function personaTrigger(dir: string): Promise<PersonaTrigger> {
-	const sceneLines = await readSceneLines(dir);
-	const active = foldScenes(sceneLines);
-	if (active.length === 0) return { run: false, reason: null, newMemories: [], changedScenes: [] };
-	const last = latestPersona(await readPersonaLines(dir));
-	const memories = (await readMemoryLines(dir)).filter((line): line is MemoryRecord => line.kind !== "checkpoint");
-	if (!last) return { run: true, reason: "bootstrap", newMemories: memories, changedScenes: active };
-	const newMemories = memoriesSince(memories, last);
-	const changed = changedScenes(sceneLines, last.throughSceneRevId);
-	if (newMemories.some((memory) => memory.remember === true)) return { run: true, reason: "explicit", newMemories, changedScenes: changed };
-	if (newMemories.length >= PERSONA_EVERY_N) return { run: true, reason: "threshold", newMemories, changedScenes: changed };
-	return { run: false, reason: null, newMemories, changedScenes: changed };
-}
-
-function memoriesSince(memories: MemoryRecord[], last: PersonaVersion): MemoryRecord[] {
-	const index = memories.findIndex((memory) => memory.id === last.throughMemoryId);
-	if (index >= 0) return memories.slice(index + 1);
-	return memories.filter((memory) => memory.createdAt > last.createdAt);
-}
-
-export async function rebuildPersonaView(dir: string): Promise<void> {
-	const last = latestPersona(await readPersonaLines(dir));
-	const path = personaViewPath(dir);
-	if (!last) {
-		await rm(path, { force: true });
-		return;
-	}
-	if (!(await ensureMemoryDir(dir))) return;
-	await mkdir(join(memoryDir(dir), "views"), { recursive: true });
-	await writeFile(path, `<!-- generated from persona.jsonl v${last.version} · ${new Date(last.createdAt).toISOString().slice(0, 10)} -->\n\n${last.content}\n`, "utf8");
-}
-
-const PERSONA_WORKFLOW = `You maintain a single long-term profile (persona) for this partner, distilled only from its scene documents.
-
-Tools: one tool, "persona", with an op.
-- read: fetch the current persona document. Read before you edit.
-- create: write the complete document in one call — the first version, or a full restructure. At most one create per run.
-- edit: replace an exact oldString inside the current document with newString. Copy the snippet verbatim from a read. This is the default for incremental updates: whatever you do not touch stays byte-identical.
-
-Rules:
-- The document must stay at most ${MAX_PERSONA_CONTENT} characters.
-- It must carry these exact section headings, in this order:
-${PERSONA_SECTIONS.map((section) => `  ## ${section}`).join("\n")}
-  If the current document uses other headings, replace them with these in this run: one edit that replaces the whole body, or create.
-- Only include what the scenes support. Never speculate, never invent, and never use information from outside the scenes.
-- sourceSceneIds must list the active scene ids this write actually draws from, chosen from the scenes you were given.`;
-
-const personaSchema = Type.Object({
-	op: Type.Union([Type.Literal("read"), Type.Literal("create"), Type.Literal("edit")], {
-		description: "read: fetch the current persona; create: the complete document (once per run); edit: replace oldString with newString inside the current document",
-	}),
-	content: Type.Optional(Type.String({ description: `create: the full persona document (max ${MAX_PERSONA_CONTENT} chars) with the required section headings` })),
-	oldString: Type.Optional(Type.String({ description: "edit: exact text to replace, copied from a read; must appear exactly once" })),
-	newString: Type.Optional(Type.String({ description: "edit: replacement text (empty string removes the match)" })),
-	sourceSceneIds: Type.Optional(Type.Array(Type.String({ description: "Active scene ids this write draws from" }))),
-});
-
-function formatProblem(content: string): string | null {
-	const pattern = (section: string) => new RegExp(`^#{1,6}\\s*${section}\\s*$`, "m");
-	const missing = PERSONA_SECTIONS.filter((section) => !pattern(section).test(content));
-	if (missing.length > 0) return `missing required section headings: ${missing.join(" / ")} (use "## <title>" lines)`;
-	const at = PERSONA_SECTIONS.map((section) => content.search(pattern(section)));
-	if (at.some((index, i) => i > 0 && index < at[i - 1]!)) return `required section headings are out of order: ${PERSONA_SECTIONS.join(" → ")}`;
-	return null;
-}
-
-export interface PersonaRunState {
-	content: string;
-	version: number;
-	sourceSceneIds: string[];
-	created: boolean;
-	writes: number;
-}
-
-export interface PersonaToolDeps {
-	dir: string;
-	state: PersonaRunState;
-	activeIds: Set<string>;
-	throughSceneRevId: string;
-	throughMemoryId: string;
-	reason: PersonaVersion["reason"];
-}
-
-export function createPersonaTool(deps: PersonaToolDeps): AgentTool<typeof personaSchema, { ok: boolean; error?: string }> {
+function split(content: string): { header: string; body: string } | null {
+	const text = content.replace(/\r\n/g, "\n").trim();
+	if (!text.startsWith("---\n")) return null;
+	const end = text.indexOf("\n---", 4);
+	if (end < 0) return null;
 	return {
-		name: "persona",
-		label: "Persona",
-		description:
-			"Read, create or edit this partner's persona document. read: fetch the current document; create: the complete document, once per run; edit: replace an exact oldString inside the current document.",
-		parameters: personaSchema,
-		executionMode: "sequential",
-		async execute(_toolCallId, params) {
-			const reject = (message: string) => ({ content: [{ type: "text" as const, text: `persona rejected: ${message}` }], details: { ok: false, error: message } });
-			const note = (text: string) => ({ content: [{ type: "text" as const, text }], details: { ok: true } });
-			const { state } = deps;
-
-			if (params.op === "read") {
-				if (!state.content) return note("No persona yet — use op create.");
-				return note(`### persona v${state.version}\nSource scenes: ${state.sourceSceneIds.join(", ") || "(none)"}\n\n${state.content}`);
-			}
-
-			const sourceSceneIds = [...new Set((params.sourceSceneIds ?? []).filter((id) => deps.activeIds.has(id)))];
-			if (sourceSceneIds.length === 0) return reject("sourceSceneIds must reference active scenes from the list you were given");
-
-			let content: string;
-			let mergedIds: string[];
-			if (params.op === "edit") {
-				if (!state.content) return reject('no persona yet — use op "create" for the first version');
-				const oldString = params.oldString ?? "";
-				if (!oldString) return reject("edit needs oldString: the exact text to replace, copied verbatim from a read");
-				const at = state.content.indexOf(oldString);
-				if (at < 0) return reject("oldString was not found in the current document — read the persona first and copy the snippet exactly");
-				if (state.content.indexOf(oldString, at + oldString.length) >= 0) return reject("oldString matches more than once — include more surrounding text so the match is unique");
-				content = state.content.slice(0, at) + (params.newString ?? "") + state.content.slice(at + oldString.length);
-				mergedIds = [...new Set([...state.sourceSceneIds, ...sourceSceneIds])];
-			} else {
-				if (state.created) return reject("only one create per run — use op edit for the remaining changes");
-				content = (params.content ?? "").trim();
-				if (!content) return reject("create needs content (the full document)");
-				mergedIds = sourceSceneIds;
-			}
-			if (content.length > MAX_PERSONA_CONTENT) {
-				return reject(
-					`the document would be ${content.length} characters, ${content.length - MAX_PERSONA_CONTENT} over the ${MAX_PERSONA_CONTENT}-character limit — summarize instead of listing, and drop whole clauses that repeat each other.`,
-				);
-			}
-			const formatIssue = formatProblem(content);
-			if (formatIssue) return reject(formatIssue);
-
-			const version: PersonaVersion = {
-				id: `persona-${randomUUID()}`,
-				createdAt: Date.now(),
-				kind: "persona",
-				version: state.version + 1,
-				content,
-				sourceSceneIds: mergedIds,
-				throughSceneRevId: deps.throughSceneRevId,
-				throughMemoryId: deps.throughMemoryId,
-				reason: deps.reason,
-			};
-			await appendPersonaLines(deps.dir, [version]);
-			state.content = content;
-			state.version = version.version;
-			state.sourceSceneIds = mergedIds;
-			state.writes += 1;
-			if (params.op === "create") state.created = true;
-			return note(`persona v${version.version} ${params.op === "create" ? "created" : "edited"}`);
-		},
+		header: text.slice(4, end),
+		body: text
+			.slice(end + 4)
+			.replace(/^\n+/, "")
+			.trim(),
 	};
 }
 
-function personaPrompt(last: PersonaVersion | null, scenes: SceneState[], reason: OrganizePersonaOptions["reason"]): string {
-	const lines: string[] = [];
-	lines.push(reason === "manual" ? "A manual profile update was requested." : "A scheduled profile update is running.");
-	lines.push("");
-	lines.push("Current persona:");
-	lines.push(last ? last.content : "(none yet)");
-	lines.push("");
-	lines.push("Scenes to incorporate:");
-	lines.push(scenes.map((scene) => `### ${scene.sceneId} — ${scene.name}\nSummary: ${scene.summary}\n${scene.content}`).join("\n\n"));
-	lines.push("");
-	lines.push(
-		`Update the persona document (at most ${MAX_PERSONA_CONTENT} characters) so it reflects these scenes. Required section headings, in this order: ${PERSONA_SECTIONS.map((section) => `## ${section}`).join(" / ")}.`,
-	);
-	lines.push('Prefer op "edit" for targeted changes; "create" writes the whole document and is allowed once per run.');
-	lines.push("Only write what the scenes support — never speculate.");
-	return lines.join("\n");
+function field(header: string, key: string): string | null {
+	const match = new RegExp(`^${key}:[ \\t]*(.*)$`, "m").exec(header);
+	return match ? (match[1] ?? "").trim() : null;
 }
 
-export interface OrganizePersonaOptions {
-	dir: string;
-	model: Model<any>;
-	streamFn: StreamFn;
-	signal?: AbortSignal;
-	reason: "bootstrap" | "threshold" | "explicit" | "manual";
-	force?: boolean;
-	logRun?: MemoryRunLog;
+function listField(header: string, key: string): string[] | null {
+	const value = field(header, key);
+	if (value === null || !value.startsWith("[") || !value.endsWith("]")) return null;
+	const inner = value.slice(1, -1).trim();
+	return inner === "" ? [] : inner.split(",").map((item) => item.trim().replace(/^["']|["']$/g, ""));
 }
 
-export async function organizePersona(opts: OrganizePersonaOptions): Promise<number> {
-	await ensurePersonaFile(opts.dir);
-	const sceneLines = await readSceneLines(opts.dir);
-	const active = foldScenes(sceneLines);
-	if (active.length === 0) return 0;
-	const last = latestPersona(await readPersonaLines(opts.dir));
-	const scenes = opts.force || !last ? active : changedScenes(sceneLines, last.throughSceneRevId);
-	if (scenes.length === 0 && !opts.force) return 0;
-	const inputScenes = scenes.length > 0 ? scenes : active;
-	const activeIds = new Set(active.map((scene) => scene.sceneId));
-	const throughSceneRevId = [...sceneLines].reverse().find((line): line is SceneRevision => line.kind === "revision")?.id ?? "";
-	const memories = (await readMemoryLines(opts.dir)).filter((line): line is MemoryRecord => line.kind !== "checkpoint");
-	const throughMemoryId = memories.at(-1)?.id ?? last?.throughMemoryId ?? "";
+function bullets(body: string, section: string): string[] {
+	const pattern = new RegExp(`^## ${section}\\n`, "m");
+	const match = pattern.exec(body);
+	if (!match) return [];
+	const rest = body.slice(match.index + match[0].length);
+	const next = /\n## /.exec(rest);
+	const text = next ? rest.slice(0, next.index) : rest;
+	return text
+		.split("\n")
+		.map((line) => line.trim())
+		.filter((line) => line.startsWith("- "))
+		.map((line) => line.slice(2).trim());
+}
 
-	const model = opts.model;
+export function parsePersona(content: string): PersonaDoc | { problem: string } {
+	const parts = split(content);
+	if (!parts) return { problem: "missing YAML header: the document must start with --- and end the header with ---" };
+	const rev = Number(field(parts.header, "rev") ?? "");
+	const updated = field(parts.header, "updated") ?? "";
+	const throughAtom = field(parts.header, "throughAtom") ?? "";
+	const sources = listField(parts.header, "sources");
+	if (!Number.isFinite(rev) || rev < 1) return { problem: "header field rev must be a positive integer" };
+	if (!/^\d{4}-\d{2}-\d{2}$/.test(updated)) return { problem: "header field updated must be YYYY-MM-DD" };
+	if (!throughAtom) return { problem: "header field throughAtom is missing" };
+	if (sources === null) return { problem: "header field sources must be a list, e.g. sources: [mem-1, mem-2]" };
+	return { meta: { rev, updated, throughAtom, sources }, header: parts.header, body: parts.body, content: content.trim() };
+}
+
+export function validatePersona(content: string): string | null {
+	const parsed = parsePersona(content);
+	if ("problem" in parsed) return parsed.problem;
+	const { body } = parsed;
+	const headings = [...body.matchAll(/^## (.+)$/gm)].map((match) => (match[1] ?? "").trim());
+	if (headings.join("|") !== PERSONA_SECTIONS.join("|")) {
+		return `body sections must be exactly ${PERSONA_SECTIONS.map((section) => `## ${section}`).join(", ")} in this order (found: ${headings.join(", ") || "none"})`;
+	}
+	if (content.trim().length > MAX_PERSONA_CONTENT) return `the document is ${content.trim().length} characters (max ${MAX_PERSONA_CONTENT})`;
+	const relationship = bullets(body, "Relationship");
+	const taste = bullets(body, "Taste");
+	if (relationship.length > MAX_RELATIONSHIP) return `Relationship has ${relationship.length} lines (max ${MAX_RELATIONSHIP})`;
+	if (taste.length > MAX_TASTE) return `Taste has ${taste.length} lines (max ${MAX_TASTE})`;
+	const groups = { ui: 0, rhythm: 0 };
+	for (const line of taste) {
+		const group = /^\[(ui|rhythm)\]/.exec(line)?.[1];
+		if (group === "ui" || group === "rhythm") groups[group] += 1;
+	}
+	if (groups.ui > MAX_TASTE_GROUP) return `Taste [ui] has ${groups.ui} lines (max ${MAX_TASTE_GROUP})`;
+	if (groups.rhythm > MAX_TASTE_GROUP) return `Taste [rhythm] has ${groups.rhythm} lines (max ${MAX_TASTE_GROUP})`;
+	for (const line of [...relationship, ...taste]) {
+		if (line.length > MAX_PERSONA_LINE) return `a line is ${line.length} characters (max ${MAX_PERSONA_LINE}): ${line.slice(0, 40)}…`;
+		if (!/[(（]mem-[0-9a-z-]{3,},\s*\d{4}-\d{2}-\d{2}[)）]/.test(line)) return `every line needs a trailing (mem-…, YYYY-MM-DD) citation: ${line.slice(0, 40)}…`;
+	}
+	for (const rule of FORBIDDEN) if (rule.pattern.test(body)) return `the persona must not mention this: ${rule.why}`;
+	return null;
+}
+
+export async function personaSignature(dir: string): Promise<string> {
+	try {
+		const info = await stat(personaPath(dir));
+		return `${info.mtimeMs}:${info.size}`;
+	} catch {
+		return "none";
+	}
+}
+
+export async function readPersonaDoc(dir: string): Promise<PersonaDoc | null> {
+	try {
+		const parsed = parsePersona(await readFile(personaPath(dir), "utf8"));
+		return "problem" in parsed ? null : parsed;
+	} catch {
+		return null;
+	}
+}
+
+export async function writePersonaDoc(dir: string, content: string): Promise<PersonaDoc> {
+	const parsed = parsePersona(content);
+	if ("problem" in parsed) throw new Error(parsed.problem);
+	if (!(await ensureMemoryDir(dir))) throw new Error("memory directory is not available");
+	await writeFile(personaPath(dir), `${parsed.content}\n`, "utf8");
+	return parsed;
+}
+
+function isRoleAtom(atom: MemoryRecord): boolean {
+	if (atom.kind === "preference" || atom.kind === "instruction") return true;
+	return atom.kind === "attribute" && /role|identity|角色|身份/i.test(atom.predicate ?? "");
+}
+
+export interface PersonaTrigger {
+	readonly run: boolean;
+	readonly atoms: readonly MemoryRecord[];
+}
+
+export async function personaTrigger(dir: string): Promise<PersonaTrigger> {
+	const lines = await readMemoryLines(dir);
+	const watermarks = await readWatermarks(dir);
+	const atoms = atomsAfter(lines, watermarks.persona).filter(isRoleAtom).slice(0, 20);
+	return { run: atoms.length > 0, atoms };
+}
+
+const WORKFLOW = `You maintain this partner's persona file. It has exactly two sections:
+
+## Relationship
+Who the partner works with, who accepts the work, who authorises what. At most ${MAX_RELATIONSHIP} lines.
+
+## Taste
+Cross-task aesthetics and collaboration rhythm. At most ${MAX_TASTE} lines, each tagged [ui] or [rhythm], at most ${MAX_TASTE_GROUP} of each.
+
+Rules:
+- Every line ends with (mem-…, YYYY-MM-DD) citing the atom it came from, and is at most ${MAX_PERSONA_LINE} characters.
+- Use only the atoms you are given. Never invent, never speculate.
+- Project rules (commit authorisation, gates, comment policy, evidence rules) belong to AGENTS.md — put those atoms in dropped.
+- Environment limits (sandbox, permissions, tool quirks) belong to the instance caveats — put those atoms in dropped.
+- Task progress, paths, branch state and step-by-step procedures do not belong here — put them in dropped.
+- Rewrite the whole document; never send a diff. Header: rev (+1), updated, throughAtom, sources.`;
+
+const noopSchema = Type.Object({ consumed: Type.Array(Type.String()), dropped: Type.Optional(Type.Array(Type.String())) });
+
+const schema = Type.Object({
+	op: Type.Union([Type.Literal("read"), Type.Literal("write")], { description: "read: the current document; write: the whole rewritten document" }),
+	content: Type.Optional(Type.String({ description: `write: the complete persona file (header + both sections, max ${MAX_PERSONA_CONTENT} characters)` })),
+	consumed: Type.Optional(Type.Array(Type.String({ description: "write: ids of the atoms this document actually uses" }))),
+	dropped: Type.Optional(Type.Array(Type.String({ description: "write: ids of atoms that belong somewhere else, not in the persona" }))),
+});
+
+async function runPersona(opts: OrganizePersonaOptions, atoms: readonly MemoryRecord[], current: PersonaDoc | null): Promise<{ writes: number; through?: string }> {
+	const batch = new Map(atoms.map((atom) => [atom.id, atom]));
+	const state = { writes: 0, content: current?.content ?? "", consumed: new Set<string>(), dropped: new Set<string>(), throughAtomId: "" };
 	const runId = `run-${randomUUID()}`;
 	const startedAt = Date.now();
-	const state: PersonaRunState = { content: last?.content ?? "", version: last?.version ?? 0, sourceSceneIds: last?.sourceSceneIds ?? [], created: false, writes: 0 };
 	let attempts = 0;
-	let added = 0;
 
 	if (opts.logRun) {
 		try {
@@ -279,64 +202,115 @@ export async function organizePersona(opts: OrganizePersonaOptions): Promise<num
 		}
 	}
 
-	async function endRun(reason: MemoryRunReason, error?: string) {
+	async function endRun(reason: MemoryRunReason, error?: string): Promise<void> {
 		const endedAt = Date.now();
 		try {
-			await opts.logRun?.end({ runId, stage: "persona", startedAt, endedAt, reason, added });
+			await opts.logRun?.end({ runId, stage: "persona", startedAt, endedAt, reason, added: state.writes });
 		} catch (logError) {
 			console.error("persona run end log failed:", logError);
 		}
-		try {
-			await appendMemoryRun(opts.dir, {
-				runId,
-				stage: "persona",
-				model: `${model.provider}/${model.id ?? "default"}`,
-				startedAt,
-				endedAt,
-				durationMs: endedAt - startedAt,
-				reason,
-				attempts,
-				added,
-				targetRawId: null,
-				cursorRawId: null,
-				throughMemoryId,
-				throughSceneRevId,
-				...(error ? { error } : {}),
-			});
-		} catch (runError) {
-			console.error("persona run append failed:", runError);
-		}
+		await appendMemoryRun(opts.dir, {
+			runId,
+			stage: "persona",
+			model: `${opts.model.provider}/${opts.model.id ?? "default"}`,
+			startedAt,
+			endedAt,
+			durationMs: endedAt - startedAt,
+			reason,
+			attempts,
+			added: state.writes,
+			targetRawId: null,
+			cursorRawId: null,
+			...(state.throughAtomId || current ? { throughAtomId: state.throughAtomId || current?.meta.throughAtom } : {}),
+			...(error ? { error } : {}),
+		});
 	}
 
+	const tool: AgentTool<typeof schema, { ok: boolean; error?: string }> = {
+		name: "persona",
+		label: "Persona",
+		description: "Read the current persona document, or rewrite it whole (header + Relationship + Taste). The engine validates the shape and the citations.",
+		parameters: schema,
+		executionMode: "sequential",
+		async execute(_toolCallId, params) {
+			const reject = (message: string) => ({ content: [{ type: "text" as const, text: `persona rejected: ${message}` }], details: { ok: false, error: message } });
+			const note = (text: string) => ({ content: [{ type: "text" as const, text }], details: { ok: true } });
+			if (params.op === "read") return note(state.content || "No persona yet — write the first document.");
+			const content = (params.content ?? "").trim();
+			if (!content) return reject("write needs content (the whole document, not a diff)");
+			const problem = validatePersona(content);
+			if (problem) return reject(problem);
+			const consumed = [...new Set(params.consumed ?? [])].filter((id) => batch.has(id));
+			if (consumed.length === 0) return reject("consumed must list at least one atom id from the batch");
+			const parsed = parsePersona(content);
+			if ("problem" in parsed) return reject(parsed.problem);
+			const unknown = parsed.meta.sources.filter((id) => !batch.has(id) && !(current?.meta.sources ?? []).includes(id));
+			if (unknown.length > 0) return reject(`these sources are not in the batch you were given: ${unknown.slice(0, 3).join(", ")}`);
+			await writePersonaDoc(opts.dir, content);
+			state.content = content;
+			state.throughAtomId = parsed.meta.throughAtom;
+			state.writes += 1;
+			for (const id of consumed) state.consumed.add(id);
+			return note(`persona rev ${parsed.meta.rev} written`);
+		},
+	};
+
+	const noop: AgentTool<typeof noopSchema, { ok: boolean }> = {
+		name: "noop",
+		label: "No-op",
+		description: "Tell the engine that none of these atoms belong in the persona.",
+		parameters: noopSchema,
+		executionMode: "sequential",
+		async execute(_toolCallId, params) {
+			for (const id of [...params.consumed, ...(params.dropped ?? [])]) if (batch.has(id)) state.dropped.add(id);
+			if (params.consumed.length === 0) state.dropped.add(atoms[0]!.id);
+			return { content: [{ type: "text", text: "Noted; persona unchanged." }], details: { ok: true }, terminate: true };
+		},
+	};
+
+	const prompt = [
+		"A scheduled persona pass is running.",
+		"",
+		"Current persona:",
+		current?.content ?? "(none yet)",
+		"",
+		`Atoms to consume (${atoms.length}):`,
+		atoms.map((atom) => `- [${atom.id}] ${atom.kind}: ${atom.summary}${atom.detail ? `\n  ${atom.detail.slice(0, 300)}` : ""}`).join("\n"),
+		"",
+		"Rewrite the persona so it reflects these atoms. If none of them belongs here, call noop.",
+	].join("\n");
+
 	try {
-		const loop = await runRalphLoop({
-			maxAttempts: 1,
+		const outcome = await runRalphLoop({
+			maxAttempts: 3,
 			signal: opts.signal,
-			createPass: () => ({
-				agent: createMemoryAgent(model, opts.streamFn, PERSONA_WORKFLOW, [
-					createPersonaTool({
-						dir: opts.dir,
-						state,
-						activeIds,
-						throughSceneRevId,
-						throughMemoryId,
-						reason: opts.reason,
-					}),
-				]),
-				prompt: personaPrompt(last, inputScenes, opts.reason),
-			}),
-			settlePass: () => (state.writes > 0 ? "done" : "stalled"),
+			createPass: () => ({ agent: createMemoryAgent(opts.model, opts.streamFn, WORKFLOW, [tool, noop]), prompt }),
+			settlePass: () => {
+				const covered = new Set([...state.consumed, ...state.dropped]).size;
+				if (covered >= atoms.length) return "done";
+				return covered > 0 || state.writes > 0 ? "advanced" : "stalled";
+			},
 		});
-		attempts = loop.attempts;
-		if (state.writes > 0) {
-			added = state.writes;
-			await rebuildPersonaView(opts.dir);
-		}
-		await endRun(loop.reason);
-		return added;
+		attempts = outcome.attempts;
+		const newest = [...atoms].reverse().find((atom) => state.consumed.has(atom.id) || state.dropped.has(atom.id));
+		await endRun(outcome.reason);
+		return { writes: state.writes, ...(newest ? { through: newest.id } : {}) };
 	} catch (error) {
-		added = state.writes;
 		await endRun("error", error instanceof Error ? error.message : String(error));
 		throw error;
 	}
+}
+
+export interface OrganizePersonaOptions {
+	readonly dir: string;
+	readonly model: Model<any>;
+	readonly streamFn: StreamFn;
+	readonly signal?: AbortSignal;
+	readonly logRun?: MemoryRunLog;
+}
+
+export async function organizePersona(opts: OrganizePersonaOptions): Promise<{ writes: number; through?: string }> {
+	const trigger = await personaTrigger(opts.dir);
+	if (!trigger.run) return { writes: 0 };
+	return runPersona(opts, trigger.atoms, await readPersonaDoc(opts.dir));
 }

@@ -85,6 +85,8 @@ export const LOG_EVENTS = {
 	memoryRunStart: "memory/run/start",
 	memoryRunEnd: "memory/run/end",
 	memoryContext: "memory/context",
+	personaReminder: "persona/reminder",
+	sopReminder: "sop/reminder",
 	peerMessage: "peer/message",
 	taskStart: "task/start",
 	taskEnd: "task/end",

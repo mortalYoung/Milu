@@ -2,11 +2,20 @@ import { LOG_EVENTS } from "@milu/protocol";
 
 export const EVENTS = LOG_EVENTS;
 
-export type ReminderType = (typeof EVENTS)["timeGapReminder" | "contextChanged" | "instructionsChanged" | "mcpChanged" | "memoryContext" | "peerMessage"];
+export type ReminderType = (typeof EVENTS)[
+	| "timeGapReminder"
+	| "contextChanged"
+	| "instructionsChanged"
+	| "mcpChanged"
+	| "memoryContext"
+	| "personaReminder"
+	| "sopReminder"
+	| "peerMessage"];
 
 export interface AgentReminder {
 	readonly type: ReminderType;
 	readonly data: Record<string, unknown>;
+	readonly priority?: number;
 }
 
 function escapeXml(text: string): string {
@@ -65,6 +74,10 @@ export function reminderText(type: ReminderType, data: Record<string, unknown>):
 		case EVENTS.instructionsChanged:
 			return instructionsChangedText(typeof data["agentMd"] === "string" ? data["agentMd"] : null);
 		case EVENTS.memoryContext:
+			return typeof data["text"] === "string" ? data["text"] : "";
+		case EVENTS.personaReminder:
+			return typeof data["text"] === "string" ? data["text"] : "";
+		case EVENTS.sopReminder:
 			return typeof data["text"] === "string" ? data["text"] : "";
 		case EVENTS.peerMessage: {
 			const id = escapeXml(JSON.stringify(typeof data["from"] === "string" ? data["from"] : ""));

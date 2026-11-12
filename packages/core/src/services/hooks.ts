@@ -98,6 +98,7 @@ export class HookService implements Service {
 				console.error(`hook "${point}" failed:`, error);
 			}
 		}
+		injected.sort((left, right) => (left.priority ?? 0) - (right.priority ?? 0));
 		return injected;
 	}
 

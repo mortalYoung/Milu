@@ -28,9 +28,9 @@ export function MemorySection(props: { memory: MemoryOverview | null; loading?: 
 
 	const summary = (() => {
 		if (!overview) return props.loading ? <Skeleton width={150} height={10} /> : "—";
-		if (overview.records.length === 0 && overview.scenes.length === 0 && overview.runsTotal === 0) return "—";
+		if (overview.records.length === 0 && overview.sops.length === 0 && overview.runsTotal === 0) return "—";
 		const parts = [formatBytes(overview.totalBytes), `${overview.records.length} record${overview.records.length === 1 ? "" : "s"}`];
-		if (overview.scenes.length > 0) parts.push(`${overview.scenes.length} scenes`);
+		if (overview.sops.length > 0) parts.push(`${overview.sops.length} SOPs`);
 		const last = overview.runs[0];
 		parts.push(last ? `last run ${convTime(last.startedAt)}` : "no runs yet");
 		return parts.join(" · ");
@@ -119,9 +119,7 @@ export function MemorySection(props: { memory: MemoryOverview | null; loading?: 
 											<div className="flex flex-col gap-1 px-2 pb-2">
 												{record.detail ? <p className={PROSE}>{record.detail}</p> : <p className={TIME}>—</p>}
 												{record.overRecallCap ? <p className={TRUNCATED}>the agent only ever recalls the first {overview.agentDetailLimit} chars of this detail</p> : null}
-												<p className={TIME}>
-													{record.sourceCount} raw entries{record.scene ? ` · ${record.scene}` : ""}
-												</p>
+												<p className={TIME}>{record.sourceCount} raw entries</p>
 											</div>
 										) : null}
 									</div>
@@ -134,49 +132,40 @@ export function MemorySection(props: { memory: MemoryOverview | null; loading?: 
 
 					<div className="flex flex-col gap-1.5">
 						<div className="flex items-baseline gap-2 font-mono text-[11px] text-ink">
-							<span className={EYEBROW}>Scenes & profile</span>
-							<span className="ml-auto whitespace-nowrap text-muted">{overview.scenes.length}</span>
+							<span className={EYEBROW}>SOPs & persona</span>
+							<span className="ml-auto whitespace-nowrap text-muted">{overview.sops.length}</span>
 						</div>
-						{overview.scenes.length > 0 ? (
+						{overview.sops.length > 0 ? (
 							<div className={LIST}>
-								{overview.scenes.map((scene) => (
-									<div key={scene.sceneId}>
-										<button
-											type="button"
-											className={ROW}
-											aria-expanded={openScene === scene.sceneId}
-											onClick={() => setOpenScene(openScene === scene.sceneId ? null : scene.sceneId)}
-										>
-											<span className={TEXT}>{scene.name}</span>
+								{overview.sops.map((sop) => (
+									<div key={sop.id}>
+										<button type="button" className={ROW} aria-expanded={openScene === sop.id} onClick={() => setOpenScene(openScene === sop.id ? null : sop.id)}>
+											<span className={CHIP}>{sop.id}</span>
+											<span className={TEXT}>{sop.title}</span>
 											<span className={TIME}>
-												{scene.sourceCount} memories · heat {scene.heat}
+												rev {sop.rev} · {sop.sourceCount} atoms
 											</span>
 										</button>
-										{openScene === scene.sceneId ? (
-											<p className={`${PROSE} px-2 pb-2`}>
-												{scene.summary}
-												{scene.content ? `\n\n${scene.content}` : ""}
-											</p>
-										) : null}
+										{openScene === sop.id ? <p className={`${PROSE} px-2 pb-2`}>{sop.when || "—"}</p> : null}
 									</div>
 								))}
 							</div>
 						) : (
 							<p className={TIME}>—</p>
 						)}
-						{overview.profile ? (
+						{overview.persona ? (
 							<>
 								<button type="button" className={`${ROW} rounded-md border-[0.5px] border-line`} aria-expanded={showProfile} onClick={() => setShowProfile(!showProfile)}>
-									<span className={TEXT}>Profile</span>
+									<span className={TEXT}>Persona</span>
 									<span className={TIME}>
-										v{overview.profile.version} · {overview.profile.sourceCount} scenes · {convTime(overview.profile.createdAt)}
+										rev {overview.persona.rev} · {overview.persona.sourceCount} atoms · {overview.persona.updated}
 									</span>
 								</button>
-								{showProfile ? <p className={`${PROSE} rounded-md border-[0.5px] border-line px-2 py-1.5`}>{overview.profile.content}</p> : null}
+								{showProfile ? <p className={`${PROSE} rounded-md border-[0.5px] border-line px-2 py-1.5`}>{overview.persona.content}</p> : null}
 							</>
 						) : (
 							<p className={`${PROSE} rounded-md border-[0.5px] border-line px-2 py-1.5`}>
-								<span className={TEXT}>Profile</span>—
+								<span className={TEXT}>Persona</span>—
 							</p>
 						)}
 					</div>

@@ -14,7 +14,7 @@ const MEMORY_CHECKPOINT_FOOTER = 'If you need details from before this checkpoin
 const REMOVED_CHECKPOINT_PREAMBLE = "Earlier messages were removed from the active context to keep the conversation within the model's window; they remain in the session log.";
 const QA_HEADER = "Recent Q/A:";
 
-const DIGEST_KIND_ORDER: readonly MemoryKind[] = ["decision", "issue", "preference", "instruction", "fact", "reference"];
+const DIGEST_KIND_ORDER: readonly MemoryKind[] = ["update", "preference", "instruction", "attribute", "reference"];
 
 export interface MemoryCompactionOptions {
 	readonly digestMaxItems?: number;

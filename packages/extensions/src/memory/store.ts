@@ -1,14 +1,17 @@
 import { randomUUID } from "node:crypto";
-import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { EVENTS, type Entry } from "@milu/core";
 
-export type MemoryKind = "fact" | "decision" | "issue" | "reference" | "event" | "preference" | "instruction";
+export type MemoryKind = "attribute" | "event" | "reference" | "preference" | "instruction" | "update";
 
-export interface MemoryRelation {
-	readonly type: "related" | "supersedes";
-	readonly targetId: string;
+export type MemoryValue = string | number | boolean;
+
+export interface MemoryItem {
+	readonly name: string;
+	readonly action?: string;
+	readonly amount?: number;
 }
 
 export interface MemoryRecord {
@@ -16,10 +19,22 @@ export interface MemoryRecord {
 	readonly createdAt: number;
 	readonly kind: MemoryKind;
 	readonly source: { readonly rawIds: readonly string[] };
-	readonly data: { readonly summary: string; readonly detail?: string };
-	readonly relations?: readonly MemoryRelation[];
-	readonly scene?: string;
-	readonly remember?: true;
+	readonly summary: string;
+	readonly detail?: string;
+	readonly eventAt?: number;
+	readonly subject?: string;
+	readonly predicate?: string;
+	readonly value?: MemoryValue;
+	readonly direction?: "prefer" | "avoid";
+	readonly scope?: string;
+	readonly appliesTo?: string;
+	readonly provider?: "user" | "assistant" | "external";
+	readonly outcome?: "done" | "decision" | "issue";
+	readonly items?: readonly MemoryItem[];
+	readonly old?: MemoryValue;
+	readonly next?: MemoryValue;
+	readonly at?: number;
+	readonly supersedes?: string;
 }
 
 export interface MemoryCheckpoint {
@@ -32,7 +47,7 @@ export interface MemoryCheckpoint {
 
 export type MemoryLine = MemoryRecord | MemoryCheckpoint;
 
-export type MemoryRunStage = "memory" | "scene" | "persona" | "consolidate";
+export type MemoryRunStage = "memory" | "sop" | "persona";
 export type MemoryRunReason = "completed" | "unfinished" | "interrupted" | "error";
 
 export interface MemoryRunRecord {
@@ -47,8 +62,7 @@ export interface MemoryRunRecord {
 	readonly added: number;
 	readonly targetRawId: string | null;
 	readonly cursorRawId: string | null;
-	readonly throughMemoryId?: string;
-	readonly throughSceneRevId?: string;
+	readonly throughAtomId?: string;
 	readonly error?: string;
 	readonly checkpoints?: readonly string[];
 }
@@ -68,17 +82,44 @@ export interface MemoryRunLog {
 export const memoryDir = (dir: string) => join(dir, ".memory");
 export const memoryFilePath = (dir: string) => join(memoryDir(dir), "memories.jsonl");
 export const memoryRunsFilePath = (dir: string) => join(memoryDir(dir), "runs.jsonl");
+export const watermarksFilePath = (dir: string) => join(memoryDir(dir), "watermarks.json");
 
 export const RECALL_MAX_DETAIL_CHARS = 400;
 export const RECALL_MAX_TOTAL_CHARS = 6000;
 
+export function parseTime(text: string | undefined): number | null {
+	if (!text) return null;
+	const trimmed = text.trim();
+	if (/^\d{10,}$/.test(trimmed)) return Number(trimmed);
+	const parsed = Date.parse(trimmed);
+	return Number.isNaN(parsed) ? null : parsed;
+}
+
+export function eventTime(record: MemoryRecord): number {
+	return record.eventAt ?? record.createdAt;
+}
+
+export function isoDay(timestamp: number): string {
+	return new Date(timestamp).toISOString().slice(0, 10);
+}
+
+export function formatValue(value: MemoryValue | undefined): string {
+	return value === undefined ? "" : String(value);
+}
+
 export function formatMemoryRecord(record: MemoryRecord, opts: { withDetail?: boolean; maxDetailChars?: number } = {}): string {
-	const lines = [`# ${record.id} [${record.kind}]`, record.data.summary];
-	if (opts.withDetail && record.data.detail) {
+	const lines = [`# ${record.id} [${record.kind}] · ${isoDay(eventTime(record))}`, record.summary];
+	if (record.kind === "update") {
+		lines.push(`${formatValue(record.old)} → ${formatValue(record.next)}${record.at ? ` (${isoDay(record.at)})` : ""}`);
+	}
+	if (record.items?.length) {
+		lines.push(record.items.map((item) => `- ${item.name}${item.action ? ` · ${item.action}` : ""}${item.amount !== undefined ? ` · ${item.amount}` : ""}`).join("\n"));
+	}
+	if (opts.withDetail && record.detail) {
 		const detail =
-			opts.maxDetailChars && record.data.detail.length > opts.maxDetailChars
-				? `${record.data.detail.slice(0, opts.maxDetailChars)}… (truncated; use a narrower query for more)`
-				: record.data.detail;
+			opts.maxDetailChars && record.detail.length > opts.maxDetailChars
+				? `${record.detail.slice(0, opts.maxDetailChars)}… (truncated; use a narrower query for more)`
+				: record.detail;
 		lines.push(detail);
 	}
 	return lines.join("\n");
@@ -109,7 +150,7 @@ export async function readMemoryLines(dir: string): Promise<MemoryLine[]> {
 			if (!line.trim()) continue;
 			try {
 				const parsed = JSON.parse(line) as MemoryLine;
-				if (parsed && typeof parsed.id === "string" && (parsed.kind === "checkpoint" || typeof parsed.data === "object")) out.push(parsed);
+				if (parsed && typeof parsed.id === "string" && (parsed.kind === "checkpoint" || typeof parsed.summary === "string")) out.push(parsed);
 			} catch {}
 		}
 		return out;
@@ -174,8 +215,25 @@ export async function readMemoryRunSummaries(dir: string, limit = 5): Promise<{ 
 export interface QueryMemoryOptions {
 	readonly query?: string;
 	readonly kinds?: readonly MemoryKind[];
+	readonly subject?: string;
+	readonly predicate?: string;
+	readonly from?: number;
+	readonly to?: number;
 	readonly limit?: number;
 	readonly includeSuperseded?: boolean;
+}
+
+export interface MemoryConflict {
+	readonly subject: string;
+	readonly predicate: string;
+	readonly ids: readonly string[];
+	readonly values: readonly MemoryValue[];
+}
+
+export interface MemoryQueryResult {
+	readonly records: readonly MemoryRecord[];
+	readonly matched: number;
+	readonly conflicts: readonly MemoryConflict[];
 }
 
 const QUERY_SEPARATORS = /[\s|,，、;；/／｜]+/;
@@ -214,35 +272,102 @@ function compileQuery(query: string): (text: string) => number {
 	};
 }
 
-export function queryMemory(lines: readonly MemoryLine[], opts: QueryMemoryOptions = {}): MemoryRecord[] {
-	const limit = opts.limit ?? 20;
+export function activeRecords(lines: readonly MemoryLine[]): MemoryRecord[] {
 	const superseded = new Set<string>();
-	if (!opts.includeSuperseded) {
-		for (const line of lines) {
-			if (line.kind === "checkpoint") continue;
-			for (const relation of line.relations ?? []) {
-				if (relation.type === "supersedes") superseded.add(relation.targetId);
-			}
-		}
+	for (const line of lines) {
+		if (line.kind === "checkpoint") continue;
+		if (line.kind === "update" && line.supersedes) superseded.add(line.supersedes);
 	}
+	return lines.filter((line): line is MemoryRecord => line.kind !== "checkpoint" && !superseded.has(line.id));
+}
+
+export function conflictsOf(records: readonly MemoryRecord[]): MemoryConflict[] {
+	const groups = new Map<string, { subject: string; predicate: string; records: MemoryRecord[] }>();
+	for (const record of records) {
+		if (!record.subject || !record.predicate || record.value === undefined) continue;
+		const key = `${record.subject}\u0000${record.predicate}`;
+		const group = groups.get(key) ?? { subject: record.subject, predicate: record.predicate, records: [] };
+		group.records.push(record);
+		groups.set(key, group);
+	}
+	const out: MemoryConflict[] = [];
+	for (const group of groups.values()) {
+		const values = [...new Set(group.records.map((record) => JSON.stringify(record.value)))];
+		if (values.length < 2) continue;
+		out.push({
+			subject: group.subject,
+			predicate: group.predicate,
+			ids: group.records.map((record) => record.id),
+			values: group.records.map((record) => record.value as MemoryValue),
+		});
+	}
+	return out;
+}
+
+export function queryMemory(lines: readonly MemoryLine[], opts: QueryMemoryOptions = {}): MemoryQueryResult {
+	const limit = opts.limit ?? 20;
+	const active = opts.includeSuperseded ? lines.filter((line): line is MemoryRecord => line.kind !== "checkpoint") : activeRecords(lines);
 	const query = opts.query?.trim();
 	const hits = query ? compileQuery(query) : null;
 	const matched: Array<{ record: MemoryRecord; score: number }> = [];
-	for (const line of lines) {
-		if (line.kind === "checkpoint") continue;
-		if (!opts.includeSuperseded && superseded.has(line.id)) continue;
-		if (opts.kinds?.length && !opts.kinds.includes(line.kind)) continue;
-		const score = hits === null ? 0 : hits(line.data.summary) * 3 + hits(line.data.detail ?? "");
+	for (const record of active) {
+		if (opts.kinds?.length && !opts.kinds.includes(record.kind)) continue;
+		if (opts.subject && record.subject?.toLowerCase() !== opts.subject.toLowerCase()) continue;
+		if (opts.predicate && record.predicate?.toLowerCase() !== opts.predicate.toLowerCase()) continue;
+		const at = eventTime(record);
+		if (opts.from !== undefined && at < opts.from) continue;
+		if (opts.to !== undefined && at > opts.to) continue;
+		const score = hits === null ? 0 : hits(record.summary) * 3 + hits(record.detail ?? "");
 		if (hits !== null && score === 0) continue;
-		matched.push({ record: line, score });
+		matched.push({ record, score });
 	}
-	if (hits !== null) matched.sort((left, right) => right.score - left.score || right.record.createdAt - left.record.createdAt);
-	else matched.sort((left, right) => right.record.createdAt - left.record.createdAt);
-	return matched.slice(0, limit).map((match) => match.record);
+	if (hits !== null) matched.sort((left, right) => right.score - left.score || eventTime(right.record) - eventTime(left.record));
+	else matched.sort((left, right) => eventTime(right.record) - eventTime(left.record));
+	const filtered = matched.map((match) => match.record);
+	return { records: filtered.slice(0, limit), matched: filtered.length, conflicts: conflictsOf(filtered) };
+}
+
+export interface Watermarks {
+	readonly sop?: string;
+	readonly persona?: string;
+}
+
+export async function readWatermarks(dir: string): Promise<Watermarks> {
+	try {
+		const raw = JSON.parse(await readFile(watermarksFilePath(dir), "utf8")) as Watermarks;
+		return {
+			...(typeof raw.sop === "string" ? { sop: raw.sop } : {}),
+			...(typeof raw.persona === "string" ? { persona: raw.persona } : {}),
+		};
+	} catch {
+		return {};
+	}
+}
+
+export async function writeWatermark(dir: string, stage: "sop" | "persona", atomId: string | undefined): Promise<void> {
+	if (!atomId) return;
+	if (!(await ensureMemoryDir(dir))) return;
+	const current = await readWatermarks(dir);
+	await writeFile(watermarksFilePath(dir), `${JSON.stringify({ ...current, [stage]: atomId }, null, "\t")}\n`, "utf8");
+}
+
+export function atomsAfter(lines: readonly MemoryLine[], watermark: string | undefined): MemoryRecord[] {
+	const records = lines.filter((line): line is MemoryRecord => line.kind !== "checkpoint");
+	if (!watermark) return records;
+	const at = records.findIndex((record) => record.id === watermark);
+	if (at >= 0) return records.slice(at + 1);
+	console.warn(`memory: watermark ${watermark} is not in memories.jsonl — replaying every atom so the stage cannot stall`);
+	return records;
 }
 
 function isMemoryInternalEntry(entry: Entry): boolean {
-	return entry.type === "custom" && (entry.customType === EVENTS.memoryContext || entry.customType === EVENTS.memoryRunStart || entry.customType === EVENTS.memoryRunEnd);
+	return (
+		entry.type === "custom" &&
+		(entry.customType === EVENTS.personaReminder ||
+			entry.customType === EVENTS.sopReminder ||
+			entry.customType === EVENTS.memoryRunStart ||
+			entry.customType === EVENTS.memoryRunEnd)
+	);
 }
 
 function prepareEntries(entries: readonly Entry[]): Entry[] {
@@ -263,6 +388,18 @@ function isExtractableEntry(entry: Entry): boolean {
 
 export function extractionEntries(entries: readonly Entry[]): Entry[] {
 	return prepareEntries(entries).filter(isExtractableEntry);
+}
+
+export function recentRoundFloor(entries: readonly Entry[], rounds: number): number {
+	if (rounds <= 0) return 0;
+	let seen = 0;
+	for (let index = entries.length - 1; index >= 0; index -= 1) {
+		const entry = entries[index];
+		if (entry?.type !== "message" || entry.message.role !== "user") continue;
+		seen += 1;
+		if (seen >= rounds) return index;
+	}
+	return 0;
 }
 
 export function entryIndexById(entries: readonly Entry[]): Map<string, number> {

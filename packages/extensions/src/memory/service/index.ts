@@ -1,41 +1,44 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-
 import { EVENTS, type CompactionPlan, type Entry, type Model, type ModelsService, type Session, type SessionService, type SettingsPoint, type SettingsService } from "@milu/core";
 import { createServiceId, type Service } from "@milu/di";
 
 import { DEFAULT_DIGEST_MAX_ITEMS, planMemoryCompaction } from "../compact.ts";
-import { consolidateMemory } from "../consolidate.ts";
-import { buildMemoryContext, type MemoryContext } from "../context.ts";
+import { buildPersonaReminder, buildSopIndexReminder, type MemoryReminder } from "../context.ts";
 import { organizeMemory } from "../extract.ts";
-import { buildMemoryOverview, type MemoryOverview } from "../overview.ts";
-import { latestPersona, organizePersona, personaTrigger, readPersonaLines, rebuildPersonaView } from "../persona.ts";
-import { DEFAULT_MAX_SCENES, foldScenes, MEMORY_SCENE_BATCH, organizeScenes, readSceneLines, rebuildSceneViews, scenePendingCount } from "../scenes.ts";
+import { organizePersona, personaSignature, readPersonaDoc } from "../persona.ts";
+import { MAX_SOPS, organizeSops, sopIndex, type SopChange, sopSignature, sopUpdateReminder } from "../sop.ts";
 import {
+	activeRecords,
 	checkpointCoversSession,
 	entryIndexById,
 	lastCheckpoint,
 	latestCheckpointIndex,
 	type MemoryCheckpoint,
-	type MemoryRecord,
-	type MemoryRunLog,
-	memoryPendingStatus,
+	type QueryMemoryOptions,
+	type MemoryQueryResult,
 	queryMemory,
 	readMemoryLines,
 	readMemoryRunSummaries,
+	readWatermarks,
+	writeWatermark,
+	type MemoryRecord,
+	type MemoryRunLog,
+	memoryPendingStatus,
 } from "../store.ts";
 
-const DEFAULT_IDLE_MINUTES = 5;
 const DEFAULT_PENDING_ROUNDS = 10;
+const STAGE_DEBOUNCE_MS = 30_000;
 
 export class MemoryService implements Service {
-	private readonly _timers = new Map<string, ReturnType<typeof setTimeout>>();
+	private readonly _stageTimers = new Map<string, ReturnType<typeof setTimeout>>();
 	private readonly _rounds = new Map<string, number>();
 	private readonly _runs = new Map<string, Promise<number>>();
 	private readonly _stageRuns = new Map<string, Promise<number>>();
+	private readonly _sopChanges = new Map<string, SopChange[]>();
+	private readonly _personaCache = new Map<string, { readonly signature: string; readonly reminder: MemoryReminder | null }>();
+	private readonly _sopCache = new Map<string, { readonly signature: string; readonly reminder: MemoryReminder | null }>();
+	private _watermarkChain: Promise<void> = Promise.resolve();
 	private _enabled: SettingsPoint<boolean> | null = null;
-	private _idleMinutes: SettingsPoint<number> | null = null;
-	private _maxScenes: SettingsPoint<number> | null = null;
+	private _maxSops: SettingsPoint<number> | null = null;
 	private _pendingRounds: SettingsPoint<number> | null = null;
 	private _digestMaxItems: SettingsPoint<number> | null = null;
 
@@ -47,8 +50,7 @@ export class MemoryService implements Service {
 
 	async initialize(): Promise<void> {
 		this._enabled = this._settingsService.declare({ key: "memoryEnabled", defaults: true });
-		this._idleMinutes = this._settingsService.declare({ key: "memoryIdleMinutes", defaults: DEFAULT_IDLE_MINUTES });
-		this._maxScenes = this._settingsService.declare({ key: "memoryMaxScenes", defaults: DEFAULT_MAX_SCENES });
+		this._maxSops = this._settingsService.declare({ key: "memoryMaxSops", defaults: MAX_SOPS });
 		this._pendingRounds = this._settingsService.declare({ key: "memoryPendingRounds", defaults: DEFAULT_PENDING_ROUNDS });
 		this._digestMaxItems = this._settingsService.declare({ key: "memoryDigestMaxItems", defaults: DEFAULT_DIGEST_MAX_ITEMS });
 		for (const name of await this._sessionService.names()) {
@@ -57,12 +59,8 @@ export class MemoryService implements Service {
 		}
 	}
 
-	async read(session: Session, opts: { query?: string; kinds?: readonly MemoryRecord["kind"][]; limit?: number; includeSuperseded?: boolean }): Promise<MemoryRecord[]> {
+	async read(session: Session, opts: QueryMemoryOptions): Promise<MemoryQueryResult> {
 		return queryMemory(await readMemoryLines(session.root), opts);
-	}
-
-	async overview(session: Session, entries?: readonly Entry[]): Promise<MemoryOverview> {
-		return buildMemoryOverview(session.root, entries ?? (await session.rawEntries()));
 	}
 
 	async organize(session: Session): Promise<number> {
@@ -73,7 +71,14 @@ export class MemoryService implements Service {
 			const model = await this._modelOf(session);
 			if (!model) return 0;
 			const entries = await session.rawEntries();
-			const added = await organizeMemory({ dir: session.root, entries, model, streamFn: this._modelsService.stream, logRun: this._runLog(session) });
+			const added = await organizeMemory({
+				dir: session.root,
+				entries,
+				model,
+				streamFn: this._modelsService.stream,
+				recentRounds: this._pendingRounds?.get(),
+				logRun: this._runLog(session),
+			});
 			await this._stages(session, model);
 			return added;
 		})().finally(() => {
@@ -84,53 +89,48 @@ export class MemoryService implements Service {
 		return run;
 	}
 
-	async scenes(session: Session, force = false): Promise<number> {
+	async sops(session: Session): Promise<number> {
 		if (this._enabled?.get() === false) return 0;
 		const model = await this._modelOf(session);
 		if (!model) return 0;
-		return this._singleStage("scene", session.name, () =>
-			organizeScenes({
-				dir: session.root,
-				model,
-				streamFn: this._modelsService.stream,
-				reason: force ? "manual" : "threshold",
-				maxScenes: this._maxScenes?.get(),
-				logRun: this._runLog(session),
-			}),
-		);
+		return this._singleStage("sop", session.name, async () => {
+			const result = await this._runSopStage(session, model);
+			return result.added;
+		});
 	}
 
-	async consolidate(session: Session): Promise<number> {
+	async persona(session: Session): Promise<number> {
 		if (this._enabled?.get() === false) return 0;
 		const model = await this._modelOf(session);
 		if (!model) return 0;
-		return this._singleStage("consolidate", session.name, () =>
-			consolidateMemory({ dir: session.root, model, streamFn: this._modelsService.stream, logRun: this._runLog(session) }),
-		);
+		return this._singleStage("persona", session.name, async () => (await this._runPersonaStage(session, model)).writes);
 	}
 
-	async persona(session: Session, force = false): Promise<number> {
-		if (this._enabled?.get() === false) return 0;
-		const model = await this._modelOf(session);
-		if (!model) return 0;
-		const trigger = force ? { run: true, reason: "manual" as const } : await personaTrigger(session.root);
-		if (!trigger.run || !trigger.reason) return 0;
-		const reason = trigger.reason;
-		return this._singleStage("persona", session.name, () =>
-			organizePersona({
-				dir: session.root,
-				model,
-				streamFn: this._modelsService.stream,
-				reason,
-				...(force ? { force: true } : {}),
-				logRun: this._runLog(session),
-			}),
-		);
+	async context(session: Session): Promise<{ persona: MemoryReminder | null }> {
+		if (this._enabled?.get() === false) return { persona: null };
+		const signature = await personaSignature(session.root);
+		const cached = this._personaCache.get(session.name);
+		if (cached && cached.signature === signature) return { persona: cached.reminder };
+		const persona = await buildPersonaReminder(session.root);
+		this._personaCache.set(session.name, { signature, reminder: persona });
+		return { persona };
 	}
 
-	async context(session: Session): Promise<MemoryContext | null> {
+	async sopIndex(session: Session): Promise<MemoryReminder | null> {
 		if (this._enabled?.get() === false) return null;
-		return buildMemoryContext(session.root);
+		const signature = await sopSignature(session.root);
+		const cached = this._sopCache.get(session.name);
+		if (cached && cached.signature === signature) return cached.reminder;
+		const reminder = await buildSopIndexReminder(session.root);
+		this._sopCache.set(session.name, { signature, reminder });
+		return reminder;
+	}
+
+	takeSopUpdates(name: string): MemoryReminder | null {
+		const changes = this._sopChanges.get(name);
+		if (!changes || changes.length === 0) return null;
+		this._sopChanges.delete(name);
+		return sopUpdateReminder(changes);
 	}
 
 	async planCompact(session: Session, entries: readonly Entry[]): Promise<CompactionPlan | null> {
@@ -144,16 +144,25 @@ export class MemoryService implements Service {
 		const entries = await session.rawEntries();
 		const lines = await readMemoryLines(session.root);
 		const records = lines.filter((line): line is MemoryRecord => line.kind !== "checkpoint");
-		const active = queryMemory(lines, { limit: Number.MAX_SAFE_INTEGER });
+		const active = activeRecords(lines);
 		const pending = await memoryPendingStatus(session.root, entries);
 		const checkpoint = lastCheckpoint(lines);
 		const runs = (await readMemoryRunSummaries(session.root, 5)).runs;
+		const watermarks = await readWatermarks(session.root);
+		const sops = await sopIndex(session.root);
 		const persona = await personaSummary(session.root);
-		const scenes = await sceneSummary(session.root);
 		return [
 			`memory status · ${session.name}`,
-			`memory: ${records.length} records (${active.length} active) · checkpoint ${checkpoint?.source.lastRawId ?? "none"} · pending ${pending.pending ? `${pending.rounds} rounds` : "none"}`,
-			`profile: ${persona ?? "none"} · scenes: ${scenes ?? "none"}`,
+			`atoms: ${records.length} (${active.length} active) · checkpoint ${checkpoint?.source.lastRawId ?? "none"} · pending ${pending.pending ? `${pending.rounds} rounds` : "none"}`,
+			`watermarks: sop ${watermarks.sop ?? "none"} · persona ${watermarks.persona ?? "none"}`,
+			`persona: ${persona ?? "none"} · sops: ${
+				sops.length
+					? `${sops.length} (${sops
+							.slice(0, 5)
+							.map((sop) => sop.id)
+							.join(", ")})`
+					: "none"
+			}`,
 			"runs:",
 			...(runs.length
 				? runs.map(
@@ -171,34 +180,29 @@ export class MemoryService implements Service {
 		this._rounds.set(name, rounds);
 		const threshold = this._pendingRounds?.get() ?? DEFAULT_PENDING_ROUNDS;
 		if (threshold > 0 && rounds >= threshold) {
-			this._cancel(name);
 			void this.organize(session).catch((error: unknown) => console.error(`memory ${name}: organize failed:`, error));
 			return;
 		}
 		void this._schedule(session).catch((error: unknown) => console.error(`memory ${name}: schedule failed:`, error));
 		if (this._runs.has(name)) return;
-		void this._stagesAfterRun(session).catch((error: unknown) => console.error(`memory ${name}: stages failed:`, error));
+		void this._debouncedStages(session).catch((error: unknown) => console.error(`memory ${name}: stages failed:`, error));
 	}
 
 	dispose(): void {
-		for (const timer of this._timers.values()) clearTimeout(timer);
-		this._timers.clear();
+		for (const timer of this._stageTimers.values()) clearTimeout(timer);
+		this._stageTimers.clear();
 		this._runs.clear();
 		this._stageRuns.clear();
 		this._rounds.clear();
+		this._sopChanges.clear();
+		this._personaCache.clear();
+		this._sopCache.clear();
 	}
 
 	private async _boot(session: Session): Promise<void> {
-		await this._rebuildViews(session);
 		await this._schedule(session);
 		if (this._runs.has(session.name)) return;
 		await this._stagesAfterRun(session);
-	}
-
-	private async _rebuildViews(session: Session): Promise<void> {
-		const scenes = foldScenes(await readSceneLines(session.root));
-		if (scenes.length > 0) await rebuildSceneViews(session.root);
-		if (latestPersona(await readPersonaLines(session.root))) await rebuildPersonaView(session.root);
 	}
 
 	private async _stagesAfterRun(session: Session): Promise<void> {
@@ -208,37 +212,73 @@ export class MemoryService implements Service {
 		await this._stages(session, model);
 	}
 
+	private async _debouncedStages(session: Session): Promise<void> {
+		const key = session.name;
+		if (this._stageTimers.has(key)) return;
+		const timer = setTimeout(() => {
+			this._stageTimers.delete(key);
+			void this._stagesAfterRun(session).catch((error: unknown) => console.error(`memory ${key}: stages failed:`, error));
+		}, STAGE_DEBOUNCE_MS);
+		this._stageTimers.set(key, timer);
+	}
+
 	private async _stages(session: Session, model: Model<any>): Promise<void> {
-		const pending = await scenePendingCount(session.root);
-		if (pending >= MEMORY_SCENE_BATCH) {
-			await this._singleStage("scene", session.name, () =>
-				organizeScenes({
-					dir: session.root,
-					model,
-					streamFn: this._modelsService.stream,
-					reason: "threshold",
-					maxScenes: this._maxScenes?.get(),
-					logRun: this._runLog(session),
-				}),
-			);
+		const lines = await readMemoryLines(session.root);
+		const watermarks = await readWatermarks(session.root);
+		const newest = lines.filter((line): line is MemoryRecord => line.kind !== "checkpoint").at(-1)?.id;
+		if (!newest) return;
+		const sopDirty = watermarks.sop !== newest;
+		const personaDirty = watermarks.persona !== newest;
+		if (sopDirty) {
+			await this._singleStage("sop", session.name, async () => (await this._runSopStage(session, model)).added);
 		}
-		const trigger = await personaTrigger(session.root);
-		if (trigger.run && trigger.reason) {
-			const reason = trigger.reason;
-			await this._singleStage("persona", session.name, () =>
-				organizePersona({ dir: session.root, model, streamFn: this._modelsService.stream, reason, logRun: this._runLog(session) }),
-			);
+		if (personaDirty) {
+			await this._singleStage("persona", session.name, async () => (await this._runPersonaStage(session, model)).writes);
 		}
 	}
 
-	private _singleStage(stage: "scene" | "persona" | "consolidate", name: string, run: () => Promise<number>): Promise<number> {
+	private async _runSopStage(session: Session, model: Model<any>): Promise<{ added: number }> {
+		const result = await organizeSops({
+			dir: session.root,
+			model,
+			streamFn: this._modelsService.stream,
+			maxSops: this._maxSops?.get(),
+			logRun: this._runLog(session),
+		});
+		if (result.changes.length > 0) this._recordSopChanges(session.name, result.changes);
+		await this._watermark(session.root, "sop", result.through);
+		return { added: result.added };
+	}
+
+	private async _runPersonaStage(session: Session, model: Model<any>): Promise<{ writes: number }> {
+		const result = await organizePersona({ dir: session.root, model, streamFn: this._modelsService.stream, logRun: this._runLog(session) });
+		await this._watermark(session.root, "persona", result.through);
+		return { writes: result.writes };
+	}
+
+	private _watermark(dir: string, stage: "sop" | "persona", atomId: string | undefined): Promise<void> {
+		const next = this._watermarkChain.then(() => writeWatermark(dir, stage, atomId)).catch((error: unknown) => console.error(`memory: ${stage} watermark write failed:`, error));
+		this._watermarkChain = next;
+		return next;
+	}
+
+	private _recordSopChanges(name: string, changes: readonly SopChange[]): void {
+		this._sopChanges.set(name, [...(this._sopChanges.get(name) ?? []), ...changes]);
+	}
+
+	private _singleStage(stage: "sop" | "persona", name: string, run: () => Promise<number>): Promise<number> {
 		const key = `${stage}:${name}`;
 		const existing = this._stageRuns.get(key);
 		if (existing) return existing;
 		let promise: Promise<number>;
-		promise = run().finally(() => {
-			if (this._stageRuns.get(key) === promise) this._stageRuns.delete(key);
-		});
+		promise = run()
+			.catch((error: unknown) => {
+				console.error(`memory ${name}: ${stage} failed:`, error);
+				return 0;
+			})
+			.finally(() => {
+				if (this._stageRuns.get(key) === promise) this._stageRuns.delete(key);
+			});
 		this._stageRuns.set(key, promise);
 		return promise;
 	}
@@ -286,82 +326,22 @@ export class MemoryService implements Service {
 	}
 
 	private async _schedule(session: Session): Promise<void> {
-		if (this._enabled?.get() === false) {
-			this._cancel(session.name);
-			return;
-		}
+		if (this._enabled?.get() === false) return;
 		const entries = await session.rawEntries();
 		const { pending, rounds } = await memoryPendingStatus(session.root, entries);
 		this._rounds.set(session.name, rounds);
-		if (!pending) {
-			this._cancel(session.name);
-			return;
-		}
+		if (!pending) return;
 		const threshold = this._pendingRounds?.get() ?? DEFAULT_PENDING_ROUNDS;
 		if (threshold > 0 && rounds >= threshold) {
-			this._cancel(session.name);
 			void this.organize(session).catch((error: unknown) => console.error(`memory ${session.name}: organize failed:`, error));
-			return;
 		}
-		const minutes = this._idleMinutes?.get() ?? DEFAULT_IDLE_MINUTES;
-		if (minutes <= 0) {
-			this._cancel(session.name);
-			return;
-		}
-		const last = (await session.row()).lastMessageAt ?? null;
-		const elapsed = last === null ? Number.POSITIVE_INFINITY : Date.now() - last;
-		if (elapsed >= minutes * 60_000) {
-			void this.organize(session).catch((error: unknown) => console.error(`memory ${session.name}: organize failed:`, error));
-			return;
-		}
-		this._cancel(session.name);
-		const timer = setTimeout(
-			() => {
-				this._timers.delete(session.name);
-				void this.organize(session).catch((error: unknown) => console.error(`memory ${session.name}: organize failed:`, error));
-			},
-			minutes * 60_000 - elapsed,
-		);
-		this._timers.set(session.name, timer);
-	}
-
-	private _cancel(name: string): void {
-		const timer = this._timers.get(name);
-		if (timer) clearTimeout(timer);
-		this._timers.delete(name);
 	}
 }
 
 async function personaSummary(dir: string): Promise<string | null> {
 	try {
-		const raw = await readFile(join(dir, ".memory", "persona.jsonl"), "utf8");
-		let latest: { version: number; createdAt: number; sourceSceneIds?: unknown[] } | null = null;
-		for (const line of raw.split("\n")) {
-			if (!line.trim()) continue;
-			try {
-				const parsed = JSON.parse(line) as { version?: unknown; createdAt?: unknown; sourceSceneIds?: unknown[] };
-				if (typeof parsed.version !== "number" || typeof parsed.createdAt !== "number") continue;
-				if (!latest || parsed.version >= latest.version) latest = { version: parsed.version, createdAt: parsed.createdAt, sourceSceneIds: parsed.sourceSceneIds };
-			} catch {}
-		}
-		return latest ? `v${latest.version} · ${new Date(latest.createdAt).toISOString().slice(0, 10)} · ${latest.sourceSceneIds?.length ?? 0} scenes` : null;
-	} catch {
-		return null;
-	}
-}
-
-async function sceneSummary(dir: string): Promise<string | null> {
-	try {
-		const raw = await readFile(join(dir, ".memory", "scenes.jsonl"), "utf8");
-		let revisions = 0;
-		for (const line of raw.split("\n")) {
-			if (!line.trim()) continue;
-			try {
-				const parsed = JSON.parse(line) as { kind?: unknown };
-				if (parsed.kind === "revision") revisions += 1;
-			} catch {}
-		}
-		return `${revisions} revisions`;
+		const persona = await readPersonaDoc(dir);
+		return persona ? `rev ${persona.meta.rev} · ${persona.meta.updated} · ${persona.meta.sources.length} atoms` : null;
 	} catch {
 		return null;
 	}
