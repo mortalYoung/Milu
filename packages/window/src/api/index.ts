@@ -3,6 +3,8 @@ export type { SessionListView } from "../sessions.ts";
 export type { FrontEndService } from "../extensions.ts";
 export type { Connection } from "../connection.ts";
 export { IConnection } from "../connection.ts";
+export type { DockService } from "../dock.ts";
+export { IDockService } from "../dock.ts";
 export { createServiceId, type Service } from "@milu/di";
 export type { SelectionService } from "../selection.ts";
 export { ISessionListService } from "../sessions.ts";

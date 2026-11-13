@@ -75,7 +75,6 @@ export function GitPane(props: SlotProps) {
 	const session = useStore(host.selection.store, (current) => current.selected);
 	const running = useStore(host.sessions.store, (current) => current.rows.find((row) => row.name === session)?.running ?? false);
 	const dockWidth = useStore(host.columns.store, (current) => current.columns.dock.width);
-	const shown = useStore(host.dock.store, (current) => current.visible);
 	const origin = useRef<{ x: number; width: number } | null>(null);
 	const peek = useRef<HTMLDivElement>(null);
 	const wasRunning = useRef(running);
@@ -97,11 +96,6 @@ export function GitPane(props: SlotProps) {
 	useEffect(() => {
 		void service.refresh();
 	}, [service]);
-
-	useEffect(() => {
-		if (!hasWorkspace || !shown || state.status !== "ready" || state.changes.length > 0) return;
-		host.dock.select("explorer");
-	}, [host, hasWorkspace, shown, state.status, state.changes.length]);
 
 	useEffect(() => {
 		if (wasRunning.current && !running) void service.refresh();

@@ -13,6 +13,8 @@ const NO_ITEMS: readonly SlotItem[] = [];
 export function DockToggle(props: { host: Host }) {
 	const { host } = props;
 	const visible = useStore(host.dock.store, (state) => state.visible);
+	const selected = useStore(host.selection.store, (state) => state.selected);
+	if (selected === "") return null;
 	return (
 		<Tip label="Dock (⌘J)">
 			<button type="button" className={`bar-icon dock-toggle${visible ? " on" : ""}`} aria-label="Dock" aria-pressed={visible} onClick={() => host.dock.toggle()}>
@@ -26,6 +28,7 @@ export function DockColumn(props: { host: Host }) {
 	const { host } = props;
 	const dock = useStore(host.columns.store, (state) => state.columns.dock);
 	const opened = useStore(host.dock.store, (state) => state.opened);
+	const hidden = useStore(host.dock.store, (state) => state.hidden);
 	const active = useStore(host.dock.store, (state) => state.active);
 	const slide = useStore(host.dock.store, (state) => state.slide);
 	const configured = useStore(host.columns.store, (state) => state.dockWidth);
@@ -33,7 +36,7 @@ export function DockColumn(props: { host: Host }) {
 	const barItems = useStore(host.slots.store, (state) => state.points[SLOT_POINTS.dockBar] ?? NO_ITEMS);
 	const components = useStore(host.slots.store, (state) => state.components);
 
-	const tabs = useMemo(() => dockTabs(views, opened), [views, opened]);
+	const tabs = useMemo(() => dockTabs(views, opened, hidden), [views, opened, hidden]);
 	const tab = tabs.find((each) => each.key === active) ?? tabs[0];
 	const Component = tab === undefined ? undefined : components.get(tab.component);
 
