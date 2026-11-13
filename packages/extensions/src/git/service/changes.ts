@@ -79,7 +79,10 @@ export class GitChangesService implements Service {
 
 	initialize(): void {
 		this._dock.show(DOCK_VIEW, false);
-		this._changesStop = this.store.subscribe((state) => this._dock.show(DOCK_VIEW, state.changes.length > 0));
+		this._changesStop = this.store.subscribe((state) => {
+			this._dock.show(DOCK_VIEW, state.changes.length > 0);
+			this._dock.badge(DOCK_VIEW, state.changes.length);
+		});
 		this._stop = this._selection.store.subscribe(() => {
 			this._reset();
 			void this.refresh();

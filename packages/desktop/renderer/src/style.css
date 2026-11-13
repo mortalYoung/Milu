@@ -382,6 +382,18 @@ body.pane-dragging {
 	-webkit-app-region: no-drag;
 }
 
+.dock-toggle-badge {
+	position: absolute;
+	top: 6px;
+	right: 6px;
+	width: 7px;
+	height: 7px;
+	border-radius: 999px;
+	background: var(--signal);
+	box-shadow: 0 0 0 2px var(--canvas);
+	pointer-events: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.grip.revealed i,
 	.grip-read {

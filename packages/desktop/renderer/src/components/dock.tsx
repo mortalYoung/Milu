@@ -14,11 +14,14 @@ export function DockToggle(props: { host: Host }) {
 	const { host } = props;
 	const visible = useStore(host.dock.store, (state) => state.visible);
 	const selected = useStore(host.selection.store, (state) => state.selected);
+	const badges = useStore(host.dock.store, (state) => state.badges);
 	if (selected === "") return null;
+	const count = Object.values(badges).reduce((total, each) => total + each, 0);
 	return (
-		<Tip label="Dock (⌘J)">
+		<Tip label={count === 0 ? "Dock (⌘J)" : `Dock (⌘J) — ${count} uncommitted`}>
 			<button type="button" className={`bar-icon dock-toggle${visible ? " on" : ""}`} aria-label="Dock" aria-pressed={visible} onClick={() => host.dock.toggle()}>
 				<PanelRightIcon size={16} />
+				{count === 0 ? null : <span className="dock-toggle-badge" aria-hidden="true" />}
 			</button>
 		</Tip>
 	);

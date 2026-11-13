@@ -34,6 +34,7 @@ export interface DockState {
 	readonly active: string | null;
 	readonly opened: readonly DockTab[];
 	readonly hidden: readonly string[];
+	readonly badges: Readonly<Record<string, number>>;
 	readonly slide: DockSlide | null;
 }
 
@@ -59,6 +60,7 @@ export class DockService implements Service {
 		active: localStorage.getItem(ACTIVE_KEY),
 		opened: [],
 		hidden: [],
+		badges: {},
 		slide: null,
 	}));
 
@@ -166,6 +168,16 @@ export class DockService implements Service {
 		this.sync();
 	}
 
+	badge(key: string, count: number): void {
+		const state = this.store.getState();
+		const next = Math.max(0, Math.trunc(count));
+		if ((state.badges[key] ?? 0) === next) return;
+		const badges: Record<string, number> = { ...state.badges };
+		if (next === 0) delete badges[key];
+		else badges[key] = next;
+		this.store.setState({ ...state, badges }, true);
+	}
+
 	show(key: string, shown: boolean): void {
 		const state = this.store.getState();
 		if (state.hidden.includes(key) !== shown) return;
@@ -201,7 +213,7 @@ export class DockService implements Service {
 		this._stop();
 		for (const disposable of this._disposables) disposable.dispose();
 		this._disposables.length = 0;
-		this.store.setState({ visible: true, active: null, opened: [], hidden: [], slide: null }, true);
+		this.store.setState({ visible: true, active: null, opened: [], hidden: [], badges: {}, slide: null }, true);
 	}
 
 	private _session(): string | undefined {
