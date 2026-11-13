@@ -48,7 +48,7 @@ export interface MemoryCheckpoint {
 export type MemoryLine = MemoryRecord | MemoryCheckpoint;
 
 export type MemoryRunStage = "memory" | "sop" | "persona";
-export type MemoryRunReason = "completed" | "unfinished" | "interrupted" | "error";
+export type MemoryRunReason = "completed" | "unfinished" | "interrupted" | "blocked" | "error";
 
 export interface MemoryRunRecord {
 	readonly runId: string;
@@ -63,6 +63,7 @@ export interface MemoryRunRecord {
 	readonly targetRawId: string | null;
 	readonly cursorRawId: string | null;
 	readonly throughAtomId?: string;
+	readonly readEntries?: number;
 	readonly error?: string;
 	readonly checkpoints?: readonly string[];
 }
@@ -212,6 +213,14 @@ export async function readMemoryRunSummaries(dir: string, limit = 5): Promise<{ 
 	}
 }
 
+export const RECALL_MAX_MATCHES = 30;
+
+export interface MemoryFacets {
+	readonly subjects: readonly { readonly name: string; readonly count: number }[];
+	readonly from?: number;
+	readonly to?: number;
+}
+
 export interface QueryMemoryOptions {
 	readonly query?: string;
 	readonly kinds?: readonly MemoryKind[];
@@ -220,6 +229,7 @@ export interface QueryMemoryOptions {
 	readonly from?: number;
 	readonly to?: number;
 	readonly limit?: number;
+	readonly offset?: number;
 	readonly includeSuperseded?: boolean;
 }
 
@@ -234,6 +244,40 @@ export interface MemoryQueryResult {
 	readonly records: readonly MemoryRecord[];
 	readonly matched: number;
 	readonly conflicts: readonly MemoryConflict[];
+	readonly facets: MemoryFacets;
+}
+
+export function tooManyMatches(result: MemoryQueryResult): string | null {
+	if (result.matched <= RECALL_MAX_MATCHES) return null;
+	const day = (at: number) => new Date(at).toISOString().slice(0, 10);
+	const hints: string[] = [];
+	if (result.facets.subjects.length > 0)
+		hints.push(
+			`subjects present: ${result.facets.subjects
+				.slice(0, 6)
+				.map((entry) => `${entry.name} (${entry.count})`)
+				.join(", ")}`,
+		);
+	if (result.facets.from !== undefined && result.facets.to !== undefined) hints.push(`matches span ${day(result.facets.from)} … ${day(result.facets.to)} — add from/to`);
+	hints.push("or page through with offset (e.g. offset=30, limit=30)");
+	return `${result.matched} atoms match, which is too many to read (max ${RECALL_MAX_MATCHES}). Narrow it with a distinctive word, subject, predicate or time range — ${hints.join("; ")}.`;
+}
+
+function facetsOf(records: readonly MemoryRecord[]): MemoryFacets {
+	const subjects = new Map<string, number>();
+	let from = Number.POSITIVE_INFINITY;
+	let to = Number.NEGATIVE_INFINITY;
+	for (const record of records) {
+		if (record.subject) subjects.set(record.subject, (subjects.get(record.subject) ?? 0) + 1);
+		const at = eventTime(record);
+		if (at < from) from = at;
+		if (at > to) to = at;
+	}
+	const ranked = [...subjects.entries()]
+		.sort((left, right) => right[1] - left[1])
+		.slice(0, 8)
+		.map(([name, count]) => ({ name, count }));
+	return { subjects: ranked, ...(Number.isFinite(from) ? { from } : {}), ...(Number.isFinite(to) ? { to } : {}) };
 }
 
 const QUERY_SEPARATORS = /[\s|,，、;；/／｜]+/;
@@ -324,7 +368,13 @@ export function queryMemory(lines: readonly MemoryLine[], opts: QueryMemoryOptio
 	if (hits !== null) matched.sort((left, right) => right.score - left.score || eventTime(right.record) - eventTime(left.record));
 	else matched.sort((left, right) => eventTime(right.record) - eventTime(left.record));
 	const filtered = matched.map((match) => match.record);
-	return { records: filtered.slice(0, limit), matched: filtered.length, conflicts: conflictsOf(filtered) };
+	const offset = Math.max(0, opts.offset ?? 0);
+	return {
+		records: filtered.slice(offset, offset + limit),
+		matched: filtered.length,
+		conflicts: conflictsOf(filtered),
+		facets: facetsOf(filtered),
+	};
 }
 
 export interface Watermarks {

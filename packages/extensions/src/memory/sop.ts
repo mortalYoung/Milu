@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { type AgentTool, type Model, type Static, type StreamFn, Type } from "@milu/core";
 
 import { createMemoryAgent } from "./agent.ts";
+import { startDeadline } from "./deadline.ts";
 import { runRalphLoop } from "./loop.ts";
 import { appendMemoryRun, atomsAfter, ensureMemoryDir, isoDay, memoryDir, type MemoryRunLog, type MemoryRunReason, readMemoryLines, readWatermarks } from "./store.ts";
 
@@ -15,6 +16,7 @@ export const MAX_SOP_WHEN = 80;
 export const MAX_SOP_PITFALLS = 5;
 export const MAX_SOP_EVIDENCE = 20;
 export const SOP_READ_LIMIT = 120;
+const STAGE_TIMEOUT_MS = 3 * 60_000;
 
 const SECTIONS = ["Purpose", "When", "Procedure", "Checklist", "Pitfalls"] as const;
 
@@ -430,6 +432,7 @@ export async function organizeSops(opts: SopOrganizeOptions): Promise<SopOrganiz
 		});
 	}
 
+	let rejections = 0;
 	const tool: AgentTool<typeof sopWriteSchema, { ok: boolean; error?: string }> = {
 		name: "sop",
 		label: "SOP",
@@ -437,7 +440,14 @@ export async function organizeSops(opts: SopOrganizeOptions): Promise<SopOrganiz
 		parameters: sopWriteSchema,
 		executionMode: "sequential",
 		async execute(_toolCallId, params) {
-			const reject = (message: string) => ({ content: [{ type: "text" as const, text: `sop rejected: ${message}` }], details: { ok: false, error: message } });
+			const reject = (message: string) => {
+				rejections += 1;
+				return {
+					content: [{ type: "text" as const, text: `sop rejected: ${message}${rejections >= 10 ? " — stopping this pass; nothing was written" : ""}` }],
+					details: { ok: false, error: message },
+					...(rejections >= 10 ? { terminate: true } : {}),
+				};
+			};
 			const note = (text: string) => ({ content: [{ type: "text" as const, text }], details: { ok: true } });
 			if (params.op !== "write") {
 				const current = await readSopDocs(opts.dir);
@@ -445,12 +455,12 @@ export async function organizeSops(opts: SopOrganizeOptions): Promise<SopOrganiz
 			}
 			const content = (params.content ?? "").trim();
 			if (!content) return reject("write needs content (the complete document)");
-			const consumed = [...new Set(params.consumed ?? [])].filter((id) => batch.has(id));
-			if (consumed.length === 0) return reject("consumed must list at least one atom id from the batch you were given");
 			const problem = validateSop(content);
 			if (problem) return reject(problem);
 			const parsed = parseSop(content);
 			if ("problem" in parsed) return reject(parsed.problem);
+			const consumed = [...new Set([...(params.consumed ?? []), ...parsed.meta.sources])].filter((id) => batch.has(id));
+			if (consumed.length === 0) return reject("consumed (or the document's sources) must list at least one atom id from the batch you were given");
 			const mergedFrom = [...new Set(params.mergedFrom ?? [])].filter((id) => docs.some((doc) => doc.meta.id === id) && id !== parsed.meta.id);
 			const existing = docs.some((doc) => doc.meta.id === parsed.meta.id);
 			if (!existing && docs.length >= limit) return reject(`SOP limit (${limit}) reached — merge existing SOPs by writing one document with mergedFrom`);
@@ -502,10 +512,11 @@ export async function organizeSops(opts: SopOrganizeOptions): Promise<SopOrganiz
 		"Write the SOPs these atoms justify. If none of them belongs in an SOP, call noop.",
 	].join("\n");
 
+	const deadline = startDeadline(opts.signal, STAGE_TIMEOUT_MS);
 	try {
 		const outcome = await runRalphLoop({
 			maxAttempts: 3,
-			signal: opts.signal,
+			signal: deadline.signal,
 			createPass: () => ({ agent: createMemoryAgent(opts.model, opts.streamFn, sopWorkflow(limit), [tool, noop, finish]), prompt }),
 			settlePass: () => {
 				const covered = new Set([...state.consumed, ...state.dropped]).size;
@@ -516,10 +527,12 @@ export async function organizeSops(opts: SopOrganizeOptions): Promise<SopOrganiz
 		attempts = outcome.attempts;
 		const newest = [...pending].reverse().find((atom) => state.consumed.has(atom.id) || state.dropped.has(atom.id));
 		through = newest?.id ?? null;
-		await endRun(outcome.reason);
+		await endRun(deadline.timedOut() ? "blocked" : outcome.reason);
 		return { added: state.changes.length, changes: state.changes, ...(newest ? { through: newest.id } : {}) };
 	} catch (error) {
 		await endRun("error", error instanceof Error ? error.message : String(error));
 		throw error;
+	} finally {
+		deadline.cancel();
 	}
 }

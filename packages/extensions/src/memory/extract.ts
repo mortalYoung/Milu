@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { type AgentTool, type Entry, type Model, projectSlice, type Static, type StreamFn, Type } from "@milu/core";
 
 import { createMemoryAgent } from "./agent.ts";
+import { startDeadline } from "./deadline.ts";
 import { runRalphLoop } from "./loop.ts";
 import {
 	activeRecords,
@@ -14,6 +15,7 @@ import {
 	latestCheckpointIndex,
 	makeCheckpoint,
 	type MemoryKind,
+	type MemoryQueryResult,
 	type QueryMemoryOptions,
 	parseTime,
 	type MemoryRecord,
@@ -24,6 +26,7 @@ import {
 	readMemoryLines,
 	recentRoundFloor,
 	recordProgressIndex,
+	tooManyMatches,
 } from "./store.ts";
 
 const MEMORY_WORKFLOW = `You are running a memory extraction loop for this partner.
@@ -48,7 +51,9 @@ Boundary rules (REQUIRED):
 - One fact never becomes two kinds. If it is stable and timeless it is an attribute, not an event.
 - A user question is not an event by itself; only an episode with something that can be counted or timed is.
 - When a new value replaces an old one, write update (not event) and point supersedes at the old record.
-- Do not write task checklists, narration, or one-off requests as atoms.`;
+- Do not write task checklists, narration, or one-off requests as atoms.
+- Read before writing: if an atom already exists, skip it. Writing the same statement twice is rejected.
+- reference is only for something the user asked for and will reuse. Never store generic assistant advice or recommendation lists.`;
 
 const memoryKindSchema = Type.Union([
 	Type.Literal("attribute"),
@@ -67,6 +72,7 @@ const memoryQueryFields = {
 	from: Type.Optional(Type.String({ description: "read: earliest event time, ISO date or timestamp" })),
 	to: Type.Optional(Type.String({ description: "read: latest event time, ISO date or timestamp" })),
 	limit: Type.Optional(Type.Integer({ description: "read: maximum records to return (default 20)" })),
+	offset: Type.Optional(Type.Integer({ description: "read: skip this many records after ranking (use it to page through a large result)" })),
 	includeSuperseded: Type.Optional(Type.Boolean({ description: "read: include records replaced by an update (default false)" })),
 };
 
@@ -86,7 +92,7 @@ export const memorySchema = Type.Object({
 	}),
 	...memoryQueryFields,
 	kind: Type.Optional(memoryKindSchema),
-	summary: Type.Optional(Type.String({ description: "write: one-line statement of the atom (Chinese if the source is Chinese)" })),
+	summary: Type.Optional(Type.String({ description: "write: one-line statement of the atom, in the same language as the source entries — never translate" })),
 	detail: Type.Optional(Type.String({ description: "write: optional supporting detail" })),
 	rawIds: Type.Optional(Type.Array(Type.String({ description: "write: raw entry ids this atom came from (must be read first)" }))),
 	eventAt: timeField("write: when the event happened, taken from the source entry timestamp"),
@@ -116,13 +122,49 @@ function isWriteCall(params: MemoryToolParams): params is Static<typeof memorySc
 	return "op" in params && params.op === "write";
 }
 
+const MAX_READ_ENTRIES = 60;
+
 const readRawSchema = Type.Object({
 	from: Type.String({ description: "Start reading from this raw id (inclusive); always pass the starting id from the prompt" }),
-	limit: Type.Optional(Type.Integer({ description: "Maximum entries to return (default 50)" })),
+	limit: Type.Optional(Type.Integer({ description: `Maximum entries to return (default 50, at most ${MAX_READ_ENTRIES})` })),
 });
+
+export function shingles(text: string): Set<string> {
+	const normalized = text
+		.toLowerCase()
+		.replace(/[\p{P}\p{S}\s]+/gu, " ")
+		.trim();
+	const out = new Set<string>();
+	for (let index = 0; index + 3 <= normalized.length; index += 1) out.add(normalized.slice(index, index + 3));
+	return out;
+}
+
+export function jaccard(left: Set<string>, right: Set<string>): number {
+	if (left.size === 0 || right.size === 0) return 0;
+	let shared = 0;
+	const [small, large] = left.size <= right.size ? [left, right] : [right, left];
+	for (const item of small) if (large.has(item)) shared += 1;
+	return shared / (left.size + right.size - shared);
+}
+
+const NEAR_DUPLICATE = 0.8;
+
+function normalizedSummary(summary: string): string {
+	return summary.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function dedupeKey(record: { kind: MemoryKind; summary: string; subject?: string; predicate?: string; value?: MemoryValue }): string {
+	if (record.subject && record.predicate && record.value !== undefined) {
+		return `${record.kind}|${record.subject.toLowerCase()}|${record.predicate.toLowerCase()}|${JSON.stringify(record.value)}`;
+	}
+	return `${record.kind}|${normalizedSummary(record.summary)}`;
+}
 
 interface WriteDeps {
 	readonly dir: string;
+	readonly entries: readonly Entry[];
+	readonly seen: Set<string>;
+	readonly similar: { readonly kind: MemoryKind; readonly set: Set<string> }[];
 	readonly indexById: Map<string, number>;
 	readonly readProgress: { index: number };
 	readonly activeById: Map<string, MemoryRecord>;
@@ -131,9 +173,36 @@ interface WriteDeps {
 }
 
 interface MemoryToolOptions {
-	readonly read?: (opts: QueryMemoryOptions) => Promise<readonly MemoryRecord[]>;
+	readonly read?: (opts: QueryMemoryOptions) => Promise<MemoryQueryResult>;
 	readonly write?: WriteDeps;
 	readonly description?: string;
+}
+
+export function entryText(entry: Entry): string {
+	const slice = projectSlice([entry])[0] ?? null;
+	const message = slice as { role?: unknown; content?: unknown } | null;
+	if (!message) return JSON.stringify(entry);
+	return typeof message.content === "string" ? message.content : JSON.stringify(message.content ?? "");
+}
+
+function cjkRatio(text: string): number {
+	let han = 0;
+	let letters = 0;
+	for (const char of text) {
+		if (!/\p{L}/u.test(char)) continue;
+		letters += 1;
+		if (/\p{Script=Han}/u.test(char)) han += 1;
+	}
+	return letters === 0 ? 0 : han / letters;
+}
+
+export function languageProblem(summary: string, sources: readonly Entry[]): string | null {
+	if (sources.length === 0) return null;
+	const source = cjkRatio(sources.map(entryText).join(" "));
+	const atom = cjkRatio(summary);
+	if (source >= 0.3 && atom <= 0.05) return "summary must stay in the source language (Chinese here) — do not translate the conversation";
+	if (source <= 0.05 && atom >= 0.2) return "summary must stay in the source language (English here) — do not translate the conversation";
+	return null;
 }
 
 function entryStamp(entry: Entry): string {
@@ -144,7 +213,7 @@ function entryStamp(entry: Entry): string {
 function createReadRawTool(
 	entries: readonly Entry[],
 	indexById: Map<string, number>,
-	progress: { index: number },
+	progress: { index: number; read: number },
 ): AgentTool<typeof readRawSchema, { ok: boolean; error?: string }> {
 	return {
 		name: "read_raw",
@@ -160,13 +229,16 @@ function createReadRawTool(
 					details: { ok: false, error: "unknown from raw id" },
 				};
 			}
-			const limit = Math.max(1, params.limit ?? 50);
+			const requested = Math.max(1, params.limit ?? 50);
+			const limit = Math.min(requested, MAX_READ_ENTRIES);
 			const selected = entries.slice(startIndex, startIndex + limit);
+			progress.read += selected.length;
 			const last = selected.at(-1);
 			if (last) {
 				const lastIndex = indexById.get(last.id);
 				if (lastIndex !== undefined) progress.index = Math.max(progress.index, lastIndex);
 			}
+			const capped = requested > MAX_READ_ENTRIES;
 			const body = selected
 				.map((entry) => {
 					const slice = projectSlice([entry])[0] ?? null;
@@ -176,7 +248,11 @@ function createReadRawTool(
 					return `[${entry.id}]${stamp ? ` ${stamp}` : ""} ${message ? String(message.role ?? "") : entry.type}: ${content}`;
 				})
 				.join("\n\n");
-			return { content: [{ type: "text", text: body }], details: { ok: true } };
+			const next = selected.at(-1);
+			const note = capped
+				? `\n\n(returned ${selected.length} of ${requested} requested entries — read at most ${MAX_READ_ENTRIES} at a time; continue from ${next?.id ?? "the next id"})`
+				: "";
+			return { content: [{ type: "text", text: body + note }], details: { ok: true } };
 		},
 	};
 }
@@ -222,7 +298,7 @@ function createMemoryTool(opts: MemoryToolOptions): AgentTool<typeof memorySchem
 				const to = parseTime(params.to);
 				if (params.from && from === null) return reject(`from "${params.from}" is not a date`);
 				if (params.to && to === null) return reject(`to "${params.to}" is not a date`);
-				const memories = await opts.read({
+				const page = await opts.read({
 					query: params.query,
 					kinds: params.kinds as readonly MemoryKind[] | undefined,
 					subject: params.subject,
@@ -230,8 +306,12 @@ function createMemoryTool(opts: MemoryToolOptions): AgentTool<typeof memorySchem
 					...(from !== null ? { from } : {}),
 					...(to !== null ? { to } : {}),
 					limit: params.limit,
+					offset: params.offset,
 					includeSuperseded: params.includeSuperseded,
 				});
+				const memories = page.records;
+				const tooMany = tooManyMatches(page);
+				if (tooMany && (params.offset ?? 0) === 0) return reject(tooMany);
 				if (memories.length === 0) return note("No atoms found.");
 				return note(memories.map((memory) => format(memory)).join("\n\n"));
 			}
@@ -247,6 +327,20 @@ function createMemoryTool(opts: MemoryToolOptions): AgentTool<typeof memorySchem
 				return index !== undefined && index <= write.readProgress.index;
 			});
 			if (rawIds.length === 0) return reject("rawIds must reference raw conversation entries you have already read");
+			const sources = rawIds.map((id) => write.entries[write.indexById.get(id)!]).filter((entry): entry is Entry => entry !== undefined);
+			const language = languageProblem(summary, sources);
+			if (language) return reject(language);
+			const key = dedupeKey({
+				kind: params.kind as MemoryKind,
+				summary,
+				...(params.subject ? { subject: params.subject } : {}),
+				...(params.predicate ? { predicate: params.predicate } : {}),
+				...(params.value !== undefined ? { value: params.value as MemoryValue } : {}),
+			});
+			if (write.seen.has(key)) return reject("this atom already exists — skip it instead of writing it again");
+			const candidate = shingles(summary);
+			const twin = write.similar.find((other) => other.kind === params.kind && jaccard(candidate, other.set) >= NEAR_DUPLICATE);
+			if (twin) return reject("this is a near-duplicate of an atom already stored — skip it, or fold the new detail into the existing one");
 			const eventAt = parseTime(params.eventAt);
 			if (params.eventAt && eventAt === null) return reject(`eventAt "${params.eventAt}" is not a date`);
 			const at = parseTime(params.at);
@@ -279,6 +373,8 @@ function createMemoryTool(opts: MemoryToolOptions): AgentTool<typeof memorySchem
 			};
 			await appendMemoryLines(write.dir, [record]);
 			write.records.push(record);
+			write.seen.add(key);
+			write.similar.push({ kind: record.kind, set: candidate });
 			write.activeById.set(record.id, record);
 			if (record.kind === "update" && record.supersedes) write.activeById.delete(record.supersedes);
 			write.onAdded();
@@ -305,6 +401,7 @@ export interface OrganizeMemoryOptions {
 }
 
 const MAX_ORGANIZE_ATTEMPTS = 5;
+const STAGE_TIMEOUT_MS = 8 * 60_000;
 
 export async function organizeMemory(opts: OrganizeMemoryOptions): Promise<number> {
 	await ensureMemoryFile(opts.dir);
@@ -357,21 +454,28 @@ export async function organizeMemory(opts: OrganizeMemoryOptions): Promise<numbe
 		}
 	}
 
-	let passRead = { index: -1 };
+	let passRead = { index: -1, read: 0 };
+	let readEntries = 0;
+	const deadline = startDeadline(opts.signal, STAGE_TIMEOUT_MS);
 	try {
 		const outcome = await runRalphLoop({
 			maxAttempts: MAX_ORGANIZE_ATTEMPTS,
-			signal: opts.signal,
+			signal: deadline.signal,
 			createPass: () => {
-				passRead = { index: -1 };
+				passRead = { index: -1, read: 0 };
 				const startIndex = Math.max(0, cursorIndex + 1);
+				const seen = new Set(records.map((record) => dedupeKey(record)));
+				const similar = records.map((record) => ({ kind: record.kind, set: shingles(record.summary) }));
 				const activeById = new Map(activeRecords(records).map((record) => [record.id, record]));
 				const agent = createMemoryAgent(opts.model, opts.streamFn, MEMORY_WORKFLOW, [
 					createReadRawTool(entries, indexById, passRead),
 					createMemoryTool({
-						read: async (query) => queryMemory(await readMemoryLines(opts.dir), query).records,
+						read: async (query) => queryMemory(await readMemoryLines(opts.dir), query),
 						write: {
 							dir: opts.dir,
+							entries,
+							seen,
+							similar,
 							indexById,
 							readProgress: passRead,
 							activeById,
@@ -385,6 +489,7 @@ export async function organizeMemory(opts: OrganizeMemoryOptions): Promise<numbe
 				return { agent, prompt: `There are still some logs waiting to be extracted. Please read from ${entries[startIndex]!.id}. The last raw id to cover is ${targetRawId}.` };
 			},
 			settlePass: async () => {
+				readEntries += passRead.read;
 				const reached = Math.min(targetIndex, Math.max(passRead.index, recordProgressIndex(records, indexById)));
 				if (reached <= cursorIndex) return "stalled";
 				cursorIndex = reached;
@@ -396,7 +501,7 @@ export async function organizeMemory(opts: OrganizeMemoryOptions): Promise<numbe
 		});
 		attempts = outcome.attempts;
 		const endedAt = Date.now();
-		await logEnd(outcome.reason, endedAt);
+		await logEnd(deadline.timedOut() ? "blocked" : outcome.reason, endedAt);
 		await appendMemoryRun(opts.dir, {
 			runId,
 			stage: "memory",
@@ -404,11 +509,12 @@ export async function organizeMemory(opts: OrganizeMemoryOptions): Promise<numbe
 			startedAt,
 			endedAt,
 			durationMs: endedAt - startedAt,
-			reason: outcome.reason,
+			reason: deadline.timedOut() ? "blocked" : outcome.reason,
 			attempts,
 			added,
 			targetRawId,
 			cursorRawId: cursorIndex >= 0 ? entries[cursorIndex]!.id : null,
+			readEntries,
 			...(checkpoints.length ? { checkpoints } : {}),
 		});
 		return added;
@@ -431,5 +537,7 @@ export async function organizeMemory(opts: OrganizeMemoryOptions): Promise<numbe
 			...(checkpoints.length ? { checkpoints } : {}),
 		});
 		throw error;
+	} finally {
+		deadline.cancel();
 	}
 }

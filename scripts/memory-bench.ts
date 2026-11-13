@@ -110,6 +110,7 @@ async function prepare(root: string, opts: Options, model: { provider: string; m
 	const settings = {
 		partner_profile_path: join(root, "partners"),
 		memoryEnabled: opts.arm !== "b0",
+		memoryPendingRounds: 10000,
 		defaultModel: model,
 	};
 	await writeFile(join(root, "settings.json"), `${JSON.stringify(settings, null, "\t")}\n`);

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { type AgentTool, type Model, type StreamFn, Type } from "@milu/core";
 
 import { createMemoryAgent } from "./agent.ts";
+import { startDeadline } from "./deadline.ts";
 import { runRalphLoop } from "./loop.ts";
 import { appendMemoryRun, atomsAfter, ensureMemoryDir, memoryDir, type MemoryRecord, type MemoryRunLog, type MemoryRunReason, readMemoryLines, readWatermarks } from "./store.ts";
 
@@ -12,6 +13,7 @@ export const personaPath = (dir: string) => join(memoryDir(dir), "persona.md");
 export const MAX_PERSONA_CONTENT = 1200;
 export const MAX_PERSONA_LINE = 120;
 export const PERSONA_SECTIONS = ["Relationship", "Taste"] as const;
+const STAGE_TIMEOUT_MS = 3 * 60_000;
 const MAX_RELATIONSHIP = 4;
 const MAX_TASTE = 6;
 const MAX_TASTE_GROUP = 3;
@@ -99,7 +101,8 @@ export function validatePersona(content: string): string | null {
 	if (headings.join("|") !== PERSONA_SECTIONS.join("|")) {
 		return `body sections must be exactly ${PERSONA_SECTIONS.map((section) => `## ${section}`).join(", ")} in this order (found: ${headings.join(", ") || "none"})`;
 	}
-	if (content.trim().length > MAX_PERSONA_CONTENT) return `the document is ${content.trim().length} characters (max ${MAX_PERSONA_CONTENT})`;
+	if (content.trim().length > MAX_PERSONA_CONTENT)
+		return `the document is ${content.trim().length} characters, ${content.trim().length - MAX_PERSONA_CONTENT} over the ${MAX_PERSONA_CONTENT} limit — drop the least valuable line and rewrite the whole document shorter`;
 	const relationship = bullets(body, "Relationship");
 	const taste = bullets(body, "Taste");
 	if (relationship.length > MAX_RELATIONSHIP) return `Relationship has ${relationship.length} lines (max ${MAX_RELATIONSHIP})`;
@@ -226,6 +229,7 @@ async function runPersona(opts: OrganizePersonaOptions, atoms: readonly MemoryRe
 		});
 	}
 
+	let rejections = 0;
 	const tool: AgentTool<typeof schema, { ok: boolean; error?: string }> = {
 		name: "persona",
 		label: "Persona",
@@ -233,17 +237,24 @@ async function runPersona(opts: OrganizePersonaOptions, atoms: readonly MemoryRe
 		parameters: schema,
 		executionMode: "sequential",
 		async execute(_toolCallId, params) {
-			const reject = (message: string) => ({ content: [{ type: "text" as const, text: `persona rejected: ${message}` }], details: { ok: false, error: message } });
+			const reject = (message: string) => {
+				rejections += 1;
+				return {
+					content: [{ type: "text" as const, text: `persona rejected: ${message}${rejections >= 10 ? " — stopping this pass; nothing was written" : ""}` }],
+					details: { ok: false, error: message },
+					...(rejections >= 10 ? { terminate: true } : {}),
+				};
+			};
 			const note = (text: string) => ({ content: [{ type: "text" as const, text }], details: { ok: true } });
 			if (params.op === "read") return note(state.content || "No persona yet — write the first document.");
 			const content = (params.content ?? "").trim();
 			if (!content) return reject("write needs content (the whole document, not a diff)");
 			const problem = validatePersona(content);
 			if (problem) return reject(problem);
-			const consumed = [...new Set(params.consumed ?? [])].filter((id) => batch.has(id));
-			if (consumed.length === 0) return reject("consumed must list at least one atom id from the batch");
 			const parsed = parsePersona(content);
 			if ("problem" in parsed) return reject(parsed.problem);
+			const consumed = [...new Set([...(params.consumed ?? []), ...parsed.meta.sources])].filter((id) => batch.has(id));
+			if (consumed.length === 0) return reject("consumed (or the document's sources) must list at least one atom id from the batch");
 			const unknown = parsed.meta.sources.filter((id) => !batch.has(id) && !(current?.meta.sources ?? []).includes(id));
 			if (unknown.length > 0) return reject(`these sources are not in the batch you were given: ${unknown.slice(0, 3).join(", ")}`);
 			await writePersonaDoc(opts.dir, content);
@@ -280,10 +291,11 @@ async function runPersona(opts: OrganizePersonaOptions, atoms: readonly MemoryRe
 		"Rewrite the persona so it reflects these atoms. If none of them belongs here, call noop.",
 	].join("\n");
 
+	const deadline = startDeadline(opts.signal, STAGE_TIMEOUT_MS);
 	try {
 		const outcome = await runRalphLoop({
 			maxAttempts: 3,
-			signal: opts.signal,
+			signal: deadline.signal,
 			createPass: () => ({ agent: createMemoryAgent(opts.model, opts.streamFn, WORKFLOW, [tool, noop]), prompt }),
 			settlePass: () => {
 				const covered = new Set([...state.consumed, ...state.dropped]).size;
@@ -293,11 +305,13 @@ async function runPersona(opts: OrganizePersonaOptions, atoms: readonly MemoryRe
 		});
 		attempts = outcome.attempts;
 		const newest = [...atoms].reverse().find((atom) => state.consumed.has(atom.id) || state.dropped.has(atom.id));
-		await endRun(outcome.reason);
+		await endRun(deadline.timedOut() ? "blocked" : outcome.reason);
 		return { writes: state.writes, ...(newest ? { through: newest.id } : {}) };
 	} catch (error) {
 		await endRun("error", error instanceof Error ? error.message : String(error));
 		throw error;
+	} finally {
+		deadline.cancel();
 	}
 }
 

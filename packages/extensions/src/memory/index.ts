@@ -16,7 +16,7 @@ import {
 import { memoryQuerySchema } from "./extract.ts";
 import { MemoryService, IMemoryService } from "./service/index.ts";
 import { readSopDocs, readSopOp, sopReadSchema } from "./sop.ts";
-import { formatMemoryRecord, type MemoryKind, parseTime, RECALL_MAX_DETAIL_CHARS, RECALL_MAX_TOTAL_CHARS } from "./store.ts";
+import { formatMemoryRecord, type MemoryKind, parseTime, RECALL_MAX_DETAIL_CHARS, RECALL_MAX_TOTAL_CHARS, tooManyMatches } from "./store.ts";
 
 interface MemoryParams {
 	readonly query?: string;
@@ -26,6 +26,7 @@ interface MemoryParams {
 	readonly from?: string;
 	readonly to?: string;
 	readonly limit?: number;
+	readonly offset?: number;
 	readonly includeSuperseded?: boolean;
 }
 
@@ -73,7 +74,7 @@ export const memoryExtension: Extension = {
 				name: "memory",
 				label: "Memory",
 				description:
-					"Read this partner's atoms (attribute / event / reference / preference / instruction / update). Matches are ranked by relevance when a query is given, otherwise newest first by event time; records replaced by an update are hidden unless includeSuperseded is true. Conflicts (one subject+predicate with several values) are reported at the end.",
+					"Read this partner's atoms (attribute / event / reference / preference / instruction / update). Matching is literal: terms are split on spaces and punctuation and counted as substrings, and the whole query is also tried as a regex. Matches are ranked by relevance when a query is given, otherwise newest first by event time; records replaced by an update are hidden unless includeSuperseded is true. Conflicts (one subject+predicate with several values) are reported at the end. Before telling the user something was not recorded, try at least: one distinctive word from the question; the same word in the other language (atoms keep their source language, so a Chinese conversation stays Chinese); and a kinds-only read to see what is stored.",
 				parameters: memoryQuerySchema,
 				async run(call: ToolCall, _env: ExecutionEnv) {
 					const params = (call.params ?? {}) as MemoryParams;
@@ -87,8 +88,11 @@ export const memoryExtension: Extension = {
 						...(from !== null ? { from } : {}),
 						...(to !== null ? { to } : {}),
 						limit: params.limit,
+						offset: params.offset,
 						includeSuperseded: params.includeSuperseded,
 					});
+					const tooMany = tooManyMatches(result);
+					if (tooMany && (params.offset ?? 0) === 0) return say(`memory rejected: ${tooMany}`, { ok: false });
 					if (result.records.length === 0) return say("No atoms found.");
 					const parts: string[] = [];
 					let used = 0;
@@ -100,7 +104,8 @@ export const memoryExtension: Extension = {
 					}
 					const lines = [parts.join("\n\n")];
 					if (result.matched > parts.length) {
-						lines.push(`(${result.matched} matched; ${result.matched - parts.length} hidden by the output budget — narrow the query or lower limit.)`);
+						const showing = params.offset ?? 0;
+						lines.push(`(showing ${showing + 1}-${showing + parts.length} of ${result.matched}; use offset=${showing + parts.length} for more, or narrow the query.)`);
 					}
 					if (result.conflicts.length > 0) {
 						lines.push(
