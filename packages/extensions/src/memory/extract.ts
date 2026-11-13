@@ -213,7 +213,7 @@ function entryStamp(entry: Entry): string {
 function createReadRawTool(
 	entries: readonly Entry[],
 	indexById: Map<string, number>,
-	progress: { index: number; read: number },
+	progress: { index: number; read: number; next: number },
 ): AgentTool<typeof readRawSchema, { ok: boolean; error?: string }> {
 	return {
 		name: "read_raw",
@@ -223,6 +223,13 @@ function createReadRawTool(
 		executionMode: "sequential",
 		async execute(_toolCallId, params) {
 			const startIndex = indexById.get(params.from);
+			if (startIndex !== undefined && startIndex > progress.next) {
+				const expectedId = entries[progress.next]?.id ?? params.from;
+				return {
+					content: [{ type: "text", text: `memory rejected: you would skip ${startIndex - progress.next} unread entries — continue from ${expectedId}` }],
+					details: { ok: false, error: "skipped unread entries" },
+				};
+			}
 			if (startIndex === undefined) {
 				return {
 					content: [{ type: "text", text: `Unknown raw id "${params.from}". Start from the id provided in the prompt.` }],
@@ -233,6 +240,7 @@ function createReadRawTool(
 			const limit = Math.min(requested, MAX_READ_ENTRIES);
 			const selected = entries.slice(startIndex, startIndex + limit);
 			progress.read += selected.length;
+			progress.next = Math.max(progress.next, startIndex + selected.length);
 			const last = selected.at(-1);
 			if (last) {
 				const lastIndex = indexById.get(last.id);
@@ -337,10 +345,10 @@ function createMemoryTool(opts: MemoryToolOptions): AgentTool<typeof memorySchem
 				...(params.predicate ? { predicate: params.predicate } : {}),
 				...(params.value !== undefined ? { value: params.value as MemoryValue } : {}),
 			});
-			if (write.seen.has(key)) return reject("this atom already exists — skip it instead of writing it again");
+			if (write.seen.has(key)) return note("memory skipped: this atom already exists — continue with the next one");
 			const candidate = shingles(summary);
 			const twin = write.similar.find((other) => other.kind === params.kind && jaccard(candidate, other.set) >= NEAR_DUPLICATE);
-			if (twin) return reject("this is a near-duplicate of an atom already stored — skip it, or fold the new detail into the existing one");
+			if (twin) return note("memory skipped: near-duplicate of an atom already stored — continue with the next one");
 			const eventAt = parseTime(params.eventAt);
 			if (params.eventAt && eventAt === null) return reject(`eventAt "${params.eventAt}" is not a date`);
 			const at = parseTime(params.at);
@@ -454,7 +462,7 @@ export async function organizeMemory(opts: OrganizeMemoryOptions): Promise<numbe
 		}
 	}
 
-	let passRead = { index: -1, read: 0 };
+	let passRead = { index: -1, read: 0, next: 0 };
 	let readEntries = 0;
 	const deadline = startDeadline(opts.signal, STAGE_TIMEOUT_MS);
 	try {
@@ -462,8 +470,8 @@ export async function organizeMemory(opts: OrganizeMemoryOptions): Promise<numbe
 			maxAttempts: MAX_ORGANIZE_ATTEMPTS,
 			signal: deadline.signal,
 			createPass: () => {
-				passRead = { index: -1, read: 0 };
 				const startIndex = Math.max(0, cursorIndex + 1);
+				passRead = { index: -1, read: 0, next: startIndex };
 				const seen = new Set(records.map((record) => dedupeKey(record)));
 				const similar = records.map((record) => ({ kind: record.kind, set: shingles(record.summary) }));
 				const activeById = new Map(activeRecords(records).map((record) => [record.id, record]));
