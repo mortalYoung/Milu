@@ -35,8 +35,10 @@ export const mentionsPlugin: MarkdownPlugin = {
 			if (target === undefined) return `<code${self.renderAttrs(token)}>${escape(value)}</code>`;
 			const line = target.line === undefined ? "" : ` data-line="${target.line}"`;
 			const where = target.line === undefined ? escape(target.path) : `${escape(target.path)} at line ${target.line}`;
+			const svg = (env as { icon?: (path: string) => string } | undefined)?.icon?.(target.path) ?? "";
+			const icon = svg === "" ? "" : `<span class="md-mention-icon">${svg}</span>`;
 			token.attrJoin("class", "md-mention-chip");
-			return `<code${self.renderAttrs(token)}><button type="button" class="md-file-mention" data-path="${escape(target.path)}"${line} title="${where}" aria-label="Open ${where} in the explorer">${escape(value)}</button></code>`;
+			return `<code${self.renderAttrs(token)}><button type="button" class="md-file-mention" data-path="${escape(target.path)}"${line} title="${where}" aria-label="Open ${where} in the explorer">${icon}${escape(value)}</button></code>`;
 		};
 	},
 };

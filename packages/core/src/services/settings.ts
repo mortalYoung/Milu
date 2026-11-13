@@ -36,6 +36,7 @@ export interface Settings {
 	rememberSession?: boolean;
 	sendWhileRunning?: PendingKind;
 	compaction?: { thresholdRatio?: number };
+	icons?: string;
 }
 
 export function expandHome(value: string): string {

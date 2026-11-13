@@ -64,6 +64,7 @@ const themeExtension: Extension = {
 		const settings = context.settings.declare<ThemeSettings>({ key: "theme", defaults: DEFAULTS });
 		const stored: unknown = settings.get();
 		if (typeof stored !== "object" || stored === null || Array.isArray(stored)) await context.settings.update({ theme: DEFAULTS }).catch(() => undefined);
+		const icons = context.settings.declare<string>({ key: "icons", defaults: "minimal" });
 
 		for (const theme of THEMES) context.disposables.add(context.themes.register(theme));
 
@@ -74,6 +75,7 @@ const themeExtension: Extension = {
 					data: {
 						themes: context.get(IThemesService).list(),
 						settings: settings.get(),
+						icons: icons.get(),
 					},
 				}),
 			}),

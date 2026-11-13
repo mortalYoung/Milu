@@ -258,6 +258,7 @@ export interface ThemeSettings {
 export interface ThemeState {
 	readonly themes: readonly Theme[];
 	readonly settings: ThemeSettings;
+	readonly icons: string;
 }
 
 export interface WelcomeItem {

@@ -14,7 +14,7 @@ import { ArrowDownIcon, CheckIcon, CopyIcon } from "../components/icons.tsx";
 import { TranscriptSkeleton } from "../components/skeletons.tsx";
 import { Welcome } from "../components/welcome.tsx";
 import { TranscriptScroll } from "../scroll-follower.ts";
-import { useImageEnv } from "./image-env.ts";
+import { useMarkdownEnv } from "./markdown-env.ts";
 
 const NO_ENTRIES: readonly SeqEntry[] = [];
 const STEP_NARROW = 560;
@@ -131,7 +131,7 @@ function EscalationCard(props: { item: ViewItem; host: Host; session: string }) 
 }
 
 function AssistantBlock(props: { host: Host; session: string; item: ViewItem; live?: boolean }) {
-	const env = useImageEnv(props.host, props.session, props.item.text, props.item.files);
+	const env = useMarkdownEnv(props.host, props.session, props.item.text, props.item.files);
 	return (
 		<div className={props.live ? "msg-block msg-block-agent is-live" : "msg-block msg-block-agent"} data-entry={props.item.id}>
 			<Markdown port={props.host.markdown} text={props.item.text} env={env} className="msg-body" plain={props.live} />

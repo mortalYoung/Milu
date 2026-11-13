@@ -1,57 +1,12 @@
-import type { Host, SlotProps } from "@milu/window/api";
+import type { Host, IconKind, SlotProps } from "@milu/window/api";
 import { ensureLanguages, getHighlighter, highlightLines, resolveLanguage } from "@milu/window/api/markdown";
-import {
-	Copy,
-	File,
-	FileCode2,
-	FileImage,
-	FileJson,
-	FileText,
-	Folder,
-	FolderOpen,
-	MessageSquareQuote,
-	PanelLeft,
-	PanelLeftClose,
-	PanelLeftOpen,
-	Pilcrow,
-	WrapText,
-	X,
-} from "lucide-react";
+import { Copy, MessageSquareQuote, PanelLeft, PanelLeftClose, PanelLeftOpen, Pilcrow, WrapText, X } from "lucide-react";
 import { type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, Fragment, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 
 import { IExplorerTreeService } from "../service/tree.ts";
 import type { ExplorerEntry, ExplorerFile, OpenFile } from "../types.ts";
 
-const CODE = new Set([
-	"c",
-	"cc",
-	"cpp",
-	"css",
-	"go",
-	"h",
-	"html",
-	"java",
-	"js",
-	"jsx",
-	"kt",
-	"mjs",
-	"php",
-	"py",
-	"rb",
-	"rs",
-	"sh",
-	"swift",
-	"ts",
-	"tsx",
-	"yml",
-	"yaml",
-	"toml",
-	"sql",
-	"zsh",
-]);
-const JSONISH = new Set(["json", "jsonc", "lock"]);
-const IMAGES = new Set(["avif", "bmp", "gif", "ico", "jpeg", "jpg", "png", "svg", "webp"]);
 const MARKDOWN = new Set(["md", "markdown", "mdx"]);
 const MAX_LINES = 3000;
 const LIST_WIDTH = 232;
@@ -82,14 +37,11 @@ function imageSourcesOf(html: string): string[] {
 	return [...sources].slice(0, 24);
 }
 
-function Glyph(props: { name: string; className?: string }) {
-	const className = props.className ?? "explorer-row-icon";
-	const extension = extensionOf(props.name);
-	if (MARKDOWN.has(extension)) return <FileText size={13} className={className} />;
-	if (JSONISH.has(extension)) return <FileJson size={13} className={className} />;
-	if (IMAGES.has(extension)) return <FileImage size={13} className={className} />;
-	if (CODE.has(extension)) return <FileCode2 size={13} className={className} />;
-	return <File size={13} className={className} />;
+function FileIcon(props: { host: Host; name: string; kind: IconKind; open?: boolean }) {
+	const { host } = props;
+	useStore(host.icons.store, (state) => state.id);
+	const svg = host.icons.resolve(props.name, props.kind, props.open === true);
+	return <span className="file-icon" dangerouslySetInnerHTML={{ __html: svg }} />;
 }
 
 interface ListControls {
@@ -289,7 +241,7 @@ export function ExplorerPane(props: SlotProps) {
 					setMenu({ entry, x: event.clientX, y: event.clientY });
 				}}
 			>
-				{directory ? isOpen ? <FolderOpen size={13} className="explorer-row-icon" /> : <Folder size={13} className="explorer-row-icon" /> : <Glyph name={entry.name} />}
+				<FileIcon host={host} name={entry.name} kind={directory ? "directory" : "file"} open={isOpen} />
 				<span className="explorer-name">{entry.name}</span>
 			</button>
 		);
@@ -611,7 +563,7 @@ function FileReader(props: { host: Host; file: OpenFile; list: ListControls; roo
 					{state.opened.map((tab) => (
 						<div className={`explorer-tab${tab.path === file.path ? " on" : ""}`} key={tab.path}>
 							<button type="button" className="explorer-tab-main" onClick={() => tree.activateFile(tab.path)} title={tab.path}>
-								<Glyph name={tab.name} className="explorer-tab-icon" />
+								<FileIcon host={host} name={tab.name} kind="file" />
 								<span className="explorer-tab-name">{tab.name}</span>
 							</button>
 							<button type="button" className="explorer-tab-close" aria-label={`Close ${tab.name}`} onClick={() => tree.closeFile(tab.path)}>

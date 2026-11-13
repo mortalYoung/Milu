@@ -1,5 +1,5 @@
 import type { ThemeMode, ThemeSettings, ThemeState } from "@milu/protocol";
-import type { DialogProps, SessionListView } from "@milu/window/api";
+import type { DialogProps, IconKind, SessionListView } from "@milu/window/api";
 import { Bell, Check, Folder, Search } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useStore } from "zustand";
@@ -362,6 +362,16 @@ function themeOf(value: unknown): ThemeSettings {
 	};
 }
 
+function iconsOf(value: unknown): string {
+	const record = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+	const icons = record["icons"];
+	return typeof icons === "string" && icons !== "" ? icons : "minimal";
+}
+
+function iconsSummary(host: DialogProps["host"], id: string): string {
+	return host.icons.options().find((option) => option.value === id)?.label ?? id;
+}
+
 function themeSummary(host: DialogProps["host"], theme: ThemeSettings): string {
 	const mode = theme.mode === "system" ? "System" : theme.mode === "light" ? "Light" : "Dark";
 	const light = host.theme.themes("light").find((entry) => entry.id === theme.light)?.name ?? theme.light;
@@ -506,6 +516,56 @@ function ThemePanel(props: { host: DialogProps["host"]; value: ThemeSettings; on
 								})}
 							</div>
 						</section>
+					);
+				})}
+			</div>
+		</div>
+	);
+}
+
+function IconSample(props: { host: DialogProps["host"]; theme: string; name: string; kind: IconKind }) {
+	useStore(props.host.icons.store, (state) => state.id);
+	const svg = props.host.icons.glyph(props.theme, props.name, props.kind);
+	return <span className="file-icon" dangerouslySetInnerHTML={{ __html: svg }} />;
+}
+
+const ICON_SAMPLES: readonly { readonly name: string; readonly kind: IconKind }[] = [
+	{ name: "index.ts", kind: "file" },
+	{ name: "package.json", kind: "file" },
+	{ name: "src", kind: "directory" },
+];
+
+function IconsPanel(props: { host: DialogProps["host"]; value: string; onChange: (id: string) => void }) {
+	return (
+		<div className="grid gap-3">
+			<div className="font-sans text-[10.5px] text-muted-soft">The glyphs the file tree draws in front of a name. Extensions may add more.</div>
+			<div className="flex flex-col gap-px" role="radiogroup" aria-label="Icon theme">
+				{props.host.icons.options().map((option) => {
+					const selected = props.value === option.value;
+					return (
+						<button
+							key={option.value}
+							type="button"
+							role="radio"
+							aria-checked={selected}
+							className={`flex w-full cursor-pointer items-center gap-2 rounded-[7px] border px-1.5 py-1 text-left transition-colors duration-100 ${
+								selected ? "border-line bg-selected" : "border-transparent hover:bg-hover"
+							}`}
+							onClick={() => props.onChange(option.value)}
+						>
+							<span className={`grid size-[13px] shrink-0 place-items-center rounded-full border-[1.5px] ${selected ? "border-accent-teal" : "border-line-strong"}`}>
+								{selected ? <span className="size-[5px] rounded-full bg-accent-teal" /> : null}
+							</span>
+							<span className="min-w-0 flex-1">
+								<span className="block font-sans text-[12.5px] leading-tight text-ink">{option.label}</span>
+								<span className="block font-sans text-[10.5px] leading-tight text-muted">{option.value === "minimal" ? "Built in" : "Extension"}</span>
+							</span>
+							<span className="flex shrink-0 items-center gap-1.5" aria-hidden="true">
+								{ICON_SAMPLES.map((sample) => (
+									<IconSample key={sample.name} host={props.host} theme={option.value} name={sample.name} kind={sample.kind} />
+								))}
+							</span>
+						</button>
 					);
 				})}
 			</div>
@@ -714,6 +774,7 @@ export function SettingsDialog(props: DialogProps) {
 			.then((state) => {
 				if (cancelled) return;
 				props.host.theme.hydrate(state);
+				props.host.icons.hydrate(state?.icons);
 				setThemeRevision((revision) => revision + 1);
 			})
 			.catch(() => undefined);
@@ -787,6 +848,22 @@ export function SettingsDialog(props: DialogProps) {
 			setDraft((current) => (current === null ? current : (setIn(current as unknown as Record<string, unknown>, field.id.split("."), previous) as unknown as Settings)));
 			setRowError({ key: rowKeyOf(field), message: reason(error) });
 		});
+	};
+
+	const saveIcons = (id: string): void => {
+		if (draft === null) return;
+		const previous = iconsOf(draft);
+		setRowError(null);
+		setDraft({ ...draft, icons: id } as Settings);
+		void props.host.actions
+			.invoke("settings.update", undefined, { patch: { icons: id } })
+			.then(() => {
+				props.host.icons.select(id);
+			})
+			.catch((error: unknown) => {
+				setDraft((current) => (current === null ? current : ({ ...current, icons: previous } as Settings)));
+				setRowError({ key: "icons", message: reason(error) });
+			});
 	};
 
 	const saveTheme = (next: ThemeSettings): void => {
@@ -899,6 +976,7 @@ export function SettingsDialog(props: DialogProps) {
 	}
 
 	const theme = themeOf(draft);
+	const icons = iconsOf(draft);
 	const bands = CATEGORIES.filter((entry) => {
 		const need = (entry as Category).requires;
 		return need === undefined || snapshot.extensions.includes(need);
@@ -909,15 +987,25 @@ export function SettingsDialog(props: DialogProps) {
 	const searching = q !== "";
 	const fieldMatches = searching ? FIELDS.filter((field) => visible.has(field.category) && `${field.title} ${field.description}`.toLowerCase().includes(q)) : [];
 	const themeMatches = searching && `Theme Follow the system, or force light or dark. Each appearance uses its own palette. ${themeNames}`.toLowerCase().includes(q);
+	const iconsMatches =
+		searching &&
+		`Icons The glyphs the file tree draws in front of a name. Built in, or added by an extension. ${props.host.icons
+			.options()
+			.map((option) => option.label)
+			.join(" ")}`
+			.toLowerCase()
+			.includes(q);
 	const layoutMatches = searching && "Session List layout Focus Detail Groups workspace".toLowerCase().includes(q);
 	const providerMatches = searching ? snapshot.providers.filter((provider) => provider.id.toLowerCase().includes(q)) : [];
-	const totalMatches = fieldMatches.length + (themeMatches ? 1 : 0) + (layoutMatches ? 1 : 0) + providerMatches.length;
+	const totalMatches = fieldMatches.length + (themeMatches ? 1 : 0) + (iconsMatches ? 1 : 0) + (layoutMatches ? 1 : 0) + providerMatches.length;
 	const catMatches = (id: CategoryId): boolean =>
-		fieldMatches.some((field) => field.category === id) || (id === "appearance" && (themeMatches || layoutMatches)) || (id === "providers" && providerMatches.length > 0);
+		fieldMatches.some((field) => field.category === id) ||
+		(id === "appearance" && (themeMatches || iconsMatches || layoutMatches)) ||
+		(id === "providers" && providerMatches.length > 0);
 	const current = bands.find((entry) => entry.id === activeBand) ?? CATEGORIES[0];
 	const bandCount = (id: CategoryId): number => {
 		if (id === "providers") return snapshot.providers.length;
-		if (id === "appearance") return 2;
+		if (id === "appearance") return 3;
 		return FIELDS.filter((field) => field.category === id).length;
 	};
 
@@ -1166,6 +1254,27 @@ export function SettingsDialog(props: DialogProps) {
 		/>
 	);
 
+	const iconsRow = (searchQuery = ""): ReactNode => {
+		const description = "The glyphs the file tree draws in front of a name. Built in, or added by an extension.";
+		return (
+			<SheetRow
+				rowKey="icons"
+				variant="pill"
+				title={searchQuery === "" ? "Icons" : highlight("Icons", searchQuery)}
+				description={searchQuery === "" ? description : highlight(description, searchQuery)}
+				control={<ValueButton value={iconsSummary(props.host, icons)} mode="panel" expanded={open === "icons"} onClick={() => setOpen(open === "icons" ? null : "icons")} />}
+				inline={rowError?.key === "icons" ? <div className="font-mono text-[10px] text-signal">{rowError.message}</div> : undefined}
+				panel={
+					open === "icons" ? (
+						<SheetPanel label="icons">
+							<IconsPanel host={props.host} value={icons} onChange={saveIcons} />
+						</SheetPanel>
+					) : undefined
+				}
+			/>
+		);
+	};
+
 	const sessionLayoutRow = (searchQuery = ""): ReactNode => {
 		const description = "How chats are listed: Focus keeps one preview line; Detail adds a second line; Groups stacks chats by workspace.";
 		return (
@@ -1219,6 +1328,7 @@ export function SettingsDialog(props: DialogProps) {
 			return (
 				<>
 					{themeRow(searchQuery)}
+					{iconsRow(searchQuery)}
 					{sessionLayoutRow(searchQuery)}
 				</>
 			);
@@ -1273,6 +1383,7 @@ export function SettingsDialog(props: DialogProps) {
 			);
 			if (category.id === "appearance") {
 				if (themeMatches) rows.push(themeRow(q));
+				if (iconsMatches) rows.push(iconsRow(q));
 				if (layoutMatches) rows.push(sessionLayoutRow(q));
 				continue;
 			}

@@ -5,6 +5,8 @@ export type { Connection } from "../connection.ts";
 export { IConnection } from "../connection.ts";
 export type { DockService } from "../dock.ts";
 export { IDockService } from "../dock.ts";
+export type { IconsService, IconKind, IconTheme, IconThemeOption } from "../icons.ts";
+export { IIconsService } from "../icons.ts";
 export { createServiceId, type Service } from "@milu/di";
 export type { SelectionService } from "../selection.ts";
 export { ISessionListService } from "../sessions.ts";

@@ -9,6 +9,7 @@ export const BUILTIN: Record<string, () => Promise<{ default: Extension }>> = {
 	fork: () => import("./fork/index.ts"),
 	retry: () => import("./retry/index.ts"),
 	mentions: () => import("./mentions/index.ts"),
+	"icons-catppuccin": () => import("./icons-catppuccin/index.ts"),
 	image: () => import("./image/index.ts"),
 	settings: () => import("./settings/index.ts"),
 	pin: () => import("./pin/index.ts"),

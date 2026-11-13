@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 
 import type { PaletteFile, PaletteFiles } from "../search.ts";
-import { fileGlyph } from "./file-glyph.tsx";
 
 const MODES = [
 	{ id: "sessions", label: "Sessions" },
@@ -63,6 +62,7 @@ export function PaletteDialog(props: DialogProps) {
 	const { host } = props;
 	const sessions = useStore(host.sessions.store, (state) => state.rows);
 	const selected = useStore(host.selection.store, (state) => state.selected);
+	useStore(host.icons.store, (state) => state.id);
 
 	const [mode, setMode] = useState<Mode>(() => (props.data as { mode?: Mode } | undefined)?.mode ?? "sessions");
 	const [grants, setGrants] = useState<readonly GrantRow[]>([]);
@@ -368,7 +368,7 @@ export function PaletteDialog(props: DialogProps) {
 								onMouseEnter={() => setCursor({ stamp, at })}
 								onClick={() => activate(row)}
 							>
-								<span className={`shrink-0 ${picked ? "text-ink" : "text-muted-soft"}`}>{fileGlyph(parts.name)}</span>
+								<span className={`file-icon shrink-0 ${picked ? "text-ink" : "text-muted-soft"}`} dangerouslySetInnerHTML={{ __html: host.icons.resolve(parts.name, "file") }} />
 								<span className="shrink-0 font-mono text-[13px] text-ink">{parts.name}</span>
 								<span className="min-w-0 truncate font-mono text-[12px] text-muted">{parts.dir}</span>
 							</button>

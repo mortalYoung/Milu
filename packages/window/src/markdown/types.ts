@@ -3,6 +3,7 @@ import type { MarkdownIt } from "markdown-it";
 export interface MarkdownEnv {
 	readonly files?: readonly string[];
 	readonly images?: ReadonlyMap<string, string>;
+	readonly icon?: (name: string) => string;
 	readonly session?: string;
 	readonly [key: string]: unknown;
 }
