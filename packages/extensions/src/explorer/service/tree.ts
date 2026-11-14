@@ -2,7 +2,7 @@ import { createServiceId, type Service } from "@milu/di";
 import { type Connection, IConnection, ISelectionService, ISessionListService, type SelectionService, type SessionListService } from "@milu/window/api";
 import { createStore } from "zustand/vanilla";
 
-import type { ExplorerEntry, ExplorerFile, ExplorerListing, OpenFile } from "../types.ts";
+import type { ExplorerEntry, ExplorerFile, ExplorerListing, ExplorerSource, OpenFile } from "../types.ts";
 
 export interface DirState {
 	readonly status: "loading" | "ready" | "error";
@@ -12,6 +12,7 @@ export interface DirState {
 
 export interface ExplorerTree {
 	readonly session: string;
+	readonly source: ExplorerSource;
 	readonly root: string;
 	readonly dirs: Readonly<Record<string, DirState>>;
 	readonly expanded: ReadonlySet<string>;
@@ -24,12 +25,15 @@ export interface ExplorerTree {
 	readonly reading: string | null;
 }
 
+const SOURCE_KEY = "milu.explorer.source";
 const LIST_KEY = "milu.explorer.list";
 const WIDTH_KEY = "milu.explorer.width";
 const LIST_WIDTH = 232;
 const LIST_MIN = 140;
 
 const listOpen = (): boolean => localStorage.getItem(LIST_KEY) !== "0";
+
+const storedSource = (hasWorkspace: boolean): ExplorerSource => (hasWorkspace && localStorage.getItem(SOURCE_KEY) !== "storage" ? "workspace" : "storage");
 
 const listWidth = (): number => {
 	const stored = Number(localStorage.getItem(WIDTH_KEY));
@@ -38,6 +42,7 @@ const listWidth = (): number => {
 
 const EMPTY: ExplorerTree = {
 	session: "",
+	source: "workspace",
 	root: "",
 	dirs: {},
 	expanded: new Set(),
@@ -104,6 +109,13 @@ export class ExplorerTreeService implements Service {
 		await this.load("");
 	}
 
+	async setSource(source: ExplorerSource): Promise<void> {
+		localStorage.setItem(SOURCE_KEY, source === "storage" ? "storage" : "workspace");
+		if (this.store.getState().source === source) return;
+		this._reset();
+		await this.ensureRoot();
+	}
+
 	async load(path: string): Promise<void> {
 		const session = this._session();
 		if (session === "") return;
@@ -111,7 +123,10 @@ export class ExplorerTreeService implements Service {
 		this._tokens.set(path, token);
 		this._patch((tree) => ({ ...tree, dirs: { ...tree.dirs, [path]: { status: "loading" } } }));
 		try {
-			const listing = await call<ExplorerListing>(this._connection, "explorer.list", session, path === "" ? undefined : { path });
+			const listing = await call<ExplorerListing>(this._connection, "explorer.list", session, {
+				source: this.store.getState().source,
+				...(path === "" ? {} : { path }),
+			});
 			if (this._tokens.get(path) !== token) return;
 			this._patch((tree) => ({
 				...tree,
@@ -164,7 +179,7 @@ export class ExplorerTreeService implements Service {
 		if (session === "") return undefined;
 		this._patch((tree) => ({ ...tree, reading: path }));
 		try {
-			return await call<ExplorerFile>(this._connection, "explorer.read", session, { path });
+			return await call<ExplorerFile>(this._connection, "explorer.read", session, { source: this.store.getState().source, path });
 		} finally {
 			this._patch((tree) => ({ ...tree, reading: tree.reading === path ? null : tree.reading }));
 		}
@@ -196,6 +211,7 @@ export class ExplorerTreeService implements Service {
 	}
 
 	async focusDir(path: string): Promise<void> {
+		if (this.store.getState().source === "storage" && this._hasWorkspace()) await this.setSource("workspace");
 		const tree = this.store.getState();
 		const relative = tree.root !== "" && path.startsWith(`${tree.root}/`) ? path.slice(tree.root.length + 1) : path;
 		const expanded = new Set(tree.expanded);
@@ -219,13 +235,22 @@ export class ExplorerTreeService implements Service {
 
 	private _patch(change: (tree: ExplorerTree) => ExplorerTree): void {
 		const session = this._session();
-		this.store.setState((state) => change(state.session === session ? state : { ...EMPTY, session }), true);
+		this.store.setState((state) => change(state.session === session ? state : this._blank(session)), true);
 	}
 
 	private _reset(): void {
 		this._tokens.clear();
 		this._scrollTop = 0;
-		this.store.setState({ ...EMPTY, session: this._session(), listOpen: listOpen(), listWidth: listWidth() }, true);
+		this.store.setState(this._blank(this._session()), true);
+	}
+
+	private _blank(session: string): ExplorerTree {
+		return { ...EMPTY, session, source: storedSource(this._hasWorkspace()), listOpen: listOpen(), listWidth: listWidth() };
+	}
+
+	private _hasWorkspace(): boolean {
+		const session = this._session();
+		return this._sessions.store.getState().rows.find((row) => row.name === session)?.workspace != null;
 	}
 
 	private _session(): string {
