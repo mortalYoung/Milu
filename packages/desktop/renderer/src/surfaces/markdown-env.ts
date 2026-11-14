@@ -1,6 +1,7 @@
 import type { Host } from "@milu/window";
 import type { MarkdownEnv } from "@milu/window/markdown";
 import { useEffect, useMemo, useState } from "react";
+import { useStore } from "zustand";
 
 const ANGLE_IMAGE = /!\[[^\]]*\]\(\s*<([^>]*)>/g;
 const MARKDOWN_IMAGE = /!\[[^\]]*\]\(\s*(?!<)<?([^)\s>]+)>?/g;
@@ -19,10 +20,11 @@ function sourcesOf(text: string): string[] {
 	return [...found].slice(0, MAX_IMAGES);
 }
 
-export function useImageEnv(host: Host, session: string, text: string, files?: readonly string[]): MarkdownEnv | undefined {
+export function useMarkdownEnv(host: Host, session: string, text: string, files?: readonly string[]): MarkdownEnv {
 	const local = useMemo(() => sourcesOf(text), [text]);
 	const key = `${session}\u0000${local.join("\u0000")}`;
 	const [resolved, setResolved] = useState<{ readonly key: string; readonly images: ReadonlyMap<string, string> } | null>(null);
+	const theme = useStore(host.icons.store, (state) => state.id);
 
 	const cached = useMemo(() => {
 		const images = new Map<string, string>();
@@ -62,9 +64,14 @@ export function useImageEnv(host: Host, session: string, text: string, files?: r
 	}, [host, session, local, key, cached]);
 
 	const images = resolved !== null && resolved.key === key ? resolved.images : cached.size > 0 ? cached : null;
+	const icon = useMemo(() => (name: string) => host.icons.glyph(theme, name, "file"), [host, theme]);
 
-	return useMemo(() => {
-		if (files === undefined && images === null) return undefined;
-		return { ...(files === undefined ? {} : { files }), ...(images === null ? {} : { images }) };
-	}, [files, images]);
+	return useMemo(
+		() => ({
+			icon,
+			...(files === undefined ? {} : { files }),
+			...(images === null ? {} : { images }),
+		}),
+		[icon, files, images],
+	);
 }

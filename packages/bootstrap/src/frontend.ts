@@ -10,6 +10,8 @@ import {
 	IFooterService,
 	HeaderService,
 	IHeaderService,
+	IconsService,
+	IIconsService,
 	LayoutService,
 	ILayoutService,
 	HotkeysService,
@@ -107,6 +109,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	services.set(IDialogService, new SyncDescriptor(DialogService, [set.dialogs]));
 	services.set(IActionsService, new SyncDescriptor(ActionsService, [{ ...deps.commands }]));
 	services.set(IHeaderService, new SyncDescriptor(HeaderService));
+	services.set(IIconsService, new SyncDescriptor(IconsService));
 	services.set(IFooterService, new SyncDescriptor(FooterService));
 	services.set(IPickerService, new SyncDescriptor(PickerService));
 	services.set(ISessionListService, new SyncDescriptor(SessionListService));
@@ -138,6 +141,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	const dialogs = container.get(IDialogService);
 	const header = container.get(IHeaderService);
 	const footer = container.get(IFooterService);
+	const icons = container.get(IIconsService);
 	const picker = container.get(IPickerService);
 	const sessions = container.get(ISessionListService);
 	const selection = container.get(ISelectionService);
@@ -233,6 +237,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 			dialogs,
 			header,
 			footer,
+			icons,
 			composer,
 			composerData,
 			triggers,
@@ -302,6 +307,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 			const hydrateTheme = async (): Promise<void> => {
 				const state = await actions.request<ThemeState>("themes.state").catch(() => undefined);
 				theme.hydrate(state);
+				icons.hydrate(state?.icons);
 			};
 
 			disposables.add(

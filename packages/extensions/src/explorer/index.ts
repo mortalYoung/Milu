@@ -1,10 +1,10 @@
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 
-import { type Extension, IExecutionService, type Session, IWatchService } from "@milu/core";
+import { type Extension, expandHome, IExecutionService, type Session, IWatchService } from "@milu/core";
 
 import { openInFinder } from "../open/openers.ts";
 import { gitignoreOf, isIgnoredPath } from "./ignore.ts";
-import type { ExplorerEntry, ExplorerFile, ExplorerListing } from "./types.ts";
+import type { ExplorerEntry, ExplorerFile, ExplorerListing, ExplorerSource } from "./types.ts";
 
 const HIDDEN = new Set([".DS_Store", ".git"]);
 const MAX_BYTES = 512 * 1024;
@@ -45,8 +45,6 @@ const BINARY = new Set([
 	".zip",
 ]);
 
-const workspaceOnly = async (session: Session): Promise<true | null> => ((await session.workspace()) === null ? null : true);
-
 const IMAGE_MIME: Record<string, string> = {
 	".avif": "image/avif",
 	".bmp": "image/bmp",
@@ -77,13 +75,18 @@ const explorerExtension: Extension = {
 	],
 
 	contributions: {
-		"dock.bar": [{ id: "explorer", order: 10, component: "explorer.head", data: workspaceOnly }],
-		"dock.views": [{ id: "explorer", order: 20, component: "explorer.pane", title: "Explorer", icon: "folder-tree", data: workspaceOnly }],
+		"dock.bar": [{ id: "explorer", order: 10, component: "explorer.head" }],
+		"dock.views": [{ id: "explorer", order: 20, component: "explorer.pane", title: "Explorer", icon: "folder-tree" }],
 	},
 
 	activate(context) {
 		const execution = context.get(IExecutionService);
-		const rootOf = async (session: Session): Promise<string> => (await session.workspace())?.path ?? session.root;
+		const sourceOf = (args: unknown): ExplorerSource => ((args as { source?: unknown } | undefined)?.source === "storage" ? "storage" : "workspace");
+
+		const rootOf = async (session: Session, source: ExplorerSource): Promise<string> => {
+			if (source === "storage") return expandHome(session.storage);
+			return (await session.workspace())?.path ?? expandHome(session.storage);
+		};
 		const pathOf = (args: unknown): string => {
 			const path = (args as { path?: string } | undefined)?.path;
 			if (!path) throw new Error("explorer needs a path");
@@ -94,7 +97,7 @@ const explorerExtension: Extension = {
 			id: "explorer.list",
 			run: async ({ session, args }) => {
 				if (!session) throw new Error("explorer.list needs a session");
-				const root = await rootOf(session);
+				const root = await rootOf(session, sourceOf(args));
 				const path = (args as { path?: string } | undefined)?.path ?? root;
 				const listed = await execution.env(root).listDir(path);
 				if (!listed.ok) throw new Error(listed.error.message);
@@ -118,7 +121,7 @@ const explorerExtension: Extension = {
 			run: async ({ session, args }) => {
 				if (!session) throw new Error("explorer.read needs a session");
 				const path = pathOf(args);
-				const env = execution.env(await rootOf(session));
+				const env = execution.env(await rootOf(session, sourceOf(args)));
 				const info = await env.fileInfo(path);
 				const size = info.ok ? info.value.size : 0;
 				if (info.ok && size > MAX_BYTES) return { data: { path, text: "", size, truncated: true } satisfies ExplorerFile };
@@ -138,7 +141,7 @@ const explorerExtension: Extension = {
 				const target = isAbsolute(path) ? path : resolve(dirname(from), path);
 				const mime = IMAGE_MIME[extensionOf(target)];
 				if (mime === undefined) throw new Error(`${extensionOf(target) || "this file"} is not an image`);
-				const env = execution.env(await rootOf(session));
+				const env = execution.env(await rootOf(session, sourceOf(args)));
 				const info = await env.fileInfo(target);
 				if (info.ok && info.value.size > MAX_IMAGE_BYTES) throw new Error(`image is larger than ${MAX_IMAGE_BYTES / 1024 / 1024} MB`);
 				const read = await env.readBinaryFile(target);

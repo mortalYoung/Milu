@@ -382,6 +382,18 @@ body.pane-dragging {
 	-webkit-app-region: no-drag;
 }
 
+.dock-toggle-badge {
+	position: absolute;
+	top: 6px;
+	right: 6px;
+	width: 7px;
+	height: 7px;
+	border-radius: 999px;
+	background: var(--signal);
+	box-shadow: 0 0 0 2px var(--canvas);
+	pointer-events: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.grip.revealed i,
 	.grip-read {
@@ -1075,7 +1087,8 @@ body.pane-dragging {
 }
 
 @media (prefers-reduced-motion: reduce) {
-	.bar-overflow-menu {
+	.bar-overflow-menu,
+	.explorer-menu {
 		animation: none;
 	}
 }
@@ -1285,6 +1298,20 @@ body.pane-dragging {
 .md code.md-mention-chip {
 	display: inline-block;
 	line-height: normal;
+}
+
+.md-mention-icon {
+	display: inline-flex;
+	width: 12px;
+	height: 12px;
+	margin-right: 4px;
+	vertical-align: -1.5px;
+	color: var(--ink-soft);
+}
+
+.md-mention-icon > svg {
+	width: 100%;
+	height: 100%;
 }
 
 .md-file-mention {
@@ -3413,18 +3440,31 @@ body.git-resizing {
 	color: var(--ink);
 }
 
+.file-icon {
+	display: inline-flex;
+	flex: none;
+	width: 13px;
+	height: 13px;
+}
+
+.file-icon > svg {
+	width: 100%;
+	height: 100%;
+}
+
+.explorer-row .file-icon,
+.explorer-tab .file-icon {
+	color: var(--muted-soft);
+}
+
 .explorer-row.ignored .explorer-name,
-.explorer-row.ignored .explorer-row-icon {
+.explorer-row.ignored .file-icon {
 	color: var(--muted-soft);
 	opacity: 0.6;
 }
 
-.explorer-row-icon {
-	flex: none;
-	color: var(--muted-soft);
-}
-
-.explorer-row.selected .explorer-row-icon {
+.explorer-row.selected .file-icon,
+.explorer-tab.on .file-icon {
 	color: var(--ink);
 }
 
@@ -3452,6 +3492,7 @@ body.git-resizing {
 	border-radius: var(--r6);
 	background: var(--surface);
 	box-shadow: 0 8px 24px color-mix(in srgb, var(--ink) 12%, transparent);
+	animation: menu-in 120ms var(--ease-out) both;
 }
 
 .explorer-menu-item {
@@ -3470,6 +3511,99 @@ body.git-resizing {
 
 .explorer-menu-item:hover {
 	background: var(--hover);
+	color: var(--ink);
+}
+
+.explorer-menu-item.on {
+	color: var(--ink);
+}
+
+.explorer-menu-tick {
+	display: inline-block;
+	flex: none;
+	width: 10px;
+	font-family: var(--mono);
+	font-size: 10px;
+	color: var(--ink-soft);
+}
+
+.explorer-source-menu .explorer-menu-item {
+	display: flex;
+	align-items: baseline;
+	gap: 4px;
+}
+
+.explorer-source-menu .explorer-menu-item.on {
+	background: var(--selected);
+}
+
+.explorer-source-menu {
+	min-width: 232px;
+}
+
+.explorer-menu-text {
+	display: flex;
+	flex-direction: column;
+	gap: 1px;
+	min-width: 0;
+}
+
+.explorer-menu-title {
+	font-family: var(--sans);
+	font-size: 12px;
+	line-height: 1.3;
+}
+
+.explorer-menu-path {
+	display: block;
+	max-width: 200px;
+	overflow: hidden;
+	font-family: var(--mono);
+	font-size: 9.5px;
+	line-height: 1.3;
+	color: var(--muted);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.explorer-title {
+	display: flex;
+	flex: 1;
+	justify-content: flex-end;
+	align-items: center;
+	gap: 4px;
+	min-width: 0;
+	height: 22px;
+	margin-right: -4px;
+	padding: 0 4px;
+	border: 0;
+	background: transparent;
+	font-family: var(--mono);
+	font-size: 10px;
+	letter-spacing: 0.12em;
+	text-align: right;
+	text-transform: uppercase;
+	color: var(--muted);
+	cursor: pointer;
+	transition: color 120ms var(--ease-out);
+}
+
+.explorer-title:hover,
+.explorer-title.open {
+	color: var(--ink);
+}
+
+.explorer-title-caret {
+	flex: none;
+	font-size: 9px;
+	line-height: 1;
+	letter-spacing: 0;
+	color: var(--muted-soft);
+	transition: color 120ms var(--ease-out);
+}
+
+.explorer-title:hover .explorer-title-caret,
+.explorer-title.open .explorer-title-caret {
 	color: var(--ink);
 }
 
@@ -3542,15 +3676,6 @@ body.git-resizing {
 	font-size: 12px;
 	color: inherit;
 	cursor: pointer;
-}
-
-.explorer-tab-icon {
-	flex: none;
-	color: var(--muted-soft);
-}
-
-.explorer-tab.on .explorer-tab-icon {
-	color: var(--ink);
 }
 
 .explorer-tab-name {

@@ -1,3 +1,5 @@
+export type ExplorerSource = "workspace" | "storage";
+
 export interface ExplorerEntry {
 	readonly name: string;
 	readonly path: string;

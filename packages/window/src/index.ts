@@ -12,6 +12,7 @@ export { DialogService, IDialogService, type DialogComponent, type DialogProps, 
 export { Connection, IConnection } from "./connection.ts";
 export type { ServerEvent, Transport } from "./transport.ts";
 export { HeaderService, IHeaderService } from "./header.ts";
+export { IconsService, IIconsService, MINIMAL_ICONS, type IconKind, type IconTheme, type IconThemeOption, type IconsState } from "./icons.ts";
 export { FooterService, IFooterService } from "./footer.ts";
 export { LayoutService, ILayoutService } from "./layout.ts";
 export type { FrontEndService } from "./extensions.ts";

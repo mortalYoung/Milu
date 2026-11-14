@@ -14,6 +14,7 @@ import type { FileEventsService } from "./files.ts";
 import type { FooterService } from "./footer.ts";
 import type { HeaderService } from "./header.ts";
 import type { HotkeysService } from "./hotkeys.ts";
+import type { IconsService } from "./icons.ts";
 import type { LayoutService } from "./layout.ts";
 import type { MarkdownPort } from "./markdown/types.ts";
 import type { MotionService } from "./motion.ts";
@@ -50,6 +51,7 @@ export interface Host {
 	readonly dock: DockService;
 	readonly header: HeaderService;
 	readonly footer: FooterService;
+	readonly icons: IconsService;
 	readonly composer: ComposerService;
 	readonly composerData: ComposerDataService;
 	readonly commands: CommandRegistry;

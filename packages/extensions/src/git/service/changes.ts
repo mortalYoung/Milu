@@ -1,9 +1,19 @@
 import { createServiceId, type Service } from "@milu/di";
-import { type Connection, IConnection, ISelectionService, ISessionListService, type SelectionService, type SessionListService } from "@milu/window/api";
+import {
+	type Connection,
+	type DockService,
+	IConnection,
+	IDockService,
+	ISelectionService,
+	ISessionListService,
+	type SelectionService,
+	type SessionListService,
+} from "@milu/window/api";
 import { createStore } from "zustand/vanilla";
 
 import type { GitChange, GitChanges } from "../types.ts";
 
+const DOCK_VIEW = "git";
 const LIST_KEY = "milu.git.list";
 const WIDTH_KEY = "milu.git.width";
 const SPLIT_KEY = "milu.git.split";
@@ -58,14 +68,21 @@ export class GitChangesService implements Service {
 
 	private _stop: (() => void) | null = null;
 	private _rowsStop: (() => void) | null = null;
+	private _changesStop: (() => void) | null = null;
 
 	constructor(
 		@IConnection private readonly _connection: Connection,
 		@ISelectionService private readonly _selection: SelectionService,
 		@ISessionListService private readonly _sessions: SessionListService,
+		@IDockService private readonly _dock: DockService,
 	) {}
 
 	initialize(): void {
+		this._dock.show(DOCK_VIEW, false);
+		this._changesStop = this.store.subscribe((state) => {
+			this._dock.show(DOCK_VIEW, state.changes.length > 0);
+			this._dock.badge(DOCK_VIEW, state.changes.length);
+		});
 		this._stop = this._selection.store.subscribe(() => {
 			this._reset();
 			void this.refresh();
@@ -87,6 +104,8 @@ export class GitChangesService implements Service {
 		this._stop = null;
 		this._rowsStop?.();
 		this._rowsStop = null;
+		this._changesStop?.();
+		this._changesStop = null;
 		this.store.setState({ ...EMPTY }, true);
 	}
 

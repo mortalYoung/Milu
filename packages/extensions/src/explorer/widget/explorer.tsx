@@ -1,57 +1,12 @@
-import type { Host, SlotProps } from "@milu/window/api";
+import { type Host, type IconKind, type SlotProps, tildifyPath } from "@milu/window/api";
 import { ensureLanguages, getHighlighter, highlightLines, resolveLanguage } from "@milu/window/api/markdown";
-import {
-	Copy,
-	File,
-	FileCode2,
-	FileImage,
-	FileJson,
-	FileText,
-	Folder,
-	FolderOpen,
-	MessageSquareQuote,
-	PanelLeft,
-	PanelLeftClose,
-	PanelLeftOpen,
-	Pilcrow,
-	WrapText,
-	X,
-} from "lucide-react";
+import { Copy, MessageSquareQuote, PanelLeft, PanelLeftClose, PanelLeftOpen, Pilcrow, WrapText, X } from "lucide-react";
 import { type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode, Fragment, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 
 import { IExplorerTreeService } from "../service/tree.ts";
-import type { ExplorerEntry, ExplorerFile, OpenFile } from "../types.ts";
+import type { ExplorerEntry, ExplorerFile, ExplorerSource, OpenFile } from "../types.ts";
 
-const CODE = new Set([
-	"c",
-	"cc",
-	"cpp",
-	"css",
-	"go",
-	"h",
-	"html",
-	"java",
-	"js",
-	"jsx",
-	"kt",
-	"mjs",
-	"php",
-	"py",
-	"rb",
-	"rs",
-	"sh",
-	"swift",
-	"ts",
-	"tsx",
-	"yml",
-	"yaml",
-	"toml",
-	"sql",
-	"zsh",
-]);
-const JSONISH = new Set(["json", "jsonc", "lock"]);
-const IMAGES = new Set(["avif", "bmp", "gif", "ico", "jpeg", "jpg", "png", "svg", "webp"]);
 const MARKDOWN = new Set(["md", "markdown", "mdx"]);
 const MAX_LINES = 3000;
 const LIST_WIDTH = 232;
@@ -82,14 +37,11 @@ function imageSourcesOf(html: string): string[] {
 	return [...sources].slice(0, 24);
 }
 
-function Glyph(props: { name: string; className?: string }) {
-	const className = props.className ?? "explorer-row-icon";
-	const extension = extensionOf(props.name);
-	if (MARKDOWN.has(extension)) return <FileText size={13} className={className} />;
-	if (JSONISH.has(extension)) return <FileJson size={13} className={className} />;
-	if (IMAGES.has(extension)) return <FileImage size={13} className={className} />;
-	if (CODE.has(extension)) return <FileCode2 size={13} className={className} />;
-	return <File size={13} className={className} />;
+function FileIcon(props: { host: Host; name: string; kind: IconKind; open?: boolean }) {
+	const { host } = props;
+	useStore(host.icons.store, (state) => state.id);
+	const svg = host.icons.resolve(props.name, props.kind, props.open === true);
+	return <span className="file-icon" dangerouslySetInnerHTML={{ __html: svg }} />;
 }
 
 interface ListControls {
@@ -118,30 +70,79 @@ interface RowMenu {
 	readonly y: number;
 }
 
-function useHasWorkspace(host: Host): boolean {
+function useRoots(host: Host): { readonly workspace: string | null; readonly storage: string } {
 	const selected = useStore(host.selection.store, (state) => state.selected);
-	return useStore(host.sessions.store, (state) => {
-		const row = state.rows.find((each) => each.name === selected);
-		return selected !== "" && row !== undefined && row.workspace != null;
-	});
+	const workspace = useStore(host.sessions.store, (state) => state.rows.find((each) => each.name === selected)?.workspace ?? null);
+	const storage = useStore(host.sessions.store, (state) => state.rows.find((each) => each.name === selected)?.storage ?? "");
+	return { workspace, storage };
 }
+
+const SOURCES: readonly { readonly source: ExplorerSource; readonly label: string }[] = [
+	{ source: "workspace", label: "Workspace" },
+	{ source: "storage", label: "Storage" },
+];
 
 export function ExplorerHead(props: SlotProps) {
 	const { host } = props;
-	const hasWorkspace = useHasWorkspace(host);
+	const roots = useRoots(host);
 	const active = useStore(host.dock.store, (current) => current.active);
 	const tree = host.get(IExplorerTreeService);
 	const state = useStore(tree.store);
+	const [menu, setMenu] = useState<{ readonly right: number; readonly top: number } | null>(null);
+	const sheet = useRef<HTMLDivElement>(null);
 
 	const root = state.dirs[""];
+	const count = root?.entries?.length ?? 0;
 	const rootName = state.root === "" ? "workspace" : (state.root.split("/").filter(Boolean).pop() ?? state.root);
+	const switchable = roots.workspace !== null;
 
-	if (!hasWorkspace || active !== "explorer") return null;
+	useEffect(() => {
+		if (menu === null) return;
+		const onDown = (event: PointerEvent) => {
+			const target = event.target;
+			if (target instanceof Element && target.closest(".explorer-title") !== null) return;
+			if (target instanceof Node && sheet.current?.contains(target) === true) return;
+			setMenu(null);
+		};
+		const onKey = (event: KeyboardEvent) => {
+			if (event.key === "Escape") setMenu(null);
+		};
+		window.addEventListener("pointerdown", onDown);
+		window.addEventListener("keydown", onKey);
+		return () => {
+			window.removeEventListener("pointerdown", onDown);
+			window.removeEventListener("keydown", onKey);
+		};
+	}, [menu]);
+
+	if (active !== "explorer") return null;
+
 	return (
 		<>
-			<span className="dock-bar-title">
-				{rootName} · {root?.entries?.length ?? 0}
-			</span>
+			{switchable ? (
+				<button
+					type="button"
+					className={`explorer-title${menu === null ? "" : " open"}`}
+					aria-label={`Choose the tree root — currently ${rootName}`}
+					aria-haspopup="menu"
+					aria-expanded={menu !== null}
+					title="Choose the tree root"
+					onClick={(event) => {
+						const box = event.currentTarget.getBoundingClientRect();
+						const bar = event.currentTarget.closest(".dock-bar")?.getBoundingClientRect();
+						setMenu(menu === null ? { right: Math.round(window.innerWidth - box.right), top: Math.round((bar?.bottom ?? box.bottom) + 6) } : null);
+					}}
+				>
+					{rootName} · {count}
+					<span className="explorer-title-caret" aria-hidden="true">
+						▾
+					</span>
+				</button>
+			) : (
+				<span className="dock-bar-title">
+					{rootName} · {count}
+				</span>
+			)}
 			{state.reading === null ? null : (
 				<span className="dock-bar-status">
 					<span className="work-dot" />
@@ -150,13 +151,40 @@ export function ExplorerHead(props: SlotProps) {
 					Loading…
 				</span>
 			)}
+			{menu === null ? null : (
+				<div className="explorer-menu explorer-source-menu" ref={sheet} role="menu" style={{ right: menu.right, top: menu.top }}>
+					{SOURCES.map((each) => {
+						const current = state.source === each.source;
+						const path = each.source === "workspace" ? tildifyPath(roots.workspace ?? "") : roots.storage;
+						return (
+							<button
+								key={each.source}
+								type="button"
+								role="menuitemradio"
+								aria-checked={current}
+								className={`explorer-menu-item${current ? " on" : ""}`}
+								title={path}
+								onClick={() => {
+									setMenu(null);
+									void tree.setSource(each.source);
+								}}
+							>
+								<span className="explorer-menu-tick">{current ? "✓" : ""}</span>
+								<span className="explorer-menu-text">
+									<span className="explorer-menu-title">{each.label}</span>
+									{path === "" ? null : <span className="explorer-menu-path">{path}</span>}
+								</span>
+							</button>
+						);
+					})}
+				</div>
+			)}
 		</>
 	);
 }
 
 export function ExplorerPane(props: SlotProps) {
 	const { host } = props;
-	const hasWorkspace = useHasWorkspace(host);
 	const tree = host.get(IExplorerTreeService);
 	const state = useStore(tree.store);
 	const dockWidth = useStore(host.columns.store, (current) => current.columns.dock.width);
@@ -289,7 +317,7 @@ export function ExplorerPane(props: SlotProps) {
 					setMenu({ entry, x: event.clientX, y: event.clientY });
 				}}
 			>
-				{directory ? isOpen ? <FolderOpen size={13} className="explorer-row-icon" /> : <Folder size={13} className="explorer-row-icon" /> : <Glyph name={entry.name} />}
+				<FileIcon host={host} name={entry.name} kind={directory ? "directory" : "file"} open={isOpen} />
 				<span className="explorer-name">{entry.name}</span>
 			</button>
 		);
@@ -312,12 +340,12 @@ export function ExplorerPane(props: SlotProps) {
 		);
 	};
 
-	if (!hasWorkspace) return null;
+	if (session === "") return <p className="explorer-note">no chat selected</p>;
 
 	const treeBody = (
 		<div className="explorer-tree" ref={rows} onScroll={(event) => tree.rememberScroll(event.currentTarget.scrollTop)}>
 			{root === undefined || root.status === "loading" ? (
-				<p className="explorer-note">loading workspace…</p>
+				<p className="explorer-note">reading the tree…</p>
 			) : root.status === "error" ? (
 				<p className="explorer-note">{root.error ?? "failed to load"}</p>
 			) : (
@@ -509,6 +537,7 @@ function FileReader(props: { host: Host; file: OpenFile; list: ListControls; roo
 		if (!render || data === null) return;
 		let alive = true;
 		const path = data.path;
+		const source = state.source;
 		void (async () => {
 			const rendered = await host.markdown.renderFull(data.text);
 			if (!alive) return;
@@ -520,7 +549,7 @@ function FileReader(props: { host: Host; file: OpenFile; list: ListControls; roo
 			const resolved = await Promise.all(
 				sources.map(async (src) => {
 					try {
-						const loaded = await host.actions.request<{ dataUrl?: string }>("explorer.image", session, { from: path, path: src });
+						const loaded = await host.actions.request<{ dataUrl?: string }>("explorer.image", session, { source, from: path, path: src });
 						return [src, loaded?.dataUrl] as const;
 					} catch {
 						return [src, undefined] as const;
@@ -535,7 +564,7 @@ function FileReader(props: { host: Host; file: OpenFile; list: ListControls; roo
 		return () => {
 			alive = false;
 		};
-	}, [host, render, data, session]);
+	}, [host, render, data, session, state.source]);
 
 	useEffect(() => {
 		if (data === null || render || language === null) return;
@@ -611,7 +640,7 @@ function FileReader(props: { host: Host; file: OpenFile; list: ListControls; roo
 					{state.opened.map((tab) => (
 						<div className={`explorer-tab${tab.path === file.path ? " on" : ""}`} key={tab.path}>
 							<button type="button" className="explorer-tab-main" onClick={() => tree.activateFile(tab.path)} title={tab.path}>
-								<Glyph name={tab.name} className="explorer-tab-icon" />
+								<FileIcon host={host} name={tab.name} kind="file" />
 								<span className="explorer-tab-name">{tab.name}</span>
 							</button>
 							<button type="button" className="explorer-tab-close" aria-label={`Close ${tab.name}`} onClick={() => tree.closeFile(tab.path)}>

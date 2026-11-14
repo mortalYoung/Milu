@@ -33,19 +33,23 @@ export interface DockState {
 	readonly visible: boolean;
 	readonly active: string | null;
 	readonly opened: readonly DockTab[];
+	readonly hidden: readonly string[];
+	readonly badges: Readonly<Record<string, number>>;
 	readonly slide: DockSlide | null;
 }
 
-export function dockTabs(views: readonly SlotItem[], opened: readonly DockTab[]): readonly DockTab[] {
+export function dockTabs(views: readonly SlotItem[], opened: readonly DockTab[], hidden: readonly string[] = []): readonly DockTab[] {
 	return [
-		...views.map((item) => ({
-			key: item.id,
-			title: item.title ?? item.id,
-			...(item.icon === undefined ? {} : { icon: item.icon }),
-			component: item.component,
-			...(item.data === undefined ? {} : { data: item.data }),
-			pinned: true,
-		})),
+		...views
+			.filter((item) => !hidden.includes(item.id))
+			.map((item) => ({
+				key: item.id,
+				title: item.title ?? item.id,
+				...(item.icon === undefined ? {} : { icon: item.icon }),
+				component: item.component,
+				...(item.data === undefined ? {} : { data: item.data }),
+				pinned: true,
+			})),
 		...opened,
 	];
 }
@@ -55,6 +59,8 @@ export class DockService implements Service {
 		visible: localStorage.getItem(VISIBLE_KEY) === "1",
 		active: localStorage.getItem(ACTIVE_KEY),
 		opened: [],
+		hidden: [],
+		badges: {},
 		slide: null,
 	}));
 
@@ -91,7 +97,8 @@ export class DockService implements Service {
 	}
 
 	tabs(): readonly DockTab[] {
-		return dockTabs(this.views(), this.store.getState().opened);
+		const state = this.store.getState();
+		return dockTabs(this.views(), state.opened, state.hidden);
 	}
 
 	toggle(): void {
@@ -161,6 +168,23 @@ export class DockService implements Service {
 		this.sync();
 	}
 
+	badge(key: string, count: number): void {
+		const state = this.store.getState();
+		const next = Math.max(0, Math.trunc(count));
+		if ((state.badges[key] ?? 0) === next) return;
+		const badges: Record<string, number> = { ...state.badges };
+		if (next === 0) delete badges[key];
+		else badges[key] = next;
+		this.store.setState({ ...state, badges }, true);
+	}
+
+	show(key: string, shown: boolean): void {
+		const state = this.store.getState();
+		if (state.hidden.includes(key) !== shown) return;
+		this.store.setState({ ...state, hidden: shown ? state.hidden.filter((each) => each !== key) : [...state.hidden, key] }, true);
+		this.sync();
+	}
+
 	close(key: string): void {
 		const state = this.store.getState();
 		if (!state.opened.some((each) => each.key === key)) return;
@@ -189,7 +213,7 @@ export class DockService implements Service {
 		this._stop();
 		for (const disposable of this._disposables) disposable.dispose();
 		this._disposables.length = 0;
-		this.store.setState({ visible: true, active: null, opened: [], slide: null }, true);
+		this.store.setState({ visible: true, active: null, opened: [], hidden: [], badges: {}, slide: null }, true);
 	}
 
 	private _session(): string | undefined {
