@@ -34,7 +34,7 @@ const MEMORY_WORKFLOW = `You are running a memory extraction loop for this partn
 Workflow:
 1. read_raw shows raw conversation entries; each line starts with the entry id and its timestamp.
 2. Call memory op "read" when you need to know what is already stored (structured filters: subject / predicate / kinds).
-3. Write every durable atom with memory op "write".
+3. Write every durable atom with memory op "write", in batches of up to 20 atoms per call.
    - rawIds must be ids you actually read.
    - event / update need eventAt (or at) taken from the source entry timestamp, never "now".
 4. Stop once every atom you found is written; the engine runs another pass while anything is left uncovered.
@@ -54,6 +54,9 @@ Boundary rules (REQUIRED):
 - Do not write task checklists, narration, or one-off requests as atoms.
 - Read before writing: if an atom already exists, skip it. Writing the same statement twice is rejected.
 - reference is only for something the user asked for and will reuse. Never store generic assistant advice or recommendation lists.`;
+
+const MAX_READ_ENTRIES = 60;
+const MAX_WRITE_BATCH = 20;
 
 const memoryKindSchema = Type.Union([
 	Type.Literal("attribute"),
@@ -86,29 +89,33 @@ const memoryItemSchema = Type.Object({
 
 const atomicValue = Type.Union([Type.String(), Type.Number(), Type.Boolean()]);
 
-export const memorySchema = Type.Object({
-	op: Type.Union([Type.Literal("read"), Type.Literal("write")], {
-		description: "read: search this partner's atoms; write: append one atom",
-	}),
-	...memoryQueryFields,
-	kind: Type.Optional(memoryKindSchema),
-	summary: Type.Optional(Type.String({ description: "write: one-line statement of the atom, in the same language as the source entries — never translate" })),
-	detail: Type.Optional(Type.String({ description: "write: optional supporting detail" })),
-	rawIds: Type.Optional(Type.Array(Type.String({ description: "write: raw entry ids this atom came from (must be read first)" }))),
-	eventAt: timeField("write: when the event happened, taken from the source entry timestamp"),
-	at: timeField("write: update only — when the value changed"),
-	subject: Type.Optional(Type.String({ description: "write: attribute / preference / update — who or what the atom is about" })),
-	predicate: Type.Optional(Type.String({ description: "write: attribute / update — the property, e.g. degree, commute_minutes" })),
+const memoryAtomSchema = Type.Object({
+	kind: memoryKindSchema,
+	summary: Type.String({ description: "one-line statement, in the language of the source entries — never translate" }),
+	detail: Type.Optional(Type.String({ description: "optional supporting detail" })),
+	rawIds: Type.Array(Type.String({ description: "raw entry ids this atom came from (must be read first)" })),
+	eventAt: timeField("event: when it happened, taken from the source entry timestamp"),
+	at: timeField("update only — when the value changed"),
+	subject: Type.Optional(Type.String({ description: "attribute / preference / update — who or what the atom is about" })),
+	predicate: Type.Optional(Type.String({ description: "attribute / update — the property, e.g. degree, commute_minutes" })),
 	value: Type.Optional(atomicValue),
 	old: Type.Optional(atomicValue),
 	next: Type.Optional(atomicValue),
 	direction: Type.Optional(Type.Union([Type.Literal("prefer"), Type.Literal("avoid")])),
-	scope: Type.Optional(Type.String({ description: "write: preference — the situation the preference applies to" })),
-	appliesTo: Type.Optional(Type.String({ description: 'write: instruction — the scope of the rule, e.g. "milu-repo" or "global"' })),
+	scope: Type.Optional(Type.String({ description: "preference — the situation the preference applies to" })),
+	appliesTo: Type.Optional(Type.String({ description: 'instruction — the scope of the rule, e.g. "milu-repo" or "global"' })),
 	provider: Type.Optional(Type.Union([Type.Literal("user"), Type.Literal("assistant"), Type.Literal("external")])),
 	outcome: Type.Optional(Type.Union([Type.Literal("done"), Type.Literal("decision"), Type.Literal("issue")])),
-	items: Type.Optional(Type.Array(memoryItemSchema, { description: "write: event — enumerable things this event produced, one item each" })),
-	supersedes: Type.Optional(Type.String({ description: "write: update — the id of the record this value replaces" })),
+	items: Type.Optional(Type.Array(memoryItemSchema, { description: "event — enumerable things this event produced, one item each" })),
+	supersedes: Type.Optional(Type.String({ description: "update — the id of the record this value replaces" })),
+});
+
+export const memorySchema = Type.Object({
+	op: Type.Union([Type.Literal("read"), Type.Literal("write")], {
+		description: "read: search this partner's atoms; write: append atoms in one batch",
+	}),
+	...memoryQueryFields,
+	atoms: Type.Optional(Type.Array(memoryAtomSchema, { description: `write: 1–${MAX_WRITE_BATCH} atoms in one call; each is validated on its own` })),
 });
 
 export const memoryQuerySchema = Type.Object({
@@ -116,13 +123,12 @@ export const memoryQuerySchema = Type.Object({
 	...memoryQueryFields,
 });
 
+type MemoryAtom = Static<typeof memoryAtomSchema>;
 type MemoryToolParams = Static<typeof memorySchema> | Static<typeof memoryQuerySchema>;
 
 function isWriteCall(params: MemoryToolParams): params is Static<typeof memorySchema> {
 	return "op" in params && params.op === "write";
 }
-
-const MAX_READ_ENTRIES = 60;
 
 const readRawSchema = Type.Object({
 	from: Type.String({ description: "Start reading from this raw id (inclusive); always pass the starting id from the prompt" }),
@@ -265,7 +271,7 @@ function createReadRawTool(
 	};
 }
 
-function kindProblem(params: Static<typeof memorySchema>): string | null {
+function kindProblem(params: MemoryAtom): string | null {
 	const kind = params.kind as MemoryKind | undefined;
 	const need = (ok: boolean, field: string): string | null => (ok ? null : `${kind} needs ${field}`);
 	if (!kind) return "write needs kind";
@@ -326,67 +332,113 @@ function createMemoryTool(opts: MemoryToolOptions): AgentTool<typeof memorySchem
 
 			const write = opts.write;
 			if (!write) return reject("write is not available");
-			const problem = kindProblem(params);
-			if (problem) return reject(problem);
-			const summary = (params.summary ?? "").trim();
-			if (!summary) return reject("write needs summary");
-			const rawIds = (params.rawIds ?? []).filter((id) => {
-				const index = write.indexById.get(id);
-				return index !== undefined && index <= write.readProgress.index;
-			});
-			if (rawIds.length === 0) return reject("rawIds must reference raw conversation entries you have already read");
-			const sources = rawIds.map((id) => write.entries[write.indexById.get(id)!]).filter((entry): entry is Entry => entry !== undefined);
-			const language = languageProblem(summary, sources);
-			if (language) return reject(language);
-			const key = dedupeKey({
-				kind: params.kind as MemoryKind,
-				summary,
-				...(params.subject ? { subject: params.subject } : {}),
-				...(params.predicate ? { predicate: params.predicate } : {}),
-				...(params.value !== undefined ? { value: params.value as MemoryValue } : {}),
-			});
-			if (write.seen.has(key)) return note("memory skipped: this atom already exists — continue with the next one");
-			const candidate = shingles(summary);
-			const twin = write.similar.find((other) => other.kind === params.kind && jaccard(candidate, other.set) >= NEAR_DUPLICATE);
-			if (twin) return note("memory skipped: near-duplicate of an atom already stored — continue with the next one");
-			const eventAt = parseTime(params.eventAt);
-			if (params.eventAt && eventAt === null) return reject(`eventAt "${params.eventAt}" is not a date`);
-			const at = parseTime(params.at);
-			if (params.at && at === null) return reject(`at "${params.at}" is not a date`);
-			if (params.kind === "update") {
-				const targetId = params.supersedes ?? "";
-				if (!write.activeById.has(targetId)) return reject(`supersedes "${targetId}" is not an active atom — call memory op "read" to find the current one`);
+			const atoms = params.atoms ?? [];
+			if (atoms.length === 0) return reject("write needs atoms[] (1-20 per call)");
+			if (atoms.length > MAX_WRITE_BATCH) return reject(`at most ${MAX_WRITE_BATCH} atoms per call (got ${atoms.length}) — split the batch`);
+
+			const accepted: MemoryRecord[] = [];
+			const skipped: string[] = [];
+			const refused: string[] = [];
+
+			for (const [index, atom] of atoms.entries()) {
+				const label = `#${index + 1} ${atom.kind ?? "?"}`;
+				const problem = kindProblem(atom);
+				if (problem) {
+					refused.push(`${label}: ${problem}`);
+					continue;
+				}
+				const summary = atom.summary.trim();
+				if (!summary) {
+					refused.push(`${label}: summary is empty`);
+					continue;
+				}
+				const rawIds = atom.rawIds.filter((id) => {
+					const entryIndex = write.indexById.get(id);
+					return entryIndex !== undefined && entryIndex <= write.readProgress.index;
+				});
+				if (rawIds.length === 0) {
+					refused.push(`${label}: rawIds must reference entries you have already read`);
+					continue;
+				}
+				const sources = rawIds.map((id) => write.entries[write.indexById.get(id)!]).filter((entry): entry is Entry => entry !== undefined);
+				const language = languageProblem(summary, sources);
+				if (language) {
+					refused.push(`${label}: ${language}`);
+					continue;
+				}
+				const key = dedupeKey({
+					kind: atom.kind as MemoryKind,
+					summary,
+					...(atom.subject ? { subject: atom.subject } : {}),
+					...(atom.predicate ? { predicate: atom.predicate } : {}),
+					...(atom.value !== undefined ? { value: atom.value as MemoryValue } : {}),
+				});
+				if (write.seen.has(key)) {
+					skipped.push(`${label}: already stored`);
+					continue;
+				}
+				const candidate = shingles(summary);
+				if (write.similar.some((other) => other.kind === atom.kind && jaccard(candidate, other.set) >= NEAR_DUPLICATE)) {
+					skipped.push(`${label}: near-duplicate`);
+					continue;
+				}
+				const eventAt = parseTime(atom.eventAt);
+				if (atom.eventAt && eventAt === null) {
+					refused.push(`${label}: eventAt "${atom.eventAt}" is not a date`);
+					continue;
+				}
+				const at = parseTime(atom.at);
+				if (atom.at && at === null) {
+					refused.push(`${label}: at "${atom.at}" is not a date`);
+					continue;
+				}
+				if (atom.kind === "update" && !write.activeById.has(atom.supersedes ?? "")) {
+					refused.push(`${label}: supersedes "${atom.supersedes}" is not an active atom`);
+					continue;
+				}
+				const record: MemoryRecord = {
+					id: `mem-${randomUUID()}`,
+					createdAt: Date.now(),
+					kind: atom.kind as MemoryKind,
+					source: { rawIds },
+					summary,
+					...(atom.detail ? { detail: atom.detail } : {}),
+					...(eventAt !== null ? { eventAt } : {}),
+					...(at !== null ? { at } : {}),
+					...(atom.subject ? { subject: atom.subject } : {}),
+					...(atom.predicate ? { predicate: atom.predicate } : {}),
+					...(atom.value !== undefined ? { value: atom.value as MemoryValue } : {}),
+					...(atom.old !== undefined ? { old: atom.old as MemoryValue } : {}),
+					...(atom.next !== undefined ? { next: atom.next as MemoryValue } : {}),
+					...(atom.direction ? { direction: atom.direction } : {}),
+					...(atom.scope ? { scope: atom.scope } : {}),
+					...(atom.appliesTo ? { appliesTo: atom.appliesTo } : {}),
+					...(atom.provider ? { provider: atom.provider } : {}),
+					...(atom.outcome ? { outcome: atom.outcome } : {}),
+					...(atom.items?.length ? { items: atom.items } : {}),
+					...(atom.supersedes ? { supersedes: atom.supersedes } : {}),
+				};
+				accepted.push(record);
+				write.seen.add(key);
+				write.similar.push({ kind: record.kind, set: candidate });
 			}
-			const record: MemoryRecord = {
-				id: `mem-${randomUUID()}`,
-				createdAt: Date.now(),
-				kind: params.kind as MemoryKind,
-				source: { rawIds },
-				summary,
-				...(params.detail ? { detail: params.detail } : {}),
-				...(eventAt !== null ? { eventAt } : {}),
-				...(at !== null ? { at } : {}),
-				...(params.subject ? { subject: params.subject } : {}),
-				...(params.predicate ? { predicate: params.predicate } : {}),
-				...(params.value !== undefined ? { value: params.value as MemoryValue } : {}),
-				...(params.old !== undefined ? { old: params.old as MemoryValue } : {}),
-				...(params.next !== undefined ? { next: params.next as MemoryValue } : {}),
-				...(params.direction ? { direction: params.direction } : {}),
-				...(params.scope ? { scope: params.scope } : {}),
-				...(params.appliesTo ? { appliesTo: params.appliesTo } : {}),
-				...(params.provider ? { provider: params.provider } : {}),
-				...(params.outcome ? { outcome: params.outcome } : {}),
-				...(params.items?.length ? { items: params.items } : {}),
-				...(params.supersedes ? { supersedes: params.supersedes } : {}),
-			};
-			await appendMemoryLines(write.dir, [record]);
-			write.records.push(record);
-			write.seen.add(key);
-			write.similar.push({ kind: record.kind, set: candidate });
-			write.activeById.set(record.id, record);
-			if (record.kind === "update" && record.supersedes) write.activeById.delete(record.supersedes);
-			write.onAdded();
-			return note(`memory ${record.id} written`);
+
+			if (accepted.length === 0) {
+				const reasons = [...skipped, ...refused].slice(0, 6).join("; ");
+				return note(`memory: nothing written — ${reasons || "no atoms given"}`);
+			}
+
+			await appendMemoryLines(write.dir, accepted);
+			for (const record of accepted) {
+				write.records.push(record);
+				write.activeById.set(record.id, record);
+				if (record.kind === "update" && record.supersedes) write.activeById.delete(record.supersedes);
+				write.onAdded();
+			}
+			const summaryParts = [`memory: wrote ${accepted.length} atom(s)`];
+			if (skipped.length > 0) summaryParts.push(`skipped ${skipped.length} (${skipped.slice(0, 3).join("; ")})`);
+			if (refused.length > 0) summaryParts.push(`rejected ${refused.length} (${refused.slice(0, 3).join("; ")})`);
+			return note(summaryParts.join(" · "));
 		},
 	};
 }
@@ -464,6 +516,8 @@ export async function organizeMemory(opts: OrganizeMemoryOptions): Promise<numbe
 
 	let passRead = { index: -1, read: 0, next: 0 };
 	let readEntries = 0;
+	let hint = "";
+	let addedAtPassStart = 0;
 	const deadline = startDeadline(opts.signal, STAGE_TIMEOUT_MS);
 	try {
 		const outcome = await runRalphLoop({
@@ -475,6 +529,7 @@ export async function organizeMemory(opts: OrganizeMemoryOptions): Promise<numbe
 				const seen = new Set(records.map((record) => dedupeKey(record)));
 				const similar = records.map((record) => ({ kind: record.kind, set: shingles(record.summary) }));
 				const activeById = new Map(activeRecords(records).map((record) => [record.id, record]));
+				addedAtPassStart = added;
 				const agent = createMemoryAgent(opts.model, opts.streamFn, MEMORY_WORKFLOW, [
 					createReadRawTool(entries, indexById, passRead),
 					createMemoryTool({
@@ -494,10 +549,18 @@ export async function organizeMemory(opts: OrganizeMemoryOptions): Promise<numbe
 						},
 					}),
 				]);
-				return { agent, prompt: `There are still some logs waiting to be extracted. Please read from ${entries[startIndex]!.id}. The last raw id to cover is ${targetRawId}.` };
+				const body = `There are still some logs waiting to be extracted. Please read from ${entries[startIndex]!.id}. The last raw id to cover is ${targetRawId}.`;
+				return { agent, prompt: hint ? `${body}\n\n${hint}` : body };
 			},
 			settlePass: async () => {
 				readEntries += passRead.read;
+				const passAdded = added - addedAtPassStart;
+				if (passAdded === 0 && passRead.read > 0) {
+					hint = `You read ${passRead.read} entries last pass and wrote no atoms. Re-scan that range: a purchase, download, first/last time, count or receipt is its own event with items[] — do not fold it into a habit or taste statement.`;
+					passRead = { index: passRead.index, read: 0, next: passRead.next };
+					return "advanced";
+				}
+				hint = "";
 				const reached = Math.min(targetIndex, Math.max(passRead.index, recordProgressIndex(records, indexById)));
 				if (reached <= cursorIndex) return "stalled";
 				cursorIndex = reached;
