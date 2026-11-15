@@ -8,10 +8,13 @@ export type MemoryKind = "attribute" | "event" | "reference" | "preference" | "i
 
 export type MemoryValue = string | number | boolean;
 
+export type MemoryItemType = "possession" | "media" | "consumable" | "experience" | "person" | "place" | "information" | "other";
+
 export interface MemoryItem {
 	readonly name: string;
-	readonly action?: string;
+	readonly type?: MemoryItemType;
 	readonly amount?: number;
+	readonly action?: string;
 }
 
 export interface MemoryRecord {
@@ -114,7 +117,11 @@ export function formatMemoryRecord(record: MemoryRecord, opts: { withDetail?: bo
 		lines.push(`${formatValue(record.old)} → ${formatValue(record.next)}${record.at ? ` (${isoDay(record.at)})` : ""}`);
 	}
 	if (record.items?.length) {
-		lines.push(record.items.map((item) => `- ${item.name}${item.action ? ` · ${item.action}` : ""}${item.amount !== undefined ? ` · ${item.amount}` : ""}`).join("\n"));
+		lines.push(
+			record.items
+				.map((item) => `- ${item.name}${item.type ? ` · ${item.type}` : item.action ? ` · ${item.action}` : ""}${item.amount !== undefined ? ` · ${item.amount}` : ""}`)
+				.join("\n"),
+		);
 	}
 	if (opts.withDetail && record.detail) {
 		const detail =
@@ -361,7 +368,15 @@ export function queryMemory(lines: readonly MemoryLine[], opts: QueryMemoryOptio
 		const at = eventTime(record);
 		if (opts.from !== undefined && at < opts.from) continue;
 		if (opts.to !== undefined && at > opts.to) continue;
-		const score = hits === null ? 0 : hits(record.summary) * 3 + hits(record.detail ?? "");
+		const haystack = [
+			record.summary,
+			record.detail ?? "",
+			record.subject ?? "",
+			record.predicate ?? "",
+			record.value === undefined ? "" : String(record.value),
+			...(record.items ?? []).flatMap((item) => [item.name, item.type ?? "", item.action ?? ""]),
+		].join(" ");
+		const score = hits === null ? 0 : hits(haystack) * 3;
 		if (hits !== null && score === 0) continue;
 		matched.push({ record, score });
 	}

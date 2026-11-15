@@ -74,7 +74,7 @@ export const memoryExtension: Extension = {
 				name: "memory",
 				label: "Memory",
 				description:
-					"Read this partner's atoms (attribute / event / reference / preference / instruction / update). Matching is literal: terms are split on spaces and punctuation and counted as substrings, and the whole query is also tried as a regex. Matches are ranked by relevance when a query is given, otherwise newest first by event time; records replaced by an update are hidden unless includeSuperseded is true. Conflicts (one subject+predicate with several values) are reported at the end. Before telling the user something was not recorded, try at least: one distinctive word from the question; the same word in the other language (atoms keep their source language, so a Chinese conversation stays Chinese); and a kinds-only read to see what is stored.",
+					"Read this partner's stored atoms — what they own, what happened, what they prefer, the rules they set. Use it whenever an answer depends on this user's own history, possessions or preferences; never assert those from general knowledge, and check a question's premise against what is stored before accepting it. Matching is literal (see the parameters); more than 30 matches is refused with narrowing hints, and records replaced by an update stay hidden unless includeSuperseded.",
 				parameters: memoryQuerySchema,
 				async run(call: ToolCall, _env: ExecutionEnv) {
 					const params = (call.params ?? {}) as MemoryParams;

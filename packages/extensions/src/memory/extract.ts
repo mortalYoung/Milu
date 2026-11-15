@@ -41,7 +41,7 @@ Workflow:
 
 Kinds (6):
 - attribute: stable, no occurrence time, written as subject + predicate + value (e.g. degree, commute minutes, model of a device).
-- event: something that happened at a time and can repeat or be counted. Carries eventAt; items[] for enumerable things (each counted thing is one item); value for a number; outcome only when the episode ended as a decision or an issue.
+- event: something that happened at a time and can repeat or be counted. Carries eventAt; items[] for the objects involved (each object one item, with its type); value for a number; outcome only when the episode ended as a decision or an issue.
 - reference: a list, address, parameter or plan given by the assistant or an external source. provider is user / assistant / external.
 - preference: "I prefer / I avoid", with direction and scope (the situation it applies to).
 - instruction: a long-term requirement the user sets for your behaviour. appliesTo names the scope ("milu-repo", "global").
@@ -50,6 +50,7 @@ Kinds (6):
 Boundary rules (REQUIRED):
 - One fact never becomes two kinds. If it is stable and timeless it is an attribute, not an event.
 - A user question is not an event by itself; only an episode with something that can be counted or timed is.
+  "User asked where they went" / "User wanted to know how many X" records the conversation, not the user's life — the question is already in the transcript. Skip it.
 - When a new value replaces an old one, write update (not event) and point supersedes at the old record.
 - Do not write task checklists, narration, or one-off requests as atoms.
 - Read before writing: if an atom already exists, skip it. Writing the same statement twice is rejected.
@@ -68,7 +69,12 @@ const memoryKindSchema = Type.Union([
 ]);
 
 const memoryQueryFields = {
-	query: Type.Optional(Type.String({ description: "read: keywords matched against summary/detail, split on spaces, `|`, `,`, `/`; the whole query is also matched as a regex" })),
+	query: Type.Optional(
+		Type.String({
+			description:
+				"read: terms split on spaces and punctuation match as literal substrings of summary/detail, and the whole query is also tried as a regex. If nothing matches, retry with one distinctive word, the same word in the source language, or drop to kinds alone",
+		}),
+	),
 	kinds: Type.Optional(Type.Array(memoryKindSchema, { description: "read: only return these kinds" })),
 	subject: Type.Optional(Type.String({ description: "read: exact subject filter (case-insensitive)" })),
 	predicate: Type.Optional(Type.String({ description: "read: exact predicate filter (case-insensitive)" })),
@@ -82,9 +88,24 @@ const memoryQueryFields = {
 const timeField = (description: string) => Type.Optional(Type.String({ description }));
 
 const memoryItemSchema = Type.Object({
-	name: Type.String({ description: "what the item is, e.g. a venue or a device" }),
-	action: Type.Optional(Type.String({ description: "what happened to it (exchange, buy, visit, …)" })),
-	amount: Type.Optional(Type.Number({ description: "counted amount for this item" })),
+	name: Type.String({ description: "the object, named the way the user names it" }),
+	type: Type.Union(
+		[
+			Type.Literal("possession"),
+			Type.Literal("media"),
+			Type.Literal("consumable"),
+			Type.Literal("experience"),
+			Type.Literal("person"),
+			Type.Literal("place"),
+			Type.Literal("information"),
+			Type.Literal("other"),
+		],
+		{
+			description:
+				"what the item is, never what happened to it: possession (a thing or entitlement held), media (a titled work), consumable (used up), experience (an occurrence taken part in), person, place, information (knowledge, plans, addresses), other",
+		},
+	),
+	amount: Type.Optional(Type.Number({ description: "counted amount, not money" })),
 });
 
 const atomicValue = Type.Union([Type.String(), Type.Number(), Type.Boolean()]);
@@ -211,9 +232,10 @@ export function languageProblem(summary: string, sources: readonly Entry[]): str
 	return null;
 }
 
-function entryStamp(entry: Entry): string {
-	const timestamp = (entry as { timestamp?: unknown }).timestamp;
-	return typeof timestamp === "number" ? new Date(timestamp).toISOString() : "";
+export function entryStamp(entry: Entry): string {
+	const messageAt = (entry as { message?: { timestamp?: unknown } }).message?.timestamp;
+	const at = typeof messageAt === "number" ? messageAt : (entry as { timestamp?: unknown }).timestamp;
+	return typeof at === "number" ? new Date(at).toISOString() : "";
 }
 
 function createReadRawTool(
@@ -269,6 +291,16 @@ function createReadRawTool(
 			return { content: [{ type: "text", text: body + note }], details: { ok: true } };
 		},
 	};
+}
+
+const META_EVENT =
+	/^(the\s+)?user\s+(asked|asks|wondered|inquires?|inquired|wanted to know|requested)\s+(me|you|the assistant|whether|if|how|what|where|when|who|why|which)\b|^用户(问|询问|想知道|问到)/iu;
+
+export function metaEventProblem(atom: { kind?: MemoryKind; summary: string; items?: readonly unknown[]; value?: unknown; outcome?: unknown }): string | null {
+	if (atom.kind !== "event") return null;
+	if (atom.items?.length || atom.value !== undefined || atom.outcome !== undefined) return null;
+	if (!META_EVENT.test(atom.summary.trim())) return null;
+	return "an event records something that happened to the user, not a question they asked — the question is already in the transcript";
 }
 
 function kindProblem(params: MemoryAtom): string | null {
@@ -345,6 +377,17 @@ function createMemoryTool(opts: MemoryToolOptions): AgentTool<typeof memorySchem
 				const problem = kindProblem(atom);
 				if (problem) {
 					refused.push(`${label}: ${problem}`);
+					continue;
+				}
+				const meta = metaEventProblem({
+					kind: atom.kind as MemoryKind,
+					summary: atom.summary,
+					...(atom.items ? { items: atom.items } : {}),
+					...(atom.value !== undefined ? { value: atom.value } : {}),
+					...(atom.outcome ? { outcome: atom.outcome } : {}),
+				});
+				if (meta) {
+					refused.push(`${label}: ${meta}`);
 					continue;
 				}
 				const summary = atom.summary.trim();
