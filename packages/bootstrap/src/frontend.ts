@@ -327,7 +327,15 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 					transcript.append(session, entry);
 					if (entry.entry.type !== "custom") return;
 					const kind = entry.entry.customType;
-					if (kind !== LOG_EVENTS.taskStart && kind !== LOG_EVENTS.taskEnd && kind !== LOG_EVENTS.escalationRequest && kind !== LOG_EVENTS.escalationDecision) return;
+					if (
+						kind !== LOG_EVENTS.taskStart &&
+						kind !== LOG_EVENTS.taskEnd &&
+						kind !== LOG_EVENTS.escalationRequest &&
+						kind !== LOG_EVENTS.escalationDecision &&
+						kind !== LOG_EVENTS.memoryRunStart &&
+						kind !== LOG_EVENTS.memoryRunEnd
+					)
+						return;
 					void sessions.refresh();
 				}),
 			);

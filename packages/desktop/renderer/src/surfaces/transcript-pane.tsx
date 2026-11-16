@@ -1,16 +1,13 @@
-import { type SlotItem, SLOT_POINTS, type SeqEntry } from "@milu/protocol";
-import { type DisplayRow, type Host, type SurfaceProps, type ViewItem, formatHistoryTime, layoutView, liveRowsOf, projectView } from "@milu/window";
-import { Tip } from "@milu/window/api/tooltip";
-import type { MarkdownPort } from "@milu/window/markdown";
-import { Markdown } from "@milu/window/markdown/react";
+import { SLOT_POINTS, type SeqEntry } from "@milu/protocol";
+import { type DisplayRow, type Host, type SurfaceProps, type ViewItem, layoutView, liveRowsOf, projectView } from "@milu/window";
+import { AgentMessage, PeerMessage, UserMessage } from "@milu/window/api/messages";
 import { createElement, memo, useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 
 import { mark } from "../boot.ts";
-import { copyPath } from "../clipboard.ts";
 import { ChatBar } from "../components/chat-bar.tsx";
 import { Composer } from "../components/composer.tsx";
-import { ArrowDownIcon, CheckIcon, CopyIcon } from "../components/icons.tsx";
+import { ArrowDownIcon } from "../components/icons.tsx";
 import { TranscriptSkeleton } from "../components/skeletons.tsx";
 import { Welcome } from "../components/welcome.tsx";
 import { TranscriptScroll } from "../scroll-follower.ts";
@@ -20,80 +17,6 @@ const NO_ENTRIES: readonly SeqEntry[] = [];
 const STEP_NARROW = 560;
 const NO_PANES: readonly never[] = [];
 const NO_ROWS: readonly DisplayRow[] = [];
-const NO_ITEMS: readonly SlotItem[] = [];
-
-function CopyButton(props: { text: string }) {
-	const [copied, setCopied] = useState(false);
-	return (
-		<Tip label={copied ? "Copied" : "Copy message"}>
-			<button
-				type="button"
-				className={copied ? "msg-copy copied" : "msg-copy"}
-				aria-label={copied ? "Copied" : "Copy message"}
-				onClick={() => {
-					void copyPath(props.text);
-					setCopied(true);
-					window.setTimeout(() => setCopied(false), 1200);
-				}}
-			>
-				{copied ? <CheckIcon size={11} /> : <CopyIcon size={11} />}
-			</button>
-		</Tip>
-	);
-}
-
-function MessageMeta(props: { host: Host; item: ViewItem; className?: string }) {
-	const items = useStore(props.host.slots.store, (state) => state.points[SLOT_POINTS.messageMeta] ?? NO_ITEMS);
-	const components = useStore(props.host.slots.store, (state) => state.components);
-	return (
-		<div className={props.className === undefined ? "msg-meta" : `msg-meta ${props.className}`}>
-			<CopyButton text={props.item.text} />
-			{props.item.from === undefined || props.item.from === "" ? null : (
-				<>
-					<span className="msg-from">{props.item.from}</span>
-					<span className="msg-dot">·</span>
-				</>
-			)}
-			{items.map((slot) => {
-				const Widget = components.get(slot.component);
-				return Widget === undefined ? null : <Widget key={slot.id} host={props.host} data={props.item} />;
-			})}
-			<time className="msg-at" dateTime={new Date(props.item.time).toISOString()}>
-				{formatHistoryTime(props.item.time)}
-			</time>
-		</div>
-	);
-}
-
-function UserBubble(props: { host: Host; item: ViewItem }) {
-	const schedule = props.item.schedule;
-	return (
-		<div className="msg-block msg-block-user" data-entry={props.item.id}>
-			{schedule ? (
-				<div className="msg-origin">
-					<span className="msg-origin-badge">scheduled</span>
-					<span className="msg-origin-title">{schedule.title}</span>
-					<span className="msg-origin-when">{schedule.trigger === "manual" ? "manual" : "on time"}</span>
-					{schedule.status ? <span className={"msg-origin-status is-" + schedule.status}>{schedule.status === "dispatched" ? "sent" : schedule.status}</span> : null}
-					{schedule.error ? <span className="msg-origin-error">{schedule.error}</span> : null}
-				</div>
-			) : null}
-			<div className="msg-user read-clamp">{props.item.text}</div>
-			<MessageMeta host={props.host} item={props.item} />
-		</div>
-	);
-}
-
-function PeerCard(props: { host: Host; item: ViewItem; port: MarkdownPort }) {
-	return (
-		<div className="msg-reply" data-entry={props.item.id}>
-			<MessageMeta host={props.host} item={props.item} className="msg-reply-meta" />
-			<div className="msg-reply-body read-clamp">
-				<Markdown port={props.port} text={props.item.text} />
-			</div>
-		</div>
-	);
-}
 
 function EscalationCard(props: { item: ViewItem; host: Host; session: string }) {
 	const escalation = props.item.escalation;
@@ -132,12 +55,7 @@ function EscalationCard(props: { item: ViewItem; host: Host; session: string }) 
 
 function AssistantBlock(props: { host: Host; session: string; item: ViewItem; live?: boolean }) {
 	const env = useMarkdownEnv(props.host, props.session, props.item.text, props.item.files);
-	return (
-		<div className={props.live ? "msg-block msg-block-agent is-live" : "msg-block msg-block-agent"} data-entry={props.item.id}>
-			<Markdown port={props.host.markdown} text={props.item.text} env={env} className="msg-body" plain={props.live} />
-			<MessageMeta host={props.host} item={props.item} className={props.live ? "invisible" : undefined} />
-		</div>
-	);
+	return <AgentMessage host={props.host} item={props.item} env={env} live={props.live} />;
 }
 
 const TranscriptRow = memo(function TranscriptRow(props: { host: Host; session: string; item: ViewItem }) {
@@ -157,7 +75,7 @@ const TranscriptRow = memo(function TranscriptRow(props: { host: Host; session: 
 				<span>{item.text}</span>
 			</div>
 		);
-	if (item.kind === "user") return item.from ? <PeerCard host={host} item={item} port={host.markdown} /> : <UserBubble host={host} item={item} />;
+	if (item.kind === "user") return item.from ? <PeerMessage host={host} item={item} port={host.markdown} /> : <UserMessage host={host} item={item} />;
 	const Row = host.rows.get(item.kind);
 	if (Row) return createElement(Row, { host, data: { item } });
 	return <AssistantBlock host={host} session={session} item={item} />;

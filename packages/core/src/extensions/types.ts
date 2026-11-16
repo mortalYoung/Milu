@@ -5,7 +5,7 @@ import type {
 	ExtensionServiceDeclaration as ContractServiceDeclaration,
 	ExtensionWidget,
 } from "@milu/extension-types";
-import { SLOT_POINTS, type ComposerCommand, type SlotItem, type WelcomeItem } from "@milu/protocol";
+import { SLOT_POINTS, type ComposerCommand, type SessionSignalTone, type SlotItem, type WelcomeItem } from "@milu/protocol";
 
 import type { ActionService } from "../services/actions.ts";
 import type { ComposerService } from "../services/composer.ts";
@@ -55,6 +55,8 @@ export interface SessionSignalItem {
 	readonly title: SessionValue<string>;
 	readonly icon?: string;
 	readonly count?: SessionValue<number>;
+	readonly chip?: boolean;
+	readonly tone?: SessionSignalTone;
 }
 
 export interface SessionMenuItemBase {

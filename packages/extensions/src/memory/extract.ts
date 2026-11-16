@@ -28,6 +28,7 @@ import {
 	recordProgressIndex,
 	tooManyMatches,
 } from "./store.ts";
+import { trajectoryRecordsOf } from "./trace.ts";
 
 const MEMORY_WORKFLOW = `You are running a memory extraction loop for this partner.
 
@@ -227,8 +228,8 @@ export function languageProblem(summary: string, sources: readonly Entry[]): str
 	if (sources.length === 0) return null;
 	const source = cjkRatio(sources.map(entryText).join(" "));
 	const atom = cjkRatio(summary);
-	if (source >= 0.3 && atom <= 0.05) return "summary must stay in the source language (Chinese here) — do not translate the conversation";
-	if (source <= 0.05 && atom >= 0.2) return "summary must stay in the source language (English here) — do not translate the conversation";
+	if (source >= 0.3 && atom <= 0.05) return "summary must stay in the source language (Chinese here) — do not translate the conversation; rewrite this summary in Chinese";
+	if (source <= 0.05 && atom >= 0.2) return "summary must stay in the source language (English here) — do not translate the conversation; rewrite this summary in English";
 	return null;
 }
 
@@ -300,26 +301,40 @@ export function metaEventProblem(atom: { kind?: MemoryKind; summary: string; ite
 	if (atom.kind !== "event") return null;
 	if (atom.items?.length || atom.value !== undefined || atom.outcome !== undefined) return null;
 	if (!META_EVENT.test(atom.summary.trim())) return null;
-	return "an event records something that happened to the user, not a question they asked — the question is already in the transcript";
+	return "an event records something that happened to the user, not a question they asked — record the fact the question was about, or drop it: the question is already in the transcript";
 }
 
 function kindProblem(params: MemoryAtom): string | null {
 	const kind = params.kind as MemoryKind | undefined;
-	const need = (ok: boolean, field: string): string | null => (ok ? null : `${kind} needs ${field}`);
-	if (!kind) return "write needs kind";
-	if (kind === "attribute") return need(Boolean(params.subject && params.predicate && params.value !== undefined), "subject, predicate and value");
+	const need = (ok: boolean, field: string, fix: string): string | null => (ok ? null : `${kind} needs ${field} — ${fix}`);
+	if (!kind) return "write needs kind — pick attribute / event / preference / reference / instruction / update to match what you read";
+	if (kind === "attribute")
+		return need(
+			Boolean(params.subject && params.predicate && params.value !== undefined),
+			"subject, predicate and value",
+			'a durable fact reads like {subject: "device", predicate: "os", value: "macOS 15"} — drop the atom if it has no such triple',
+		);
 	if (kind === "event") {
-		if (!params.eventAt) return "event needs eventAt (the source entry timestamp)";
-		return need(Boolean(params.items?.length || params.value !== undefined), "items[] or a numeric value");
+		if (!params.eventAt) return "event needs eventAt — copy the timestamp of the source entry that records what happened";
+		return need(Boolean(params.items?.length || params.value !== undefined), "items[] or a numeric value", "list what the event covered, or give the number it produced");
 	}
-	if (kind === "preference") return need(Boolean(params.direction && params.scope), "direction and scope");
-	if (kind === "reference") return need(Boolean(params.provider), "provider (user / assistant / external)");
-	if (kind === "instruction") return need(Boolean(params.appliesTo), "appliesTo (the scope of the rule)");
+	if (kind === "preference")
+		return need(
+			Boolean(params.direction && params.scope),
+			"direction and scope",
+			'say which way the user leans and where it applies, e.g. direction: "prefers terse replies", scope: "code review"',
+		);
+	if (kind === "reference") return need(Boolean(params.provider), "provider (user / assistant / external)", "name who holds the thing you are pointing at");
+	if (kind === "instruction") return need(Boolean(params.appliesTo), "appliesTo (the scope of the rule)", "say what the rule governs so it is recalled when that work happens");
 	if (kind === "update") {
-		if (!params.subject || !params.predicate) return "update needs subject and predicate";
-		if (params.old === undefined || params.next === undefined) return "update needs old and next";
-		if (!params.at) return "update needs at (when the value changed)";
-		return need(Boolean(params.supersedes), "supersedes (the id of the record being replaced)");
+		if (!params.subject || !params.predicate) return "update needs subject and predicate — make them identical to the atom being replaced so the chain matches";
+		if (params.old === undefined || params.next === undefined) return "update needs old and next — give the value before and after the change";
+		if (!params.at) return "update needs at (when the value changed) — copy the date of the entry where the change happened";
+		return need(
+			Boolean(params.supersedes),
+			"supersedes (the id of the record being replaced)",
+			"recall the atom with op read and pass its id, or write a plain attribute when nothing is being replaced",
+		);
 	}
 	return null;
 }
@@ -339,11 +354,11 @@ function createMemoryTool(opts: MemoryToolOptions): AgentTool<typeof memorySchem
 			const note = (text: string) => ({ content: [{ type: "text" as const, text }], details: { ok: true } });
 
 			if (!isWriteCall(params)) {
-				if (!opts.read) return reject("read is not available");
+				if (!opts.read) return reject("read is not available in this pass — write the atoms you extracted instead");
 				const from = parseTime(params.from);
 				const to = parseTime(params.to);
-				if (params.from && from === null) return reject(`from "${params.from}" is not a date`);
-				if (params.to && to === null) return reject(`to "${params.to}" is not a date`);
+				if (params.from && from === null) return reject(`from "${params.from}" is not a date — pass YYYY-MM-DD, a full ISO timestamp, or a 13-digit epoch in ms`);
+				if (params.to && to === null) return reject(`to "${params.to}" is not a date — pass YYYY-MM-DD, a full ISO timestamp, or a 13-digit epoch in ms`);
 				const page = await opts.read({
 					query: params.query,
 					kinds: params.kinds as readonly MemoryKind[] | undefined,
@@ -363,9 +378,9 @@ function createMemoryTool(opts: MemoryToolOptions): AgentTool<typeof memorySchem
 			}
 
 			const write = opts.write;
-			if (!write) return reject("write is not available");
+			if (!write) return reject("write is not available in this pass — this tool is read-only here; recall with op read instead");
 			const atoms = params.atoms ?? [];
-			if (atoms.length === 0) return reject("write needs atoms[] (1-20 per call)");
+			if (atoms.length === 0) return reject("write needs atoms[] — one entry per extracted fact, 1-20 per call");
 			if (atoms.length > MAX_WRITE_BATCH) return reject(`at most ${MAX_WRITE_BATCH} atoms per call (got ${atoms.length}) — split the batch`);
 
 			const accepted: MemoryRecord[] = [];
@@ -392,7 +407,7 @@ function createMemoryTool(opts: MemoryToolOptions): AgentTool<typeof memorySchem
 				}
 				const summary = atom.summary.trim();
 				if (!summary) {
-					refused.push(`${label}: summary is empty`);
+					refused.push(`${label}: summary is empty — write one line stating the fact, in the source language`);
 					continue;
 				}
 				const rawIds = atom.rawIds.filter((id) => {
@@ -400,7 +415,7 @@ function createMemoryTool(opts: MemoryToolOptions): AgentTool<typeof memorySchem
 					return entryIndex !== undefined && entryIndex <= write.readProgress.index;
 				});
 				if (rawIds.length === 0) {
-					refused.push(`${label}: rawIds must reference entries you have already read`);
+					refused.push(`${label}: rawIds must reference entries you have already read — copy the [id] of an entry returned by read_raw in this pass`);
 					continue;
 				}
 				const sources = rawIds.map((id) => write.entries[write.indexById.get(id)!]).filter((entry): entry is Entry => entry !== undefined);
@@ -417,26 +432,28 @@ function createMemoryTool(opts: MemoryToolOptions): AgentTool<typeof memorySchem
 					...(atom.value !== undefined ? { value: atom.value as MemoryValue } : {}),
 				});
 				if (write.seen.has(key)) {
-					skipped.push(`${label}: already stored`);
+					skipped.push(`${label}: already stored — do not write it twice`);
 					continue;
 				}
 				const candidate = shingles(summary);
 				if (write.similar.some((other) => other.kind === atom.kind && jaccard(candidate, other.set) >= NEAR_DUPLICATE)) {
-					skipped.push(`${label}: near-duplicate`);
+					skipped.push(`${label}: near-duplicate of a stored atom — fold the new detail into that atom with an update instead of adding a second one`);
 					continue;
 				}
 				const eventAt = parseTime(atom.eventAt);
 				if (atom.eventAt && eventAt === null) {
-					refused.push(`${label}: eventAt "${atom.eventAt}" is not a date`);
+					refused.push(`${label}: eventAt "${atom.eventAt}" is not a date — copy the source entry's timestamp as YYYY-MM-DD or a full ISO timestamp`);
 					continue;
 				}
 				const at = parseTime(atom.at);
 				if (atom.at && at === null) {
-					refused.push(`${label}: at "${atom.at}" is not a date`);
+					refused.push(`${label}: at "${atom.at}" is not a date — pass the day the value changed as YYYY-MM-DD`);
 					continue;
 				}
 				if (atom.kind === "update" && !write.activeById.has(atom.supersedes ?? "")) {
-					refused.push(`${label}: supersedes "${atom.supersedes}" is not an active atom`);
+					refused.push(
+						`${label}: supersedes "${atom.supersedes}" is not an active atom — recall the live id with op read, or write a plain attribute when nothing is being replaced`,
+					);
 					continue;
 				}
 				const record: MemoryRecord = {
@@ -468,7 +485,7 @@ function createMemoryTool(opts: MemoryToolOptions): AgentTool<typeof memorySchem
 
 			if (accepted.length === 0) {
 				const reasons = [...skipped, ...refused].slice(0, 6).join("; ");
-				return note(`memory: nothing written — ${reasons || "no atoms given"}`);
+				return note(`memory: nothing written — ${reasons || "no atoms given"}. Fix the lines above and call write again with only the atoms that pass`);
 			}
 
 			await appendMemoryLines(write.dir, accepted);
@@ -518,6 +535,7 @@ export async function organizeMemory(opts: OrganizeMemoryOptions): Promise<numbe
 	const targetIndex = indexById.get(targetRawId) ?? entries.length - 1;
 	const runId = `run-${randomUUID()}`;
 	const startedAt = Date.now();
+	const modelName = `${opts.model.provider}/${opts.model.id ?? "default"}`;
 	const checkpoints: string[] = [];
 	let attempts = 0;
 	let added = 0;
@@ -566,6 +584,17 @@ export async function organizeMemory(opts: OrganizeMemoryOptions): Promise<numbe
 		const outcome = await runRalphLoop({
 			maxAttempts: MAX_ORGANIZE_ATTEMPTS,
 			signal: deadline.signal,
+			onProgress: (passes) => {
+				void opts.logRun?.trace?.({
+					runId,
+					stage: "memory",
+					model: modelName,
+					startedAt,
+					endedAt: Date.now(),
+					reason: "unfinished",
+					records: trajectoryRecordsOf(passes, { runId, startedAt, model: modelName }),
+				});
+			},
 			createPass: () => {
 				const startIndex = Math.max(0, cursorIndex + 1);
 				passRead = { index: -1, read: 0, next: startIndex };
@@ -615,15 +644,25 @@ export async function organizeMemory(opts: OrganizeMemoryOptions): Promise<numbe
 		});
 		attempts = outcome.attempts;
 		const endedAt = Date.now();
-		await logEnd(deadline.timedOut() ? "blocked" : outcome.reason, endedAt);
+		const reason = deadline.timedOut() ? "blocked" : outcome.reason;
+		await logEnd(reason, endedAt);
+		await opts.logRun?.trace?.({
+			runId,
+			stage: "memory",
+			model: modelName,
+			startedAt,
+			endedAt,
+			reason,
+			records: trajectoryRecordsOf(outcome.passes, { runId, startedAt, model: modelName }),
+		});
 		await appendMemoryRun(opts.dir, {
 			runId,
 			stage: "memory",
-			model: `${opts.model.provider}/${opts.model.id ?? "default"}`,
+			model: modelName,
 			startedAt,
 			endedAt,
 			durationMs: endedAt - startedAt,
-			reason: deadline.timedOut() ? "blocked" : outcome.reason,
+			reason,
 			attempts,
 			added,
 			targetRawId,

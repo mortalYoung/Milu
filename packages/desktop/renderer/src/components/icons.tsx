@@ -3,6 +3,7 @@ import {
 	ArrowDown,
 	ArrowUp,
 	ArrowUpFromLine,
+	Brain,
 	Check,
 	ChevronDown,
 	ChevronRight,
@@ -65,6 +66,7 @@ export const ArrowUpIcon = sized(ArrowUp);
 export const SquarePenIcon = sized(SquarePen);
 export const AlarmClockIcon = sized(AlarmClock);
 export const TerminalIcon = sized(Terminal);
+export const BrainIcon = sized(Brain);
 
 const NAMED: Record<string, (props: { size?: number; className?: string }) => ReactNode> = {
 	info: InfoIcon,
@@ -82,6 +84,7 @@ const NAMED: Record<string, (props: { size?: number; className?: string }) => Re
 	"arrow-up-from-line": ArrowUpFromLineIcon,
 	"alarm-clock": AlarmClockIcon,
 	terminal: TerminalIcon,
+	brain: BrainIcon,
 };
 
 export function IconByName(props: { name?: string; size?: number; className?: string }) {

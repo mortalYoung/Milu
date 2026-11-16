@@ -216,7 +216,7 @@ export function SessionDetailsDialog(props: DialogProps) {
 							) : null}
 						</section>
 
-						<MemorySection memory={details?.memory ?? null} loading={!details && !error} />
+						<MemorySection memory={details?.memory ?? null} loading={!details && !error} onOpen={() => void props.host.actions.invoke("memory.open", shown.name)} />
 						<ScheduleSection data={details?.schedules ?? null} sandbox={sandbox} loading={!details && !error} />
 					</div>
 

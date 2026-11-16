@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, appendFile, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { EVENTS, type Entry } from "@milu/core";
+
+import type { TrajectoryRecord } from "../trajectory/model.ts";
 
 export type MemoryKind = "attribute" | "event" | "reference" | "preference" | "instruction" | "update";
 
@@ -81,11 +83,68 @@ export interface MemoryRunLog {
 		readonly reason: MemoryRunReason;
 		readonly added: number;
 	}): Promise<void>;
+	trace?(data: {
+		readonly runId: string;
+		readonly stage: MemoryRunStage;
+		readonly model: string;
+		readonly startedAt: number;
+		readonly endedAt: number;
+		readonly reason: MemoryRunReason;
+		readonly records: readonly TrajectoryRecord[];
+	}): Promise<void>;
 }
 
 export const memoryDir = (dir: string) => join(dir, ".memory");
 export const memoryFilePath = (dir: string) => join(memoryDir(dir), "memories.jsonl");
 export const memoryRunsFilePath = (dir: string) => join(memoryDir(dir), "runs.jsonl");
+export const memoryTracesDir = (dir: string) => join(memoryDir(dir), "traces");
+
+export interface MemoryTrace {
+	readonly runId: string;
+	readonly stage: MemoryRunStage;
+	readonly model: string;
+	readonly startedAt: number;
+	readonly endedAt: number;
+	readonly reason: MemoryRunReason;
+	readonly records: readonly TrajectoryRecord[];
+}
+
+const MAX_TRACES = 20;
+
+export async function writeMemoryTrace(dir: string, trace: MemoryTrace): Promise<void> {
+	const target = join(memoryTracesDir(dir), `${trace.runId}.json`);
+	try {
+		await mkdir(memoryTracesDir(dir), { recursive: true });
+		await writeFile(target, `${JSON.stringify(trace)}\n`, "utf8");
+	} catch (error) {
+		console.error("memory trace write failed:", error);
+		return;
+	}
+	try {
+		const names = (await readdir(memoryTracesDir(dir))).filter((name) => name.endsWith(".json"));
+		if (names.length <= MAX_TRACES) return;
+		const stamped = await Promise.all(names.map(async (name) => ({ name, at: (await stat(join(memoryTracesDir(dir), name))).mtimeMs })));
+		stamped.sort((left, right) => right.at - left.at);
+		for (const extra of stamped.slice(MAX_TRACES)) await rm(join(memoryTracesDir(dir), extra.name), { force: true });
+	} catch {}
+}
+
+export async function readMemoryTrace(dir: string, runId: string): Promise<MemoryTrace | null> {
+	try {
+		return JSON.parse(await readFile(join(memoryTracesDir(dir), `${runId}.json`), "utf8")) as MemoryTrace;
+	} catch {
+		return null;
+	}
+}
+
+export async function hasMemoryTrace(dir: string, runId: string): Promise<boolean> {
+	try {
+		await access(join(memoryTracesDir(dir), `${runId}.json`));
+		return true;
+	} catch {
+		return false;
+	}
+}
 export const watermarksFilePath = (dir: string) => join(memoryDir(dir), "watermarks.json");
 
 export const RECALL_MAX_DETAIL_CHARS = 400;
@@ -185,6 +244,10 @@ export interface MemoryRunSummary {
 	readonly startedAt: number;
 	readonly durationMs: number;
 	readonly added: number;
+	readonly model: string;
+	readonly attempts: number;
+	readonly readEntries: number;
+	readonly trace: boolean;
 	readonly error?: string;
 }
 
@@ -194,7 +257,7 @@ export async function readMemoryRunSummaries(dir: string, limit = 5): Promise<{ 
 		let total = 0;
 		for (let index = 0; index < raw.length; index += 1) if (raw.charCodeAt(index) === 10) total += 1;
 		if (raw.length > 0 && raw.charCodeAt(raw.length - 1) !== 10) total += 1;
-		const runs: MemoryRunSummary[] = [];
+		const runs: Omit<MemoryRunSummary, "trace">[] = [];
 		let end = raw.length;
 		while (end > 0 && runs.length < limit) {
 			const start = raw.lastIndexOf("\n", end - 1) + 1;
@@ -210,11 +273,16 @@ export async function readMemoryRunSummaries(dir: string, limit = 5): Promise<{ 
 					startedAt: record.startedAt,
 					durationMs: record.durationMs,
 					added: record.added,
+					model: record.model,
+					attempts: record.attempts,
+					readEntries: record.readEntries ?? 0,
 					...(record.error ? { error: record.error } : {}),
 				});
 			} catch {}
 		}
-		return { runs: runs.reverse(), total };
+		const ordered = runs.reverse();
+		const traced = await Promise.all(ordered.map(async (run) => ({ ...run, trace: await hasMemoryTrace(dir, run.runId) })));
+		return { runs: traced, total };
 	} catch {
 		return { runs: [], total: 0 };
 	}

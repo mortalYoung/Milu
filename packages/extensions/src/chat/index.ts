@@ -36,10 +36,10 @@ const chatExtension: Extension = {
 	activate(context) {
 		context.actions.register({
 			id: "chat.command",
-			run: ({ session, args }) => {
+			run: ({ session, args, dialog, sessions }) => {
 				if (!session) throw new Error("chat.command needs a session");
 				const value = args as { name?: unknown; args?: unknown } | undefined;
-				return context.get(ICommandsService).run(session, String(value?.name ?? ""), typeof value?.args === "string" ? value.args : "");
+				return context.get(ICommandsService).run(session, String(value?.name ?? ""), typeof value?.args === "string" ? value.args : "", { dialog, sessions });
 			},
 		});
 

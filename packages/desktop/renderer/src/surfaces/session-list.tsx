@@ -114,10 +114,12 @@ function Row(props: {
 	const taskSignal = restSignals.find((signal) => typeof signal.count === "number" && signal.count > 0);
 	const taskCount = taskSignal?.count ?? 0;
 	const otherSignals = taskSignal === undefined ? restSignals : restSignals.filter((signal) => signal !== taskSignal);
+	const chipSignals = otherSignals.filter((signal) => signal.chip === true);
+	const iconSignals = otherSignals.filter((signal) => signal.chip !== true);
 	const signals =
-		otherSignals.length > 0 ? (
+		iconSignals.length > 0 ? (
 			<span className="flex shrink-0 items-center gap-1">
-				{otherSignals.map((signal) => (
+				{iconSignals.map((signal) => (
 					<span key={signal.id} role="img" aria-label={signal.title} title={signal.title} className="inline-flex text-muted">
 						<IconByName name={signal.icon} size={9} />
 					</span>
@@ -138,13 +140,18 @@ function Row(props: {
 			? `compacting${taskCount > 0 ? ` · ${taskCount} background task${taskCount === 1 ? "" : "s"}` : ""}`
 			: (taskSignal?.title ?? "");
 	const status =
-		statusLabel === "" && approvalSignal === undefined ? null : (
+		statusLabel === "" && approvalSignal === undefined && chipSignals.length === 0 ? null : (
 			<span className="flex shrink-0 items-center gap-1">
 				{approvalSignal === undefined ? null : (
 					<span className="session-status is-approval" title={approvalSignal.title}>
 						<span>APPROVAL</span>
 					</span>
 				)}
+				{chipSignals.map((signal) => (
+					<span key={signal.id} className={`session-status is-live${signal.tone === undefined ? "" : ` tone-${signal.tone}`}`} title={signal.title}>
+						<span>{signal.title}</span>
+					</span>
+				))}
 				{statusLabel === "" ? null : (
 					<span className={`session-status${live ? " is-live" : ""}`} title={statusTitle}>
 						<span>{statusLabel}</span>

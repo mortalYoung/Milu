@@ -5,6 +5,7 @@ import { DEFAULT_DIGEST_MAX_ITEMS, planMemoryCompaction } from "../compact.ts";
 import { buildPersonaReminder, buildSopIndexReminder, type MemoryReminder } from "../context.ts";
 import { organizeMemory } from "../extract.ts";
 import { organizePersona, personaSignature, readPersonaDoc } from "../persona.ts";
+import { buildMemorySnapshot, type MemorySnapshot, type MemorySnapshotRunning } from "../snapshot.ts";
 import { MAX_SOPS, organizeSops, sopIndex, type SopChange, sopSignature, sopUpdateReminder } from "../sop.ts";
 import {
 	activeRecords,
@@ -22,7 +23,9 @@ import {
 	writeWatermark,
 	type MemoryRecord,
 	type MemoryRunLog,
+	type MemoryRunStage,
 	memoryPendingStatus,
+	writeMemoryTrace,
 } from "../store.ts";
 
 const DEFAULT_PENDING_ROUNDS = 10;
@@ -30,10 +33,11 @@ const STAGE_DEBOUNCE_MS = 30_000;
 
 export class MemoryService implements Service {
 	private readonly _stageTimers = new Map<string, ReturnType<typeof setTimeout>>();
-	private readonly _rounds = new Map<string, number>();
 	private readonly _runs = new Map<string, Promise<number>>();
 	private readonly _stageRuns = new Map<string, Promise<number>>();
 	private readonly _sopChanges = new Map<string, SopChange[]>();
+	private readonly _running = new Map<string, MemorySnapshotRunning[]>();
+	private readonly _traces = new Map<string, Promise<void>>();
 	private readonly _personaCache = new Map<string, { readonly signature: string; readonly reminder: MemoryReminder | null }>();
 	private readonly _sopCache = new Map<string, { readonly signature: string; readonly reminder: MemoryReminder | null }>();
 	private _watermarkChain: Promise<void> = Promise.resolve();
@@ -53,10 +57,6 @@ export class MemoryService implements Service {
 		this._maxSops = this._settingsService.declare({ key: "memoryMaxSops", defaults: MAX_SOPS });
 		this._pendingRounds = this._settingsService.declare({ key: "memoryPendingRounds", defaults: DEFAULT_PENDING_ROUNDS });
 		this._digestMaxItems = this._settingsService.declare({ key: "memoryDigestMaxItems", defaults: DEFAULT_DIGEST_MAX_ITEMS });
-		for (const name of await this._sessionService.names()) {
-			const session = this._sessionService.get(name);
-			void this._boot(session).catch((error: unknown) => console.error(`memory ${name}: boot failed:`, error));
-		}
 	}
 
 	async read(session: Session, opts: QueryMemoryOptions): Promise<MemoryQueryResult> {
@@ -82,8 +82,8 @@ export class MemoryService implements Service {
 			await this._stages(session, model);
 			return added;
 		})().finally(() => {
+			this._leave(session.name, "memory");
 			this._runs.delete(session.name);
-			this._rounds.set(session.name, 0);
 		});
 		this._runs.set(session.name, run);
 		return run;
@@ -173,16 +173,24 @@ export class MemoryService implements Service {
 		].join("\n");
 	}
 
+	async snapshot(session: Session): Promise<MemorySnapshot> {
+		return buildMemorySnapshot(session.root, await session.rawEntries(), {
+			partner: session.name,
+			running: this.inFlight(session.name),
+			enabled: this._enabled?.get() !== false,
+			maxSops: this._maxSops?.get() ?? MAX_SOPS,
+			pendingRounds: this._pendingRounds?.get() ?? DEFAULT_PENDING_ROUNDS,
+			digestItems: this._digestMaxItems?.get() ?? DEFAULT_DIGEST_MAX_ITEMS,
+		});
+	}
+
+	inFlight(name: string): readonly MemorySnapshotRunning[] {
+		return this._running.get(name) ?? [];
+	}
+
 	afterRun(name: string): void {
 		if (this._enabled?.get() === false) return;
 		const session = this._sessionService.get(name);
-		const rounds = (this._rounds.get(name) ?? 0) + 1;
-		this._rounds.set(name, rounds);
-		const threshold = this._pendingRounds?.get() ?? DEFAULT_PENDING_ROUNDS;
-		if (threshold > 0 && rounds >= threshold) {
-			void this.organize(session).catch((error: unknown) => console.error(`memory ${name}: organize failed:`, error));
-			return;
-		}
 		void this._schedule(session).catch((error: unknown) => console.error(`memory ${name}: schedule failed:`, error));
 		if (this._runs.has(name)) return;
 		void this._debouncedStages(session).catch((error: unknown) => console.error(`memory ${name}: stages failed:`, error));
@@ -193,16 +201,26 @@ export class MemoryService implements Service {
 		this._stageTimers.clear();
 		this._runs.clear();
 		this._stageRuns.clear();
-		this._rounds.clear();
+		this._running.clear();
+		this._traces.clear();
 		this._sopChanges.clear();
 		this._personaCache.clear();
 		this._sopCache.clear();
 	}
 
-	private async _boot(session: Session): Promise<void> {
-		await this._schedule(session);
-		if (this._runs.has(session.name)) return;
-		await this._stagesAfterRun(session);
+	private _enter(name: string, stage: MemoryRunStage, runId: string, startedAt: number): void {
+		const rest = (this._running.get(name) ?? []).filter((entry) => entry.stage !== stage);
+		this._running.set(name, [...rest, { runId, stage, startedAt }]);
+	}
+
+	private _leave(name: string, stage: MemoryRunStage): void {
+		const current = this._running.get(name);
+		if (!current) return;
+		const index = current.findIndex((entry) => entry.stage === stage);
+		if (index < 0) return;
+		const next = [...current.slice(0, index), ...current.slice(index + 1)];
+		if (next.length === 0) this._running.delete(name);
+		else this._running.set(name, next);
 	}
 
 	private async _stagesAfterRun(session: Session): Promise<void> {
@@ -277,6 +295,7 @@ export class MemoryService implements Service {
 				return 0;
 			})
 			.finally(() => {
+				this._leave(name, stage);
 				if (this._stageRuns.get(key) === promise) this._stageRuns.delete(key);
 			});
 		this._stageRuns.set(key, promise);
@@ -308,10 +327,21 @@ export class MemoryService implements Service {
 	private _runLog(session: Session): MemoryRunLog {
 		return {
 			start: async ({ runId, stage, startedAt }) => {
+				this._enter(session.name, stage, runId, startedAt);
 				await session.record(EVENTS.memoryRunStart, { runId, stage, startedAt, timestamp: startedAt });
 			},
 			end: async ({ runId, stage, startedAt, endedAt, reason, added }) => {
+				this._leave(session.name, stage);
 				await session.record(EVENTS.memoryRunEnd, { runId, stage, startedAt, endedAt, reason, added, timestamp: endedAt });
+			},
+			trace: async ({ runId, stage, model, startedAt, endedAt, reason, records }) => {
+				const queued = (this._traces.get(runId) ?? Promise.resolve()).then(() => writeMemoryTrace(session.root, { runId, stage, model, startedAt, endedAt, reason, records }));
+				this._traces.set(
+					runId,
+					queued.catch(() => {}),
+				);
+				await queued.catch(() => {});
+				if (reason !== "unfinished") this._traces.delete(runId);
 			},
 		};
 	}
@@ -329,7 +359,6 @@ export class MemoryService implements Service {
 		if (this._enabled?.get() === false) return;
 		const entries = await session.rawEntries();
 		const { pending, rounds } = await memoryPendingStatus(session.root, entries);
-		this._rounds.set(session.name, rounds);
 		if (!pending) return;
 		const threshold = this._pendingRounds?.get() ?? DEFAULT_PENDING_ROUNDS;
 		if (threshold > 0 && rounds >= threshold) {

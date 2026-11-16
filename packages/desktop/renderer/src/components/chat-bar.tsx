@@ -109,6 +109,7 @@ export function ChatBar(props: { host: Host }) {
 
 	const running = useStore(host.sessions.store, (state) => state.rows.find((row) => row.name === name)?.running ?? false);
 	const compacting = useStore(host.sessions.store, (state) => state.rows.find((row) => row.name === name)?.compacting ?? false);
+	const pulse = useStore(host.sessions.store, (state) => state.rows.find((row) => row.name === name)?.signals?.find((signal) => signal.chip === true) ?? null);
 	const bare = name === "";
 
 	return (
@@ -143,6 +144,12 @@ export function ChatBar(props: { host: Host }) {
 							Writing…
 						</span>
 					) : null}
+					{pulse === null ? null : (
+						<span className={`chat-bar-status${pulse.tone === undefined ? "" : ` is-${pulse.tone}`}`} title={pulse.title}>
+							<span className="work-ring" />
+							{pulse.title}…
+						</span>
+					)}
 					{nameItems.map((item) => {
 						const Component = components.get(item.component);
 						return Component ? <Component key={item.id} host={host} data={item.data} /> : null;

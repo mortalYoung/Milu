@@ -5,7 +5,7 @@ import { type Entry, type Extension, type ModelsService, type Session, type Sett
 
 import { IMcpService } from "../mcp/index.ts";
 import type { McpServerStatus } from "../mcp/types.ts";
-import { buildMemoryOverview, type MemoryOverview } from "../memory/overview.ts";
+import { buildMemorySummary, type MemorySummary } from "../memory/snapshot.ts";
 import { IPermissionService } from "../permission/index.ts";
 import type { SandboxMode } from "../permission/types.ts";
 import { IRuntimeStatsService, type RuntimeSummary } from "../runtime/index.ts";
@@ -71,7 +71,7 @@ export interface SessionDetails extends SessionSummary {
 	readonly sandbox: string;
 	readonly skills: readonly { readonly name: string; readonly scope: string }[];
 	readonly mcp: readonly McpServerStatus[];
-	readonly memory: MemoryOverview | null;
+	readonly memory: MemorySummary | null;
 	readonly schedules: { readonly schedules: readonly ScheduleDefinition[]; readonly runs: readonly RunRecord[] } | null;
 	readonly runtime: RuntimeSummary | null;
 }
@@ -201,7 +201,7 @@ export async function collectDetails(session: Session, sources: DetailsSources):
 		sessionSize(session.root),
 		sources.skills ? sources.skills.list(session).catch(() => []) : Promise.resolve([]),
 		sources.mcp ? sources.mcp.statuses(session).catch(() => []) : Promise.resolve([]),
-		buildMemoryOverview(session.root, entries).catch(() => null),
+		buildMemorySummary(session.root, entries).catch(() => null),
 		sources.schedule ? sources.schedule.snapshot(session).catch(() => null) : Promise.resolve(null),
 		sources.runtime ? sources.runtime.summary(session).catch(() => null) : Promise.resolve(null),
 	]);

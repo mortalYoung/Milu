@@ -4,7 +4,7 @@ import type { ComposerCommand } from "@milu/protocol";
 import { COMPOSER_COMMANDS_POINT } from "../extensions/types.ts";
 import { EVENTS } from "../session/events.ts";
 import type { Session } from "../session/session.ts";
-import { IActionService, type ActionOutcome, type ActionService } from "./actions.ts";
+import { IActionService, type ActionContext, type ActionOutcome, type ActionService } from "./actions.ts";
 import { IContributionService } from "./contributions.ts";
 import type { ContributionService } from "./contributions.ts";
 
@@ -38,14 +38,14 @@ export class CommandsService implements Service {
 		return [...contributed, ...sourced.flat()];
 	}
 
-	async run(session: Session, name: string, input = ""): Promise<ActionOutcome> {
+	async run(session: Session, name: string, input = "", from: Pick<ActionContext, "dialog" | "sessions"> = {}): Promise<ActionOutcome> {
 		const command = (await this.list(session)).find((each) => each.name === name);
 		if (!command) throw new Error(`no command "/${name}"`);
 		const args = input.trim();
 		const commandId = `cmd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 		await session.record(EVENTS.commandRun, { commandId, name: command.name, ...(args === "" ? {} : { args }), timestamp: Date.now() });
 		try {
-			const outcome = await this._actions.run(command.action, { session, args: { name: command.name, args } });
+			const outcome = await this._actions.run(command.action, { ...from, session, args: { name: command.name, args } });
 			const text = outcomeText(outcome);
 			await session.record(EVENTS.commandDone, { commandId, kind: "success", ...(text === "" ? {} : { text }), timestamp: Date.now() });
 			return outcome;

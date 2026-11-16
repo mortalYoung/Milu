@@ -11,7 +11,10 @@
 		"./markdown": "./src/markdown/index.ts",
 		"./markdown/react": "./src/markdown/react.tsx",
 		"./api/markdown": "./src/markdown/index.ts",
-		"./api/markdown/react": "./src/markdown/react.tsx"
+		"./api/markdown/react": "./src/markdown/react.tsx",
+		"./api/messages": "./src/transcript/messages.tsx",
+		"./clipboard": "./src/clipboard.ts",
+		"./api/scroll-edges": "./src/api/scroll-edges.ts"
 	},
 	"scripts": {
 		"typecheck": "tsc --noEmit"

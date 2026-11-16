@@ -1,22 +1,27 @@
 import {
 	ICompactionService,
 	EVENTS,
+	type ActionContext,
 	type AgentHookContext,
 	type ExecutionEnv,
 	type Extension,
+	IContributionService,
 	IHookService,
 	IModelsService,
 	ISessionService,
+	SESSION_SIGNAL_POINT,
+	type SessionSignalItem,
 	ISettingsService,
 	type ToolCall,
 	IToolService,
 	type ToolResult,
+	type Session,
 } from "@milu/core";
 
 import { memoryQuerySchema } from "./extract.ts";
 import { MemoryService, IMemoryService } from "./service/index.ts";
 import { readSopDocs, readSopOp, sopReadSchema } from "./sop.ts";
-import { formatMemoryRecord, type MemoryKind, parseTime, RECALL_MAX_DETAIL_CHARS, RECALL_MAX_TOTAL_CHARS, tooManyMatches } from "./store.ts";
+import { formatMemoryRecord, type MemoryKind, parseTime, readMemoryTrace, RECALL_MAX_DETAIL_CHARS, RECALL_MAX_TOTAL_CHARS, tooManyMatches } from "./store.ts";
 
 interface MemoryParams {
 	readonly query?: string;
@@ -44,6 +49,8 @@ export const memoryExtension: Extension = {
 	id: "memory",
 	apiVersion: 1,
 
+	widgets: [{ id: "memory", type: "dialog", entry: "./widget/dialog.tsx" }],
+
 	services: [
 		{
 			id: IMemoryService,
@@ -52,13 +59,14 @@ export const memoryExtension: Extension = {
 	],
 
 	contributions: {
+		"session.menu": [{ id: "memory", order: 4, group: "view", title: "Memory", icon: "brain", action: "memory.open" }],
 		"composer.commands": [
 			{
 				id: "memory",
 				name: "memory",
-				description: "Organize this partner's long-term memory",
+				description: "Open what this partner remembers, or organize it",
 				kind: "leadingInput",
-				hint: "[status|organize|sops|persona]",
+				hint: "[open|status|organize|sops|persona]",
 				action: "memory.run",
 			},
 		],
@@ -141,12 +149,63 @@ export const memoryExtension: Extension = {
 			}),
 		);
 
+		context.disposables.add(
+			context
+				.get(IContributionService)
+				.get<SessionSignalItem>(SESSION_SIGNAL_POINT)
+				.contribute({
+					id: "memory",
+					order: 6,
+					chip: true,
+					tone: "link",
+					title: (session) => (memory.inFlight(session.name).length === 0 ? null : "memorying"),
+				}),
+		);
+
+		const openPanel = async (session: Session, dialog: ActionContext["dialog"]): Promise<void> => {
+			if (!dialog) throw new Error("opening the memory panel needs a dialog");
+			await dialog({ kind: "custom", id: "memory", title: `Memory · ${session.name}`, data: { partner: session.name } });
+		};
+
+		context.actions.register({
+			id: "memory.open",
+			scope: "chat",
+			hotkey: "Mod+Shift+M",
+			run: async ({ session, dialog }) => {
+				if (!session) throw new Error("memory.open needs a session");
+				await openPanel(session, dialog);
+			},
+		});
+
+		context.actions.register({
+			id: "memory.transcript",
+			run: async ({ session, args }) => {
+				if (!session) throw new Error("memory.transcript needs a session");
+				const raw = typeof args === "string" ? args : (args as { args?: unknown } | undefined)?.args;
+				const runId = typeof raw === "string" ? raw.trim() : "";
+				return { data: await readMemoryTrace(session.root, runId) };
+			},
+		});
+
+		context.actions.register({
+			id: "memory.collect",
+			run: async ({ session }) => {
+				if (!session) throw new Error("memory.collect needs a session");
+				return { data: await memory.snapshot(session) };
+			},
+		});
+
 		context.actions.register({
 			id: "memory.run",
-			run: async ({ session, args }) => {
+			run: async ({ session, args, dialog }) => {
 				if (!session) throw new Error("memory.run needs a session");
 				const raw = typeof args === "string" ? args : (args as { args?: unknown } | undefined)?.args;
 				const [op] = (typeof raw === "string" ? raw : "").trim().split(/\s+/);
+				if (op === "open") {
+					if (!dialog) throw new Error("opening the memory panel needs a dialog");
+					void openPanel(session, dialog).catch((error: unknown) => console.error(`memory ${session.name}: opening the panel failed:`, error));
+					return;
+				}
 				if (!op || op === "organize") {
 					if (session.running) throw new Error("the chat is busy");
 					await memory.organize(session);

@@ -20,6 +20,7 @@ export type { MarkdownEnv, MarkdownPlugin, MarkdownPort } from "../markdown/type
 export type { ComposerTriggerProps } from "../composer-triggers.ts";
 export { Kbd, KbdGroup } from "./kbd.tsx";
 export { TooltipProvider, Tip } from "./tooltip.tsx";
+export { useScrollEdges } from "./scroll-edges.ts";
 export { useComposerData, useComposerRefresh } from "./composer.ts";
 export { activityOf, useCommand, useExtensionData, useSession, useSessionActivity, useWidget, useWindowMotion, type ExtensionWidgetProps, type SessionActivity } from "./widget.ts";
 export {

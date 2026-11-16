@@ -2,12 +2,13 @@ import { randomUUID } from "node:crypto";
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { type AgentTool, type Model, type StreamFn, Type } from "@milu/core";
+import { type AgentMessage, type AgentTool, type Model, type StreamFn, Type } from "@milu/core";
 
 import { createMemoryAgent } from "./agent.ts";
 import { startDeadline } from "./deadline.ts";
 import { runRalphLoop } from "./loop.ts";
 import { appendMemoryRun, atomsAfter, ensureMemoryDir, memoryDir, type MemoryRecord, type MemoryRunLog, type MemoryRunReason, readMemoryLines, readWatermarks } from "./store.ts";
+import { trajectoryRecordsOf } from "./trace.ts";
 
 export const personaPath = (dir: string) => join(memoryDir(dir), "persona.md");
 export const MAX_PERSONA_CONTENT = 1200;
@@ -81,15 +82,16 @@ function bullets(body: string, section: string): string[] {
 
 export function parsePersona(content: string): PersonaDoc | { problem: string } {
 	const parts = split(content);
-	if (!parts) return { problem: "missing YAML header: the document must start with --- and end the header with ---" };
+	if (!parts)
+		return { problem: "missing YAML header — the document must open with a --- line and close the header with another --- before the body; write the whole file, not a diff" };
 	const rev = Number(field(parts.header, "rev") ?? "");
 	const updated = field(parts.header, "updated") ?? "";
 	const throughAtom = field(parts.header, "throughAtom") ?? "";
 	const sources = listField(parts.header, "sources");
-	if (!Number.isFinite(rev) || rev < 1) return { problem: "header field rev must be a positive integer" };
-	if (!/^\d{4}-\d{2}-\d{2}$/.test(updated)) return { problem: "header field updated must be YYYY-MM-DD" };
-	if (!throughAtom) return { problem: "header field throughAtom is missing" };
-	if (sources === null) return { problem: "header field sources must be a list, e.g. sources: [mem-1, mem-2]" };
+	if (!Number.isFinite(rev) || rev < 1) return { problem: "header field rev must be a positive integer — copy the current rev and add 1; use 1 for the first document" };
+	if (!/^\d{4}-\d{2}-\d{2}$/.test(updated)) return { problem: "header field updated must be YYYY-MM-DD — write the day you are rewriting it, e.g. updated: 2026-11-16" };
+	if (!throughAtom) return { problem: "header field throughAtom is missing — set it to the newest atom id whose content this persona already reflects" };
+	if (sources === null) return { problem: "header field sources must be a list, e.g. sources: [mem-1, mem-2] — every id there must also back a cited line in the body" };
 	return { meta: { rev, updated, throughAtom, sources }, header: parts.header, body: parts.body, content: content.trim() };
 }
 
@@ -99,26 +101,32 @@ export function validatePersona(content: string): string | null {
 	const { body } = parsed;
 	const headings = [...body.matchAll(/^## (.+)$/gm)].map((match) => (match[1] ?? "").trim());
 	if (headings.join("|") !== PERSONA_SECTIONS.join("|")) {
-		return `body sections must be exactly ${PERSONA_SECTIONS.map((section) => `## ${section}`).join(", ")} in this order (found: ${headings.join(", ") || "none"})`;
+		return `body sections must be exactly ${PERSONA_SECTIONS.map((section) => `## ${section}`).join(", ")} in this order (found: ${headings.join(", ") || "none"}) — rewrite the body with those two headings and nothing else`;
 	}
 	if (content.trim().length > MAX_PERSONA_CONTENT)
-		return `the document is ${content.trim().length} characters, ${content.trim().length - MAX_PERSONA_CONTENT} over the ${MAX_PERSONA_CONTENT} limit — drop the least valuable line and rewrite the whole document shorter`;
+		return `the document is ${content.trim().length} characters, ${content.trim().length - MAX_PERSONA_CONTENT} over the ${MAX_PERSONA_CONTENT} limit — drop the least valuable line (or merge two similar ones) and rewrite the whole document shorter`;
 	const relationship = bullets(body, "Relationship");
 	const taste = bullets(body, "Taste");
-	if (relationship.length > MAX_RELATIONSHIP) return `Relationship has ${relationship.length} lines (max ${MAX_RELATIONSHIP})`;
-	if (taste.length > MAX_TASTE) return `Taste has ${taste.length} lines (max ${MAX_TASTE})`;
+	if (relationship.length > MAX_RELATIONSHIP)
+		return `Relationship has ${relationship.length} lines (max ${MAX_RELATIONSHIP}) — keep the lines that change how you behave and merge the rest into them; background facts belong in the atoms`;
+	if (taste.length > MAX_TASTE)
+		return `Taste has ${taste.length} lines (max ${MAX_TASTE}) — keep the preferences you would act on unprompted and move the rest out; recall covers the detail`;
 	const groups = { ui: 0, rhythm: 0 };
 	for (const line of taste) {
 		const group = /^\[(ui|rhythm)\]/.exec(line)?.[1];
 		if (group === "ui" || group === "rhythm") groups[group] += 1;
 	}
-	if (groups.ui > MAX_TASTE_GROUP) return `Taste [ui] has ${groups.ui} lines (max ${MAX_TASTE_GROUP})`;
-	if (groups.rhythm > MAX_TASTE_GROUP) return `Taste [rhythm] has ${groups.rhythm} lines (max ${MAX_TASTE_GROUP})`;
+	if (groups.ui > MAX_TASTE_GROUP)
+		return `Taste [ui] has ${groups.ui} lines (max ${MAX_TASTE_GROUP}) — merge them into at most ${MAX_TASTE_GROUP} lines; this is a taste summary, not a log`;
+	if (groups.rhythm > MAX_TASTE_GROUP)
+		return `Taste [rhythm] has ${groups.rhythm} lines (max ${MAX_TASTE_GROUP}) — merge them into at most ${MAX_TASTE_GROUP} lines; this is a taste summary, not a log`;
 	for (const line of [...relationship, ...taste]) {
-		if (line.length > MAX_PERSONA_LINE) return `a line is ${line.length} characters (max ${MAX_PERSONA_LINE}): ${line.slice(0, 40)}…`;
-		if (!/[(（]mem-[0-9a-z-]{3,},\s*\d{4}-\d{2}-\d{2}[)）]/.test(line)) return `every line needs a trailing (mem-…, YYYY-MM-DD) citation: ${line.slice(0, 40)}…`;
+		if (line.length > MAX_PERSONA_LINE) return `a line is ${line.length} characters (max ${MAX_PERSONA_LINE}): ${line.slice(0, 40)}… — shorten it, keeping the trailing citation`;
+		if (!/[(（]mem-[0-9a-z-]{3,},\s*\d{4}-\d{2}-\d{2}[)）]/.test(line))
+			return `every line needs a trailing (mem-…, YYYY-MM-DD) citation: ${line.slice(0, 40)}… — append the id and date of the atom it came from; if no atom backs the line, drop it`;
 	}
-	for (const rule of FORBIDDEN) if (rule.pattern.test(body)) return `the persona must not mention this: ${rule.why}`;
+	for (const rule of FORBIDDEN)
+		if (rule.pattern.test(body)) return `the persona must not mention this: ${rule.why} — remove that line; the agent can recall it from the atoms when it matters`;
 	return null;
 }
 
@@ -195,6 +203,7 @@ async function runPersona(opts: OrganizePersonaOptions, atoms: readonly MemoryRe
 	const state = { writes: 0, content: current?.content ?? "", consumed: new Set<string>(), dropped: new Set<string>(), throughAtomId: "" };
 	const runId = `run-${randomUUID()}`;
 	const startedAt = Date.now();
+	const modelName = `${opts.model.provider}/${opts.model.id ?? "default"}`;
 	let attempts = 0;
 
 	if (opts.logRun) {
@@ -205,17 +214,28 @@ async function runPersona(opts: OrganizePersonaOptions, atoms: readonly MemoryRe
 		}
 	}
 
-	async function endRun(reason: MemoryRunReason, error?: string): Promise<void> {
+	async function endRun(reason: MemoryRunReason, error?: string, passes?: readonly (readonly AgentMessage[])[]): Promise<void> {
 		const endedAt = Date.now();
 		try {
 			await opts.logRun?.end({ runId, stage: "persona", startedAt, endedAt, reason, added: state.writes });
 		} catch (logError) {
 			console.error("persona run end log failed:", logError);
 		}
+		if (passes) {
+			await opts.logRun?.trace?.({
+				runId,
+				stage: "persona",
+				model: modelName,
+				startedAt,
+				endedAt,
+				reason,
+				records: trajectoryRecordsOf(passes, { runId, startedAt, model: modelName }),
+			});
+		}
 		await appendMemoryRun(opts.dir, {
 			runId,
 			stage: "persona",
-			model: `${opts.model.provider}/${opts.model.id ?? "default"}`,
+			model: modelName,
 			startedAt,
 			endedAt,
 			durationMs: endedAt - startedAt,
@@ -248,15 +268,21 @@ async function runPersona(opts: OrganizePersonaOptions, atoms: readonly MemoryRe
 			const note = (text: string) => ({ content: [{ type: "text" as const, text }], details: { ok: true } });
 			if (params.op === "read") return note(state.content || "No persona yet — write the first document.");
 			const content = (params.content ?? "").trim();
-			if (!content) return reject("write needs content (the whole document, not a diff)");
+			if (!content) return reject("write needs content — send the whole document (header plus Relationship and Taste), not a diff or a list of changes");
 			const problem = validatePersona(content);
 			if (problem) return reject(problem);
 			const parsed = parsePersona(content);
 			if ("problem" in parsed) return reject(parsed.problem);
 			const consumed = [...new Set([...(params.consumed ?? []), ...parsed.meta.sources])].filter((id) => batch.has(id));
-			if (consumed.length === 0) return reject("consumed (or the document's sources) must list at least one atom id from the batch");
+			if (consumed.length === 0)
+				return reject(
+					`consumed (or the document's sources) must list at least one atom id from the batch you were given — copy ids from the "New atoms" list in the prompt, or call noop if none belongs here`,
+				);
 			const unknown = parsed.meta.sources.filter((id) => !batch.has(id) && !(current?.meta.sources ?? []).includes(id));
-			if (unknown.length > 0) return reject(`these sources are not in the batch you were given: ${unknown.slice(0, 3).join(", ")}`);
+			if (unknown.length > 0)
+				return reject(
+					`these sources are neither in the batch you were given nor in the current persona: ${unknown.slice(0, 3).join(", ")} — cite only atoms from the "New atoms" list plus the ones the document already carries`,
+				);
 			await writePersonaDoc(opts.dir, content);
 			state.content = content;
 			state.throughAtomId = parsed.meta.throughAtom;
@@ -296,6 +322,17 @@ async function runPersona(opts: OrganizePersonaOptions, atoms: readonly MemoryRe
 		const outcome = await runRalphLoop({
 			maxAttempts: 3,
 			signal: deadline.signal,
+			onProgress: (passes) => {
+				void opts.logRun?.trace?.({
+					runId,
+					stage: "persona",
+					model: modelName,
+					startedAt,
+					endedAt: Date.now(),
+					reason: "unfinished",
+					records: trajectoryRecordsOf(passes, { runId, startedAt, model: modelName }),
+				});
+			},
 			createPass: () => ({ agent: createMemoryAgent(opts.model, opts.streamFn, WORKFLOW, [tool, noop]), prompt }),
 			settlePass: () => {
 				const covered = new Set([...state.consumed, ...state.dropped]).size;
@@ -305,7 +342,7 @@ async function runPersona(opts: OrganizePersonaOptions, atoms: readonly MemoryRe
 		});
 		attempts = outcome.attempts;
 		const newest = [...atoms].reverse().find((atom) => state.consumed.has(atom.id) || state.dropped.has(atom.id));
-		await endRun(deadline.timedOut() ? "blocked" : outcome.reason);
+		await endRun(deadline.timedOut() ? "blocked" : outcome.reason, undefined, outcome.passes);
 		return { writes: state.writes, ...(newest ? { through: newest.id } : {}) };
 	} catch (error) {
 		await endRun("error", error instanceof Error ? error.message : String(error));

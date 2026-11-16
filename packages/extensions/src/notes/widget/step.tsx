@@ -1,8 +1,9 @@
 import type { SlotProps, StepGroup, ViewItem } from "@milu/window/api";
 import { liveRowsOf, oneLine } from "@milu/window/api";
 import { Markdown } from "@milu/window/api/markdown/react";
+import { useScrollEdges } from "@milu/window/api/scroll-edges";
 import { Brain, ChevronDown, Wrench, type LucideIcon } from "lucide-react";
-import { useEffect, useId, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useStore } from "zustand";
 
 import { Elide, NoteFallback } from "./note.tsx";
@@ -93,41 +94,6 @@ function useHeaderStamp(group: StepGroup, live: boolean): Stamp {
 	if (stopped) return took === "" ? { label: "Stopped", duration: "" } : { label: "Stopped after", duration: took };
 	if (onlyThinking) return took === "" ? { label: "Thought", duration: "" } : { label: "Thought for", duration: took };
 	return took === "" ? { label: "Completed", duration: "" } : { label: "Completed in", duration: took };
-}
-
-function useScrollEdges<T extends HTMLElement>(): readonly [RefObject<T | null>, string] {
-	const ref = useRef<T>(null);
-	const [edges, setEdges] = useState({ above: false, below: false });
-
-	useEffect(() => {
-		const element = ref.current;
-		if (!element) return;
-		let frame = 0;
-		const measure = () => {
-			cancelAnimationFrame(frame);
-			frame = requestAnimationFrame(() => {
-				frame = 0;
-				setEdges({
-					above: element.scrollTop > 2,
-					below: element.scrollTop + element.clientHeight < element.scrollHeight - 2,
-				});
-			});
-		};
-		measure();
-		element.addEventListener("scroll", measure, { passive: true });
-		const resize = new ResizeObserver(measure);
-		resize.observe(element);
-		const mutations = new MutationObserver(measure);
-		mutations.observe(element, { subtree: true, childList: true, characterData: true });
-		return () => {
-			cancelAnimationFrame(frame);
-			element.removeEventListener("scroll", measure);
-			resize.disconnect();
-			mutations.disconnect();
-		};
-	}, []);
-
-	return [ref, `edge-fade${edges.above ? " has-above" : ""}${edges.below ? " has-below" : ""}`];
 }
 
 export function StepRow(props: SlotProps) {

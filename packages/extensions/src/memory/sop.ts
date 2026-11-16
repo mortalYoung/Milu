@@ -2,19 +2,20 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { type AgentTool, type Model, type Static, type StreamFn, Type } from "@milu/core";
+import { type AgentMessage, type AgentTool, type Model, type Static, type StreamFn, Type } from "@milu/core";
 
 import { createMemoryAgent } from "./agent.ts";
 import { startDeadline } from "./deadline.ts";
 import { runRalphLoop } from "./loop.ts";
 import { appendMemoryRun, atomsAfter, ensureMemoryDir, isoDay, memoryDir, type MemoryRunLog, type MemoryRunReason, readMemoryLines, readWatermarks } from "./store.ts";
+import { trajectoryRecordsOf } from "./trace.ts";
 
 export const sopDirectory = (dir: string) => join(memoryDir(dir), "sops");
 export const MAX_SOPS = 20;
 export const MAX_SOP_TITLE = 24;
 export const MAX_SOP_WHEN = 80;
 export const MAX_SOP_PITFALLS = 5;
-export const MAX_SOP_EVIDENCE = 20;
+export const MAX_SOP_EVIDENCE = 30;
 export const SOP_READ_LIMIT = 120;
 const STAGE_TIMEOUT_MS = 3 * 60_000;
 
@@ -107,7 +108,8 @@ export function sectionBody(body: string, section: string): string {
 
 export function parseSop(content: string): SopDoc | { problem: string } {
 	const parts = headerBlock(content);
-	if (!parts) return { problem: "missing YAML header: the document must start with --- and end the header with ---" };
+	if (!parts)
+		return { problem: "missing YAML header — the document must open with a --- line and close the header with another --- before the body; write the whole file, not a diff" };
 	const { header, body } = parts;
 	const id = headerValue(header, "id") ?? "";
 	const title = headerValue(header, "title") ?? "";
@@ -117,14 +119,17 @@ export function parseSop(content: string): SopDoc | { problem: string } {
 	const throughAtom = headerValue(header, "throughAtom") ?? "";
 	const sources = headerList(header, "sources");
 	const evidence = evidenceList(header);
-	if (!ID_PATTERN.test(id)) return { problem: 'header field id is missing or not "sop-<kebab-case>"' };
-	if (!title) return { problem: "header field title is missing" };
-	if (!/^\d{4}-\d{2}-\d{2}$/.test(updated)) return { problem: "header field updated must be YYYY-MM-DD" };
-	if (!Number.isFinite(rev) || rev < 1) return { problem: "header field rev must be a positive integer" };
-	if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) return { problem: "header field confidence must be between 0 and 1" };
-	if (!throughAtom) return { problem: "header field throughAtom is missing" };
-	if (sources === null) return { problem: "header field sources must be a list, e.g. sources: [mem-1, mem-2]" };
-	if (evidence === null) return { problem: "header field evidence must be a list of `- <atomId> | <YYYY-MM-DD> | <one line>`" };
+	if (!ID_PATTERN.test(id))
+		return { problem: 'header field id is missing or not "sop-<kebab-case>" — copy the existing id (e.g. id: sop-weekly-report-aggregation) or coin a new kebab-case one' };
+	if (!title) return { problem: `header field title is missing — add one line, at most ${MAX_SOP_TITLE} characters, naming the task this SOP covers` };
+	if (!/^\d{4}-\d{2}-\d{2}$/.test(updated)) return { problem: "header field updated must be YYYY-MM-DD — write the day you are rewriting it, e.g. updated: 2026-11-16" };
+	if (!Number.isFinite(rev) || rev < 1)
+		return { problem: "header field rev must be a positive integer — copy the current rev and add 1 (rev: 3 when the stored document is rev: 2); use 1 for a new SOP" };
+	if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1)
+		return { problem: "header field confidence must be between 0 and 1 — e.g. confidence: 0.85, higher when more atoms back the document" };
+	if (!throughAtom) return { problem: "header field throughAtom is missing — set it to the newest atom id whose content this document already reflects" };
+	if (sources === null) return { problem: "header field sources must be a list, e.g. sources: [mem-1, mem-2] — and every id there must also appear on the body line it supports" };
+	if (evidence === null) return { problem: "header field evidence must be a list of `- <atomId> | <YYYY-MM-DD> | <one line>`, one entry per atom the body cites" };
 	return {
 		meta: { id, title, updated, rev, confidence, throughAtom, sources, evidence },
 		header,
@@ -137,33 +142,47 @@ export function validateSop(content: string): string | null {
 	const parsed = parseSop(content);
 	if ("problem" in parsed) return parsed.problem;
 	const { meta, body } = parsed;
-	if (meta.title.length > MAX_SOP_TITLE) return `title is ${meta.title.length} characters (max ${MAX_SOP_TITLE})`;
+	if (meta.title.length > MAX_SOP_TITLE)
+		return `title is ${meta.title.length} characters (max ${MAX_SOP_TITLE}) — shorten the title itself, do not move the extra words into the When line`;
 	const headings = [...body.matchAll(/^## (.+)$/gm)].map((match) => (match[1] ?? "").trim());
 	if (headings.length !== SECTIONS.length || headings.some((heading, index) => heading !== SECTIONS[index])) {
-		return `body sections must be exactly ${SECTIONS.map((section) => `## ${section}`).join(", ")} in this order (found: ${headings.join(", ") || "none"})`;
+		return `body sections must be exactly ${SECTIONS.map((section) => `## ${section}`).join(", ")} in this order (found: ${headings.join(", ") || "none"}) — rewrite the body with those five headings and nothing else`;
 	}
 	const when = sectionBody(body, "When")
 		.split("\n")
 		.map((line) => line.trim())
 		.filter((line) => line !== "");
-	if (when.length === 0) return "the When section needs one sentence describing when to use this SOP";
+	if (when.length === 0)
+		return "the When section needs one sentence describing when to use this SOP — open it with a single line stating the request that should trigger this document";
 	const whenLine = when[0]!;
-	if (whenLine.length > MAX_SOP_WHEN) return `the When sentence is ${whenLine.length} characters (max ${MAX_SOP_WHEN})`;
+	if (whenLine.length > MAX_SOP_WHEN)
+		return `the When sentence is ${whenLine.length} characters (max ${MAX_SOP_WHEN}) — cut it to one line that names the trigger, and move the detail into Procedure`;
 	const steps = sectionBody(body, "Procedure")
 		.split("\n")
 		.filter((line) => /^\d+\.\s/.test(line.trim()));
-	if (steps.length < 2) return "Procedure needs at least two numbered steps (1. … 2. …)";
+	if (steps.length < 2) return "Procedure needs at least two numbered steps (1. … 2. …) — write them as an ordered list with one action per line";
 	const pitfalls = sectionBody(body, "Pitfalls")
 		.split("\n")
 		.filter((line) => line.trim().startsWith("- "));
-	if (pitfalls.length > MAX_SOP_PITFALLS) return `Pitfalls has ${pitfalls.length} entries (max ${MAX_SOP_PITFALLS})`;
-	if (meta.evidence.length === 0) return "evidence must list at least one atom";
-	if (meta.evidence.length > MAX_SOP_EVIDENCE) return `evidence has ${meta.evidence.length} entries (max ${MAX_SOP_EVIDENCE})`;
+	if (pitfalls.length > MAX_SOP_PITFALLS)
+		return `Pitfalls has ${pitfalls.length} entries (max ${MAX_SOP_PITFALLS}) — keep the costliest ones and fold the rest into the Procedure step they belong to`;
+	if (meta.evidence.length === 0)
+		return "evidence must list at least one atom — copy the id of an atom that justifies this document, in the form `- mem-… | YYYY-MM-DD | the line it supports`";
+	if (meta.evidence.length > MAX_SOP_EVIDENCE)
+		return `evidence has ${meta.evidence.length} entries (max ${MAX_SOP_EVIDENCE}) — keep one entry per atom the body actually cites and merge steps that rest on the same atoms until the list fits`;
 	const evidenceIds = new Set(meta.evidence.map((item) => item.atomId));
-	const cite = (line: string): boolean => [...line.matchAll(/mem-[0-9a-z-]{3,}/gi)].some((match) => evidenceIds.has(match[0]));
-	const untraced = [...steps.filter((step) => !cite(step)).map((step) => step.trim()), ...pitfalls.filter((pitfall) => !cite(pitfall)).map((pitfall) => pitfall.trim())];
+	const cited = (line: string): readonly string[] => [...new Set([...line.matchAll(/mem-[0-9a-z-]{3,}/gi)].map((match) => match[0]))];
+	const untraced = [...steps, ...pitfalls].filter((line) => !cited(line).some((id) => evidenceIds.has(id)));
 	if (untraced.length > 0) {
-		return `every Procedure step and Pitfalls bullet must cite an evidence atom id in parentheses, e.g. "… (mem-…)" (missing: ${untraced[0]?.slice(0, 60)})`;
+		const first = (untraced[0] ?? "").trim();
+		const missing = cited(first).filter((id) => !evidenceIds.has(id));
+		const room = MAX_SOP_EVIDENCE - meta.evidence.length;
+		const why = missing.length === 0 ? "cites no atom at all" : `cites ${missing.slice(0, 2).join(", ")}, which evidence does not list`;
+		const spare =
+			room > 0
+				? `evidence has ${room} slot(s) left of ${MAX_SOP_EVIDENCE}`
+				: `evidence is already at its ${MAX_SOP_EVIDENCE}-entry cap, so merge or drop lines instead of adding ids`;
+		return `${untraced.length} Procedure step(s)/Pitfalls bullet(s) rest on no listed atom — the first one (${first.slice(0, 60)}) ${why}. Fix it by adding that id to evidence (${spare}) or by merging/dropping the line; every step must carry a "(mem-…)" that evidence backs`;
 	}
 	return null;
 }
@@ -397,6 +416,7 @@ export async function organizeSops(opts: SopOrganizeOptions): Promise<SopOrganiz
 	const state = { changes: [] as SopChange[], consumed: new Set<string>(), dropped: new Set<string>(), writes: 0 };
 	const runId = `run-${randomUUID()}`;
 	const startedAt = Date.now();
+	const modelName = `${opts.model.provider}/${opts.model.id ?? "default"}`;
 	let attempts = 0;
 	let through: string | null = null;
 
@@ -408,17 +428,28 @@ export async function organizeSops(opts: SopOrganizeOptions): Promise<SopOrganiz
 		}
 	}
 
-	async function endRun(reason: MemoryRunReason, error?: string): Promise<void> {
+	async function endRun(reason: MemoryRunReason, error?: string, passes?: readonly (readonly AgentMessage[])[]): Promise<void> {
 		const endedAt = Date.now();
 		try {
 			await opts.logRun?.end({ runId, stage: "sop", startedAt, endedAt, reason, added: state.changes.length });
 		} catch (logError) {
 			console.error("sop run end log failed:", logError);
 		}
+		if (passes) {
+			await opts.logRun?.trace?.({
+				runId,
+				stage: "sop",
+				model: modelName,
+				startedAt,
+				endedAt,
+				reason,
+				records: trajectoryRecordsOf(passes, { runId, startedAt, model: modelName }),
+			});
+		}
 		await appendMemoryRun(opts.dir, {
 			runId,
 			stage: "sop",
-			model: `${opts.model.provider}/${opts.model.id ?? "default"}`,
+			model: modelName,
 			startedAt,
 			endedAt,
 			durationMs: endedAt - startedAt,
@@ -454,18 +485,27 @@ export async function organizeSops(opts: SopOrganizeOptions): Promise<SopOrganiz
 				return note(readSopOp(current, { op: params.op, id: params.id, offset: params.offset, limit: params.limit }));
 			}
 			const content = (params.content ?? "").trim();
-			if (!content) return reject("write needs content (the complete document)");
+			if (!content) return reject("write needs content — send the complete document (header plus the five sections), not a diff or a list of changes");
 			const problem = validateSop(content);
 			if (problem) return reject(problem);
 			const parsed = parseSop(content);
 			if ("problem" in parsed) return reject(parsed.problem);
 			const consumed = [...new Set([...(params.consumed ?? []), ...parsed.meta.sources])].filter((id) => batch.has(id));
-			if (consumed.length === 0) return reject("consumed (or the document's sources) must list at least one atom id from the batch you were given");
+			if (consumed.length === 0)
+				return reject(`consumed (or the document's sources) must list at least one atom id from the batch you were given — copy ids from the "New atoms" list in the prompt`);
 			const mergedFrom = [...new Set(params.mergedFrom ?? [])].filter((id) => docs.some((doc) => doc.meta.id === id) && id !== parsed.meta.id);
 			const existing = docs.some((doc) => doc.meta.id === parsed.meta.id);
-			if (!existing && docs.length >= limit) return reject(`SOP limit (${limit}) reached — merge existing SOPs by writing one document with mergedFrom`);
-			const unknown = [...new Set([...parsed.meta.sources, ...parsed.meta.evidence.map((item) => item.atomId)])].filter((id) => !batch.has(id));
-			if (unknown.length > 0) return reject(`these ids are not in the batch you were given: ${unknown.slice(0, 3).join(", ")}`);
+			if (!existing && docs.length >= limit)
+				return reject(`SOP limit (${limit}) reached — absorb the least useful SOPs into one document and list their ids in mergedFrom instead of adding a new id`);
+			const carried = new Set([
+				...(docs.find((doc) => doc.meta.id === parsed.meta.id)?.meta.sources ?? []),
+				...(docs.find((doc) => doc.meta.id === parsed.meta.id)?.meta.evidence.map((item) => item.atomId) ?? []),
+			]);
+			const unknown = [...new Set([...parsed.meta.sources, ...parsed.meta.evidence.map((item) => item.atomId)])].filter((id) => !batch.has(id) && !carried.has(id));
+			if (unknown.length > 0)
+				return reject(
+					`these ids are neither in the batch you were given nor in this SOP's current sources/evidence: ${unknown.slice(0, 3).join(", ")} — cite only atoms from the "New atoms" list plus the ones this document already carries`,
+				);
 			await writeSopDoc(opts.dir, content);
 			for (const id of mergedFrom) await deleteSopDoc(opts.dir, id);
 			state.changes.push({ op: mergedFrom.length > 0 ? "merged" : existing ? "updated" : "created", id: parsed.meta.id, title: parsed.meta.title, at: Date.now() });
@@ -517,6 +557,17 @@ export async function organizeSops(opts: SopOrganizeOptions): Promise<SopOrganiz
 		const outcome = await runRalphLoop({
 			maxAttempts: 3,
 			signal: deadline.signal,
+			onProgress: (passes) => {
+				void opts.logRun?.trace?.({
+					runId,
+					stage: "sop",
+					model: modelName,
+					startedAt,
+					endedAt: Date.now(),
+					reason: "unfinished",
+					records: trajectoryRecordsOf(passes, { runId, startedAt, model: modelName }),
+				});
+			},
 			createPass: () => ({ agent: createMemoryAgent(opts.model, opts.streamFn, sopWorkflow(limit), [tool, noop, finish]), prompt }),
 			settlePass: () => {
 				const covered = new Set([...state.consumed, ...state.dropped]).size;
@@ -527,7 +578,7 @@ export async function organizeSops(opts: SopOrganizeOptions): Promise<SopOrganiz
 		attempts = outcome.attempts;
 		const newest = [...pending].reverse().find((atom) => state.consumed.has(atom.id) || state.dropped.has(atom.id));
 		through = newest?.id ?? null;
-		await endRun(deadline.timedOut() ? "blocked" : outcome.reason);
+		await endRun(deadline.timedOut() ? "blocked" : outcome.reason, undefined, outcome.passes);
 		return { added: state.changes.length, changes: state.changes, ...(newest ? { through: newest.id } : {}) };
 	} catch (error) {
 		await endRun("error", error instanceof Error ? error.message : String(error));

@@ -364,12 +364,21 @@ export class SessionService implements Service {
 				title,
 				...(item.icon ? { icon: item.icon } : {}),
 				...(typeof count === "number" ? { count } : {}),
+				...(item.chip ? { chip: true } : {}),
+				...(item.tone ? { tone: item.tone } : {}),
 				order: item.order ?? 0,
 			});
 		}
 		return resolved
 			.sort((left, right) => left.order - right.order || left.id.localeCompare(right.id))
-			.map(({ id, title, icon, count }) => ({ id, title, ...(icon ? { icon } : {}), ...(typeof count === "number" ? { count } : {}) }));
+			.map(({ id, title, icon, count, chip, tone }) => ({
+				id,
+				title,
+				...(icon ? { icon } : {}),
+				...(typeof count === "number" ? { count } : {}),
+				...(chip ? { chip } : {}),
+				...(tone ? { tone } : {}),
+			}));
 	}
 
 	private async _rowOf(session: Session): Promise<SessionRow> {

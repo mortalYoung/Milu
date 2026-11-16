@@ -502,6 +502,26 @@ body.pane-dragging {
 	color: color-mix(in srgb, var(--accent-amber) 50%, var(--ink));
 }
 
+.session-status.tone-amber {
+	border-color: color-mix(in srgb, var(--accent-amber) 30%, transparent);
+	background: color-mix(in srgb, var(--accent-amber) 10%, transparent);
+	color: color-mix(in srgb, var(--accent-amber) 50%, var(--ink));
+}
+
+.session-status.tone-link {
+	border-color: color-mix(in srgb, var(--link) 34%, transparent);
+	background: color-mix(in srgb, var(--link) 10%, transparent);
+	color: var(--link);
+}
+
+.session-status.tone-amber.is-live::after {
+	background: linear-gradient(45deg, transparent, color-mix(in srgb, var(--accent-amber) 12%, transparent), transparent);
+}
+
+.session-status.tone-link.is-live::after {
+	background: linear-gradient(45deg, transparent, color-mix(in srgb, var(--link) 14%, transparent), transparent);
+}
+
 .session-status.is-live::after {
 	content: "";
 	position: absolute;
@@ -1045,6 +1065,24 @@ body.pane-dragging {
 
 .chat-bar-status .work-dot {
 	background: var(--accent-teal);
+}
+
+.chat-bar-status.is-link {
+	color: var(--link);
+}
+
+.chat-bar-status.is-link .work-ring {
+	border-color: color-mix(in srgb, var(--link) 30%, transparent);
+	border-top-color: var(--link);
+}
+
+.chat-bar-status.is-amber {
+	color: color-mix(in srgb, var(--accent-amber) 50%, var(--ink));
+}
+
+.chat-bar-status.is-amber .work-ring {
+	border-color: color-mix(in srgb, var(--accent-amber) 30%, transparent);
+	border-top-color: var(--accent-amber);
 }
 
 .chat-bar-tools {

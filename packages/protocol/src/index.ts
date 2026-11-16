@@ -99,11 +99,15 @@ export const LOG_EVENTS = {
 	shellDone: "shell/done",
 } as const;
 
+export type SessionSignalTone = "teal" | "amber" | "link";
+
 export interface SessionSignal {
 	readonly id: string;
 	readonly title: string;
 	readonly icon?: string;
 	readonly count?: number;
+	readonly chip?: boolean;
+	readonly tone?: SessionSignalTone;
 }
 
 export interface SessionRow {
