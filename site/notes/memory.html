@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="zh-CN">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>一次对话应该记住什么 — Milu 设计笔记</title>
+		<meta name="description" content="Agent 记忆系统的三件事：一条一条的 atom、从 atom 蒸馏出的 SOP 与 persona、每轮只取一小段的检索。附 LongMemEval 的实测数字。" />
+		<link rel="icon" href="../pixel_milu.png" />
+		<link rel="stylesheet" href="../style.css" />
+		<link rel="stylesheet" href="../notes.css" />
+	</head>
+
+	<body>
+		<svg class="sprite" aria-hidden="true" focusable="false">
+			<symbol id="w-mark" viewBox="45 40 210 72">
+				<path
+					d="M107.83 44.11c2.57 1.22.97 8.98.61 11.41-1.36 9.26-2.17 18.58-3.61 27.83-.36 2.36-2.56 7.8-.33 9.29 8.95-11.03 15.74-24.62 22.71-36.93 1.33-2.35 5.61-12.3 8.28-10.21.44 4.1-3.07 12.38-4.27 16.59-2.4 8.4-8.58 31.19-6.78 39.02.58 2.57 2.25 3.26 3.28 5.39-.41.44-.81.88-1.22 1.32-4.35-.92-4.66-6-4.93-9.65-.71-9.75 2.86-18.92 4.42-28.34.4-2.44 3.07-7.2 1.51-9.31-6.97 10.04-12.8 21.12-19.33 31.47-1.79 2.84-5.19 9.86-8.67 10.54-2.15-2.13.2-7.28.49-10.03.92-8.7 3.33-17.25 4.04-26 .21-2.56 1.92-6.67.47-8.94-2.63 3.8-3.73 8.9-5.71 13.06-6.11 12.89-19.33 37.12-35.96 37.37-1.95.04-3.51-.32-5.31-1.02-11.28-4.36-1.99-16.66 6.31-17.99 2.42-.39 5.45-2.06 6.98.52-2.42 3.74-12.31.79-15.11 8.68-.53 1.49-.3 3.27.74 4.54 6.89 8.46 21.82-5.27 26.35-10.76 8.77-10.65 13.09-23.26 18.86-35.49 1.19-2.51 3.57-12.01 6.18-12.36Zm94.67 46.05c.46.45.92.89 1.38 1.34-.66 2.88-4.81 7.38-2.38 10.22 4.51-2.02 10.06-10.98 12.32-11.55 2.4.8.6 3.79.35 5.49-.54 3.67.05 6.5 3.65 8.05 6.02 2.62 17.08-4.38 21.68-8.03 1.75-1.39 3.75-4.45 6-4.63 3.1 2.91-8.98 10.53-11.47 11.8-5.74 2.9-13.82 6.66-19.72 2-2.04-1.6-2.12-4.01-3.81-5.71-2.74.51-9.52 9.61-12.34 3.55-.7-1.5.32-3.43-.66-4.69-6.79 5.48-18.58 13.02-27.1 6.77-3.49-2.56-3.53-6.63-5.9-9.7-7.41 6.45-17.36 13.46-27.61 9.84-4.14-1.47-6.21-5.13-5.82-9.41.18-1.98 1.12-6.47 3.76-5.48 1.81 3.04-3.23 7.3.34 10.65 6.63 6.23 17.55-.09 23.22-4.45 1.52-1.17 4.86-2.89 5.53-4.78.83-2.34.09-6.1.2-8.61.2-4.35.85-9.27 2.08-13.45 1.07-3.68 3.24-11.81 8.3-11.38 5.21.45 3.14 7.77 2.61 10.86-1.07 6.22-3.86 12.09-6.26 17.85-.83 1.98-2.4 4.01-2.81 6.13-.41 2.13.21 4.21 1.19 6.08 5.41 10.34 18.8 2.92 25.36-2.17 2.56-1.99 5.12-5.18 7.91-6.59Zm-29-29.51c-4.49 2.63-6.31 14.98-6.76 19.85-.21 2.22-.65 5.19.76 7.08 3.84-5.33 5.38-13.29 6.65-19.63.47-2.36 2-5.89-.65-7.3ZM136.05 82.5c.75 2.36-2.57 4.57-4.69 4.33-1.28-2.21 2.8-5.58 4.69-4.33Z"
+					fill="currentColor"
+					fill-rule="evenodd"
+					stroke="currentColor"
+					stroke-linejoin="round"
+					stroke-width="0.25"
+				/>
+			</symbol>
+			<symbol id="i-half" viewBox="0 0 24 24">
+				<circle cx="12" cy="12" r="8" />
+				<path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" />
+			</symbol>
+			<symbol id="i-arrow-up" viewBox="0 0 24 24">
+				<path d="M12 19V5" />
+				<path d="m5 12 7-7 7 7" />
+			</symbol>
+		</svg>
+
+		<header class="nav">
+			<div class="wrap nav-inner">
+				<a class="brand" href="../index.html" aria-label="Milu — 返回首页">
+					<img src="../pixel_milu.png" alt="" width="24" height="24" />
+					<svg class="wordmark" viewBox="0 0 210 72" role="img" aria-label="Milu">
+						<use href="#w-mark" />
+					</svg>
+				</a>
+				<nav class="nav-links" aria-label="Site">
+					<a href="../index.html#demo">Demo</a>
+					<a href="../index.html#features">Features</a>
+					<a href="../index.html#get">Download</a>
+					<a href="memory.html" aria-current="page">Notes</a>
+					<a class="nav-github" href="https://github.com/mortalYoung/Milu" target="_blank" rel="noreferrer">GitHub <span class="arrow">↗</span></a>
+					<button class="theme-btn" type="button" aria-label="切换明暗主题" title="Light / dark">
+						<svg class="ico">
+							<use href="#i-half" />
+						</svg>
+					</button>
+				</nav>
+			</div>
+		</header>
+
+		<main id="top">
+			<div class="note-wrap">
+				<header class="note-head">
+					<p class="eyebrow"><span class="pulse"></span>Notes · 01 · Memory</p>
+					<h1>一次对话应该记住什么。</h1>
+					<p class="note-lede">上下文窗口只有固定的 token 数，人和人的对话却会一直继续下去。下面这套设计都从这一处不对称推出来。</p>
+					<p class="note-meta">
+						<span>中文</span>
+						<span>Milu 0.2.2</span>
+						<span>2026-11-16</span>
+						<span>约 3,700 字</span>
+						<span>约 13 分钟</span>
+					</p>
+				</header>
+
+				<div class="note-grid">
+					<aside class="toc" aria-label="目录">
+						<p class="toc-title">目录</p>
+						<ol>
+							<li>
+								<a href="#what">记忆系统是什么</a>
+							</li>
+							<li>
+								<a href="#why">为什么需要记忆系统</a>
+							</li>
+							<li>
+								<a href="#how">如何设计记忆系统</a>
+								<ol>
+									<li><a href="#how-atoms">Atom</a></li>
+									<li><a href="#how-sop">SOP</a></li>
+									<li><a href="#how-persona">Persona</a></li>
+									<li><a href="#how-recall">检索</a></li>
+								</ol>
+							</li>
+						</ol>
+					</aside>
+
+					<article class="prose">
+						<p class="kicker" id="what">01 · 定义</p>
+						<h2>记忆系统是什么</h2>
+						<p>Agent 记忆系统从 agent 与用户的互动里取知识，把知识结构化地存下来，再以上下文的形式交还回去，让下一轮回答好一点。</p>
+
+						<figure class="formula">
+							<math display="block">
+								<mi>M</mi><mo>=</mo><mo>&#x27E8;</mo><mi>S</mi><mo>,</mo><mi>D</mi><mo>,</mo><mi>Q</mi><mo>&#x27E9;</mo><mo>,</mo>
+								<mspace width="1em" />
+								<mi>S</mi><mo>=</mo><msub><mi>f</mi><mtext>src</mtext></msub
+								><mo>(</mo><mi>I</mi><mo>)</mo><mo>,</mo>
+								<mspace width="1em" />
+								<mi>D</mi><mo>=</mo><msub><mi>f</mi><mtext>struct</mtext></msub
+								><mo>(</mo><mi>S</mi><mo>)</mo><mo>,</mo>
+								<mspace width="1em" />
+								<mi>Q</mi><mo>(</mo><mi>q</mi><mo>)</mo><mo>=</mo><msub><mi>f</mi><mtext>query</mtext></msub
+								><mo>(</mo><mi>D</mi><mo>,</mo><mi>q</mi><mo>)</mo>
+							</math>
+							<span class="eqno">(1)</span>
+							<figcaption>M 是记忆系统，I 是互动日志，S 是源数据，D 是结构化数据，Q(q) 是查询 q 时取回的上下文。</figcaption>
+						</figure>
+
+						<p>公式里这三项就是记忆系统的三个部分：源数据、结构化数据、检索。</p>
+						<p>
+							S 是源数据，互动留下的原始记录：消息、工具调用与返回、上传的文件，以及接入的邮件、日历、工单等外部内容。多数应用把它存成只追加的事件表或消息表，每条带
+							id、时间戳和会话 id，先全量落盘，之后再处理。
+						</p>
+						<p>
+							D 是结构化数据，从源数据里抽出的、能被程序检查的知识：事实、实体、偏好、待办和发生过的事件。常见形式有几种：关系表、用户画像的键值对、JSON
+							文档、图数据库的点边，也有把「文本块 + 元数据」放进向量库的。形状由 schema 决定，写侧负责去重与合并冲突。
+						</p>
+						<p>
+							Q 是检索，给定当前问题，从结构化数据里挑出一小段，按 token 预算放回上下文，需要细节时再回看源数据。常见实现有 SQL 过滤、全文检索、向量相似度加元数据过滤，或者混合后再
+							rerank；输出是按相关度或时间排序的一小段。
+						</p>
+						<p>三项互相牵制：源留得越全，抽取越贵，检索也越难挑。产品之间的差别，大多在这三处的取舍上。</p>
+						<p>然而对话一长，源只增不减，结构越抽越多，检索却要在更多东西里挑出更短的一段。这套做法还能撑多久？</p>
+
+						<p class="kicker" id="why">02 · 动机</p>
+						<h2>为什么需要记忆系统</h2>
+						<p>
+							对话会越来越长，模型这一侧的两个限制不会跟着放宽：上下文是固定的 token
+							数，注意力也是有限的资源。塞进去的内容越多，模型在长上下文里找到那一条具体事实的能力反而越弱。记录可以无限增长，这两样不能。
+						</p>
+						<p>
+							记忆系统的必要性就落在这处不对称上。它把随时间增长的历史挪到窗口之外，需要时只放回一小段；不这么做，对话一过窗口，最早的内容连同里面的信息会一起消失。
+						</p>
+						<p>记忆系统的用处可以归成三件事。</p>
+						<p>
+							一是克制地记录互动。它不搬运整段对话，只留下之后还会用到的部分：做过什么决定、改到哪一步、哪些约束仍然有效。记录有边界，条数、长度、时间都有上限，也有出处，能指回原始消息。
+						</p>
+						<p>
+							标准定得太紧，重要的事就再也找不回来；定得太松，记录会退化成第二份对话记录，读不动也查不快。记什么、留多久、以什么形状留，是第一个要权衡的地方。
+						</p>
+						<p>二是把重复的做法沉淀成方法。同一类任务做过几次，步骤、判断点和踩过的坑就稳定下来，可以写成一份流程。下次遇到同类任务，agent 不必重新摸索，也能预判下一步往哪走。</p>
+						<p>抽象程度得挑：抽得太细，换个项目就不适用；抽得太粗，执行时还得重新摸索。方法一旦写死，错的做法也会跟着变成惯例，所以它还得能改。</p>
+						<p>
+							三是记住偏好。语气、篇幅、常用工具、不喜欢的做法，说一次就该生效，不用每轮重申。麻烦在于偏好会变，也会被单次情绪带偏：记老了会冒犯，记少了要反复确认，记太宽又会盖过具体场合的要求。偏好记准了，同样的输出不用反复调试，agent
+							才谈得上好用。
+						</p>
+						<p>三处都没有标准答案。记录宽一点会占地，方法具体一点会过时，偏好记全一点会僵化。剩下的事是在三处各挑一个位置：留什么、抽到多细、记到什么程度。</p>
+
+						<p class="kicker" id="how">03 · 设计</p>
+						<h2>如何设计记忆系统</h2>
+						<p>Milu 用三层来各管一件事：Atom 记互动，SOP 记方法，Persona 记偏好。</p>
+
+						<figure class="fig-paper">
+							<img src="../figures/layers.svg" alt="会话日志经抽取写入 atom，atom 蒸馏出 SOP 与 Persona，三者包在虚线框 Memory 里，检索时把需要的一小段写回上下文" />
+							<figcaption>图 1：从左到右是一条记录的路。虚线框里是 Memory：atom 是证据，SOP 与 Persona 从它蒸馏，三者条数依次变少；检索只把需要的那一小段写回上下文。</figcaption>
+						</figure>
+
+						<h3 id="how-atoms">3.1 Atom</h3>
+						<p>先要定的是记什么。</p>
+						<p>多数记忆系统用的是 RAG：把对话切片、算向量、按相似度取回，比如 Mem0。</p>
+						<ul>
+							<li>
+								写得不准。该记的偏好和长期事实可能漏掉，琐碎信息反而留下；换个说法，抽取结果也可能不同。重复与矛盾的记忆仍会留下：先「住在上海」、后「搬到北京」，系统要花时间和语境才判断得出这是更新还是冲突，重复的那份还一直占着上下文。
+							</li>
+							<li>改得不清楚。新事实可能新增、合并或改写旧记忆，用户看不出改了什么、旧事实是否还有效、系统为什么这么处理。</li>
+							<li>取回了什么，说不清。检索返回了哪些记忆、为什么认为它们相关、回答最终用了哪些证据，都不一定透明。</li>
+						</ul>
+						<p>Milu 的做法是从对话里整理出带 kind 的结构化记录，每条挂一层 metadata：能回溯原文，也能按它归类、整理。</p>
+						<p>kind 怎么分，直接决定后面检索和归纳顺不顺手，所以要先定下来。</p>
+						<p>Milu 只留六类，每一类对应一种场景。</p>
+						<table>
+							<caption>
+								六类 atom 与各自的场景
+							</caption>
+							<thead>
+								<tr>
+									<th>kind</th>
+									<th>场景</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr>
+									<td><code>attribute</code></td>
+									<td>稳定的属性，比如设备系统、居住城市、通勤时长</td>
+								</tr>
+								<tr>
+									<td><code>event</code></td>
+									<td>一次发生的事，比如买了什么、参加了什么活动、发布一版</td>
+								</tr>
+								<tr>
+									<td><code>reference</code></td>
+									<td>别人给的、以后还要用的东西，比如清单、地址、配置</td>
+								</tr>
+								<tr>
+									<td><code>preference</code></td>
+									<td>对某类情境的取舍，比如回复要短、晚上不排会</td>
+								</tr>
+								<tr>
+									<td><code>instruction</code></td>
+									<td>长期规则，比如提交前必须跑检查</td>
+								</tr>
+								<tr>
+									<td><code>update</code></td>
+									<td>旧值换成新值，比如换了工作、改了常用语言</td>
+								</tr>
+							</tbody>
+						</table>
+						<p>这六类各自对应一种不单独存就会丢、或者会混的情况。</p>
+						<ul>
+							<li><code>attribute</code>：把不随时间变化的属性和发生的事分开。否则「通勤 40 分钟」会被反复记成事件，越积越多。</li>
+							<li><code>event</code>：必须带发生时间，才能回答「上个月买了几次」这类统计。没有它，购买和参与只能折进偏好或摘要，之后就数不出来。</li>
+							<li><code>reference</code>：指向别人给的东西，比如清单、地址、配置。它有来源、会过期，和用户自己的事实不是一回事。</li>
+							<li><code>preference</code>：带方向和场合。「回复要短」只在某些场景成立，缺了场合就会变成硬规则。</li>
+							<li><code>instruction</code>：和偏好分开，因为它是约束，不是倾向；违反要算错，不是「不太喜欢」。</li>
+							<li><code>update</code>：记录替换关系，让当前值唯一。没有它，同一个属性会同时挂着几个「有效」的值。</li>
+						</ul>
+						<p>Milu 的体会是，事无巨细地记并不划算：类目越多，写错和漏标的机会越多。决定记什么的同时，也在决定舍弃什么。</p>
+						<ul>
+							<li><code>decision</code> 与 <code>issue</code>：本质是带结果的事件，并进 <code>event</code>，不再单列。</li>
+							<li><code>scene</code>：曾经作为一层做聚合，后来删掉；聚合结果说不清来自哪几条互动，也没法校验，改由 SOP 与 Persona 从 atom 蒸馏。</li>
+							<li><code>task</code>：属于会话过程，不是长期记忆，存下来只是待办列表的副本。</li>
+							<li><code>emotion</code>：单次情绪不可靠，容易把一次抱怨误判成偏好。</li>
+							<li><code>summary</code>：一次性文本，不能校验也不能更新，正是 RAG 那条路。</li>
+						</ul>
+						<p>
+							按这套结构实现之后，Milu 在 LongMemEval 的 15 题采样上，判题通过率从 26.7% 提升到
+							46.7%。对照组只保留最近 10 条消息，两组看同样的窗口、同样的模型。提升集中在知识更新和多会话；时间推理两边都是 0/3，这一项没有解决；该说不知道的时候仍然说不知道。
+						</p>
+						<figure class="fig-paper">
+							<img src="../figures/bench.svg" alt="分组条形图：五种能力的判题通过率，带记忆后多会话从 0/3 到 1/3、知识更新从 0/3 到 2/3，时间推理两边都是 0/3，总体从 4/15 到 7/15" />
+							<figcaption>图 3：LongMemEval_S 采样上的判题通过率，每桶 3 题、共 15 题；超时与报错按错算。</figcaption>
+						</figure>
+						<p>
+							除此之外，atom 上还挂着一层 metadata：来源消息的编号、事件发生的时间、写入时间，以及它属于哪一类。这层信息不参与检索排序，但让每条结论都能回溯：点开一条
+							atom，能看到它由哪几条消息支撑。
+						</p>
+						<p>
+							举个日常的例子。用户在杭州工作时聊过自己的通勤，两年后说起公司把他调去了上海。库里不会把「杭州」抹掉，而是留下一条
+							<code>update</code>：旧值杭州、新值上海，变更时间是后来那次对话。点开这条
+							atom，能看到它挂着的两条来源消息，一条是当年的入职闲聊，一条是这次的调动说明；哪一天发现城市判断错了，顺着编号回去读原文，就能改回来。
+						</p>
+
+						<h3 id="how-sop">3.2 SOP</h3>
+						<p>
+							atom
+							的记录是离散的：一条对着一个时刻、一件事，回答「发生过什么」很合适，回答「这类任务一般怎么做」就不够了。同一类任务做过几次，才能看出哪些步骤固定、哪里要判断、哪一步最容易出错。这层总结得再做一次。
+						</p>
+						<p>SOP 就是这次总结的产物：从若干条 atom 里抽出可复用的流程，写成一篇文档。它不替代 atom：先把方法摆出来，细节回 atom 里找。</p>
+						<p>文档的章节固定为五节，每一节各管一段职责。</p>
+						<ul>
+							<li><code>Purpose</code>：这份流程解决什么问题，读完这一段就知道该不该往下看。</li>
+							<li><code>When</code>：一句话说明什么请求该用它，也是索引里常驻的那一行。</li>
+							<li><code>Procedure</code>：编号步骤，一步一个动作；判断点写成「若…则…」，检查点写成「确认…」。</li>
+							<li><code>Checklist</code>：执行前后要确认的事项，防住「步骤都做了，结果没验证」。</li>
+							<li><code>Pitfalls</code>：踩过的坑，最多 5 条；这一节决定下一次能不能少走弯路。</li>
+						</ul>
+						<p>
+							章节之外还有几条硬约束：标题至多 24 字，<code>When</code> 一句话至多 80 字，<code>Procedure</code> 至少两步，证据至多 30 条；正文每一步都要引用证据里的 atom
+							编号，落不到任何 atom 上的步骤会被拒绝。
+						</p>
+						<p>SOP 也有上限：20 篇。索引一行一篇、常驻在上下文里，篇数再多，光索引就要占掉一块预算。</p>
+
+						<h3 id="how-persona">3.3 Persona</h3>
+						<p>
+							persona 同样是从 atom 里再收一次，只是对象从任务换成了人。atom 里散着「回复别太长」「晚上别排会」「别用表情」这类碎片，单看一条只说明某一次偏好；要让 agent
+							知道「这个人希望被怎样对待」，得把它们合到一页上。
+						</p>
+						<p>收出来的是一页文档，只从偏好、指令和角色类的 atom 里取料，其余细节留在 atom 层按需召回。它只回答一个问题：接下来该怎么和他说话。</p>
+						<p>文档只有两节，各自管一件事。</p>
+						<ul>
+							<li>关系：谁在用、通常怎么协作、有哪些长期约束，至多 4 行。</li>
+							<li>口味：界面偏好与工作节奏，至多 6 行，其中界面与节奏各至多 3 行。</li>
+						</ul>
+						<p>每一行都要注明来自哪条 atom，带上编号和日期；属于别处的内容不写，比如绝对路径、提交编号、任务进度、分支状态。落不到 atom 上的话，宁可删掉。</p>
+						<p>为了每轮都能进上下文，persona 限 1,200 字。写不下只能删，留下的就是会影响行为的那部分。</p>
+						<h3 id="how-recall">3.4 检索</h3>
+						<p>三层都建好之后，最后一个问题是每一轮到底取什么进来。窗口有限，全塞进去等于没有检索；取错了，前面的结构再整齐也白搭。</p>
+						<figure class="fig-paper">
+							<img src="../figures/recall.svg" alt="模型改写查询，结构化过滤后取回一页；够用就写进上下文，超出上限则拒查，拒查带着在场范围和翻页方向回到查询" />
+							<figcaption>图 2：一轮检索。实线是往前走，虚线是拒查之后的收窄重查。</figcaption>
+						</figure>
+						<p>
+							atom 的取法是结构化过滤：按种类、主体与属性、时间区间、字面词组合查询，按命中与时间排序，一次返回一页。上限写在工具里：一次最多 30 条，单条细节 400 字，一次回答 6,000
+							字；超出直接拒查，并给出在场的主体、日期跨度和翻页建议，让模型自己把查询收窄。
+						</p>
+						<p>
+							读取方是一个会改写查询的模型，不是一个只查一次的搜索框，所以字面匹配比相似度更合适：它能预测「换个词会怎样」，收窄建议把「查不到」变成「下一次怎么查」。这两件事相似度分数给不了。代价是召回偏保守。
+						</p>
+						<p>结果里还有两条规矩：被取代的记录默认隐藏，一条更新读起来是当前的一个值；同一个主体和属性有多个活值、中间又没有更新链时，回答会说出来，而不是挑一个。</p>
+						<p>
+							常驻的部分更简单。SOP 只放一行一篇的索引，正文按需翻页；persona
+							整页随提示注入，带一个内容指纹，完全相同的提醒不会注入两次，变化过的则一定注入。压缩之后全部重新注入，因为压缩把原来的消息收起来了。
+						</p>
+						<p>窗口预算可以写成一行加法。</p>
+						<figure class="formula">
+							<math display="block">
+								<msub>
+									<mi>T</mi>
+									<mtext>ctx</mtext>
+								</msub>
+								<mo>=</mo>
+								<msub>
+									<mi>T</mi>
+									<mtext>sys</mtext>
+								</msub>
+								<mo>+</mo>
+								<msub>
+									<mi>T</mi>
+									<mtext>persona</mtext>
+								</msub>
+								<mo>+</mo>
+								<msub>
+									<mi>T</mi>
+									<mtext>sop</mtext>
+								</msub>
+								<mo>+</mo>
+								<msub>
+									<mi>T</mi>
+									<mtext>recall</mtext>
+								</msub>
+								<mo>+</mo>
+								<msub>
+									<mi>T</mi>
+									<mtext>dialog</mtext>
+								</msub>
+								<mo>&#x2264;</mo>
+								<mi>B</mi>
+							</math>
+							<span class="eqno">(2)</span>
+							<figcaption>窗口预算的分解。persona 与 SOP 索引是常驻项，召回和对话是可变项；30 条命中、400 字 detail、6,000 字总量这三个上限，都压在可变项上。</figcaption>
+						</figure>
+						<p>
+							压缩时按覆盖范围选档位。全量覆盖时，摘要里写「更早的消息已归档到长期记忆」，再加至多十条摘要，末尾一句「需要细节就回忆」；只覆盖一部分时，切到覆盖索引之前的最后一个用户轮次，其余原样保留；没有覆盖时，退回最近的一问一答，并说明日志里还有其余部分。十条摘要按价值排序：三条留给最近的事件，其余按更新、偏好、指令、属性、参考排。
+						</p>
+
+						<p>
+							三层共享同一份 atom，上层必须引用下层，所以每条结论都能回到原文核对。上限也写在各层里：六类 atom、20 篇 SOP、一页 1,200
+							字的 persona。留什么、留多少，都是设计时定死的，不留给模型临场发挥。
+						</p>
+
+						<p class="note-end">
+							<span>Notes · 01 · Memory</span>
+							<a href="../index.html">← 返回 Milu</a>
+						</p>
+					</article>
+				</div>
+			</div>
+		</main>
+		<footer class="foot">
+			<div class="wrap">
+				<div class="foot-grid">
+					<div>
+						<a class="foot-brand" href="../index.html" aria-label="Milu — 返回首页">
+							<img src="../pixel_milu.png" alt="" width="22" height="22" />
+							<svg class="wordmark" viewBox="0 0 210 72" role="img" aria-label="Milu">
+								<use href="#w-mark" />
+							</svg>
+						</a>
+						<p class="foot-tag">一个留在你机器上的 agent harness。</p>
+					</div>
+					<nav class="foot-links" aria-label="Elsewhere">
+						<a href="https://github.com/mortalYoung/Milu" target="_blank" rel="noreferrer">GitHub</a>
+						<a href="https://github.com/mortalYoung/Milu/issues" target="_blank" rel="noreferrer">Issues</a>
+						<a href="memory.html">设计笔记</a>
+					</nav>
+				</div>
+				<p class="foot-note">
+					<span>Built on pi, Electron and Shiki. © 2026 Milu.</span>
+					<span>No account · no server · no telemetry</span>
+				</p>
+			</div>
+		</footer>
+
+		<a class="to-top" href="#top" aria-label="回到顶部" title="回到顶部">
+			<svg class="ico">
+				<use href="#i-arrow-up" />
+			</svg>
+		</a>
+
+		<script type="module" src="../notes.js"></script>
+	</body>
+</html>
