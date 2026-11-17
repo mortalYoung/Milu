@@ -58,6 +58,11 @@ interface LastVisible {
 	time: number;
 }
 
+function echoed(message: AgentMessage, candidate: AgentMessage): boolean {
+	if (message.role !== candidate.role) return false;
+	return JSON.stringify(message.content) === JSON.stringify(candidate.content);
+}
+
 function saidAnything(content: unknown): boolean {
 	if (!Array.isArray(content)) return false;
 	return content.some((block) => {
@@ -164,6 +169,7 @@ export class Session {
 	private _errorAt = 0;
 	private _prompt = "";
 	private readonly _suspended = new Set<string>();
+	private readonly _preLogged = new Set<AgentMessage>();
 
 	constructor(deps: SessionDeps) {
 		this._deps = deps;
@@ -282,6 +288,8 @@ export class Session {
 			await this._failBeforeRun(message, failure);
 			return { ok: false, error: failure };
 		}
+		await this._log.append(message);
+		this._preLogged.add(message);
 		await this._autoCompact();
 		this._launch(loop, message);
 		return { ok: true };
@@ -467,7 +475,7 @@ export class Session {
 			this._usedTokens = null;
 			this._compacted = true;
 			const loop = await this.open();
-			loop.restore(await this._log.transcript());
+			loop.restore(this._contextWithoutEcho(await this._log.transcript()));
 			await loop.refreshContext();
 			await this._log.record(EVENTS.compactionEnd, { timestamp: Date.now() });
 			locked = false;
@@ -537,6 +545,28 @@ export class Session {
 		return this._loop?.convertPending(id, kind) ?? false;
 	}
 
+	private _isPreLogged(message: AgentMessage): boolean {
+		for (const candidate of this._preLogged) {
+			if (candidate === message || echoed(candidate, message)) return true;
+		}
+		return false;
+	}
+
+	private _takePreLogged(message: AgentMessage): boolean {
+		for (const candidate of this._preLogged) {
+			if (candidate !== message && !echoed(candidate, message)) continue;
+			this._preLogged.delete(candidate);
+			return true;
+		}
+		return false;
+	}
+
+	private _contextWithoutEcho(messages: readonly AgentMessage[]): AgentMessage[] {
+		const last = messages.at(-1);
+		if (this._preLogged.size === 0 || last === undefined || last.role !== "user") return [...messages];
+		return this._isPreLogged(last) ? messages.slice(0, -1) : [...messages];
+	}
+
 	private _record(loop: AgentLoopService): { dispose(): void } {
 		const record = (type: string, data: Record<string, unknown>) => void this._log.record(type, data);
 		return loop.events((event) => {
@@ -556,6 +586,7 @@ export class Session {
 						return;
 					}
 					if (message.role === "assistant" && message.stopReason === "aborted" && !saidAnything(message.content)) return;
+					if (message.role === "user" && this._takePreLogged(message)) return;
 					void this._log.append(message);
 					return;
 				}
@@ -565,6 +596,7 @@ export class Session {
 					record(EVENTS.agentStart, { run: event.run, timestamp });
 					return;
 				case "run_end": {
+					this._preLogged.clear();
 					const reason = event.stopped ? "aborted" : event.error ? "error" : "completed";
 					if (reason !== "error") this._overflowCompactions = 0;
 					record(EVENTS.agentEnd, { run: event.run, reason, ...(reason === "error" && event.error ? { error: event.error } : {}), timestamp });
