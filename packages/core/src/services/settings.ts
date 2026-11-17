@@ -5,8 +5,32 @@ import { dirname, join } from "node:path";
 import { createServiceId, type Disposable, Emitter, type Event, type Service } from "@milu/di";
 import type { PendingKind } from "@milu/protocol";
 
+import type { CompactionSettings } from "../session/budget.ts";
 import { IConfigService } from "./config.ts";
 import type { ConfigService } from "./config.ts";
+
+const OBSOLETE_KEYS: readonly string[] = [
+	"commands_path",
+	"skills_watch",
+	"skills_watch_delay_ms",
+	"schedulesMaxConcurrent",
+	"workStepsDisplay",
+	"memoryIdleMinutes",
+	"memoryMaxScenes",
+];
+const OBSOLETE_COMPACTION_KEYS: readonly string[] = ["digestMaxItems"];
+
+function pruneObsolete(settings: Readonly<Record<string, unknown>>): Record<string, unknown> {
+	const next = { ...settings };
+	for (const key of OBSOLETE_KEYS) delete next[key];
+	const compaction = next["compaction"];
+	if (typeof compaction === "object" && compaction !== null && !Array.isArray(compaction)) {
+		const section = { ...(compaction as Record<string, unknown>) };
+		for (const key of OBSOLETE_COMPACTION_KEYS) delete section[key];
+		next["compaction"] = section;
+	}
+	return next;
+}
 
 export interface CustomModel {
 	id: string;
@@ -35,7 +59,7 @@ export interface Settings {
 	customProviders?: CustomProvider[];
 	rememberSession?: boolean;
 	sendWhileRunning?: PendingKind;
-	compaction?: { thresholdRatio?: number };
+	compaction?: CompactionSettings;
 	icons?: string;
 }
 
@@ -113,7 +137,7 @@ export class SettingsService implements Service {
 			return;
 		}
 		try {
-			this._settings = { ...this._settings, ...asPatch(JSON.parse(raw)) };
+			this._settings = pruneObsolete({ ...this._settings, ...asPatch(JSON.parse(raw)) }) as unknown as Settings;
 		} catch (error) {
 			throw new Error(`cannot parse ${this.file}: ${reason(error)}`);
 		}
@@ -138,7 +162,7 @@ export class SettingsService implements Service {
 
 	async update(patch: Partial<Settings> | Readonly<Record<string, unknown>>): Promise<void> {
 		this.get();
-		const next = { ...this._settings, ...patch } as Settings;
+		const next = pruneObsolete({ ...this._settings, ...patch }) as unknown as Settings;
 		await mkdir(dirname(this.file), { recursive: true });
 		const tmp = `${this.file}.tmp`;
 		await writeFile(tmp, `${JSON.stringify(next, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });

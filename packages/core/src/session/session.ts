@@ -3,7 +3,8 @@ import { mkdir, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import type { AgentMessage, AgentToolResult } from "@earendil-works/pi-agent-core";
-import type { ModelThinkingLevel } from "@earendil-works/pi-ai";
+import { isContextOverflow } from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, Model, ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { DisposableStore, Emitter, type Event } from "@milu/di";
 import type { Entry, PendingKind, PreviewKind, SeqEntry, SessionRow } from "@milu/protocol";
 
@@ -15,6 +16,7 @@ import type { ModelsService } from "../services/models.ts";
 import type { PromptService } from "../services/prompt.ts";
 import type { SettingsService } from "../services/settings.ts";
 import type { ToolService } from "../services/tools.ts";
+import { compactionBudget, compactionPolicy, type CompactionBudget } from "./budget.ts";
 import { EVENTS } from "./events.ts";
 import {
 	modelOf,
@@ -156,6 +158,7 @@ export class Session {
 	private _usedTokens: number | null | undefined;
 	private _headerSignature: string | null = null;
 	private _compacted = false;
+	private _overflowCompactions = 0;
 	private _compacting = false;
 	private _error: string | null = null;
 	private _errorAt = 0;
@@ -376,11 +379,12 @@ export class Session {
 	}
 
 	private async _autoCompact(): Promise<void> {
-		const ratio = this._deps.settingsService.get().compaction?.thresholdRatio ?? 0.8;
-		if (!(ratio > 0)) return;
+		const policy = compactionPolicy(this._deps.settingsService.get().compaction, await this._compactionTarget());
+		if (!(policy.thresholdRatio > 0)) return;
+		const budget = await this._compactionBudget();
+		if (!budget) return;
 		const used = await this._contextTokens();
-		const window = await this._contextWindow();
-		if (used === null || window === null || used < window * ratio) return;
+		if (used === null || used < budget.threshold) return;
 		try {
 			await this.compact();
 		} catch (error) {
@@ -388,22 +392,75 @@ export class Session {
 		}
 	}
 
+	private async _compactionBudget(): Promise<CompactionBudget | null> {
+		const model = await this._resolvedModel();
+		if (!model) return null;
+		const policy = compactionPolicy(this._deps.settingsService.get().compaction, await this._compactionTarget());
+		try {
+			return compactionBudget({ contextWindow: model.contextWindow, outputReserve: model.maxTokens, policy });
+		} catch (error) {
+			console.error(`session ${this.name}: compaction is misconfigured:`, error);
+			return null;
+		}
+	}
+
+	private async _compactionTarget(): Promise<{ readonly provider: string; readonly model?: string }> {
+		const target = await this._modelOf();
+		return { provider: target?.provider ?? "", ...(target?.modelId === undefined ? {} : { model: target.modelId }) };
+	}
+
 	async compact(): Promise<{ shadowed: number } | null> {
-		if (this.running) throw new Error("the chat is busy");
+		return this._compact({ duringRun: false });
+	}
+
+	async recoverOverflow(message: AssistantMessage): Promise<boolean> {
+		if (this._overflowCompactions >= (this._deps.settingsService.get().compaction?.maxOverflowRetries ?? 1)) return false;
+		if (!isContextOverflow(message, (await this._contextWindow()) ?? undefined)) return false;
+		this._overflowCompactions += 1;
+		try {
+			return (await this._compact({ duringRun: true })) !== null;
+		} catch (error) {
+			console.error(`session ${this.name}: overflow recovery failed:`, error);
+			return false;
+		}
+	}
+
+	private async _compact(options: { readonly duringRun: boolean }): Promise<{ shadowed: number } | null> {
+		if (!options.duringRun && this.running) throw new Error("the chat is busy");
 		if (this.hasSuspended()) throw new Error("an approval is pending");
 		if (this._compacting) throw new Error("a compaction is already running");
+		if ((await this._log.openCompaction()) !== null) {
+			throw new Error("a compaction is already recorded as running — restart the app if it crashed mid-compaction");
+		}
 		this._setCompacting(true);
+		let locked = false;
 		try {
 			const entries = await this._log.rawEntries();
+			await this._log.record(EVENTS.compactionStart, { timestamp: Date.now() });
+			locked = true;
 			const messages = await this._log.transcript();
-			const plan = await this._deps.compactionService.plan({ session: this, entries, messages });
-			if (!plan) return null;
-			if (this.running) throw new Error("the chat is busy");
-			await this._log.record(EVENTS.compaction, {
+			const retainTokens = (await this._compactionBudget())?.retainTokens ?? 0;
+			const plan = await this._deps.compactionService.plan({ session: this, entries, messages, retainTokens });
+			if (!plan) {
+				await this._log.record(EVENTS.compactionEnd, { timestamp: Date.now() });
+				locked = false;
+				return null;
+			}
+			if (this.running && !options.duringRun) throw new Error("the chat is busy");
+			const fresh = await this._log.rawEntries();
+			const prefixHeld = plan.shadowedIds.length <= fresh.length && plan.shadowedIds.every((id, index) => fresh[index]?.id === id);
+			if (!prefixHeld) throw new Error("the conversation changed while it was being compacted — nothing was written; run it again");
+			if (plan.shadowedTokens > 0 && Math.ceil(plan.summary.length / 4) >= plan.shadowedTokens) {
+				throw new Error(`the summary did not shrink the conversation (${plan.shadowedTokens} tokens condensed into a longer summary) — nothing was written`);
+			}
+			await this._log.record(EVENTS.compactionSummary, {
 				summary: plan.summary,
 				throughEntryId: plan.throughEntryId,
+				tailStartEntryId: plan.tailStartEntryId,
 				shadowedIds: plan.shadowedIds,
 				shadowed: plan.shadowed,
+				shadowedTokens: plan.shadowedTokens,
+				retainedTokens: plan.retainedTokens,
 				tier: plan.tier,
 				timestamp: Date.now(),
 			});
@@ -412,7 +469,12 @@ export class Session {
 			const loop = await this.open();
 			loop.restore(await this._log.transcript());
 			await loop.refreshContext();
+			await this._log.record(EVENTS.compactionEnd, { timestamp: Date.now() });
+			locked = false;
 			return { shadowed: plan.shadowed };
+		} catch (error) {
+			if (locked) await this._log.record(EVENTS.compactionEnd, { error: error instanceof Error ? error.message : String(error), timestamp: Date.now() }).catch(() => undefined);
+			throw error;
 		} finally {
 			this._setCompacting(false);
 		}
@@ -436,6 +498,9 @@ export class Session {
 	private async _openLoop(): Promise<AgentLoopService> {
 		await mkdir(join(this.root, "storage"), { recursive: true });
 		await this._log.open();
+		if ((await this._log.openCompaction()) !== null) {
+			await this._log.record(EVENTS.compactionEnd, { error: "abandoned", timestamp: Date.now() }).catch(() => undefined);
+		}
 
 		const loop = new AgentLoopService(this._deps.modelsService, this._deps.toolService, this._deps.hookService, this);
 		this._applyModel(loop, await this._modelOf());
@@ -501,6 +566,7 @@ export class Session {
 					return;
 				case "run_end": {
 					const reason = event.stopped ? "aborted" : event.error ? "error" : "completed";
+					if (reason !== "error") this._overflowCompactions = 0;
 					record(EVENTS.agentEnd, { run: event.run, reason, ...(reason === "error" && event.error ? { error: event.error } : {}), timestamp });
 					return;
 				}
@@ -660,8 +726,12 @@ export class Session {
 
 	private async _contextWindow(): Promise<number | null> {
 		if (this._loop) return this._loop.modelContextWindow();
+		return (await this._resolvedModel())?.contextWindow ?? null;
+	}
+
+	private async _resolvedModel(): Promise<Model<Api> | null> {
 		try {
-			return this._deps.modelsService.resolve((await this._modelOf()) ?? undefined).contextWindow;
+			return this._deps.modelsService.resolve((await this._modelOf()) ?? undefined);
 		} catch {
 			return null;
 		}

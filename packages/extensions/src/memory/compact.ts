@@ -1,4 +1,4 @@
-import { EVENTS, type CompactionPlan, type Entry } from "@milu/core";
+import { EVENTS, retainTail, spanCost, type CompactionPlan, type Entry } from "@milu/core";
 
 import { extractionEntries, formatMemoryRecord, type MemoryKind, type MemoryRecord } from "./store.ts";
 
@@ -18,6 +18,7 @@ const DIGEST_KIND_ORDER: readonly MemoryKind[] = ["update", "preference", "instr
 
 export interface MemoryCompactionOptions {
 	readonly digestMaxItems?: number;
+	readonly retainTokens?: number;
 	readonly memoryEvents?: readonly MemoryRecord[];
 	readonly covered?: boolean;
 	readonly coveredIndex?: number;
@@ -75,7 +76,7 @@ function recentQa(entries: readonly Entry[], limit: number): string {
 function previousCompactionEnd(entries: readonly Entry[], endIndex: number): number {
 	for (let index = endIndex; index >= 0; index -= 1) {
 		const entry = entries[index];
-		if (entry?.type !== "custom" || entry.customType !== EVENTS.compaction) continue;
+		if (entry?.type !== "custom" || entry.customType !== EVENTS.compactionSummary) continue;
 		const through = (entry.data as { throughEntryId?: unknown } | undefined)?.throughEntryId;
 		if (typeof through !== "string") return -1;
 		return entries.findIndex((candidate) => candidate.id === through);
@@ -132,25 +133,30 @@ function qaCheckpointText(entries: readonly Entry[], endIndex: number, opts: Mem
 
 export function planMemoryCompaction(entries: readonly Entry[], opts: MemoryCompactionOptions = {}): CompactionPlan | null {
 	if (entries.length < MIN_ENTRIES) return null;
+	const tail = retainTail(entries, opts.retainTokens ?? 0);
+	if (tail === null) return null;
 	const coveredIndex = opts.coveredIndex ?? -1;
-	let end: number;
+	let end = tail;
 	let tier: CompactionPlan["tier"];
 	if (opts.covered) {
-		end = entries.length - 1;
 		tier = "full";
 	} else if (coveredIndex >= 0) {
-		end = shadowEnd(entries, coveredIndex);
-		if (end < 0) return null;
+		const memoryEnd = shadowEnd(entries, coveredIndex);
+		if (memoryEnd < 0) return null;
+		end = Math.min(end, memoryEnd);
 		tier = "shrunk";
 	} else {
-		end = entries.length - 1;
 		tier = "degraded";
 	}
+	const cost = spanCost(entries, end);
 	return {
 		throughEntryId: entries[end]!.id,
+		tailStartEntryId: entries[end + 1]?.id ?? null,
 		shadowedIds: entries.slice(0, end + 1).map((entry) => entry.id),
 		summary: tier === "degraded" ? qaCheckpointText(entries, end, opts) : memoryCheckpointText(entries, end, opts),
 		shadowed: end + 1,
+		shadowedTokens: cost.shadowedTokens,
+		retainedTokens: cost.retainedTokens,
 		tier,
 	};
 }

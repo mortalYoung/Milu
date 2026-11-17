@@ -113,6 +113,7 @@ export { SessionService, ISessionService, type SessionCompactingEvent, type Sess
 export { Session, type SessionDeps } from "./session/session.ts";
 export { SessionLog } from "./session/log.ts";
 export { pendingId, pendingView } from "./session/pending.ts";
+export { retainTail, spanCost } from "./session/select.ts";
 export { projectSlice } from "./session/slice.ts";
 export type { CompactionPlan, CompactionTier } from "./session/compact.ts";
 export {

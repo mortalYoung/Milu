@@ -116,7 +116,7 @@ function toolResult(ctx: SliceContext): void {
 }
 
 function compaction(ctx: SliceContext): void {
-	const data = custom(ctx.entry, EVENTS.compaction);
+	const data = custom(ctx.entry, EVENTS.compactionSummary);
 	if (!data) return;
 	const checkpoint: SliceItem = {
 		id: ctx.entry.id,
@@ -159,7 +159,7 @@ const BY_CUSTOM: Record<string, (ctx: SliceContext) => void> = {
 	[EVENTS.mcpChanged]: reminder,
 	[EVENTS.sopReminder]: reminder,
 	[EVENTS.toolResult]: toolResult,
-	[EVENTS.compaction]: compaction,
+	[EVENTS.compactionSummary]: compaction,
 	[EVENTS.rewind]: rewind,
 };
 

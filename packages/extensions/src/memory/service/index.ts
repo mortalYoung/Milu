@@ -133,11 +133,11 @@ export class MemoryService implements Service {
 		return sopUpdateReminder(changes);
 	}
 
-	async planCompact(session: Session, entries: readonly Entry[]): Promise<CompactionPlan | null> {
+	async planCompact(session: Session, entries: readonly Entry[], retainTokens: number): Promise<CompactionPlan | null> {
 		const enabled = this._enabled?.get() !== false;
 		const flush = enabled ? await this._flushForCompact(session) : { memoryAvailable: false, covered: false, coveredIndex: -1 };
 		const memoryEvents = enabled ? await this._sessionMemories(session.root, entries) : [];
-		return planMemoryCompaction(entries, { ...flush, memoryEvents, digestMaxItems: this._digestMaxItems?.get() });
+		return planMemoryCompaction(entries, { ...flush, memoryEvents, digestMaxItems: this._digestMaxItems?.get(), retainTokens });
 	}
 
 	async status(session: Session): Promise<string> {

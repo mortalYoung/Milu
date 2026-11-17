@@ -17,7 +17,7 @@ const CATEGORIES = [
 	{ id: "providers", label: "Providers", intro: "Keys and endpoints behind the models you can pick. A key is written once and never echoed back." },
 	{ id: "tools", label: "Tools", intro: "Limits for the shell, the web, and MCP servers." },
 	{ id: "skills", label: "Skills", intro: "Where skill folders are looked up, relative to the workspace or home." },
-	{ id: "memory", label: "Memory", intro: "When the agent writes memory, and how much of it it keeps." },
+	{ id: "memory", label: "Memory", intro: "When the agent writes memory, how much of it it keeps, and how the context is condensed." },
 	{ id: "permission", label: "Permission", intro: "What a new partner may touch by default." },
 	{ id: "schedule", label: "Schedule", intro: "Whether scheduled messages fire, and how many may run in a day." },
 ] as const;
@@ -38,6 +38,7 @@ interface Field {
 	readonly kind: FieldKind;
 	readonly min?: number;
 	readonly unit?: string;
+	readonly fallback?: string;
 	readonly mono?: boolean;
 	readonly options?: readonly { value: string; label: string }[];
 }
@@ -267,6 +268,52 @@ const FIELDS: readonly Field[] = [
 		min: 0,
 		unit: "items",
 	},
+	{
+		id: "compaction.thresholdRatio",
+		scope: "settings",
+		category: "memory",
+		group: "Compaction",
+		kind: "number",
+		title: "Compact At",
+		description: "Fraction of the model window that starts a compaction. 0 turns automatic compaction off and leaves only /compact.",
+		min: 0,
+		fallback: "0.8",
+	},
+	{
+		id: "compaction.headroomTokens",
+		scope: "settings",
+		category: "memory",
+		group: "Compaction",
+		kind: "number",
+		title: "Compaction Headroom",
+		description: "Tokens kept free beyond the model's output reservation; lower it when compaction starts too early on a small window.",
+		min: 0,
+		unit: "tokens",
+		fallback: "65536",
+	},
+	{
+		id: "compaction.retainRatio",
+		scope: "settings",
+		category: "memory",
+		group: "Compaction",
+		kind: "number",
+		title: "Keep Recent Context",
+		description: "Fraction of the usable window kept verbatim after a compaction; keep it below Compact At or nothing compacts.",
+		min: 0,
+		fallback: "0.16",
+	},
+	{
+		id: "compaction.maxOverflowRetries",
+		scope: "settings",
+		category: "memory",
+		group: "Compaction",
+		kind: "number",
+		title: "Overflow Recoveries",
+		description: "How many times a context-overflow error may compact and retry before the turn fails; 0 disables recovery.",
+		min: 0,
+		unit: "retries",
+		fallback: "1",
+	},
 
 	{
 		id: "defaultSandboxMode",
@@ -403,8 +450,10 @@ function valueOf(field: Field, draft: Settings, mcp: McpOptions): unknown {
 
 function displayValue(field: Field, value: unknown): string {
 	switch (field.kind) {
-		case "number":
-			return `${value ?? ""}${field.unit === undefined ? "" : ` ${field.unit}`}`;
+		case "number": {
+			const shown = value ?? field.fallback ?? "";
+			return `${shown === "" ? "—" : shown}${field.unit === undefined || shown === "" ? "" : ` ${field.unit}`}`;
+		}
 		case "duration":
 			return formatDuration(Number(value) || 0);
 		case "segments":

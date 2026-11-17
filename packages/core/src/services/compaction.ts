@@ -9,6 +9,7 @@ export interface CompactionContext {
 	readonly session: Session;
 	readonly entries: readonly Entry[];
 	readonly messages: readonly AgentMessage[];
+	readonly retainTokens: number;
 }
 
 export type CompactionPlanner = (context: CompactionContext) => CompactionPlan | null | Promise<CompactionPlan | null>;
@@ -28,7 +29,7 @@ export class CompactionService implements Service {
 
 	async plan(context: CompactionContext): Promise<CompactionPlan | null> {
 		if (this._planner) return this._planner(context);
-		return planCompaction(context.entries, context.messages);
+		return planCompaction(context.entries, context.messages, context.retainTokens);
 	}
 
 	dispose(): void {

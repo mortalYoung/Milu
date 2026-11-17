@@ -75,7 +75,7 @@ export const memoryExtension: Extension = {
 	activate(context) {
 		const memory = context.get(IMemoryService);
 
-		context.disposables.add(context.get(ICompactionService).register(({ session, entries }) => memory.planCompact(session, entries)));
+		context.disposables.add(context.get(ICompactionService).register(({ session, entries, retainTokens }) => memory.planCompact(session, entries, retainTokens)));
 
 		context.disposables.add(
 			context.get(IToolService).register({

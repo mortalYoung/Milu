@@ -49,7 +49,7 @@ function priceContent(content: unknown): number {
 	return total;
 }
 
-function priceMessage(message: AgentMessage): number {
+export function priceMessage(message: AgentMessage): number {
 	if (message.role === "user") return priceContent(message.content) + ROLE_OVERHEAD;
 	if (message.role === "assistant") return priceContent(message.content) + ROLE_OVERHEAD;
 	const content = (message as unknown as { content?: unknown }).content;

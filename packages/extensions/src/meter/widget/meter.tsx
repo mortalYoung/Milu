@@ -49,7 +49,7 @@ export function MeterWidget(props: WidgetProps) {
 		refresh,
 		(entry) =>
 			(entry.type === "message" && entry.message.role === "assistant" && entry.message.usage !== undefined) ||
-			(entry.type === "custom" && entry.customType === LOG_EVENTS.compaction),
+			(entry.type === "custom" && entry.customType === LOG_EVENTS.compactionSummary),
 	);
 
 	useEffect(() => {

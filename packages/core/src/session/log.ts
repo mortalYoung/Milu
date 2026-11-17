@@ -9,6 +9,7 @@ import type { ExecutionService } from "../services/execution.ts";
 import { EVENTS } from "./events.ts";
 import { forkingOf } from "./files.ts";
 import { JsonlSessionRepo, type JsonlSession, type JsonlSessionMetadata } from "./jsonl.ts";
+import { migrateLegacyCompaction } from "./legacy-compaction.ts";
 import { originWindow, projectOrigin, projectTail, tailWindow, type OriginWindow } from "./origin.ts";
 import { projectSlice, projectSliceItems, type SliceItem } from "./slice.ts";
 import { textOf } from "./text.ts";
@@ -175,6 +176,7 @@ export class SessionLog {
 	private _disposed = false;
 	private _latestMeta: JsonlSessionMetadata | null | undefined;
 	private _latestPathCache: string | null | undefined;
+	private _preparing: Promise<void> | null = null;
 	private readonly _emitter = new Emitter<SeqEntry>();
 
 	constructor(
@@ -212,8 +214,15 @@ export class SessionLog {
 
 	private async _latestPath(): Promise<string | null> {
 		if (this._latestPathCache !== undefined) return this._latestPathCache;
-		this._latestPathCache = (await newestLog(this.root)) ?? (await this._latest())?.path ?? null;
-		return this._latestPathCache;
+		this._preparing ??= (async () => {
+			const path = (await newestLog(this.root)) ?? (await this._latest())?.path ?? null;
+			if (path !== null) await migrateLegacyCompaction(path);
+			this._latestPathCache = path;
+		})().finally(() => {
+			this._preparing = null;
+		});
+		await this._preparing;
+		return this._latestPathCache ?? null;
 	}
 
 	private async _latest(): Promise<JsonlSessionMetadata | null> {
@@ -370,6 +379,17 @@ export class SessionLog {
 		return { ...originWindow(projectTail([...scanned.entries].reverse()), { conversations: options.conversations }), hasMore: false };
 	}
 
+	async openCompaction(): Promise<string | null> {
+		const entries = await this.rawEntries();
+		for (let index = entries.length - 1; index >= 0; index -= 1) {
+			const entry = entries[index]!;
+			if (entry.type !== "custom") continue;
+			if (entry.customType === EVENTS.compactionStart) return entry.id;
+			if (entry.customType === EVENTS.compactionEnd || entry.customType === EVENTS.compactionSummary) return null;
+		}
+		return null;
+	}
+
 	async lastUsageTokens(): Promise<number | null> {
 		const path = await this._latestPath();
 		if (path === null) return null;
@@ -381,7 +401,7 @@ export class SessionLog {
 					found = usage.input + usage.cacheRead + usage.cacheWrite;
 					return true;
 				}
-				if (entry.type === "custom" && entry.customType === EVENTS.compaction) return true;
+				if (entry.type === "custom" && entry.customType === EVENTS.compactionSummary) return true;
 			}
 			return false;
 		});
@@ -397,7 +417,7 @@ export class SessionLog {
 			(fresh) => {
 				for (const entry of fresh) {
 					newestFirst.push(entry);
-					if (entry.type === "custom" && entry.customType === EVENTS.compaction) return true;
+					if (entry.type === "custom" && entry.customType === EVENTS.compactionSummary) return true;
 				}
 				return false;
 			},

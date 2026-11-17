@@ -197,6 +197,22 @@ export class AgentLoopService implements Service {
 			}
 			const message = this._agent.state.messages.at(-1);
 			this._retries += 1;
+			if (!this._stopped && message?.role === "assistant" && (await this._session.recoverOverflow(message as AssistantMessage))) {
+				this._held = [];
+				this._dropFailure();
+				this._emitter.fire({
+					type: "retry_scheduled",
+					run: this._runs,
+					turn: this._turn,
+					retry: this._retries,
+					maxRetries: 1,
+					delayMs: 0,
+					error: result.error,
+				});
+				this._emitter.fire({ type: "retry_started", run: this._runs, turn: this._turn, retry: this._retries });
+				next = null;
+				continue;
+			}
 			const decision =
 				this._stopped || message?.role !== "assistant"
 					? null

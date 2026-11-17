@@ -252,7 +252,7 @@ export const EVENT_META: Record<string, EventMeta> = {
 	},
 	[LOG_EVENTS.escalationRequest]: { trajectory: escalationRequestNode },
 	[LOG_EVENTS.escalationDecision]: { trajectory: escalationDecisionNode },
-	[LOG_EVENTS.compaction]: { trajectory: compactionNode },
+	[LOG_EVENTS.compactionSummary]: { trajectory: compactionNode },
 	[LOG_EVENTS.modelChange]: { trajectory: modelChangeNode },
 	["active_tools_change"]: { trajectory: activeToolsNode },
 	[LOG_EVENTS.timeGapReminder]: {
