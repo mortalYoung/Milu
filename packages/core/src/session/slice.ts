@@ -107,7 +107,7 @@ function toolResult(ctx: SliceContext): void {
 		}
 	}
 	if (owner < 0) {
-		ctx.out.push(item);
+		if (ctx.keepDangling) ctx.out.push(item);
 		return;
 	}
 	let at = owner;

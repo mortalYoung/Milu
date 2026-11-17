@@ -1,6 +1,7 @@
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { Entry } from "@milu/protocol";
 
+import { EVENTS } from "./events.ts";
 import { priceMessage } from "./tokens.ts";
 
 export function priceEntry(entry: Entry): number {
@@ -36,9 +37,26 @@ function callsIn(entry: Entry): readonly string[] {
 }
 
 function resultsIn(entry: Entry): readonly string[] {
-	if (entry.type !== "message" || entry.message.role !== "toolResult") return [];
-	const callId = (entry.message as { toolCallId?: unknown }).toolCallId;
-	return typeof callId === "string" ? [callId] : [];
+	if (entry.type === "custom" && entry.customType === EVENTS.toolResult) {
+		const callId = (entry.data as { toolCallId?: unknown } | undefined)?.toolCallId;
+		return typeof callId === "string" ? [callId] : [];
+	}
+	if (entry.type === "message" && entry.message.role === "toolResult") {
+		const callId = (entry.message as { toolCallId?: unknown }).toolCallId;
+		return typeof callId === "string" ? [callId] : [];
+	}
+	return [];
+}
+
+/**
+ * 尾巴必须从一条不带 tool 结果的位置开始：先退到认领者（assistant 的 tool_calls）之前，
+ * 再跳过无人认领的结果，否则模型会收到「role 'tool' 没有前置 tool_calls」的 400。
+ */
+export function safeTailStart(entries: readonly Entry[], start: number): number {
+	let at = start;
+	while (at > 0 && splitsToolPair(entries, at)) at -= 1;
+	while (at < entries.length && resultsIn(entries[at]!).length > 0) at += 1;
+	return at;
 }
 
 function splitsToolPair(entries: readonly Entry[], start: number): boolean {
@@ -51,7 +69,10 @@ function splitsToolPair(entries: readonly Entry[], start: number): boolean {
 
 export function retainTail(entries: readonly Entry[], retainTokens: number): number | null {
 	if (entries.length < 2) return null;
-	if (!(retainTokens > 0)) return entries.length - 1;
+	if (!(retainTokens > 0)) {
+		const only = safeTailStart(entries, entries.length - 1);
+		return only > 0 ? only - 1 : null;
+	}
 	const priced = entries.map(priceEntry);
 	let retained = 0;
 	let start = entries.length - 1;
@@ -60,6 +81,6 @@ export function retainTail(entries: readonly Entry[], retainTokens: number): num
 		start = index;
 		if (retained >= retainTokens) break;
 	}
-	while (start > 0 && splitsToolPair(entries, start)) start -= 1;
-	return start > 0 ? start - 1 : null;
+	const tail = safeTailStart(entries, start);
+	return tail > 0 ? tail - 1 : null;
 }

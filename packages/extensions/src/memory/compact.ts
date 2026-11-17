@@ -1,4 +1,4 @@
-import { EVENTS, retainTail, spanCost, type CompactionPlan, type Entry } from "@milu/core";
+import { EVENTS, retainTail, safeTailStart, spanCost, type CompactionPlan, type Entry } from "@milu/core";
 
 import { extractionEntries, formatMemoryRecord, type MemoryKind, type MemoryRecord } from "./store.ts";
 
@@ -148,6 +148,9 @@ export function planMemoryCompaction(entries: readonly Entry[], opts: MemoryComp
 	} else {
 		tier = "degraded";
 	}
+	const boundary = safeTailStart(entries, end + 1);
+	if (boundary === 0) return null;
+	end = boundary - 1;
 	const cost = spanCost(entries, end);
 	return {
 		throughEntryId: entries[end]!.id,
