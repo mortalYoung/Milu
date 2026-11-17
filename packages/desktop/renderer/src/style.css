@@ -861,11 +861,13 @@ body.pane-dragging {
 
 .conv-dialog-close {
 	position: absolute;
-	top: 16px;
-	right: 16px;
+	top: 10px;
+	right: 10px;
 	z-index: 10;
 	display: grid;
 	place-items: center;
+	width: 28px;
+	height: 28px;
 	padding: 0;
 	border: 0;
 	border-radius: 6px;
@@ -1136,11 +1138,11 @@ body.pane-dragging {
 	align-items: center;
 	justify-content: center;
 	flex: none;
-	width: 32px;
-	height: 32px;
+	width: 28px;
+	height: 28px;
 	padding: 0;
 	border: 0;
-	border-radius: 999px;
+	border-radius: var(--r6);
 	background: transparent;
 	color: var(--ink);
 	cursor: pointer;
@@ -2473,10 +2475,10 @@ body.pane-dragging {
 	z-index: 20;
 	display: grid;
 	place-items: center;
-	width: 30px;
-	height: 30px;
+	width: 28px;
+	height: 28px;
 	border: 0.5px solid var(--line);
-	border-radius: 999px;
+	border-radius: var(--r6);
 	background: var(--surface);
 	color: var(--ink-soft);
 	box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 8%, transparent);
@@ -2616,11 +2618,11 @@ body.pane-dragging {
 	display: grid;
 	place-items: center;
 	flex: none;
-	width: 26px;
-	height: 26px;
+	width: 28px;
+	height: 28px;
 	padding: 0;
 	border: 0;
-	border-radius: 999px;
+	border-radius: var(--r6);
 	background: transparent;
 	color: var(--muted-soft);
 	cursor: pointer;
@@ -2643,11 +2645,11 @@ body.pane-dragging {
 	display: grid;
 	place-items: center;
 	flex: none;
-	width: 26px;
-	height: 26px;
+	width: 28px;
+	height: 28px;
 	padding: 0;
 	border: 0;
-	border-radius: 999px;
+	border-radius: var(--r6);
 	background: var(--ink);
 	color: var(--canvas);
 	cursor: pointer;
@@ -3730,7 +3732,7 @@ body.git-resizing {
 	height: 18px;
 	flex: none;
 	border: 0;
-	border-radius: 999px;
+	border-radius: var(--r4);
 	background: transparent;
 	color: var(--muted-soft);
 	opacity: 0;

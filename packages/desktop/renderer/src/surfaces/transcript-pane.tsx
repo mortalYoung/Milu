@@ -302,7 +302,7 @@ export function TranscriptPaneSurface(props: SurfaceProps) {
 							</div>
 							{following ? null : (
 								<button type="button" className="back-to-bottom" aria-label="Back to latest" onClick={() => follower.pin(true)}>
-									<ArrowDownIcon size={13} />
+									<ArrowDownIcon size={15} />
 								</button>
 							)}
 						</div>

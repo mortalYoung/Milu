@@ -47,7 +47,7 @@ function IconButton(props: { label: string; tone?: "ink" | "danger"; disabled?: 
 			title={props.label}
 			disabled={props.disabled}
 			onClick={props.onClick}
-			className={`inline-flex size-[30px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] transition-colors duration-100 disabled:cursor-default disabled:opacity-40 ${tone}`}
+			className={`inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-[6px] transition-colors duration-100 disabled:cursor-default disabled:opacity-40 ${tone}`}
 		>
 			{props.children}
 		</button>
@@ -272,7 +272,7 @@ function CopyCode(props: { code: string }) {
 		<div className="flex items-center gap-1.5">
 			<span className="font-mono text-[16px] tracking-[0.14em] text-ink select-all">{props.code}</span>
 			<IconButton label={copied ? "Copied" : "Copy code"} onClick={copy}>
-				{copied ? <Check size={13} /> : <Copy size={13} />}
+				{copied ? <Check size={15} /> : <Copy size={15} />}
 			</IconButton>
 		</div>
 	);
@@ -827,10 +827,10 @@ export function ProvidersBand(props: {
 								type="button"
 								aria-label="Pick from list"
 								aria-expanded={pickOpen}
-								className="inline-flex size-[30px] shrink-0 cursor-pointer items-center justify-center rounded-[6px] text-muted transition-colors duration-100 hover:bg-hover hover:text-ink"
+								className="inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-[6px] text-muted transition-colors duration-100 hover:bg-hover hover:text-ink"
 								onClick={() => setPickOpen(!pickOpen)}
 							>
-								<List size={13} />
+								<List size={15} />
 							</button>
 						</div>
 						{pickOpen ? (
@@ -884,37 +884,37 @@ export function ProvidersBand(props: {
 								<span className="size-[30px]" />
 							) : (
 								<IconButton label={`Sign in with ${known.signIn.label}`} onClick={() => signIn(known.id)}>
-									<LogIn size={14} />
+									<LogIn size={15} />
 								</IconButton>
 							)
 						) : reveal ? (
 							<>
 								<IconButton label="Cancel" onClick={() => setReveal(false)}>
-									<X size={14} />
+									<X size={15} />
 								</IconButton>
 								<IconButton label="Save key" disabled={keyDraft.trim() === ""} onClick={() => saveKey(row.id)}>
-									<Check size={14} />
+									<Check size={15} />
 								</IconButton>
 							</>
 						) : (
 							<>
 								{row.signIn === undefined || row.auth === "oauth" ? null : (
 									<IconButton label={`Sign in with ${row.signIn.label}`} onClick={() => signIn(row.id)}>
-										<LogIn size={14} />
+										<LogIn size={15} />
 									</IconButton>
 								)}
 								{row.auth === "oauth" ? (
 									<IconButton label="Sign out" tone="danger" onClick={() => signOut(row.id)}>
-										<LogOut size={14} />
+										<LogOut size={15} />
 									</IconButton>
 								) : (
 									<IconButton label={row.auth === "api_key" ? "Replace key" : "Add key"} tone="danger" onClick={() => setReveal(true)}>
-										<KeyRound size={14} />
+										<KeyRound size={15} />
 									</IconButton>
 								)}
 								{row.auth === "api_key" ? (
 									<IconButton label="Clear key" tone="danger" onClick={() => clearKey(row.id)}>
-										<Trash2 size={14} />
+										<Trash2 size={15} />
 									</IconButton>
 								) : null}
 							</>

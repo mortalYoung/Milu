@@ -8,7 +8,7 @@ interface PendingData {
 }
 
 const ACTION =
-	"flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 text-muted transition-colors duration-100 disabled:cursor-default";
+	"flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent p-0 text-muted transition-colors duration-100 disabled:cursor-default";
 
 function KindChip(props: { readonly kind: PendingItem["kind"] }) {
 	const steering = props.kind === "steering";

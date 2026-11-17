@@ -44,7 +44,7 @@ export function DialogHost(props: { host: Host }) {
 							<Dialog.Title className="conv-dialog-hidden">{pending?.dialog.kind === "custom" ? (pending.dialog.title ?? pending.dialog.id) : ""}</Dialog.Title>
 							{palette ? null : (
 								<Dialog.Close className="conv-dialog-close" aria-label="Close">
-									<X size={16} />
+									<X size={15} />
 								</Dialog.Close>
 							)}
 							{createElement(custom, {

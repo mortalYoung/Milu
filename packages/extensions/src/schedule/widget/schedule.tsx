@@ -254,7 +254,7 @@ export function ScheduleDialog(props: DialogProps) {
 												aria-label={`Run ${item.title || item.display} now`}
 												disabled={pending !== null}
 												onClick={() => void runNow(item.id)}
-												className={`mt-0.5 flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent p-0 transition-opacity duration-[140ms] group-hover:opacity-100 hover:bg-selected hover:text-ink focus-visible:opacity-100 disabled:cursor-default disabled:opacity-100 ${sent === item.id ? "text-ink opacity-100" : "text-muted opacity-0"}`}
+												className={`mt-0.5 flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent p-0 transition-opacity duration-[140ms] group-hover:opacity-100 hover:bg-selected hover:text-ink focus-visible:opacity-100 disabled:cursor-default disabled:opacity-100 ${sent === item.id ? "text-ink opacity-100" : "text-muted opacity-0"}`}
 											>
 												{sent === item.id ? <Check size={12} /> : <Play size={12} fill="currentColor" className={pending === item.id ? "animate-pulse" : undefined} />}
 											</button>

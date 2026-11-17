@@ -457,23 +457,24 @@ export function SessionListSurface(props: SurfaceProps) {
 
 	return (
 		<div className="flex h-full min-h-0 flex-col px-3">
-			<div className="flex h-[52px] flex-none items-center justify-end gap-2 pl-[76px] [-webkit-app-region:drag]">
-				<div className={`flex h-8 min-w-0 flex-1 items-center rounded-md border transition-colors duration-150 ${searchOpen ? "border-line bg-surface" : "border-transparent"}`}>
+			<div className="flex h-[52px] flex-none items-center justify-end gap-3 pl-[76px] [-webkit-app-region:drag]">
+				<div className={`flex h-7 min-w-0 flex-1 items-center rounded-[6px] border transition-colors duration-150 ${searchOpen ? "border-line bg-surface" : "border-transparent"}`}>
 					<Tip label="Search sessions (⌘F)">
 						<button
 							type="button"
-							className="grid size-[26px] shrink-0 cursor-pointer place-items-center rounded-full border-0 bg-transparent text-muted-soft transition-colors duration-100 hover:bg-hover hover:text-ink [-webkit-app-region:no-drag]"
+							className={`grid size-7 shrink-0 cursor-pointer place-items-center rounded-[6px] border-0 bg-transparent text-muted-soft transition-colors duration-100 hover:text-ink [-webkit-app-region:no-drag] ${searchOpen ? "" : "hover:bg-hover active:bg-selected"}`}
 							aria-expanded={searchOpen}
 							aria-label={searchOpen ? "Close search" : "Search sessions"}
-							onClick={() => (searchOpen ? closeSearch() : host.workbench.setSearch(true))}
+							onMouseDown={(event) => event.preventDefault()}
+							onClick={() => (host.workbench.store.getState().searchOpen ? closeSearch() : host.workbench.setSearch(true))}
 						>
-							<SearchIcon />
+							<SearchIcon size={15} />
 						</button>
 					</Tip>
-					<span className={`flex min-w-0 flex-1 items-center overflow-hidden pr-2 transition-[max-width] duration-150 ${searchOpen ? "max-w-full" : "max-w-0"}`}>
+					<span className={`flex h-full min-w-0 flex-1 items-center overflow-hidden pr-2 transition-[max-width] duration-150 ${searchOpen ? "max-w-full" : "max-w-0"}`}>
 						<input
 							ref={searchRef}
-							className="min-w-0 flex-1 border-0 bg-transparent font-sans text-[14px] text-ink outline-none placeholder:text-muted"
+							className="h-full min-w-0 flex-1 border-0 bg-transparent font-sans text-[14px] text-ink outline-none placeholder:text-muted"
 							type="text"
 							placeholder="Search sessions"
 							aria-label="Search sessions"
@@ -493,31 +494,33 @@ export function SessionListSurface(props: SurfaceProps) {
 						/>
 					</span>
 				</div>
-				{headerItems.map((item) => (
-					<Tip key={item.id} label={item.title}>
+				<div className="flex shrink-0 items-center gap-1">
+					{headerItems.map((item) => (
+						<Tip key={item.id} label={item.title}>
+							<button
+								type="button"
+								className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-[6px] border-0 bg-transparent text-muted-soft transition-colors duration-100 hover:bg-hover hover:text-ink active:bg-selected [-webkit-app-region:no-drag]"
+								aria-label={item.title}
+								onClick={() => void host.actions.invoke(item.action ?? "")}
+							>
+								<IconByName name={item.icon} size={15} />
+							</button>
+						</Tip>
+					))}
+					<Tip label="Hide session list (⌘B)">
 						<button
 							type="button"
-							className="grid size-[26px] shrink-0 cursor-pointer place-items-center rounded-full border-0 bg-transparent text-muted-soft transition-colors duration-100 hover:bg-hover hover:text-ink [-webkit-app-region:no-drag]"
-							aria-label={item.title}
-							onClick={() => void host.actions.invoke(item.action ?? "")}
+							className="flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent text-muted-soft transition-colors duration-100 hover:bg-hover hover:text-ink active:bg-selected [-webkit-app-region:no-drag]"
+							aria-label="Hide session list"
+							onClick={() => host.columns.closeList()}
 						>
-							<IconByName name={item.icon} size={14} />
+							<PanelLeftCloseIcon size={15} />
 						</button>
 					</Tip>
-				))}
-				<Tip label="Hide session list (⌘B)">
-					<button
-						type="button"
-						className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-ink-soft transition-colors duration-100 hover:bg-hover hover:text-ink [-webkit-app-region:no-drag]"
-						aria-label="Hide session list"
-						onClick={() => host.columns.closeList()}
-					>
-						<PanelLeftCloseIcon size={16} />
-					</button>
-				</Tip>
+				</div>
 			</div>
 
-			<div className="flex h-11 flex-none items-center gap-3 border-b border-line text-ink">
+			<div className="flex h-11 flex-none items-center gap-3 text-ink">
 				<img className="size-[26px] shrink-0 rounded-[6px]" src="/pixel_milu.png" alt="" />
 				<MiluWordmark class="h-5 w-auto shrink-0" />
 			</div>

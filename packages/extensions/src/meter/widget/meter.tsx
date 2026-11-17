@@ -93,7 +93,7 @@ export function MeterWidget(props: WidgetProps) {
 			<Tip label={open ? undefined : reading}>
 				<button
 					type="button"
-					className={`flex h-[26px] min-w-[26px] shrink-0 cursor-pointer items-center justify-center gap-1 rounded-full border-0 bg-transparent text-muted-soft transition-colors duration-150 hover:bg-hover hover:text-ink ${percent > 60 ? "pl-1 pr-1.5" : "px-1"} ${open ? "bg-selected text-ink" : ""}`}
+					className={`flex h-[26px] min-w-[26px] shrink-0 cursor-pointer items-center justify-center gap-1 rounded-[6px] border-0 bg-transparent text-muted-soft transition-colors duration-150 hover:bg-hover hover:text-ink ${percent > 60 ? "pl-1 pr-1.5" : "px-1"} ${open ? "bg-selected text-ink" : ""}`}
 					aria-label={reading}
 					aria-haspopup="dialog"
 					aria-expanded={open}

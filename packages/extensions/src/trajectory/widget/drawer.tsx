@@ -304,7 +304,7 @@ export function TrajectoryDrawer(props: { host: Host; service: TrajectoryService
 						<button
 							type="button"
 							aria-label="Close"
-							className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-muted-soft hover:bg-hover hover:text-ink"
+							className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 bg-transparent text-muted-soft hover:bg-hover hover:text-ink"
 							onClick={() => setSelectedKey(null)}
 						>
 							×

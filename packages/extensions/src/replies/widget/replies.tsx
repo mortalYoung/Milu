@@ -23,7 +23,7 @@ export function RepliesButton(props: SurfaceProps) {
 		<Tip label={wording}>
 			<button
 				type="button"
-				className={`replies-toggle flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full border-0 text-ink transition-colors duration-150 hover:bg-hover ${open ? "bg-hover" : "bg-transparent"}`}
+				className={`replies-toggle flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-[6px] border-0 text-ink transition-colors duration-150 hover:bg-hover ${open ? "bg-hover" : "bg-transparent"}`}
 				aria-label={wording}
 				aria-pressed={open}
 				onClick={() => service.toggle()}

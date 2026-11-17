@@ -38,7 +38,7 @@ function BarOverflow(props: { host: Host; items: readonly SlotItem[]; components
 		<div className="bar-overflow" ref={root}>
 			<Tip label="More tools">
 				<button type="button" className={`bar-icon${open ? " on" : ""}`} aria-label="More tools" aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
-					<Ellipsis size={16} />
+					<Ellipsis size={15} />
 				</button>
 			</Tip>
 			{open ? (
@@ -118,7 +118,7 @@ export function ChatBar(props: { host: Host }) {
 				{columns.list.mode === "collapsed" ? (
 					<Tip label="Show chat list (⌘B)">
 						<button type="button" className="bar-icon list-expand" aria-label="Show chat list" onClick={() => host.columns.toggleList()}>
-							<PanelLeftOpenIcon size={16} />
+							<PanelLeftOpenIcon size={15} />
 						</button>
 					</Tip>
 				) : null}

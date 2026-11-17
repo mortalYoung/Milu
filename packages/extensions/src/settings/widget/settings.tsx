@@ -764,12 +764,12 @@ function InlineInput(props: {
 				<button
 					type="button"
 					tabIndex={-1}
-					className="grid size-[30px] cursor-pointer place-items-center rounded-md text-muted hover:bg-hover hover:text-ink"
+					className="grid size-7 cursor-pointer place-items-center rounded-md text-muted hover:bg-hover hover:text-ink"
 					aria-label={`Choose ${props.field.title}`}
 					onMouseDown={(event) => event.preventDefault()}
 					onClick={props.onPick}
 				>
-					<Folder size={13} />
+					<Folder size={15} />
 				</button>
 			)}
 		</span>
@@ -1119,12 +1119,12 @@ export function SettingsDialog(props: DialogProps) {
 					{field.id === "toastPlacement" ? (
 						<button
 							type="button"
-							className="grid size-[26px] shrink-0 cursor-pointer place-items-center rounded-[6px] text-muted transition-colors duration-100 hover:bg-hover hover:text-ink"
+							className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-[6px] text-muted transition-colors duration-100 hover:bg-hover hover:text-ink"
 							aria-label="Test notification"
 							title="Test notification"
 							onClick={() => props.host.notifications.push({ title: "Notification", body: "This is how a notification looks." })}
 						>
-							<Bell size={13} />
+							<Bell size={15} />
 						</button>
 					) : null}
 				</div>
