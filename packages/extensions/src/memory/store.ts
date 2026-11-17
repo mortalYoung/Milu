@@ -318,6 +318,7 @@ export interface MemoryConflict {
 export interface MemoryQueryResult {
 	readonly records: readonly MemoryRecord[];
 	readonly matched: number;
+	readonly stored: number;
 	readonly conflicts: readonly MemoryConflict[];
 	readonly facets: MemoryFacets;
 }
@@ -423,16 +424,27 @@ export function conflictsOf(records: readonly MemoryRecord[]): MemoryConflict[] 
 	return out;
 }
 
+function alternatives(value: string | undefined): readonly string[] | null {
+	if (value === undefined) return null;
+	const terms = value
+		.split("|")
+		.map((term) => term.trim())
+		.filter((term) => term !== "");
+	return terms.length === 0 ? null : [...new Set(terms)];
+}
+
 export function queryMemory(lines: readonly MemoryLine[], opts: QueryMemoryOptions = {}): MemoryQueryResult {
 	const limit = opts.limit ?? 20;
 	const active = opts.includeSuperseded ? lines.filter((line): line is MemoryRecord => line.kind !== "checkpoint") : activeRecords(lines);
-	const query = opts.query?.trim();
-	const hits = query ? compileQuery(query) : null;
+	const queries = alternatives(opts.query);
+	const hits = queries === null ? null : queries.map((term) => compileQuery(term));
+	const subjects = alternatives(opts.subject)?.map((subject) => subject.toLowerCase());
+	const predicates = alternatives(opts.predicate)?.map((predicate) => predicate.toLowerCase());
 	const matched: Array<{ record: MemoryRecord; score: number }> = [];
 	for (const record of active) {
 		if (opts.kinds?.length && !opts.kinds.includes(record.kind)) continue;
-		if (opts.subject && record.subject?.toLowerCase() !== opts.subject.toLowerCase()) continue;
-		if (opts.predicate && record.predicate?.toLowerCase() !== opts.predicate.toLowerCase()) continue;
+		if (subjects && !subjects.includes(record.subject?.toLowerCase() ?? "")) continue;
+		if (predicates && !predicates.includes(record.predicate?.toLowerCase() ?? "")) continue;
 		const at = eventTime(record);
 		if (opts.from !== undefined && at < opts.from) continue;
 		if (opts.to !== undefined && at > opts.to) continue;
@@ -444,7 +456,7 @@ export function queryMemory(lines: readonly MemoryLine[], opts: QueryMemoryOptio
 			record.value === undefined ? "" : String(record.value),
 			...(record.items ?? []).flatMap((item) => [item.name, item.type ?? "", item.action ?? ""]),
 		].join(" ");
-		const score = hits === null ? 0 : hits(haystack) * 3;
+		const score = hits === null ? 0 : Math.max(...hits.map((hit) => hit(haystack))) * 3;
 		if (hits !== null && score === 0) continue;
 		matched.push({ record, score });
 	}
@@ -455,6 +467,7 @@ export function queryMemory(lines: readonly MemoryLine[], opts: QueryMemoryOptio
 	return {
 		records: filtered.slice(offset, offset + limit),
 		matched: filtered.length,
+		stored: active.length,
 		conflicts: conflictsOf(filtered),
 		facets: facetsOf(filtered),
 	};

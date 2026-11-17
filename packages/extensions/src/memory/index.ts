@@ -82,7 +82,7 @@ export const memoryExtension: Extension = {
 				name: "memory",
 				label: "Memory",
 				description:
-					"Read this partner's stored atoms — what they own, what happened, what they prefer, the rules they set. Use it whenever an answer depends on this user's own history, possessions or preferences; never assert those from general knowledge, and check a question's premise against what is stored before accepting it. Matching is literal (see the parameters); more than 30 matches is refused with narrowing hints, and records replaced by an update stay hidden unless includeSuperseded.",
+					"Read this partner's stored atoms — what they own, what happened, what they prefer, the rules they set. Use it whenever an answer depends on this user's own history, possessions or preferences; never assert those from general knowledge, and check a question's premise against what is stored before accepting it. Separate alternatives with | (soccer|duathlon) to check several things in one call. Matching is literal (see the parameters); more than 30 matches is refused with narrowing hints, and records replaced by an update stay hidden unless includeSuperseded.",
 				parameters: memoryQuerySchema,
 				async run(call: ToolCall, _env: ExecutionEnv) {
 					const params = (call.params ?? {}) as MemoryParams;
@@ -101,6 +101,7 @@ export const memoryExtension: Extension = {
 					});
 					const tooMany = tooManyMatches(result);
 					if (tooMany && (params.offset ?? 0) === 0) return say(`memory rejected: ${tooMany}`, { ok: false });
+					if (result.stored === 0) return say("Memory is empty — nothing stored for this partner yet.");
 					if (result.records.length === 0) return say("No atoms found.");
 					const parts: string[] = [];
 					let used = 0;

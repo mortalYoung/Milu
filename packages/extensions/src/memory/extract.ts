@@ -34,7 +34,7 @@ const MEMORY_WORKFLOW = `You are running a memory extraction loop for this partn
 
 Workflow:
 1. read_raw shows raw conversation entries; each line starts with the entry id and its timestamp.
-2. Call memory op "read" when you need to know what is already stored (structured filters: subject / predicate / kinds).
+2. Call memory op "read" when you need to know what is already stored (structured filters: subject / predicate / kinds); one call covers several entities — separate them with | (soccer|duathlon|harmonica).
 3. Write every durable atom with memory op "write", in batches of up to 20 atoms per call.
    - rawIds must be ids you actually read.
    - event / update need eventAt (or at) taken from the source entry timestamp, never "now".
@@ -73,12 +73,12 @@ const memoryQueryFields = {
 	query: Type.Optional(
 		Type.String({
 			description:
-				"read: terms split on spaces and punctuation match as literal substrings of summary/detail, and the whole query is also tried as a regex. If nothing matches, retry with one distinctive word, the same word in the source language, or drop to kinds alone",
+				"read: terms split on spaces and punctuation match as literal substrings of summary/detail, and the whole query is also tried as a regex. Separate alternatives with | to check several entities in one call (soccer|duathlon|harmonica). If nothing matches, retry with one distinctive word, the same word in the source language, or drop to kinds alone",
 		}),
 	),
 	kinds: Type.Optional(Type.Array(memoryKindSchema, { description: "read: only return these kinds" })),
-	subject: Type.Optional(Type.String({ description: "read: exact subject filter (case-insensitive)" })),
-	predicate: Type.Optional(Type.String({ description: "read: exact predicate filter (case-insensitive)" })),
+	subject: Type.Optional(Type.String({ description: "read: exact subject filter (case-insensitive); | separates alternatives (a|b|c)" })),
+	predicate: Type.Optional(Type.String({ description: "read: exact predicate filter (case-insensitive); | separates alternatives (degree|commute_minutes)" })),
 	from: Type.Optional(Type.String({ description: "read: earliest event time, ISO date or timestamp" })),
 	to: Type.Optional(Type.String({ description: "read: latest event time, ISO date or timestamp" })),
 	limit: Type.Optional(Type.Integer({ description: "read: maximum records to return (default 20)" })),
@@ -346,7 +346,7 @@ function createMemoryTool(opts: MemoryToolOptions): AgentTool<typeof memorySchem
 		label: "Memory",
 		description:
 			opts.description ??
-			"Read this partner's atoms. Matches are ranked by relevance when a query is given, otherwise newest first (event time); records replaced by an update are hidden unless includeSuperseded is true. Conflicts (same subject+predicate with several values) are reported.",
+			"Read this partner's atoms. Separate alternatives with | in query / subject / predicate to check several entities in one call (soccer|duathlon). When nothing is stored yet the result says memory is empty — that means there is nothing to dedupe against. Matches are ranked by relevance when a query is given, otherwise newest first (event time); records replaced by an update are hidden unless includeSuperseded is true. Conflicts (same subject+predicate with several values) are reported.",
 		parameters: canWrite ? memorySchema : memoryQuerySchema,
 		executionMode: "sequential",
 		async execute(_toolCallId, params) {
@@ -371,6 +371,7 @@ function createMemoryTool(opts: MemoryToolOptions): AgentTool<typeof memorySchem
 					includeSuperseded: params.includeSuperseded,
 				});
 				const memories = page.records;
+				if (page.stored === 0) return note("memory is empty — nothing is stored yet, so there is nothing to dedupe against; write the atoms you found (1–20 per call).");
 				const tooMany = tooManyMatches(page);
 				if (tooMany && (params.offset ?? 0) === 0) return reject(tooMany);
 				if (memories.length === 0) return note("No atoms found.");
