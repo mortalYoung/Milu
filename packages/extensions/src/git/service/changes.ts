@@ -1,4 +1,5 @@
 import { createServiceId, type Service } from "@milu/di";
+import { LOG_EVENTS } from "@milu/protocol";
 import {
 	type Connection,
 	type DockService,
@@ -20,6 +21,7 @@ const SPLIT_KEY = "milu.git.split";
 const WRAP_KEY = "milu.git.wrap";
 const LIST_WIDTH = 232;
 const LIST_MIN = 140;
+const REFRESH_GAP = 700;
 
 export interface GitViewState {
 	readonly session: string;
@@ -69,6 +71,10 @@ export class GitChangesService implements Service {
 	private _stop: (() => void) | null = null;
 	private _rowsStop: (() => void) | null = null;
 	private _changesStop: (() => void) | null = null;
+	private _entryStop: { dispose(): void } | null = null;
+	private _timer: ReturnType<typeof setTimeout> | null = null;
+	private _ranAt = 0;
+	private _queued = false;
 
 	constructor(
 		@IConnection private readonly _connection: Connection,
@@ -80,6 +86,9 @@ export class GitChangesService implements Service {
 	initialize(): void {
 		this._dock.show(DOCK_VIEW, false);
 		this._changesStop = this.store.subscribe((state) => {
+			// idle/loading 不是一次「读完的结果」：切 chat 的 _reset 会把 changes 清空，
+			// 这时候写 badge 会让红点先灭再亮。只在 ready/error 时落 badge。
+			if (state.status === "idle" || state.status === "loading") return;
 			this._dock.show(DOCK_VIEW, state.changes.length > 0);
 			this._dock.badge(DOCK_VIEW, state.changes.length);
 		});
@@ -96,6 +105,11 @@ export class GitChangesService implements Service {
 			this._reset();
 			void this.refresh();
 		});
+		this._entryStop = this._connection.onEntry(({ session, entry }) => {
+			if (session !== this._session()) return;
+			if (entry.entry.type !== "custom" || entry.entry.customType !== LOG_EVENTS.toolResult) return;
+			this._schedule();
+		});
 		void this.refresh();
 	}
 
@@ -106,6 +120,10 @@ export class GitChangesService implements Service {
 		this._rowsStop = null;
 		this._changesStop?.();
 		this._changesStop = null;
+		this._entryStop?.dispose();
+		this._entryStop = null;
+		if (this._timer !== null) clearTimeout(this._timer);
+		this._timer = null;
 		this.store.setState({ ...EMPTY }, true);
 	}
 
@@ -116,7 +134,11 @@ export class GitChangesService implements Service {
 	async refresh(): Promise<void> {
 		const session = this._session();
 		if (session === "") return;
-		if (this.store.getState().status === "loading") return;
+		if (this.store.getState().status === "loading") {
+			this._queued = true;
+			return;
+		}
+		this._queued = false;
 		this._patch((state) => ({ ...state, status: "loading" }));
 		try {
 			const result = await this._connection.request("invoke", { action: "git.changes", session });
@@ -137,6 +159,11 @@ export class GitChangesService implements Service {
 			});
 		} catch (error) {
 			this._patch((state) => ({ ...state, status: "error", error: reason(error), repoRoot: "", changes: [], selected: null, revision: state.revision + 1 }));
+		} finally {
+			if (this._queued) {
+				this._queued = false;
+				this._schedule();
+			}
 		}
 	}
 
@@ -176,6 +203,16 @@ export class GitChangesService implements Service {
 				change(state.session === session ? state : { ...EMPTY, session, listOpen: state.listOpen, listWidth: state.listWidth, sideBySide: state.sideBySide, wrap: state.wrap }),
 			true,
 		);
+	}
+
+	private _schedule(): void {
+		if (this._timer !== null) return;
+		const wait = Math.max(0, REFRESH_GAP - (Date.now() - this._ranAt));
+		this._timer = setTimeout(() => {
+			this._timer = null;
+			this._ranAt = Date.now();
+			void this.refresh();
+		}, wait);
 	}
 
 	private _reset(): void {
