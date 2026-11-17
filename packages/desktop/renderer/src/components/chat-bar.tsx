@@ -144,7 +144,7 @@ export function ChatBar(props: { host: Host }) {
 							Writing…
 						</span>
 					) : null}
-					{pulse === null ? null : (
+					{compacting || pulse === null ? null : (
 						<span className={`chat-bar-status${pulse.tone === undefined ? "" : ` is-${pulse.tone}`}`} title={pulse.title}>
 							<span className="work-ring" />
 							{pulse.title}…

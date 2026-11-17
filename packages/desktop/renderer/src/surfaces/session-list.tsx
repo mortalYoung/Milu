@@ -114,7 +114,7 @@ function Row(props: {
 	const taskSignal = restSignals.find((signal) => typeof signal.count === "number" && signal.count > 0);
 	const taskCount = taskSignal?.count ?? 0;
 	const otherSignals = taskSignal === undefined ? restSignals : restSignals.filter((signal) => signal !== taskSignal);
-	const chipSignals = otherSignals.filter((signal) => signal.chip === true);
+	const chipSignals = session.compacting === true ? [] : otherSignals.filter((signal) => signal.chip === true);
 	const iconSignals = otherSignals.filter((signal) => signal.chip !== true);
 	const signals =
 		iconSignals.length > 0 ? (
