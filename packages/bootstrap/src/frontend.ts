@@ -288,7 +288,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 			};
 			disposables.add({
 				dispose: sessions.store.subscribe(() => {
-					const dropped = transcript.retain(sessions.store.getState().rows);
+					const dropped = transcript.retain(sessions.store.getState().rows, selection.store.getState().selected);
 					for (const name of dropped) composerData.drop(name);
 					const name = selection.store.getState().selected;
 					if (name !== "" && dropped.includes(name)) void transcript.open(name);

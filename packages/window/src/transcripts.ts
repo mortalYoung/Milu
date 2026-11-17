@@ -34,6 +34,14 @@ const EMPTY: TranscriptState = {
 };
 const NO_ENTRIES: readonly SeqEntry[] = [];
 
+function merged(existing: readonly SeqEntry[], incoming: readonly SeqEntry[]): SeqEntry[] {
+	if (existing.length === 0) return [...incoming];
+	const known = new Set(existing.map((entry) => entry.seq));
+	const added = incoming.filter((entry) => !known.has(entry.seq));
+	if (added.length === 0) return [...existing];
+	return [...added, ...existing].sort((left, right) => left.seq - right.seq);
+}
+
 function without<T>(record: Readonly<Record<string, T>>, names: readonly string[]): Record<string, T> {
 	const next = { ...record };
 	for (const name of names) delete next[name];
@@ -62,17 +70,23 @@ export class TranscriptService implements Service {
 	async open(session: string): Promise<void> {
 		if (this._loaded.has(session)) return;
 		this._loaded.add(session);
+		await this._fetch(session, false);
+	}
+
+	async reload(session: string): Promise<void> {
+		this._loaded.add(session);
+		await this._fetch(session, true);
+	}
+
+	private async _fetch(session: string, replace: boolean): Promise<void> {
 		this.store.setState((state) => ({ ...state, loading: { ...state.loading, [session]: true } }), true);
 		try {
 			const window = await this._connection.load(session);
-			this.store.setState(
-				(current) => ({
-					...current,
-					logs: { ...current.logs, [session]: window.entries },
-					hasMore: { ...current.hasMore, [session]: window.hasMore },
-				}),
-				true,
-			);
+			this.store.setState((current) => {
+				const existing = current.logs[session] ?? NO_ENTRIES;
+				const log = replace || window.reset ? window.entries : merged(existing, window.entries);
+				return { ...current, logs: { ...current.logs, [session]: log }, hasMore: { ...current.hasMore, [session]: window.hasMore } };
+			}, true);
 		} catch (error) {
 			this._loaded.delete(session);
 			this.fail(session, error instanceof Error ? error.message : String(error));
@@ -81,17 +95,12 @@ export class TranscriptService implements Service {
 		}
 	}
 
-	async reload(session: string): Promise<void> {
-		this._loaded.delete(session);
-		await this.open(session);
-	}
-
-	retain(rows: readonly { readonly name: string; readonly createdAt: number }[]): readonly string[] {
+	retain(rows: readonly { readonly name: string; readonly createdAt: number }[], keep = ""): readonly string[] {
 		const live = new Map(rows.map((row) => [row.name, row.createdAt] as const));
 		const dropped: string[] = [];
 		const replaced: string[] = [];
 		for (const [name, generation] of Object.entries(this._generations)) {
-			if (live.get(name) === generation) continue;
+			if (live.get(name) === generation || name === keep) continue;
 			dropped.push(name);
 			if (live.has(name)) replaced.push(name);
 		}
@@ -125,11 +134,9 @@ export class TranscriptService implements Service {
 			const window = await this._connection.load(session, { mode: "older", cursor: oldest });
 			this.store.setState((state) => {
 				const existing = state.logs[session] ?? NO_ENTRIES;
-				const known = new Set(existing.map((entry) => entry.seq));
-				const prepended = window.entries.filter((entry) => !known.has(entry.seq));
 				return {
 					...state,
-					logs: { ...state.logs, [session]: window.reset ? window.entries : [...prepended, ...existing] },
+					logs: { ...state.logs, [session]: window.reset ? window.entries : merged(existing, window.entries) },
 					hasMore: { ...state.hasMore, [session]: window.hasMore },
 				};
 			}, true);
