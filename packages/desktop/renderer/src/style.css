@@ -2662,6 +2662,13 @@ body.pane-dragging {
 	background: color-mix(in srgb, var(--ink) 90%, transparent);
 }
 
+.composer-send.is-idle,
+.composer-send.is-idle:disabled {
+	background: transparent;
+	color: var(--muted-soft);
+	opacity: 1;
+}
+
 .composer-send.composer-stop {
 	border: 1px solid color-mix(in srgb, var(--ink) 40%, transparent);
 	background: transparent;

@@ -233,8 +233,7 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 		void submit();
 	};
 
-	const showSend = text.trim() !== "" || busy;
-	const hasActions = awaiting || layout.left.length > 0 || layout.right.length > 0 || showSend;
+	const idle = text.trim() === "" && !busy;
 	const commandHint = (() => {
 		if (active) return null;
 		const parsed = parseCommandLine(text);
@@ -274,7 +273,7 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 							value={text}
 							className="composer-input"
 							rows={1}
-							placeholder={shownShell ? "Run a shell command…" : "Type a message…"}
+							placeholder={shownShell ? "Run a shell command…" : `Message${selected === "" ? "" : ` @${selected}`}`}
 							autoComplete="off"
 							spellCheck={false}
 							aria-label="Message"
@@ -299,35 +298,33 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 						/>
 					</div>
 
-					{hasActions ? (
-						<div className="composer-actions">
-							{awaiting ? (
-								<span className="composer-skeleton" aria-hidden="true">
-									<span className="composer-skeleton-pill" />
-									<span className="composer-skeleton-pill wide" />
-								</span>
-							) : (
-								<ComposerActions host={host} items={layout.left} />
+					<div className="composer-actions">
+						{awaiting ? (
+							<span className="composer-skeleton" aria-hidden="true">
+								<span className="composer-skeleton-pill" />
+								<span className="composer-skeleton-pill wide" />
+							</span>
+						) : (
+							<ComposerActions host={host} items={layout.left} />
+						)}
+						<div className="composer-actions-right">
+							{awaiting ? null : <ComposerActions host={host} items={layout.right} />}
+							{awaiting ? null : (
+								<Tip label={stopping ? "Stopping" : compacting ? "Compacting" : busy ? "Stop" : "Send"}>
+									<button
+										type="button"
+										className={`composer-send${busy ? " composer-stop" : ""}${idle ? " is-idle" : ""}`}
+										aria-label={stopping ? "Stopping" : compacting ? "Compacting" : busy ? "Stop" : "Send"}
+										aria-busy={stopping || compacting || undefined}
+										disabled={stopping || compacting || idle}
+										onClick={() => (busy ? void host.transcript.abort(selected) : void submit())}
+									>
+										{busy ? <SquareIcon size={14} /> : <ArrowUpIcon size={14} />}
+									</button>
+								</Tip>
 							)}
-							<div className="composer-actions-right">
-								{awaiting ? null : <ComposerActions host={host} items={layout.right} />}
-								{showSend ? (
-									<Tip label={stopping ? "Stopping" : compacting ? "Compacting" : busy ? "Stop" : "Send"}>
-										<button
-											type="button"
-											className={`composer-send${busy ? " composer-stop" : ""}`}
-											aria-label={stopping ? "Stopping" : compacting ? "Compacting" : busy ? "Stop" : "Send"}
-											aria-busy={stopping || compacting || undefined}
-											disabled={stopping || compacting}
-											onClick={() => (busy ? void host.transcript.abort(selected) : void submit())}
-										>
-											{busy ? <SquareIcon size={12} /> : <ArrowUpIcon size={13} />}
-										</button>
-									</Tip>
-								) : null}
-							</div>
 						</div>
-					) : null}
+					</div>
 				</div>
 
 				{awaiting ? null : <ComposerTips tips={layout.tips} shellMode={shownShell} />}
