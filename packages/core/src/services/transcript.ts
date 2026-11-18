@@ -57,16 +57,15 @@ function entryOf(entry: Entry): Omit<TranscriptEntry, "from" | "total"> {
 	return { id: entry.id, at: entry.timestamp, role, text: contentText(message?.content) };
 }
 
-function tokensOf(query: string): readonly (readonly string[])[] {
-	return query
-		.split("|")
-		.map((alternative) =>
-			alternative
+function tokensOf(query: string): readonly string[] {
+	return [
+		...new Set(
+			query
 				.toLowerCase()
-				.split(/[^\p{L}\p{N}_]+/u)
+				.split(/[^\p{L}\p{N}_@]+/u)
 				.filter((token) => token.length > 1),
-		)
-		.filter((alternative) => alternative.length > 0);
+		),
+	];
 }
 
 function snippet(text: string, needle: string, size = SNIPPET_CHARS): string {
@@ -98,25 +97,28 @@ export class TranscriptService implements Service {
 		return out;
 	}
 
-	async search(dir: string, query: string, limit = 5): Promise<readonly TranscriptHit[]> {
-		const alternatives = tokensOf(query);
-		if (alternatives.length === 0) return [];
+	async search(dir: string, query: string, opts: { readonly limit?: number; readonly exclude?: readonly string[] } = {}): Promise<readonly TranscriptHit[]> {
+		const tokens = tokensOf(query);
+		if (tokens.length === 0) return [];
+		const skip = new Set(opts.exclude ?? []);
 		const scored: { hit: TranscriptHit; score: number }[] = [];
 		for (const entry of await this._entries(dir)) {
+			if (skip.has(entry.id)) continue;
 			const found = entryOf(entry);
 			if (found.text === "") continue;
 			const haystack = found.text.toLowerCase();
-			let score = 0;
-			for (const alternative of alternatives) {
-				if (!alternative.every((token) => haystack.includes(token))) continue;
-				for (const token of alternative) score += haystack.split(token).length - 1;
-			}
-			if (score === 0) continue;
-			const at = centerOffset(found.text, alternatives[0]?.[0] ?? "");
-			scored.push({ hit: { id: found.id, at: found.at, role: found.role, snippet: snippet(found.text, alternatives[0]?.[0] ?? ""), from: at, total: found.text.length }, score });
+			const matched = tokens.filter((token) => haystack.includes(token));
+			if (matched.length === 0) continue;
+			const occurrences = matched.reduce((sum, token) => sum + (haystack.split(token).length - 1), 0);
+			const score = matched.length * 100 + Math.min(occurrences, 20);
+			const needle = matched[0] ?? "";
+			scored.push({
+				hit: { id: found.id, at: found.at, role: found.role, snippet: snippet(found.text, needle), from: centerOffset(found.text, needle), total: found.text.length },
+				score,
+			});
 		}
 		scored.sort((left, right) => right.score - left.score || right.hit.at - left.hit.at);
-		return scored.slice(0, limit).map((each) => each.hit);
+		return scored.slice(0, opts.limit ?? 5).map((each) => each.hit);
 	}
 
 	dispose(): void {

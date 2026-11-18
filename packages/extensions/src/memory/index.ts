@@ -107,7 +107,10 @@ export const memoryExtension: Extension = {
 						return say(lines.join("\n\n"), { ok: true, returned: found.length });
 					}
 					if (params.scope === "entries") {
-						const hits = await transcripts.search(call.session.root, params.query ?? "", params.limit ?? 5);
+						const live = await call.session.rawEntries();
+						const since = live.findLastIndex((entry) => (entry as { message?: { role?: unknown } }).message?.role === "user");
+						const exclude = since < 0 ? [] : live.slice(since).map((entry) => entry.id);
+						const hits = await transcripts.search(call.session.root, params.query ?? "", { limit: params.limit ?? 5, exclude });
 						if (hits.length === 0) return say("No transcript entries match — try fewer or more distinctive words.", { ok: false });
 						return say(
 							[
