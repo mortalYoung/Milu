@@ -11,6 +11,8 @@ export interface TranscriptEntry {
 	readonly at: number;
 	readonly role: string;
 	readonly text: string;
+	readonly from: number;
+	readonly total: number;
 }
 
 export interface TranscriptHit {
@@ -18,11 +20,19 @@ export interface TranscriptHit {
 	readonly at: number;
 	readonly role: string;
 	readonly snippet: string;
+	readonly from: number;
+	readonly total: number;
+}
+
+export interface TranscriptReadOptions {
+	readonly budget?: number;
+	readonly offset?: number;
+	readonly around?: string;
 }
 
 export const MAX_TRANSCRIPT_CHARS = 8_000;
-export const MAX_TRANSCRIPT_ENTRY_CHARS = 1_200;
 const SNIPPET_CHARS = 240;
+const LEAD = 200;
 const SKIP_DIRS = new Set([".memory"]);
 
 interface Index {
@@ -41,7 +51,7 @@ function contentText(content: unknown): string {
 	return parts.join("\n");
 }
 
-function entryOf(entry: Entry): TranscriptEntry {
+function entryOf(entry: Entry): Omit<TranscriptEntry, "from" | "total"> {
 	const message = (entry as { message?: { role?: unknown; content?: unknown } }).message;
 	const role = typeof message?.role === "string" ? message.role : "note";
 	return { id: entry.id, at: entry.timestamp, role, text: contentText(message?.content) };
@@ -70,17 +80,19 @@ function snippet(text: string, needle: string, size = SNIPPET_CHARS): string {
 export class TranscriptService implements Service {
 	private readonly _indices = new Map<string, Index>();
 
-	async find(dir: string, ids: readonly string[], budget = MAX_TRANSCRIPT_CHARS): Promise<readonly TranscriptEntry[]> {
+	async find(dir: string, ids: readonly string[], opts: TranscriptReadOptions = {}): Promise<readonly TranscriptEntry[]> {
 		const wanted = new Set(ids);
+		const budget = opts.budget ?? MAX_TRANSCRIPT_CHARS;
 		const out: TranscriptEntry[] = [];
 		let used = 0;
 		for (const entry of await this._entries(dir)) {
 			if (!wanted.has(entry.id)) continue;
 			const found = entryOf(entry);
-			const text = found.text.length > MAX_TRANSCRIPT_ENTRY_CHARS ? `${found.text.slice(0, MAX_TRANSCRIPT_ENTRY_CHARS)}… (truncated)` : found.text;
-			if (used + text.length > budget && out.length > 0) break;
-			out.push({ ...found, text });
-			used += text.length;
+			const room = Math.max(0, budget - used);
+			if (room === 0 && out.length > 0) break;
+			const start = opts.offset ?? centerOn(found.text, opts.around);
+			out.push({ ...found, text: found.text.slice(start, start + room), from: start, total: found.text.length });
+			used += Math.min(room, found.text.length - start);
 			if (out.length === wanted.size) break;
 		}
 		return out;
@@ -100,7 +112,8 @@ export class TranscriptService implements Service {
 				for (const token of alternative) score += haystack.split(token).length - 1;
 			}
 			if (score === 0) continue;
-			scored.push({ hit: { id: found.id, at: found.at, role: found.role, snippet: snippet(found.text, alternatives[0]?.[0] ?? "") }, score });
+			const at = centerOffset(found.text, alternatives[0]?.[0] ?? "");
+			scored.push({ hit: { id: found.id, at: found.at, role: found.role, snippet: snippet(found.text, alternatives[0]?.[0] ?? ""), from: at, total: found.text.length }, score });
 		}
 		scored.sort((left, right) => right.score - left.score || right.hit.at - left.hit.at);
 		return scored.slice(0, limit).map((each) => each.hit);
@@ -140,6 +153,16 @@ export class TranscriptService implements Service {
 		}
 		return files;
 	}
+}
+
+function centerOffset(text: string, needle: string): number {
+	if (needle === "") return 0;
+	const at = text.toLowerCase().indexOf(needle.toLowerCase());
+	return at < 0 ? 0 : Math.max(0, at - LEAD);
+}
+
+function centerOn(text: string, around: string | undefined): number {
+	return around === undefined ? 0 : centerOffset(text, around);
 }
 
 function sameFiles(left: Map<string, number>, right: Map<string, number>): boolean {

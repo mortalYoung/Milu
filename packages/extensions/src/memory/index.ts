@@ -86,14 +86,21 @@ export const memoryExtension: Extension = {
 				name: "memory",
 				label: "Memory",
 				description:
-					"Read this partner's stored atoms — what they own, what happened, what they prefer, the rules they set. Use it whenever an answer depends on this user's own history, possessions or preferences; never assert those from general knowledge, and check a question's premise against what is stored before accepting it. Atoms are an index: each lists ↳ entries, the transcript ids it came from — when a detail is not in the atom, read those with rawIds, or search the transcript with scope=\"entries\". Separate alternatives with | (soccer|duathlon) to check several things in one call. Matching is literal; more than 30 matches is refused with narrowing hints, and records replaced by an update stay hidden unless includeSuperseded.",
+					"Read this partner's stored atoms — what they own, what happened, what they prefer, the rules they set — and, when a detail is not in an atom, the transcript entries behind it. Atoms are an index: each lists ↳ entries; read those with rawIds, or search the transcript with scope=\"entries\". The transcript records what was said, so for a question about your own past message, recommendation or list it is the authority: quote it, and put any correction after the quote instead of replacing it. Check a question's premise against the record — when the record supports it, answer from the record even if the claim looks doubtful today; when it does not, say so. Separate alternatives with | (soccer|duathlon) to check several things in one call. Matching is literal; more than 30 matches is refused with narrowing hints, and records replaced by an update stay hidden unless includeSuperseded.",
 				parameters: memoryQuerySchema,
 				async run(call: ToolCall, _env: ExecutionEnv) {
 					const params = (call.params ?? {}) as MemoryParams;
 					if (params.rawIds !== undefined && params.rawIds.length > 0) {
-						const found = await transcripts.find(call.session.root, params.rawIds);
+						const found = await transcripts.find(call.session.root, params.rawIds, {
+							...(params.offset === undefined ? {} : { offset: params.offset }),
+							...(params.query === undefined ? {} : { around: params.query }),
+						});
 						const missing = params.rawIds.filter((id) => !found.some((entry) => entry.id === id));
-						const parts = found.map((entry) => `# ${entry.id} · ${isoDay(entry.at)} · ${entry.role}\n${entry.text || "(no text)"}`);
+						const parts = found.map((entry) => {
+							const head = `# said ${isoDay(entry.at)} by ${entry.role} · ${entry.id} · chars ${entry.from + 1}-${entry.from + entry.text.length} of ${entry.total}`;
+							const more = entry.from + entry.text.length < entry.total ? `\n(… continues: rawIds: ["${entry.id}"], offset: ${entry.from + entry.text.length})` : "";
+							return `${head}\n${entry.text || "(no text)"}${more}`;
+						});
 						if (found.length === 0) return say(`No transcript entries for ${params.rawIds.slice(0, 3).join(", ")}.`, { ok: false });
 						const lines = [parts.join("\n\n")];
 						if (missing.length > 0) lines.push(`(not found in this partner's transcripts: ${missing.slice(0, 3).join(", ")})`);
@@ -103,9 +110,10 @@ export const memoryExtension: Extension = {
 						const hits = await transcripts.search(call.session.root, params.query ?? "", params.limit ?? 5);
 						if (hits.length === 0) return say("No transcript entries match — try fewer or more distinctive words.", { ok: false });
 						return say(
-							[hits.map((hit) => `# ${hit.id} · ${isoDay(hit.at)} · ${hit.role}\n${hit.snippet}`).join("\n\n"), `(pass rawIds: ["${hits[0]!.id}"] to read one in full)`].join(
-								"\n\n",
-							),
+							[
+								hits.map((hit) => `# ${hit.id} · ${isoDay(hit.at)} · ${hit.role} · ${hit.total} chars\n${hit.snippet}`).join("\n\n"),
+								`(pass rawIds: ["${hits[0]!.id}"], offset: ${hits[0]!.from} to read this one on)`,
+							].join("\n\n"),
 							{ ok: true, returned: hits.length },
 						);
 					}

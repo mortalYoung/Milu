@@ -124,6 +124,7 @@ const memoryAtomSchema = Type.Object({
 	old: Type.Optional(atomicValue),
 	next: Type.Optional(atomicValue),
 	direction: Type.Optional(Type.Union([Type.Literal("prefer"), Type.Literal("avoid")])),
+	offset: Type.Optional(Type.Integer({ description: "read with rawIds: skip this many characters into each entry; use it when a reply says the entry continues" })),
 	scope: Type.Optional(Type.String({ description: "preference — the situation the preference applies to" })),
 	appliesTo: Type.Optional(Type.String({ description: 'instruction — the scope of the rule, e.g. "milu-repo" or "global"' })),
 	provider: Type.Optional(Type.Union([Type.Literal("user"), Type.Literal("assistant"), Type.Literal("external")])),
