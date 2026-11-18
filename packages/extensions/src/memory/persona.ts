@@ -5,12 +5,15 @@ import { join } from "node:path";
 import { type AgentMessage, type AgentTool, type Model, type StreamFn, Type } from "@milu/core";
 
 import { createMemoryAgent } from "./agent.ts";
+import { atomCursor, createReadAtomsTool } from "./atom-tool.ts";
 import { startDeadline } from "./deadline.ts";
 import { runRalphLoop } from "./loop.ts";
 import { appendMemoryRun, atomsAfter, ensureMemoryDir, memoryDir, type MemoryRecord, type MemoryRunLog, type MemoryRunReason, readMemoryLines, readWatermarks } from "./store.ts";
 import { trajectoryRecordsOf } from "./trace.ts";
 
 export const personaPath = (dir: string) => join(memoryDir(dir), "persona.md");
+const RUN_ATOMS = 60;
+const PASS_ATOMS = 30;
 export const MAX_PERSONA_CONTENT = 1200;
 export const MAX_PERSONA_LINE = 120;
 export const PERSONA_SECTIONS = ["Relationship", "Taste"] as const;
@@ -95,16 +98,39 @@ export function parsePersona(content: string): PersonaDoc | { problem: string } 
 	return { meta: { rev, updated, throughAtom, sources }, header: parts.header, body: parts.body, content: content.trim() };
 }
 
-export function validatePersona(content: string): string | null {
-	const parsed = parsePersona(content);
-	if ("problem" in parsed) return parsed.problem;
-	const { body } = parsed;
+export function composePersona(meta: PersonaMeta, body: string): string {
+	return ["---", `rev: ${meta.rev}`, `updated: ${meta.updated}`, `throughAtom: ${meta.throughAtom}`, `sources: [${meta.sources.join(", ")}]`, "---", "", body.trim(), ""].join(
+		"\n",
+	);
+}
+
+function resolveId(id: string, known: readonly string[]): string | null {
+	if (known.includes(id)) return id;
+	const matches = known.filter((each) => each.startsWith(id));
+	return matches.length === 1 ? matches[0]! : null;
+}
+
+const CITATION = /[(（](mem-[0-9a-z-]{3,}),\s*\d{4}-\d{2}-\d{2}[)）]/g;
+
+function citedIds(body: string, known: readonly string[]): { ids: string[]; unknown: string[] } {
+	const ids: string[] = [];
+	const unknown: string[] = [];
+	for (const match of body.matchAll(CITATION)) {
+		const raw = match[1]!;
+		const full = resolveId(raw, known);
+		if (full === null) unknown.push(raw);
+		else ids.push(full);
+	}
+	return { ids: [...new Set(ids)], unknown: [...new Set(unknown)] };
+}
+
+export function validateBody(body: string): string | null {
 	const headings = [...body.matchAll(/^## (.+)$/gm)].map((match) => (match[1] ?? "").trim());
 	if (headings.join("|") !== PERSONA_SECTIONS.join("|")) {
 		return `body sections must be exactly ${PERSONA_SECTIONS.map((section) => `## ${section}`).join(", ")} in this order (found: ${headings.join(", ") || "none"}) — rewrite the body with those two headings and nothing else`;
 	}
-	if (content.trim().length > MAX_PERSONA_CONTENT)
-		return `the document is ${content.trim().length} characters, ${content.trim().length - MAX_PERSONA_CONTENT} over the ${MAX_PERSONA_CONTENT} limit — drop the least valuable line (or merge two similar ones) and rewrite the whole document shorter`;
+	if (body.trim().length > MAX_PERSONA_CONTENT)
+		return `the body is ${body.trim().length} characters, ${body.trim().length - MAX_PERSONA_CONTENT} over the ${MAX_PERSONA_CONTENT} limit — drop the least valuable line (or merge two similar ones) and send the shorter body`;
 	const relationship = bullets(body, "Relationship");
 	const taste = bullets(body, "Taste");
 	if (relationship.length > MAX_RELATIONSHIP)
@@ -169,7 +195,7 @@ export interface PersonaTrigger {
 export async function personaTrigger(dir: string): Promise<PersonaTrigger> {
 	const lines = await readMemoryLines(dir);
 	const watermarks = await readWatermarks(dir);
-	const atoms = atomsAfter(lines, watermarks.persona).filter(isRoleAtom).slice(0, 20);
+	const atoms = atomsAfter(lines, watermarks.persona).filter(isRoleAtom).slice(0, RUN_ATOMS);
 	return { run: atoms.length > 0, atoms };
 }
 
@@ -187,19 +213,24 @@ Rules:
 - Project rules (commit authorisation, gates, comment policy, evidence rules) belong to AGENTS.md — put those atoms in dropped.
 - Environment limits (sandbox, permissions, tool quirks) belong to the instance caveats — put those atoms in dropped.
 - Task progress, paths, branch state and step-by-step procedures do not belong here — put them in dropped.
-- Rewrite the whole document; never send a diff. Header: rev (+1), updated, throughAtom, sources.`;
+- Send the body in content and the header as separate parameters — rev, updated, throughAtom, sources. Omit any you cannot name and the engine fills it (rev +1, today, the last cited atom, the body's citations). Never send a diff.`;
 
 const noopSchema = Type.Object({ consumed: Type.Array(Type.String()), dropped: Type.Optional(Type.Array(Type.String())) });
 
 const schema = Type.Object({
-	op: Type.Union([Type.Literal("read"), Type.Literal("write")], { description: "read: the current document; write: the whole rewritten document" }),
-	content: Type.Optional(Type.String({ description: `write: the complete persona file (header + both sections, max ${MAX_PERSONA_CONTENT} characters)` })),
+	op: Type.Union([Type.Literal("read"), Type.Literal("write")], { description: "read: the current document; write: the rewritten body plus its header fields" }),
+	content: Type.Optional(Type.String({ description: `write: the body only — "## Relationship" then "## Taste", no YAML header (max ${MAX_PERSONA_CONTENT} characters)` })),
+	rev: Type.Optional(Type.Integer({ description: "write: header rev — omit it and the engine uses the current rev + 1" })),
+	updated: Type.Optional(Type.String({ description: "write: header updated, YYYY-MM-DD — omit it and the engine stamps today" })),
+	throughAtom: Type.Optional(Type.String({ description: "write: header throughAtom — the newest atom id this document covers; omit it to use the last cited atom" })),
+	sources: Type.Optional(Type.Array(Type.String({ description: "write: header sources — atom ids behind the cited lines; omit it to use the ids cited in the body" }))),
 	consumed: Type.Optional(Type.Array(Type.String({ description: "write: ids of the atoms this document actually uses" }))),
 	dropped: Type.Optional(Type.Array(Type.String({ description: "write: ids of atoms that belong somewhere else, not in the persona" }))),
 });
 
 async function runPersona(opts: OrganizePersonaOptions, atoms: readonly MemoryRecord[], current: PersonaDoc | null): Promise<{ writes: number; through?: string }> {
 	const batch = new Map(atoms.map((atom) => [atom.id, atom]));
+	const cursor = atomCursor();
 	const state = { writes: 0, content: current?.content ?? "", consumed: new Set<string>(), dropped: new Set<string>(), throughAtomId: "" };
 	const runId = `run-${randomUUID()}`;
 	const startedAt = Date.now();
@@ -253,7 +284,17 @@ async function runPersona(opts: OrganizePersonaOptions, atoms: readonly MemoryRe
 	const tool: AgentTool<typeof schema, { ok: boolean; error?: string }> = {
 		name: "persona",
 		label: "Persona",
-		description: "Read the current persona document, or rewrite it whole (header + Relationship + Taste). The engine validates the shape and the citations.",
+		description: [
+			"Read the current persona document, or rewrite its body — the YAML header is composed from rev / updated / throughAtom / sources, so content carries the body only.",
+			"content e.g.:",
+			"",
+			"## Relationship",
+			"- Prefers to be challenged on the ask before acting (mem-4a1c9e02, 2026-01-01)",
+			"",
+			"## Taste",
+			"- [ui] No divider lines — separate by whitespace and type scale instead (mem-1a2a465f, 2026-01-01)",
+			"- [rhythm] Deletes rather than keeps: redundant code, stale files (mem-6fd66bc4, 2026-01-01)",
+		].join("\n"),
 		parameters: schema,
 		executionMode: "sequential",
 		async execute(_toolCallId, params) {
@@ -267,28 +308,40 @@ async function runPersona(opts: OrganizePersonaOptions, atoms: readonly MemoryRe
 			};
 			const note = (text: string) => ({ content: [{ type: "text" as const, text }], details: { ok: true } });
 			if (params.op === "read") return note(state.content || "No persona yet — write the first document.");
-			const content = (params.content ?? "").trim();
-			if (!content) return reject("write needs content — send the whole document (header plus Relationship and Taste), not a diff or a list of changes");
-			const problem = validatePersona(content);
+			const body = (params.content ?? "").trim();
+			if (!body) return reject('write needs content — send the body only: "## Relationship" then "## Taste", no YAML header');
+			const problem = validateBody(body);
 			if (problem) return reject(problem);
-			const parsed = parsePersona(content);
-			if ("problem" in parsed) return reject(parsed.problem);
-			const consumed = [...new Set([...(params.consumed ?? []), ...parsed.meta.sources])].filter((id) => batch.has(id));
+			const known = [...new Set([...batch.keys(), ...(current?.meta.sources ?? [])])];
+			const cited = citedIds(body, known);
+			const supplied = params.sources ?? [];
+			const unresolved = [...new Set([...cited.unknown, ...supplied.filter((id) => resolveId(id, known) === null)])];
+			if (unresolved.length > 0)
+				return reject(
+					`these atom ids are neither in the batch you were given nor in the current persona: ${unresolved.slice(0, 3).join(", ")} — copy ids from the "New atoms" list; the body's (mem-…, date) citations must point at those atoms`,
+				);
+			const sources = [...new Set([...supplied.map((id) => resolveId(id, known) as string), ...cited.ids])];
+			const consumed = [...new Set([...(params.consumed ?? []).map((id) => resolveId(id, known) ?? id), ...sources])].filter((id) => batch.has(id));
 			if (consumed.length === 0)
 				return reject(
-					`consumed (or the document's sources) must list at least one atom id from the batch you were given — copy ids from the "New atoms" list in the prompt, or call noop if none belongs here`,
+					`consumed (or the body's citations) must name at least one atom from the batch you were given — copy ids from the "New atoms" list, or call noop if none belongs here`,
 				);
-			const unknown = parsed.meta.sources.filter((id) => !batch.has(id) && !(current?.meta.sources ?? []).includes(id));
-			if (unknown.length > 0)
-				return reject(
-					`these sources are neither in the batch you were given nor in the current persona: ${unknown.slice(0, 3).join(", ")} — cite only atoms from the "New atoms" list plus the ones the document already carries`,
-				);
-			await writePersonaDoc(opts.dir, content);
-			state.content = content;
-			state.throughAtomId = parsed.meta.throughAtom;
+			const throughAtom = params.throughAtom === undefined ? (sources.at(-1) ?? current?.meta.throughAtom ?? "") : (resolveId(params.throughAtom, known) ?? params.throughAtom);
+			const meta = {
+				rev: params.rev ?? (current?.meta.rev ?? 0) + 1,
+				updated: params.updated ?? new Date().toISOString().slice(0, 10),
+				throughAtom,
+				sources,
+			};
+			if (meta.rev < 1) return reject("rev must be a positive integer — omit it and the engine uses the current rev + 1");
+			if (!/^\d{4}-\d{2}-\d{2}$/.test(meta.updated)) return reject("updated must be YYYY-MM-DD — omit it and the engine stamps today");
+			if (!meta.throughAtom) return reject("throughAtom is missing — cite an atom in the body and omit it, or pass the newest atom id this document covers");
+			const written = await writePersonaDoc(opts.dir, composePersona(meta, body));
+			state.content = written.content;
+			state.throughAtomId = written.meta.throughAtom;
 			state.writes += 1;
 			for (const id of consumed) state.consumed.add(id);
-			return note(`persona rev ${parsed.meta.rev} written`);
+			return note(`persona rev ${written.meta.rev} written`);
 		},
 	};
 
@@ -305,17 +358,19 @@ async function runPersona(opts: OrganizePersonaOptions, atoms: readonly MemoryRe
 		},
 	};
 
-	const prompt = [
-		"A scheduled persona pass is running.",
-		"",
-		"Current persona:",
-		current?.content ?? "(none yet)",
-		"",
-		`Atoms to consume (${atoms.length}):`,
-		atoms.map((atom) => `- [${atom.id}] ${atom.kind}: ${atom.summary}${atom.detail ? `\n  ${atom.detail.slice(0, 300)}` : ""}`).join("\n"),
-		"",
-		"Rewrite the persona so it reflects these atoms. If none of them belongs here, call noop.",
-	].join("\n");
+	const prompt = (): string =>
+		[
+			"A scheduled persona pass is running.",
+			"",
+			"Current persona:",
+			current?.content ?? "(none yet)",
+			"",
+			`${atoms.length} atom(s) arrived since the last pass. Page through them with read_atoms (at most ${PASS_ATOMS} per pass, oldest first); read until you can tell whether the persona needs a line added, merged or dropped — you do not have to read every one.`,
+			"",
+			"Only preferences, instructions and role attributes reach this stage; events belong to the atoms and the SOPs.",
+			"",
+			"Rewrite the persona so it reflects what you read. If none of it belongs here, call noop.",
+		].join("\n");
 
 	const deadline = startDeadline(opts.signal, STAGE_TIMEOUT_MS);
 	try {
@@ -333,17 +388,23 @@ async function runPersona(opts: OrganizePersonaOptions, atoms: readonly MemoryRe
 					records: trajectoryRecordsOf(passes, { runId, startedAt, model: modelName }),
 				});
 			},
-			createPass: () => ({ agent: createMemoryAgent(opts.model, opts.streamFn, WORKFLOW, [tool, noop]), prompt }),
+			createPass: () => ({
+				agent: createMemoryAgent(opts.model, opts.streamFn, WORKFLOW, [createReadAtomsTool(atoms, cursor, PASS_ATOMS), tool, noop]),
+				prompt: prompt(),
+			}),
 			settlePass: () => {
-				const covered = new Set([...state.consumed, ...state.dropped]).size;
-				if (covered >= atoms.length) return "done";
-				return covered > 0 || state.writes > 0 ? "advanced" : "stalled";
+				const read = cursor.through === null ? -1 : atoms.findIndex((atom) => atom.id === cursor.through);
+				const written = [...atoms].reverse().findIndex((atom) => state.consumed.has(atom.id) || state.dropped.has(atom.id));
+				const covered = Math.max(read, written < 0 ? -1 : atoms.length - 1 - written);
+				if (covered < 0) return "stalled";
+				return covered >= atoms.length - 1 ? "done" : "advanced";
 			},
 		});
 		attempts = outcome.attempts;
-		const newest = [...atoms].reverse().find((atom) => state.consumed.has(atom.id) || state.dropped.has(atom.id));
+		const written = [...atoms].reverse().find((atom) => state.consumed.has(atom.id) || state.dropped.has(atom.id));
+		const through = cursor.through ?? written?.id ?? null;
 		await endRun(deadline.timedOut() ? "blocked" : outcome.reason, undefined, outcome.passes);
-		return { writes: state.writes, ...(newest ? { through: newest.id } : {}) };
+		return { writes: state.writes, ...(through ? { through } : {}) };
 	} catch (error) {
 		await endRun("error", error instanceof Error ? error.message : String(error));
 		throw error;
@@ -362,6 +423,11 @@ export interface OrganizePersonaOptions {
 
 export async function organizePersona(opts: OrganizePersonaOptions): Promise<{ writes: number; through?: string }> {
 	const trigger = await personaTrigger(opts.dir);
-	if (!trigger.run) return { writes: 0 };
+	if (!trigger.run) {
+		const lines = await readMemoryLines(opts.dir);
+		const watermarks = await readWatermarks(opts.dir);
+		const fresh = atomsAfter(lines, watermarks.persona);
+		return { writes: 0, ...(fresh.length > 0 ? { through: fresh.at(-1)!.id } : {}) };
+	}
 	return runPersona(opts, trigger.atoms, await readPersonaDoc(opts.dir));
 }

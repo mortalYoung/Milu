@@ -35,7 +35,7 @@ const MEMORY_WORKFLOW = `You are running a memory extraction loop for this partn
 Workflow:
 1. read_raw shows raw conversation entries; each line starts with the entry id and its timestamp.
 2. Call memory op "read" when you need to know what is already stored (structured filters: subject / predicate / kinds); one call covers several entities — separate them with | (soccer|duathlon|harmonica).
-3. Write every durable atom with memory op "write", in batches of up to 20 atoms per call.
+3. Write every durable atom with memory op "write", in batches of up to 100 atoms per call.
    - rawIds must be ids you actually read.
    - event / update need eventAt (or at) taken from the source entry timestamp, never "now".
 4. Stop once every atom you found is written; the engine runs another pass while anything is left uncovered.
@@ -58,7 +58,7 @@ Boundary rules (REQUIRED):
 - reference is only for something the user asked for and will reuse. Never store generic assistant advice or recommendation lists.`;
 
 const MAX_READ_ENTRIES = 60;
-const MAX_WRITE_BATCH = 20;
+const MAX_WRITE_BATCH = 100;
 
 const memoryKindSchema = Type.Union([
 	Type.Literal("attribute"),
@@ -371,7 +371,8 @@ function createMemoryTool(opts: MemoryToolOptions): AgentTool<typeof memorySchem
 					includeSuperseded: params.includeSuperseded,
 				});
 				const memories = page.records;
-				if (page.stored === 0) return note("memory is empty — nothing is stored yet, so there is nothing to dedupe against; write the atoms you found (1–20 per call).");
+				if (page.stored === 0)
+					return note(`memory is empty — nothing is stored yet, so there is nothing to dedupe against; write the atoms you found (1–${MAX_WRITE_BATCH} per call).`);
 				const tooMany = tooManyMatches(page);
 				if (tooMany && (params.offset ?? 0) === 0) return reject(tooMany);
 				if (memories.length === 0) return note("No atoms found.");
@@ -381,7 +382,7 @@ function createMemoryTool(opts: MemoryToolOptions): AgentTool<typeof memorySchem
 			const write = opts.write;
 			if (!write) return reject("write is not available in this pass — this tool is read-only here; recall with op read instead");
 			const atoms = params.atoms ?? [];
-			if (atoms.length === 0) return reject("write needs atoms[] — one entry per extracted fact, 1-20 per call");
+			if (atoms.length === 0) return reject(`write needs atoms[] — one entry per extracted fact, 1–${MAX_WRITE_BATCH} per call`);
 			if (atoms.length > MAX_WRITE_BATCH) return reject(`at most ${MAX_WRITE_BATCH} atoms per call (got ${atoms.length}) — split the batch`);
 
 			const accepted: MemoryRecord[] = [];

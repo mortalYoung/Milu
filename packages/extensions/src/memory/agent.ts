@@ -2,10 +2,11 @@ import { Agent, type AgentMessage, type AgentTool, type Message, type Model, typ
 
 export const REQUEST_TIMEOUT_MS = 60_000;
 export const MEMORY_TEMPERATURE = 0.1;
+export const MEMORY_THINKING = "low" as const;
 
 export function createMemoryAgent(model: Model<any>, streamFn: StreamFn, systemPrompt: string, tools: readonly AgentTool[]): Agent {
 	const greedy: StreamFn = (target, context, options) => streamFn(target, context, { ...options, temperature: MEMORY_TEMPERATURE, timeoutMs: REQUEST_TIMEOUT_MS, maxRetries: 1 });
-	const agent = new Agent({ streamFn: greedy, convertToLlm: toLlm, initialState: { systemPrompt } });
+	const agent = new Agent({ streamFn: greedy, convertToLlm: toLlm, initialState: { systemPrompt, thinkingLevel: MEMORY_THINKING } });
 	agent.state.model = model;
 	agent.state.tools = [...tools];
 	return agent;

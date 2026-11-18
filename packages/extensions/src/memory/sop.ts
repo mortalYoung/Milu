@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { type AgentMessage, type AgentTool, type Model, type Static, type StreamFn, Type } from "@milu/core";
 
 import { createMemoryAgent } from "./agent.ts";
+import { atomCursor, createReadAtomsTool } from "./atom-tool.ts";
 import { startDeadline } from "./deadline.ts";
 import { runRalphLoop } from "./loop.ts";
 import { appendMemoryRun, atomsAfter, ensureMemoryDir, isoDay, memoryDir, type MemoryRunLog, type MemoryRunReason, readMemoryLines, readWatermarks } from "./store.ts";
@@ -12,6 +13,8 @@ import { trajectoryRecordsOf } from "./trace.ts";
 
 export const sopDirectory = (dir: string) => join(memoryDir(dir), "sops");
 export const MAX_SOPS = 20;
+const RUN_ATOMS = 60;
+const PASS_ATOMS = 30;
 export const MAX_SOP_TITLE = 24;
 export const MAX_SOP_WHEN = 80;
 export const MAX_SOP_PITFALLS = 5;
@@ -138,12 +141,27 @@ export function parseSop(content: string): SopDoc | { problem: string } {
 	};
 }
 
-export function validateSop(content: string): string | null {
-	const parsed = parseSop(content);
-	if ("problem" in parsed) return parsed.problem;
-	const { meta, body } = parsed;
-	if (meta.title.length > MAX_SOP_TITLE)
-		return `title is ${meta.title.length} characters (max ${MAX_SOP_TITLE}) — shorten the title itself, do not move the extra words into the When line`;
+export function composeSop(meta: SopMeta, body: string): string {
+	const evidence = meta.evidence.map((item) => `  - ${item.atomId} | ${item.date} | ${item.note}`).join("\n");
+	return [
+		"---",
+		`id: ${meta.id}`,
+		`title: ${meta.title}`,
+		`updated: ${meta.updated}`,
+		`rev: ${meta.rev}`,
+		`confidence: ${meta.confidence}`,
+		`throughAtom: ${meta.throughAtom}`,
+		`sources: [${meta.sources.join(", ")}]`,
+		"evidence:",
+		evidence,
+		"---",
+		"",
+		body.trim(),
+		"",
+	].join("\n");
+}
+
+export function validateSopBody(body: string, evidenceIds: ReadonlySet<string>): string | null {
 	const headings = [...body.matchAll(/^## (.+)$/gm)].map((match) => (match[1] ?? "").trim());
 	if (headings.length !== SECTIONS.length || headings.some((heading, index) => heading !== SECTIONS[index])) {
 		return `body sections must be exactly ${SECTIONS.map((section) => `## ${section}`).join(", ")} in this order (found: ${headings.join(", ") || "none"}) — rewrite the body with those five headings and nothing else`;
@@ -166,17 +184,12 @@ export function validateSop(content: string): string | null {
 		.filter((line) => line.trim().startsWith("- "));
 	if (pitfalls.length > MAX_SOP_PITFALLS)
 		return `Pitfalls has ${pitfalls.length} entries (max ${MAX_SOP_PITFALLS}) — keep the costliest ones and fold the rest into the Procedure step they belong to`;
-	if (meta.evidence.length === 0)
-		return "evidence must list at least one atom — copy the id of an atom that justifies this document, in the form `- mem-… | YYYY-MM-DD | the line it supports`";
-	if (meta.evidence.length > MAX_SOP_EVIDENCE)
-		return `evidence has ${meta.evidence.length} entries (max ${MAX_SOP_EVIDENCE}) — keep one entry per atom the body actually cites and merge steps that rest on the same atoms until the list fits`;
-	const evidenceIds = new Set(meta.evidence.map((item) => item.atomId));
 	const cited = (line: string): readonly string[] => [...new Set([...line.matchAll(/mem-[0-9a-z-]{3,}/gi)].map((match) => match[0]))];
 	const untraced = [...steps, ...pitfalls].filter((line) => !cited(line).some((id) => evidenceIds.has(id)));
 	if (untraced.length > 0) {
 		const first = (untraced[0] ?? "").trim();
 		const missing = cited(first).filter((id) => !evidenceIds.has(id));
-		const room = MAX_SOP_EVIDENCE - meta.evidence.length;
+		const room = MAX_SOP_EVIDENCE - evidenceIds.size;
 		const why = missing.length === 0 ? "cites no atom at all" : `cites ${missing.slice(0, 2).join(", ")}, which evidence does not list`;
 		const spare =
 			room > 0
@@ -185,6 +198,19 @@ export function validateSop(content: string): string | null {
 		return `${untraced.length} Procedure step(s)/Pitfalls bullet(s) rest on no listed atom — the first one (${first.slice(0, 60)}) ${why}. Fix it by adding that id to evidence (${spare}) or by merging/dropping the line; every step must carry a "(mem-…)" that evidence backs`;
 	}
 	return null;
+}
+
+export function validateSop(content: string): string | null {
+	const parsed = parseSop(content);
+	if ("problem" in parsed) return parsed.problem;
+	const { meta, body } = parsed;
+	if (meta.title.length > MAX_SOP_TITLE)
+		return `title is ${meta.title.length} characters (max ${MAX_SOP_TITLE}) — shorten the title itself, do not move the extra words into the When line`;
+	if (meta.evidence.length === 0)
+		return "evidence must list at least one atom — copy the id of an atom that justifies this document, in the form `- mem-… | YYYY-MM-DD | the line it supports`";
+	if (meta.evidence.length > MAX_SOP_EVIDENCE)
+		return `evidence has ${meta.evidence.length} entries (max ${MAX_SOP_EVIDENCE}) — keep one entry per atom the body actually cites and merge steps that rest on the same atoms until the list fits`;
+	return validateSopBody(body, new Set(meta.evidence.map((item) => item.atomId)));
 }
 
 export async function sopSignature(dir: string): Promise<string> {
@@ -331,6 +357,8 @@ export function readSopOp(docs: readonly SopDoc[], params: SopReadParams): strin
 			.map((doc) => `- ${doc.meta.id} · ${doc.meta.title} — ${sectionBody(doc.body, "When").split("\n")[0]?.trim() ?? ""}`)
 			.join("\n");
 	}
+	if (docs.length === 0) return "No SOPs yet — nothing has been distilled for this partner, so there is no id to read; write the first one once a task recurs.";
+	if (id === "") return 'read needs an id — call sop with op "list" to see the available ones, or pass the id you were given';
 	const doc = docs.find((candidate) => candidate.meta.id === id);
 	if (!doc) {
 		const near = docs
@@ -343,14 +371,29 @@ export function readSopOp(docs: readonly SopDoc[], params: SopReadParams): strin
 	return pageSop(doc.body, params.offset, params.limit);
 }
 
+const sopEvidenceSchema = Type.Object({
+	atomId: Type.String({ description: "the atom id, exactly as it appears in the batch" }),
+	date: Type.String({ description: "YYYY-MM-DD from the atom's own time" }),
+	note: Type.String({ description: "the one line in the body this atom supports" }),
+});
+
 const sopWriteSchema = Type.Object({
 	op: Type.Union([Type.Literal("read"), Type.Literal("read_metadata"), Type.Literal("write")], {
-		description: "read / read_metadata: inspect an existing SOP; write: the complete document, header and body",
+		description: "read / read_metadata: inspect an existing SOP; write: the five-section body plus its header fields",
 	}),
-	id: Type.Optional(Type.String({ description: "read / read_metadata: the SOP id" })),
+	id: Type.Optional(Type.String({ description: "read / read_metadata / write: the SOP id, sop-<kebab-case>" })),
 	offset: Type.Optional(Type.Integer({ description: "read: 1-indexed first line (default 1)" })),
 	limit: Type.Optional(Type.Integer({ description: "read: how many lines (default 120)" })),
-	content: Type.Optional(Type.String({ description: "write: the complete SOP file — YAML header then the five sections" })),
+	content: Type.Optional(Type.String({ description: 'write: the body only — the five sections starting with "## Purpose", no YAML header' })),
+	title: Type.Optional(Type.String({ description: `write: header title, at most ${MAX_SOP_TITLE} characters; omit to keep the stored one` })),
+	confidence: Type.Optional(Type.Number({ description: "write: header confidence 0..1, higher when more atoms back the document; omit to keep the stored one" })),
+	rev: Type.Optional(Type.Integer({ description: "write: header rev; omit to use the stored rev + 1" })),
+	updated: Type.Optional(Type.String({ description: "write: header updated, YYYY-MM-DD; omit for today" })),
+	throughAtom: Type.Optional(Type.String({ description: "write: header throughAtom — the newest atom this document reflects; omit to use the last evidence atom" })),
+	sources: Type.Optional(Type.Array(Type.String({ description: "write: header sources; omit to use the evidence atom ids" }))),
+	evidence: Type.Optional(
+		Type.Array(sopEvidenceSchema, { description: "write: header evidence — one entry per atom the body cites; every numbered step and Pitfalls bullet must cite one of them" }),
+	),
 	consumed: Type.Optional(Type.Array(Type.String({ description: "write: ids of the batch atoms this write actually incorporated" }))),
 	dropped: Type.Optional(Type.Array(Type.String({ description: "write: ids of batch atoms that do not belong in any SOP" }))),
 	mergedFrom: Type.Optional(Type.Array(Type.String({ description: "write: ids of SOPs this document absorbs; they are deleted in the same run" }))),
@@ -363,24 +406,18 @@ const noopSchema = Type.Object({ consumed: Type.Array(Type.String()), dropped: T
 function sopWorkflow(limit: number): string {
 	return `You maintain long-lived SOP documents distilled from this partner's atomic memories.
 
-Every document is one markdown file: a YAML header, then exactly five sections in this order.
+A document is exactly five sections in this order, sent in content; the header travels as separate parameters.
 ${SECTIONS.map((section) => `## ${section}`).join("\n")}
 
-Header:
----
-id: sop-<kebab-case>
-title: <at most ${MAX_SOP_TITLE} characters>
-updated: <YYYY-MM-DD>
-rev: <1 the first time, +1 on every later write>
-confidence: <0..1>
-throughAtom: <id of the newest atom this document draws from>
-sources: [<atom ids>]
-evidence:
-  - <atomId> | <YYYY-MM-DD> | <the one line it supports>
----
+Header parameters:
+- id: sop-<kebab-case> — required; copy the stored id when updating.
+- title: at most ${MAX_SOP_TITLE} characters — required for a new SOP, defaults to the stored title when updating.
+- evidence: one entry per atom the body cites — { atomId, date, note }. Required.
+- confidence (0..1), rev, updated, throughAtom, sources — optional; the engine fills rev + 1, today, the last evidence atom and the evidence ids.
 
 Rules:
 - Procedure is a numbered list with at least two steps; write decision points as "若 … 则 …" and checkpoints as "确认 …".
+- Every numbered step and every Pitfalls bullet ends with the (mem-…) it rests on, and that id must be in evidence. A step that no atom backs is a step you invented — merge it into the one it continues, or drop it.
 - Pitfalls: at most ${MAX_SOP_PITFALLS} bullets. evidence: at most ${MAX_SOP_EVIDENCE} entries.
 - Every id you list in sources or evidence must also appear in the body, on the line it supports. Never invent atoms.
 - At most ${limit} SOPs may exist. When the limit is reached you MUST merge: write one document that absorbs the others and list their ids in mergedFrom.
@@ -407,8 +444,11 @@ export interface SopOrganizeResult {
 export async function organizeSops(opts: SopOrganizeOptions): Promise<SopOrganizeResult> {
 	const lines = await readMemoryLines(opts.dir);
 	const watermarks = await readWatermarks(opts.dir);
-	const pending = atomsAfter(lines, watermarks.sop).slice(0, 20);
-	if (pending.length === 0) return { added: 0, changes: [] };
+	const fresh = atomsAfter(lines, watermarks.sop);
+	const pending = fresh.filter((atom) => atom.kind === "event").slice(0, RUN_ATOMS);
+	// 没有 event 可做，但确实有新原子：把水位推过去，否则 _stages 每轮都会重扫
+	if (pending.length === 0) return { added: 0, changes: [], ...(fresh.length > 0 ? { through: fresh.at(-1)!.id } : {}) };
+	const cursor = atomCursor();
 
 	const limit = opts.maxSops && opts.maxSops > 0 ? opts.maxSops : MAX_SOPS;
 	const docs = await readSopDocs(opts.dir);
@@ -467,7 +507,17 @@ export async function organizeSops(opts: SopOrganizeOptions): Promise<SopOrganiz
 	const tool: AgentTool<typeof sopWriteSchema, { ok: boolean; error?: string }> = {
 		name: "sop",
 		label: "SOP",
-		description: "Read an existing SOP or write a complete SOP document (YAML header + five sections). The engine validates the shape.",
+		description: [
+			"Read an existing SOP or write one: content carries the five sections, the header travels as id / title / evidence plus optional confidence, rev, updated, throughAtom, sources, and the engine composes the YAML front matter.",
+			"Every numbered step and every Pitfalls bullet ends with the (mem-…) it rests on, and that id must be listed in evidence. e.g.:",
+			"",
+			"## Procedure",
+			"1. 先确认主题、形式与媒介里哪一项被指定 (mem-8f2a1c04, 2026-01-15)",
+			"2. 按指定形式给出三段结构 (mem-3b7d9e21, 2026-01-15)",
+			"",
+			"## Pitfalls",
+			"- 形式未指定时直接按长文写，返工一次 (mem-5c1a8d33, 2026-01-15)",
+		].join("\n"),
 		parameters: sopWriteSchema,
 		executionMode: "sequential",
 		async execute(_toolCallId, params) {
@@ -484,28 +534,51 @@ export async function organizeSops(opts: SopOrganizeOptions): Promise<SopOrganiz
 				const current = await readSopDocs(opts.dir);
 				return note(readSopOp(current, { op: params.op, id: params.id, offset: params.offset, limit: params.limit }));
 			}
-			const content = (params.content ?? "").trim();
-			if (!content) return reject("write needs content — send the complete document (header plus the five sections), not a diff or a list of changes");
-			const problem = validateSop(content);
-			if (problem) return reject(problem);
-			const parsed = parseSop(content);
-			if ("problem" in parsed) return reject(parsed.problem);
-			const consumed = [...new Set([...(params.consumed ?? []), ...parsed.meta.sources])].filter((id) => batch.has(id));
-			if (consumed.length === 0)
-				return reject(`consumed (or the document's sources) must list at least one atom id from the batch you were given — copy ids from the "New atoms" list in the prompt`);
-			const mergedFrom = [...new Set(params.mergedFrom ?? [])].filter((id) => docs.some((doc) => doc.meta.id === id) && id !== parsed.meta.id);
-			const existing = docs.some((doc) => doc.meta.id === parsed.meta.id);
-			if (!existing && docs.length >= limit)
-				return reject(`SOP limit (${limit}) reached — absorb the least useful SOPs into one document and list their ids in mergedFrom instead of adding a new id`);
-			const carried = new Set([
-				...(docs.find((doc) => doc.meta.id === parsed.meta.id)?.meta.sources ?? []),
-				...(docs.find((doc) => doc.meta.id === parsed.meta.id)?.meta.evidence.map((item) => item.atomId) ?? []),
-			]);
-			const unknown = [...new Set([...parsed.meta.sources, ...parsed.meta.evidence.map((item) => item.atomId)])].filter((id) => !batch.has(id) && !carried.has(id));
+			const body = (params.content ?? "").trim();
+			if (!body) return reject('write needs content — send the body only: the five sections starting with "## Purpose", no YAML header');
+			const id = (params.id ?? "").trim();
+			if (!ID_PATTERN.test(id)) return reject('write needs id — "sop-<kebab-case>", copying the stored id when you are updating one');
+			const stored = docs.find((doc) => doc.meta.id === id);
+			const title = (params.title ?? stored?.meta.title ?? "").trim();
+			if (!title) return reject(`write needs title — at most ${MAX_SOP_TITLE} characters naming the task this SOP covers`);
+			if (title.length > MAX_SOP_TITLE)
+				return reject(`title is ${title.length} characters (max ${MAX_SOP_TITLE}) — shorten the title itself, do not move the extra words into the When line`);
+			const confidence = params.confidence ?? stored?.meta.confidence ?? 0.6;
+			if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1)
+				return reject("confidence must be between 0 and 1 — e.g. 0.85, higher when more atoms back the document");
+			const rev = params.rev ?? (stored?.meta.rev ?? 0) + 1;
+			if (rev < 1) return reject("rev must be a positive integer — omit it and the engine uses the stored rev + 1");
+			const updated = params.updated ?? new Date().toISOString().slice(0, 10);
+			if (!/^\d{4}-\d{2}-\d{2}$/.test(updated)) return reject("updated must be YYYY-MM-DD — omit it and the engine stamps today");
+			const evidence = (params.evidence ?? []).map((item) => ({ atomId: item.atomId.trim(), date: item.date.trim(), note: item.note.trim() }));
+			if (evidence.length === 0) return reject("evidence must list at least one atom — one entry per atom the body cites, with the id exactly as the batch spells it");
+			if (evidence.length > MAX_SOP_EVIDENCE)
+				return reject(
+					`evidence has ${evidence.length} entries (max ${MAX_SOP_EVIDENCE}) — keep one entry per atom the body actually cites and merge steps that rest on the same atoms until the list fits`,
+				);
+			const bad = evidence.find((item) => !/^\d{4}-\d{2}-\d{2}$/.test(item.date));
+			if (bad) return reject(`evidence entry ${bad.atomId} has date "${bad.date}" — use YYYY-MM-DD taken from the atom's own time`);
+			const bodyProblem = validateSopBody(body, new Set(evidence.map((item) => item.atomId)));
+			if (bodyProblem) return reject(bodyProblem);
+			const sources = [...new Set([...(params.sources ?? []), ...evidence.map((item) => item.atomId)])];
+			const throughAtom = params.throughAtom ?? sources.at(-1) ?? stored?.meta.throughAtom ?? "";
+			if (!throughAtom) return reject("throughAtom is missing — name the newest atom this document reflects, or list it in evidence and omit it");
+			const carried = new Set([...(stored?.meta.sources ?? []), ...(stored?.meta.evidence.map((item) => item.atomId) ?? [])]);
+			const unknown = [...sources, ...evidence.map((item) => item.atomId)].filter((each) => !batch.has(each) && !carried.has(each));
 			if (unknown.length > 0)
 				return reject(
-					`these ids are neither in the batch you were given nor in this SOP's current sources/evidence: ${unknown.slice(0, 3).join(", ")} — cite only atoms from the "New atoms" list plus the ones this document already carries`,
+					`these ids are neither in the batch you were given nor in this SOP's current sources/evidence: ${[...new Set(unknown)].slice(0, 3).join(", ")} — cite only atoms from the "New atoms" list plus the ones this document already carries`,
 				);
+			const consumed = [...new Set([...(params.consumed ?? []), ...sources])].filter((each) => batch.has(each));
+			if (consumed.length === 0)
+				return reject(`consumed (or evidence) must list at least one atom id from the batch you were given — copy ids from the "New atoms" list in the prompt`);
+			const mergedFrom = [...new Set(params.mergedFrom ?? [])].filter((each) => docs.some((doc) => doc.meta.id === each) && each !== id);
+			const existing = stored !== undefined;
+			if (!existing && docs.length >= limit)
+				return reject(`SOP limit (${limit}) reached — absorb the least useful SOPs into one document and list their ids in mergedFrom instead of adding a new id`);
+			const content = composeSop({ id, title, updated, rev, confidence, throughAtom, sources, evidence }, body);
+			const parsed = parseSop(content);
+			if ("problem" in parsed) return reject(parsed.problem);
 			await writeSopDoc(opts.dir, content);
 			for (const id of mergedFrom) await deleteSopDoc(opts.dir, id);
 			state.changes.push({ op: mergedFrom.length > 0 ? "merged" : existing ? "updated" : "created", id: parsed.meta.id, title: parsed.meta.title, at: Date.now() });
@@ -540,17 +613,19 @@ export async function organizeSops(opts: SopOrganizeOptions): Promise<SopOrganiz
 		},
 	};
 
-	const prompt = [
-		"A scheduled SOP pass is running.",
-		"",
-		`Existing SOPs (${docs.length}/${limit}) — call sop with op "read" for the full body:`,
-		docs.length ? docs.map((doc) => `- ${doc.meta.id} · ${doc.meta.title} — ${sectionBody(doc.body, "When").split("\n")[0] ?? ""}`).join("\n") : "(none yet)",
-		"",
-		`New atoms (${pending.length}):`,
-		pending.map((atom) => `- [${atom.id}] ${atom.kind}: ${atom.summary}${atom.detail ? `\n  ${atom.detail.slice(0, 300)}` : ""}`).join("\n"),
-		"",
-		"Write the SOPs these atoms justify. If none of them belongs in an SOP, call noop.",
-	].join("\n");
+	const prompt = (): string =>
+		[
+			"A scheduled SOP pass is running.",
+			"",
+			`Existing SOPs (${docs.length}/${limit}) — call sop with op "read" for the full body:`,
+			docs.length ? docs.map((doc) => `- ${doc.meta.id} · ${doc.meta.title} — ${sectionBody(doc.body, "When").split("\n")[0] ?? ""}`).join("\n") : "(none yet)",
+			"",
+			`${pending.length} event atom(s) arrived since the last pass. Page through them with read_atoms (at most ${PASS_ATOMS} per pass, oldest first); you do not have to read every one — read until you can tell whether a new SOP is justified or an existing one needs a rewrite.`,
+			"",
+			"Only events reach this stage: preferences, rules and one-off attributes belong to the persona or AGENTS.md, not to an SOP.",
+			"",
+			"Write the SOPs these atoms justify. If nothing in what you read belongs in an SOP, call noop.",
+		].join("\n");
 
 	const deadline = startDeadline(opts.signal, STAGE_TIMEOUT_MS);
 	try {
@@ -568,18 +643,24 @@ export async function organizeSops(opts: SopOrganizeOptions): Promise<SopOrganiz
 					records: trajectoryRecordsOf(passes, { runId, startedAt, model: modelName }),
 				});
 			},
-			createPass: () => ({ agent: createMemoryAgent(opts.model, opts.streamFn, sopWorkflow(limit), [tool, noop, finish]), prompt }),
+			createPass: () => ({
+				agent: createMemoryAgent(opts.model, opts.streamFn, sopWorkflow(limit), [createReadAtomsTool(pending, cursor, PASS_ATOMS), tool, noop, finish]),
+				prompt: prompt(),
+			}),
 			settlePass: () => {
-				const covered = new Set([...state.consumed, ...state.dropped]).size;
-				if (covered >= pending.length) return "done";
-				return covered > 0 || state.writes > 0 ? "advanced" : "stalled";
+				const read = cursor.through === null ? -1 : pending.findIndex((atom) => atom.id === cursor.through);
+				const written = [...pending].reverse().findIndex((atom) => state.consumed.has(atom.id) || state.dropped.has(atom.id));
+				const writtenIndex = written < 0 ? -1 : pending.length - 1 - written;
+				const covered = Math.max(read, writtenIndex);
+				if (covered < 0) return "stalled";
+				return covered >= pending.length - 1 ? "done" : "advanced";
 			},
 		});
 		attempts = outcome.attempts;
-		const newest = [...pending].reverse().find((atom) => state.consumed.has(atom.id) || state.dropped.has(atom.id));
-		through = newest?.id ?? null;
+		const written = [...pending].reverse().find((atom) => state.consumed.has(atom.id) || state.dropped.has(atom.id));
+		through = cursor.through ?? written?.id ?? null;
 		await endRun(deadline.timedOut() ? "blocked" : outcome.reason, undefined, outcome.passes);
-		return { added: state.changes.length, changes: state.changes, ...(newest ? { through: newest.id } : {}) };
+		return { added: state.changes.length, changes: state.changes, ...(through ? { through } : {}) };
 	} catch (error) {
 		await endRun("error", error instanceof Error ? error.message : String(error));
 		throw error;

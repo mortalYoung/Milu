@@ -79,7 +79,6 @@ export class MemoryService implements Service {
 				recentRounds: this._pendingRounds?.get(),
 				logRun: this._runLog(session),
 			});
-			await this._stages(session, model);
 			return added;
 		})().finally(() => {
 			this._leave(session.name, "memory");
