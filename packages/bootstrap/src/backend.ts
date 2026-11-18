@@ -7,6 +7,7 @@ import {
 	ComposerService,
 	IComposerService,
 	CompactionService,
+	TranscriptService,
 	ConfigService,
 	ContributionService,
 	declareExtensionServices,
@@ -18,6 +19,7 @@ import {
 	ICapabilityService,
 	ICommandsService,
 	ICompactionService,
+	ITranscriptService,
 	IConfigService,
 	IContributionService,
 	IExecutionService,
@@ -67,6 +69,7 @@ export async function createBackend(config: BackendConfig): Promise<Backend> {
 	services.set(ICommandsService, new SyncDescriptor(CommandsService));
 	services.set(IComposerService, new SyncDescriptor(ComposerService));
 	services.set(ICompactionService, new SyncDescriptor(CompactionService));
+	services.set(ITranscriptService, new SyncDescriptor(TranscriptService));
 	services.set(IExtensionService, new SyncDescriptor(ExtensionService, [discovered, config.hosts, config.windows]));
 	services.set(ISessionService, new SyncDescriptor(SessionService));
 	services.set(ISelectionService, new SyncDescriptor(SelectionService));

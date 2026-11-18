@@ -25,6 +25,7 @@ export { ActionService, IActionService, type Action, type ActionContext, type Ac
 export { CommandsService, ICommandsService } from "./services/commands.ts";
 export { ComposerService, IComposerService, type ComposerModeChange } from "./services/composer.ts";
 export { CompactionService, ICompactionService, type CompactionContext, type CompactionPlanner } from "./services/compaction.ts";
+export { ITranscriptService, TranscriptService, type TranscriptEntry, type TranscriptHit } from "./services/transcript.ts";
 export { ConfigService, IConfigService } from "./services/config.ts";
 export { ContributionPoint, ContributionService, IContributionService, type ContributionScope } from "./services/contributions.ts";
 export { ExecutionService, IExecutionService } from "./services/execution.ts";

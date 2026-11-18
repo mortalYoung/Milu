@@ -12,6 +12,7 @@ import {
 	SESSION_SIGNAL_POINT,
 	type SessionSignalItem,
 	ISettingsService,
+	ITranscriptService,
 	type ToolCall,
 	IToolService,
 	type ToolResult,
@@ -21,7 +22,7 @@ import {
 import { memoryQuerySchema } from "./extract.ts";
 import { MemoryService, IMemoryService } from "./service/index.ts";
 import { readSopDocs, readSopOp, sopReadSchema } from "./sop.ts";
-import { formatMemoryRecord, type MemoryKind, parseTime, readMemoryTrace, RECALL_MAX_DETAIL_CHARS, RECALL_MAX_TOTAL_CHARS, tooManyMatches } from "./store.ts";
+import { formatMemoryRecord, isoDay, type MemoryKind, parseTime, readMemoryTrace, RECALL_MAX_DETAIL_CHARS, RECALL_MAX_TOTAL_CHARS, tooManyMatches } from "./store.ts";
 
 interface MemoryParams {
 	readonly query?: string;
@@ -33,6 +34,8 @@ interface MemoryParams {
 	readonly limit?: number;
 	readonly offset?: number;
 	readonly includeSuperseded?: boolean;
+	readonly rawIds?: readonly string[];
+	readonly scope?: "atoms" | "entries";
 }
 
 interface SopParams {
@@ -74,6 +77,7 @@ export const memoryExtension: Extension = {
 
 	activate(context) {
 		const memory = context.get(IMemoryService);
+		const transcripts = context.get(ITranscriptService);
 
 		context.disposables.add(context.get(ICompactionService).register(({ session, entries, retainTokens }) => memory.planCompact(session, entries, retainTokens)));
 
@@ -82,10 +86,29 @@ export const memoryExtension: Extension = {
 				name: "memory",
 				label: "Memory",
 				description:
-					"Read this partner's stored atoms — what they own, what happened, what they prefer, the rules they set. Use it whenever an answer depends on this user's own history, possessions or preferences; never assert those from general knowledge, and check a question's premise against what is stored before accepting it. Separate alternatives with | (soccer|duathlon) to check several things in one call. Matching is literal (see the parameters); more than 30 matches is refused with narrowing hints, and records replaced by an update stay hidden unless includeSuperseded.",
+					"Read this partner's stored atoms — what they own, what happened, what they prefer, the rules they set. Use it whenever an answer depends on this user's own history, possessions or preferences; never assert those from general knowledge, and check a question's premise against what is stored before accepting it. Atoms are an index: each lists ↳ entries, the transcript ids it came from — when a detail is not in the atom, read those with rawIds, or search the transcript with scope=\"entries\". Separate alternatives with | (soccer|duathlon) to check several things in one call. Matching is literal; more than 30 matches is refused with narrowing hints, and records replaced by an update stay hidden unless includeSuperseded.",
 				parameters: memoryQuerySchema,
 				async run(call: ToolCall, _env: ExecutionEnv) {
 					const params = (call.params ?? {}) as MemoryParams;
+					if (params.rawIds !== undefined && params.rawIds.length > 0) {
+						const found = await transcripts.find(call.session.root, params.rawIds);
+						const missing = params.rawIds.filter((id) => !found.some((entry) => entry.id === id));
+						const parts = found.map((entry) => `# ${entry.id} · ${isoDay(entry.at)} · ${entry.role}\n${entry.text || "(no text)"}`);
+						if (found.length === 0) return say(`No transcript entries for ${params.rawIds.slice(0, 3).join(", ")}.`, { ok: false });
+						const lines = [parts.join("\n\n")];
+						if (missing.length > 0) lines.push(`(not found in this partner's transcripts: ${missing.slice(0, 3).join(", ")})`);
+						return say(lines.join("\n\n"), { ok: true, returned: found.length });
+					}
+					if (params.scope === "entries") {
+						const hits = await transcripts.search(call.session.root, params.query ?? "", params.limit ?? 5);
+						if (hits.length === 0) return say("No transcript entries match — try fewer or more distinctive words.", { ok: false });
+						return say(
+							[hits.map((hit) => `# ${hit.id} · ${isoDay(hit.at)} · ${hit.role}\n${hit.snippet}`).join("\n\n"), `(pass rawIds: ["${hits[0]!.id}"] to read one in full)`].join(
+								"\n\n",
+							),
+							{ ok: true, returned: hits.length },
+						);
+					}
 					const from = parseTime(params.from);
 					const to = parseTime(params.to);
 					const result = await memory.read(call.session, {
@@ -106,7 +129,7 @@ export const memoryExtension: Extension = {
 					const parts: string[] = [];
 					let used = 0;
 					for (const record of result.records) {
-						const text = formatMemoryRecord(record, { withDetail: true, maxDetailChars: RECALL_MAX_DETAIL_CHARS });
+						const text = formatMemoryRecord(record, { withDetail: true, maxDetailChars: RECALL_MAX_DETAIL_CHARS, withSources: true });
 						if (parts.length > 0 && used + text.length > RECALL_MAX_TOTAL_CHARS) break;
 						parts.push(text);
 						used += text.length;

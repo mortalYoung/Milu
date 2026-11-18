@@ -69,6 +69,7 @@ export interface MemoryRunRecord {
 	readonly cursorRawId: string | null;
 	readonly throughAtomId?: string;
 	readonly readEntries?: number;
+	readonly coveredEntries?: number;
 	readonly error?: string;
 	readonly checkpoints?: readonly string[];
 }
@@ -170,7 +171,7 @@ export function formatValue(value: MemoryValue | undefined): string {
 	return value === undefined ? "" : String(value);
 }
 
-export function formatMemoryRecord(record: MemoryRecord, opts: { withDetail?: boolean; maxDetailChars?: number } = {}): string {
+export function formatMemoryRecord(record: MemoryRecord, opts: { withDetail?: boolean; maxDetailChars?: number; withSources?: boolean } = {}): string {
 	const lines = [`# ${record.id} [${record.kind}] · ${isoDay(eventTime(record))}`, record.summary];
 	if (record.kind === "update") {
 		lines.push(`${formatValue(record.old)} → ${formatValue(record.next)}${record.at ? ` (${isoDay(record.at)})` : ""}`);
@@ -181,6 +182,11 @@ export function formatMemoryRecord(record: MemoryRecord, opts: { withDetail?: bo
 				.map((item) => `- ${item.name}${item.type ? ` · ${item.type}` : item.action ? ` · ${item.action}` : ""}${item.amount !== undefined ? ` · ${item.amount}` : ""}`)
 				.join("\n"),
 		);
+	}
+	const sources = record.source?.rawIds ?? [];
+	if (opts.withSources && sources.length > 0) {
+		const shown = sources.slice(0, 3);
+		lines.push(`↳ entries: ${shown.join(", ")}${sources.length > shown.length ? ` (+${sources.length - shown.length})` : ""}`);
 	}
 	if (opts.withDetail && record.detail) {
 		const detail =

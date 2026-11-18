@@ -38,12 +38,12 @@ Workflow:
 3. Write every durable atom with memory op "write", in batches of up to 100 atoms per call.
    - rawIds must be ids you actually read.
    - event / update need eventAt (or at) taken from the source entry timestamp, never "now".
-4. Stop once every atom you found is written; the engine runs another pass while anything is left uncovered.
+4. Stop once every atom you found is written. The engine then checks coverage: every entry you read must either back an atom or be dismissed with skip, and a thin pass is re-scanned once.
 
 Kinds (6):
 - attribute: stable, no occurrence time, written as subject + predicate + value (e.g. degree, commute minutes, model of a device).
 - event: something that happened at a time and can repeat or be counted. Carries eventAt; items[] for the objects involved (each object one item, with its type); value for a number; outcome only when the episode ended as a decision or an issue.
-- reference: a list, address, parameter or plan given by the assistant or an external source. provider is user / assistant / external.
+- reference: something the partner will come back to — a list, address, parameter, plan, or a piece you produced on request (script, article, report, essay, code). provider is user / assistant / external.
 - preference: "I prefer / I avoid", with direction and scope (the situation it applies to).
 - instruction: a long-term requirement the user sets for your behaviour. appliesTo names the scope ("milu-repo", "global").
 - update: a new value for an existing subject + predicate. Carries old, next, at and supersedes (the id of the record it replaces).
@@ -53,9 +53,9 @@ Boundary rules (REQUIRED):
 - A user question is not an event by itself; only an episode with something that can be counted or timed is.
   "User asked where they went" / "User wanted to know how many X" records the conversation, not the user's life — the question is already in the transcript. Skip it.
 - When a new value replaces an old one, write update (not event) and point supersedes at the old record.
-- Do not write task checklists, narration, or one-off requests as atoms.
-- Read before writing: if an atom already exists, skip it. Writing the same statement twice is rejected.
-- reference is only for something the user asked for and will reuse. Never store generic assistant advice or recommendation lists.`;
+- Do not write unsolicited narration, generic advice, or the request itself as an atom.
+- An atom describes and points; it never carries the text. A long piece stays in the transcript — name it, list what it contains in items, and let rawIds lead back to the words.
+- Read before writing: if an atom already exists, skip it. Writing the same statement twice is rejected.`;
 
 const MAX_READ_ENTRIES = 60;
 const MAX_WRITE_BATCH = 100;
@@ -128,7 +128,11 @@ const memoryAtomSchema = Type.Object({
 	appliesTo: Type.Optional(Type.String({ description: 'instruction — the scope of the rule, e.g. "milu-repo" or "global"' })),
 	provider: Type.Optional(Type.Union([Type.Literal("user"), Type.Literal("assistant"), Type.Literal("external")])),
 	outcome: Type.Optional(Type.Union([Type.Literal("done"), Type.Literal("decision"), Type.Literal("issue")])),
-	items: Type.Optional(Type.Array(memoryItemSchema, { description: "event — enumerable things this event produced, one item each" })),
+	items: Type.Optional(
+		Type.Array(memoryItemSchema, {
+			description: "event / reference — the enumerable things: what the event produced, or what a piece contains (characters, places, figures, wardrobe), one item each",
+		}),
+	),
 	supersedes: Type.Optional(Type.String({ description: "update — the id of the record this value replaces" })),
 });
 
@@ -143,6 +147,16 @@ export const memorySchema = Type.Object({
 export const memoryQuerySchema = Type.Object({
 	op: Type.Optional(Type.Literal("read")),
 	...memoryQueryFields,
+	rawIds: Type.Optional(
+		Type.Array(Type.String(), {
+			description: "read: fetch these transcript entries verbatim — copy the ids an atom lists under ↳ entries, or ones a scope=entries search returned",
+		}),
+	),
+	scope: Type.Optional(
+		Type.Union([Type.Literal("atoms"), Type.Literal("entries")], {
+			description: "read: atoms (default) searches stored atoms; entries searches the original transcript, for detail no atom carries",
+		}),
+	),
 });
 
 type MemoryAtom = Static<typeof memoryAtomSchema>;
@@ -238,6 +252,40 @@ export function entryStamp(entry: Entry): string {
 	const at = typeof messageAt === "number" ? messageAt : (entry as { timestamp?: unknown }).timestamp;
 	return typeof at === "number" ? new Date(at).toISOString() : "";
 }
+
+interface Coverage {
+	readonly covered: number;
+	readonly uncovered: readonly number[];
+	readonly entryRatio: number;
+	readonly charRatio: number;
+}
+
+function coverageOf(entries: readonly Entry[], upto: number, records: readonly MemoryRecord[], skipped: readonly { from: number; to: number }[]): Coverage {
+	const coveredIds = new Set<string>();
+	for (const record of records) for (const id of record.source?.rawIds ?? []) coveredIds.add(id);
+	const total = Math.max(0, upto + 1);
+	let covered = 0;
+	let chars = 0;
+	let coveredChars = 0;
+	const uncovered: number[] = [];
+	for (let index = 0; index < total; index += 1) {
+		const entry = entries[index]!;
+		const text = entryText(entry);
+		chars += text.length;
+		const verdict = coveredIds.has(entry.id) || skipped.some((range) => index >= range.from && index <= range.to);
+		if (verdict) {
+			covered += 1;
+			coveredChars += text.length;
+		} else uncovered.push(index);
+	}
+	return { covered, uncovered, entryRatio: total > 0 ? covered / total : 1, charRatio: chars > 0 ? coveredChars / chars : 1 };
+}
+
+const skipSchema = Type.Object({
+	from: Type.String({ description: "first raw id of the range that holds nothing durable" }),
+	to: Type.Optional(Type.String({ description: "last raw id of the range; omit when it is a single entry" })),
+	reason: Type.String({ description: 'why nothing here belongs in memory, e.g. "small talk" or "the assistant restating the same list"' }),
+});
 
 function createReadRawTool(
 	entries: readonly Entry[],
@@ -523,6 +571,8 @@ export interface OrganizeMemoryOptions {
 }
 
 const MAX_ORGANIZE_ATTEMPTS = 5;
+const COVERAGE_FLOOR = 0.5;
+const COVERAGE_MIN_GAP = 20;
 const STAGE_TIMEOUT_MS = 8 * 60_000;
 
 export async function organizeMemory(opts: OrganizeMemoryOptions): Promise<number> {
@@ -580,7 +630,10 @@ export async function organizeMemory(opts: OrganizeMemoryOptions): Promise<numbe
 	let passRead = { index: -1, read: 0, next: 0 };
 	let readEntries = 0;
 	let hint = "";
-	let addedAtPassStart = 0;
+	let retried = false;
+	let retryTargets: readonly number[] = [];
+	let coverage = { covered: 0, uncovered: [] as readonly number[], entryRatio: 1, charRatio: 1 };
+	const skipped: { from: number; to: number; reason: string }[] = [];
 	const deadline = startDeadline(opts.signal, STAGE_TIMEOUT_MS);
 	try {
 		const outcome = await runRalphLoop({
@@ -598,14 +651,30 @@ export async function organizeMemory(opts: OrganizeMemoryOptions): Promise<numbe
 				});
 			},
 			createPass: () => {
-				const startIndex = Math.max(0, cursorIndex + 1);
+				const startIndex = retryTargets.length > 0 ? Math.min(...retryTargets) : Math.max(0, cursorIndex + 1);
 				passRead = { index: -1, read: 0, next: startIndex };
 				const seen = new Set(records.map((record) => dedupeKey(record)));
 				const similar = records.map((record) => ({ kind: record.kind, set: shingles(record.summary) }));
 				const activeById = new Map(activeRecords(records).map((record) => [record.id, record]));
-				addedAtPassStart = added;
+				const skip: AgentTool<typeof skipSchema, { ok: boolean; error?: string }> = {
+					name: "skip",
+					label: "Skip",
+					description: "Dismiss a range of entries that holds nothing durable, so the coverage check stops asking about it.",
+					parameters: skipSchema,
+					executionMode: "sequential",
+					async execute(_toolCallId, params) {
+						const from = indexById.get(params.from);
+						const to = params.to === undefined ? from : indexById.get(params.to);
+						if (from === undefined || to === undefined)
+							return { content: [{ type: "text" as const, text: "unknown raw id — copy ids exactly as read_raw printed them" }], details: { ok: false } };
+						const [low, high] = from <= to ? [from, to] : [to, from];
+						skipped.push({ from: low, to: high, reason: params.reason });
+						return { content: [{ type: "text" as const, text: `Noted: entries ${low}–${high} hold nothing durable (${params.reason}).` }], details: { ok: true } };
+					},
+				};
 				const agent = createMemoryAgent(opts.model, opts.streamFn, MEMORY_WORKFLOW, [
 					createReadRawTool(entries, indexById, passRead),
+					skip,
 					createMemoryTool({
 						read: async (query) => queryMemory(await readMemoryLines(opts.dir), query),
 						write: {
@@ -623,25 +692,44 @@ export async function organizeMemory(opts: OrganizeMemoryOptions): Promise<numbe
 						},
 					}),
 				]);
-				const body = `There are still some logs waiting to be extracted. Please read from ${entries[startIndex]!.id}. The last raw id to cover is ${targetRawId}.`;
+				const gap =
+					retryTargets.length > 0
+						? `Coverage check: ${retryTargets.length} entries you already read produced nothing. Re-scan them and either write the atoms they justify or dismiss a range with skip. Entries: ${retryTargets
+								.slice(0, 20)
+								.map((index) => `[${entries[index]!.id}] ${entryText(entries[index]!).replace(/\s+/g, " ").slice(0, 90)}`)
+								.join(" | ")}`
+						: `There are still some logs waiting to be extracted. Please read from ${entries[startIndex]!.id}. The last raw id to cover is ${targetRawId}.`;
+				const body = gap;
 				return { agent, prompt: hint ? `${body}\n\n${hint}` : body };
 			},
 			settlePass: async () => {
 				readEntries += passRead.read;
-				const passAdded = added - addedAtPassStart;
-				if (passAdded === 0 && passRead.read > 0) {
-					hint = `You read ${passRead.read} entries last pass and wrote no atoms. Re-scan that range: a purchase, download, first/last time, count or receipt is its own event with items[] — do not fold it into a habit or taste statement.`;
-					passRead = { index: passRead.index, read: 0, next: passRead.next };
-					return "advanced";
-				}
 				hint = "";
 				const reached = Math.min(targetIndex, Math.max(passRead.index, recordProgressIndex(records, indexById)));
-				if (reached <= cursorIndex) return "stalled";
-				cursorIndex = reached;
+				if (reached > cursorIndex) {
+					cursorIndex = reached;
+					if (cursorIndex < targetIndex) {
+						const rawId = entries[cursorIndex]!.id;
+						await appendMemoryLines(opts.dir, [makeCheckpoint(rawId, false)]);
+						checkpoints.push(rawId);
+						return "advanced";
+					}
+				} else if (cursorIndex < targetIndex) {
+					return "stalled";
+				}
+
+				coverage = coverageOf(entries, cursorIndex, records, skipped);
+				const thin = coverage.entryRatio < COVERAGE_FLOOR || coverage.charRatio < COVERAGE_FLOOR;
+				if (!retried && coverage.uncovered.length >= COVERAGE_MIN_GAP && thin) {
+					retried = true;
+					retryTargets = coverage.uncovered;
+					return "advanced";
+				}
+
 				const rawId = entries[cursorIndex]!.id;
-				await appendMemoryLines(opts.dir, [makeCheckpoint(rawId, cursorIndex >= targetIndex)]);
+				await appendMemoryLines(opts.dir, [makeCheckpoint(rawId, true)]);
 				checkpoints.push(rawId);
-				return cursorIndex >= targetIndex ? "done" : "advanced";
+				return "done";
 			},
 		});
 		attempts = outcome.attempts;
@@ -670,6 +758,7 @@ export async function organizeMemory(opts: OrganizeMemoryOptions): Promise<numbe
 			targetRawId,
 			cursorRawId: cursorIndex >= 0 ? entries[cursorIndex]!.id : null,
 			readEntries,
+			coveredEntries: coverage.covered,
 			...(checkpoints.length ? { checkpoints } : {}),
 		});
 		return added;

@@ -1,4 +1,4 @@
-import { appendFile, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -112,6 +112,7 @@ async function prepare(root: string, opts: Options, model: { provider: string; m
 		memoryEnabled: opts.arm !== "b0",
 		memoryPendingRounds: 10000,
 		defaultModel: model,
+		compaction: { thresholdRatio: 0.01, retainTokens: 2_000 },
 	};
 	await writeFile(join(root, "settings.json"), `${JSON.stringify(settings, null, "\t")}\n`);
 	await symlink(opts.credentials, join(root, ".credentials.yaml")).catch(() => undefined);
@@ -214,16 +215,6 @@ async function startJudge(opts: Options): Promise<Judge | null> {
 	};
 }
 
-async function dropLogs(root: string): Promise<void> {
-	for (const entry of await readdir(root, { withFileTypes: true })) {
-		if (!entry.isDirectory() || entry.name === ".memory") continue;
-		const dir = join(root, entry.name);
-		const files = await readdir(dir).catch(() => [] as string[]);
-		if (!files.some((file) => file.endsWith(".jsonl"))) continue;
-		await rm(dir, { recursive: true, force: true });
-	}
-}
-
 async function runQuestion(opts: Options, question: FixtureQuestion, judge: Judge | null): Promise<Row> {
 	const root = await mkdtemp(join(tmpdir(), "milu-bench-"));
 	const startedAt = Date.now();
@@ -233,15 +224,15 @@ async function runQuestion(opts: Options, question: FixtureQuestion, judge: Judg
 		try {
 			const name = `bench-${question.id}`;
 			const windowed = opts.window > 0 ? question.history.slice(-opts.window) : question.history;
-			let session = backend.sessions.get(name);
+			const session = backend.sessions.get(name);
 			if (opts.arm === "v1") {
 				await session.replay(question.history.map(toMessage));
 				for (const op of ["organize", "sops", "persona"]) await backend.actions.run("memory.run", { session, args: op });
-				await backend.sessions.close(name);
-				await dropLogs(session.root);
-				session = backend.sessions.get(name);
+				// 和生产一样压缩，而不是删日志：历史留在日志里（memory 的寻址层要读），上下文只剩尾部
+				await session.compact();
+			} else {
+				await session.replay(windowed.map(toMessage));
 			}
-			await session.replay(windowed.map(toMessage));
 			const answer = await ask(backend, session, question.question, opts.timeoutMs);
 			return {
 				arm: opts.arm,
