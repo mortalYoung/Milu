@@ -1,4 +1,4 @@
-import { LOG_EVENTS } from "@milu/protocol";
+import { type ImageRef, LOG_EVENTS } from "@milu/protocol";
 
 import type { TrajectoryDetail, TrajectoryNode, TrajectoryRecord, TrajectoryRow, TrajectoryTone, TrajectoryUsage } from "./model.ts";
 
@@ -43,6 +43,15 @@ export function stringify(value: unknown): string {
 const textDetail = (value: string): TrajectoryDetail => ({ content: { kind: "text", value } });
 const codeDetail = (value: string, error?: boolean): TrajectoryDetail => ({ content: { kind: "code", value }, ...(error ? { error: true } : {}) });
 const jsonDetail = (value: unknown): TrajectoryDetail => ({ content: { kind: "json", value: stringify(value) } });
+const imagesDetail = (images: readonly ImageRef[] | undefined): TrajectoryDetail[] =>
+	images === undefined || images.length === 0 ? [] : [{ label: images.length === 1 ? "1 image" : `${images.length} images`, content: { kind: "images", value: images } }];
+
+const imageCaption = (images: readonly ImageRef[] | undefined): string => {
+	if (images === undefined || images.length === 0) return "";
+	return images.length === 1 ? "1 image" : `${images.length} images`;
+};
+
+const captionWithImages = (text: string, images: readonly ImageRef[] | undefined): string => [firstLine(text), imageCaption(images)].filter((part) => part !== "").join(" · ");
 const metaDetail = (...facts: (string | undefined)[]): TrajectoryDetail => ({ meta: facts.filter((fact): fact is string => fact !== undefined && fact !== "") });
 
 const fmtTok = (value: number | undefined): string => (value && value > 0 ? value.toLocaleString() : "—");
@@ -125,8 +134,9 @@ function toolResultNode(record: TrajectoryRecord): TrajectoryNode {
 	return {
 		chip: "RES",
 		tone: "result",
-		caption: firstLine(record.content) || record.toolName,
+		caption: captionWithImages(record.content, record.images) || record.toolName,
 		details: [
+			...imagesDetail(record.images),
 			codeDetail(record.content || "(no output)", record.isError),
 			metaDetail(`call ${record.toolCallId}`, record.toolName, record.isError ? "error" : "ok", formatUsage(record.usage)),
 			...(record.details !== undefined && record.details !== null ? [jsonDetail(record.details)] : []),
@@ -231,8 +241,8 @@ export const EVENT_META: Record<string, EventMeta> = {
 				: {
 						chip: record.skillName ? "SKILL" : "Q",
 						tone: record.skillName ? "skill" : "user",
-						caption: firstLine(record.content),
-						details: [textDetail(record.content)],
+						caption: captionWithImages(record.content, record.images),
+						details: [...(record.content.trim() === "" ? [] : [textDetail(record.content)]), ...imagesDetail(record.images)],
 					},
 	},
 	"role:assistant": { trajectory: assistantNode },

@@ -5,6 +5,7 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { Emitter, type Event } from "@milu/di";
 import type { Entry, SeqEntry } from "@milu/protocol";
 
+import type { ImageStore } from "../attachments/store.ts";
 import type { ExecutionService } from "../services/execution.ts";
 import { EVENTS } from "./events.ts";
 import { forkingOf } from "./files.ts";
@@ -12,16 +13,10 @@ import { JsonlSessionRepo, type JsonlSession, type JsonlSessionMetadata } from "
 import { migrateLegacyCompaction } from "./legacy-compaction.ts";
 import { originWindow, projectOrigin, projectTail, tailWindow, type OriginWindow } from "./origin.ts";
 import { projectSlice, projectSliceItems, type SliceItem } from "./slice.ts";
-import { textOf } from "./text.ts";
 
 function stripUndefined<T>(value: T): T {
 	if (value === undefined) return value;
 	return JSON.parse(JSON.stringify(value)) as T;
-}
-
-function toRecord(message: AgentMessage): AgentMessage {
-	if (message.role !== "user") return message;
-	return { ...message, content: textOf(message.content) } as AgentMessage;
 }
 
 const TAIL_BYTES = 256 * 1024;
@@ -182,6 +177,7 @@ export class SessionLog {
 	constructor(
 		private readonly _executionService: ExecutionService,
 		readonly root: string,
+		private readonly _images: ImageStore,
 	) {
 		this.onEntry = this._emitter.event;
 	}
@@ -307,7 +303,7 @@ export class SessionLog {
 		return this._enqueue(async () => {
 			await this.open();
 			if (this._disposed) return undefined;
-			return this._sessionOrThrow().appendMessage(stripUndefined(toRecord(message)));
+			return this._sessionOrThrow().appendMessage(stripUndefined(await this._images.durable(message)));
 		});
 	}
 
@@ -354,7 +350,8 @@ export class SessionLog {
 	}
 
 	async transcript(options?: { keepDangling?: boolean }): Promise<AgentMessage[]> {
-		return projectSlice(await this.origin(), options);
+		const messages = projectSlice(await this.origin(), options);
+		return Promise.all(messages.map((message) => this._images.wire(message)));
 	}
 
 	async sliceItems(options?: { keepDangling?: boolean }): Promise<SliceItem[]> {

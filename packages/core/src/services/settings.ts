@@ -47,6 +47,15 @@ export interface CustomProvider {
 	defaultMaxTokens?: number;
 }
 
+export interface ImageSettings {
+	/** Maximum encoded bytes for one submitted image, in megabytes. */
+	maxBytesMb?: number;
+	/** Maximum decoded width times height for one submitted image, in megapixels. */
+	maxMegapixels?: number;
+	/** Maximum images one message may carry. */
+	maxPerMessage?: number;
+}
+
 export interface DefaultModel {
 	provider: string;
 	modelId?: string;
@@ -60,6 +69,7 @@ export interface Settings {
 	rememberSession?: boolean;
 	sendWhileRunning?: PendingKind;
 	compaction?: CompactionSettings;
+	images?: ImageSettings;
 	icons?: string;
 }
 
@@ -68,7 +78,12 @@ export function expandHome(value: string): string {
 }
 
 function defaults(): Settings {
-	return { partner_profile_path: "~/.partner/", rememberSession: true, sendWhileRunning: "follow-up" };
+	return {
+		partner_profile_path: "~/.partner/",
+		rememberSession: true,
+		sendWhileRunning: "follow-up",
+		images: { maxBytesMb: 10, maxMegapixels: 20, maxPerMessage: 8 },
+	};
 }
 
 function isSectionObject(value: unknown): value is Record<string, unknown> {

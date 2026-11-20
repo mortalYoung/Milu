@@ -1,7 +1,7 @@
-import { type ComposerTip, type ComposerWidget, SLOT_POINTS, type SlotItem } from "@milu/protocol";
-import { detectComposerTrigger, type ComposerTriggerToken, type Host, Kbd } from "@milu/window";
+import { type ComposerTip, type ComposerWidget, type ImageMediaType, SLOT_POINTS, type SlotItem } from "@milu/protocol";
+import { detectComposerTrigger, type ComposerTriggerToken, type Host, Kbd, type PendingImageInput } from "@milu/window";
 import { Tip } from "@milu/window/tooltip";
-import { type KeyboardEvent, memo, useEffect, useRef, useState } from "react";
+import { type ChangeEvent, type ClipboardEvent, type DragEvent, type KeyboardEvent, memo, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 
 import { mark } from "../boot.ts";
@@ -11,6 +11,18 @@ const MAX_HEIGHT = 120;
 const NO_ITEMS: readonly unknown[] = [];
 const NO_SLOT_ITEMS: readonly SlotItem[] = [];
 const COMMAND_LINE = /^\/([a-z][a-z0-9_:-]*)(?:\s+(.*))?$/s;
+const NO_IMAGES: readonly { readonly id: string; readonly url: string; readonly name: string }[] = [];
+
+const IMAGE_TYPES: Readonly<Record<string, ImageMediaType>> = {
+	"image/png": "image/png",
+	"image/jpeg": "image/jpeg",
+	"image/webp": "image/webp",
+	"image/gif": "image/gif",
+};
+
+function imageTypeOf(value: string): ImageMediaType | undefined {
+	return IMAGE_TYPES[value];
+}
 
 function parseCommandLine(value: string): { name: string; args: string } | null {
 	const match = COMMAND_LINE.exec(value.trim());
@@ -63,6 +75,47 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 	const slotComponents = useStore(host.slots.store, (state) => state.components);
 
 	const area = useRef<HTMLTextAreaElement>(null);
+	const files = useRef<HTMLInputElement>(null);
+	const pending = useStore(host.transcript.store, (state) => state.images[selected] ?? NO_IMAGES);
+	const pendingCount = pending.length;
+
+	const accept = async (incoming: readonly File[]): Promise<void> => {
+		if (selected === "") return;
+		const images: PendingImageInput[] = [];
+		for (const file of incoming) {
+			const mediaType = imageTypeOf(file.type);
+			if (mediaType === undefined) continue;
+			images.push({ mediaType, data: new Uint8Array(await file.arrayBuffer()), ...(file.name === "" ? {} : { name: file.name }) });
+		}
+		if (images.length > 0) host.transcript.addImages(selected, images);
+	};
+
+	const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>): void => {
+		const pasted = [...event.clipboardData.items]
+			.filter((item) => item.kind === "file")
+			.map((item) => item.getAsFile())
+			.filter((file): file is File => file !== null && imageTypeOf(file.type) !== undefined);
+		if (pasted.length === 0) return;
+		event.preventDefault();
+		void accept(pasted);
+	};
+
+	const onDrop = (event: DragEvent<HTMLFormElement>): void => {
+		const dropped = [...event.dataTransfer.files].filter((file) => imageTypeOf(file.type) !== undefined);
+		if (dropped.length === 0) return;
+		event.preventDefault();
+		void accept(dropped);
+	};
+
+	const onDragOver = (event: DragEvent<HTMLFormElement>): void => {
+		if (event.dataTransfer.types.includes("Files")) event.preventDefault();
+	};
+
+	const onPickFiles = (event: ChangeEvent<HTMLInputElement>): void => {
+		const picked = event.currentTarget.files === null ? [] : [...event.currentTarget.files];
+		event.currentTarget.value = "";
+		void accept(picked);
+	};
 	const composing = useRef(false);
 	useStore(host.sessions.store, (state) => state.rows);
 	useStore(host.commands.store, (state) => state.commands);
@@ -106,7 +159,7 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 	const submit = async (): Promise<void> => {
 		if (compacting) return;
 		const value = text.trim();
-		if (!value || !selected) return;
+		if (!selected || (value === "" && pendingCount === 0)) return;
 		props.onSent?.();
 		if (shownShell) {
 			host.transcript.setDraft(selected, "");
@@ -233,7 +286,7 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 		void submit();
 	};
 
-	const idle = text.trim() === "" && !busy;
+	const idle = text.trim() === "" && pendingCount === 0 && !busy;
 	const commandHint = (() => {
 		if (active) return null;
 		const parsed = parseCommandLine(text);
@@ -248,6 +301,8 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 		<form
 			className="composer"
 			id="composer"
+			onDrop={onDrop}
+			onDragOver={onDragOver}
 			onSubmit={(event) => {
 				event.preventDefault();
 				void submit();
@@ -266,6 +321,28 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 					return Slot ? <Slot key={item.id} host={host} data={item.data} /> : null;
 				})}
 				<div className={`composer-box${shownShell ? " shell" : ""}`}>
+					{pending.length === 0 ? null : (
+						<div className="composer-images">
+							{pending.map((image) => (
+								<div className="composer-image" key={image.id}>
+									<button
+										type="button"
+										className="composer-image-open"
+										aria-label={`Preview ${image.name === "" ? "image" : image.name}`}
+										onClick={() => {
+											const label = image.name === "" ? "image" : image.name;
+											void host.actions.invoke("image.preview", selected, { src: image.url, alt: label }).catch(() => undefined);
+										}}
+									>
+										<img src={image.url} alt={image.name === "" ? "image" : image.name} draggable={false} />
+									</button>
+									<button type="button" className="composer-image-remove" aria-label="Remove image" onClick={() => host.transcript.removeImage(selected, image.id)}>
+										×
+									</button>
+								</div>
+							))}
+						</div>
+					)}
 					<div className="composer-input-layer">
 						<textarea
 							id="prompt-input"
@@ -287,6 +364,7 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 								syncTrigger(event.currentTarget.value, event.currentTarget.selectionStart ?? 0);
 							}}
 							onKeyDown={onKeyDown}
+							onPaste={onPaste}
 							onCompositionStart={() => {
 								composing.current = true;
 							}}
@@ -308,6 +386,14 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 							<ComposerActions host={host} items={layout.left} />
 						)}
 						<div className="composer-actions-right">
+							<input ref={files} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple className="composer-file-input" onChange={onPickFiles} />
+							{awaiting ? null : (
+								<Tip label="Attach image">
+									<button type="button" className="composer-attach" aria-label="Attach image" onClick={() => files.current?.click()}>
+										+
+									</button>
+								</Tip>
+							)}
 							{awaiting ? null : <ComposerActions host={host} items={layout.right} />}
 							{awaiting ? null : (
 								<Tip label={stopping ? "Stopping" : compacting ? "Compacting" : busy ? "Stop" : "Send"}>

@@ -15,6 +15,7 @@ import type { FooterService } from "./footer.ts";
 import type { HeaderService } from "./header.ts";
 import type { HotkeysService } from "./hotkeys.ts";
 import type { IconsService } from "./icons.ts";
+import type { ImageService } from "./images.ts";
 import type { LayoutService } from "./layout.ts";
 import type { MarkdownPort } from "./markdown/types.ts";
 import type { MotionService } from "./motion.ts";
@@ -68,6 +69,7 @@ export interface Host {
 	readonly files: FileEventsService;
 	readonly theme: ThemeService;
 	readonly motion: MotionService;
+	readonly images: ImageService;
 	readonly get: <T extends Service>(id: ServiceId<T>) => T;
 }
 

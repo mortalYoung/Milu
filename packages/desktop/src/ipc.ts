@@ -56,6 +56,7 @@ export class IpcServer {
 			origin: (params) => this._origin(params),
 			slice: (params) => this._slice(params),
 			prompt: (params) => this._prompt(params),
+			attachment: (params) => this._attachment(params),
 			abort: () => this._abort(),
 			hotkeys: () => this._hotkeys(),
 			composer: () => this._composer(),
@@ -313,8 +314,15 @@ export class IpcServer {
 		if (!name) throw new Error("no session is selected");
 		const session = await this._backend.sessions.ensure(name);
 		await this._backend.extensions.settled();
-		await session.run(params.text);
+		await session.send(params.text, params.images ?? []);
 		return {};
+	}
+
+	private async _attachment(params: Params<"attachment">): Promise<Result<"attachment">> {
+		const session = await this._backend.sessions.ensure(params.session);
+		const ref = await session.imageRef(params.id);
+		if (ref === undefined) throw new Error("this chat does not reference that image");
+		return { ref, data: await session.images.read(ref) };
 	}
 
 	private async _abort(): Promise<Result<"abort">> {

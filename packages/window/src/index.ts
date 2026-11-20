@@ -2,6 +2,7 @@ export { ActionsService, IActionsService, type BrowserCommands } from "./actions
 export { ColumnsService, IColumnsService, GRIP_WIDTH, type Columns, type DockMode, type ListMode } from "./columns.ts";
 export { type ComposerKey, formatHotkey, HotkeysService, IHotkeysService } from "./hotkeys.ts";
 export { FileEventsService, IFileEventsService, type FilesState } from "./files.ts";
+export { ImageService, IImageService, useImageUrl } from "./images.ts";
 export { DockService, IDockService, DOCK_VIEWS_POINT, dockTabs, type DockState, type DockTab } from "./dock.ts";
 export { ComposerService, IComposerService, type ComposerKeyState, WidgetRegistry, WidgetRegistryId, type WidgetComponent, type WidgetProps } from "./composer.ts";
 export { ComposerDataService, IComposerDataService, type ComposerDataEntry, type ComposerDataState } from "./composer-data.ts";
@@ -25,7 +26,7 @@ export { RowRegistry, RowRegistryId, type RowComponent } from "./rows.ts";
 export { createServiceId, type Service, type ServiceId } from "@milu/di";
 export { SurfaceRegistry, SurfaceRegistryId, type Host, type SurfaceComponent, type SurfaceProps } from "./surfaces.ts";
 export { IThemeService, ThemeService, type ThemeOption, type ThemeSnapshot } from "./theme.ts";
-export { TranscriptService, ITranscriptService, type TranscriptState } from "./transcripts.ts";
+export { TranscriptService, ITranscriptService, type PendingImage, type PendingImageInput, type TranscriptState } from "./transcripts.ts";
 export { WelcomeService, IWelcomeService } from "./welcome.ts";
 export { loadWidgets, type WidgetFailure, type WidgetSet } from "./widgets.tsx";
 export { ExtensionSurface, WidgetBoundary } from "./extension-surface.tsx";

@@ -40,6 +40,7 @@ const short = (text: string): string => (text.length > 60 ? `${text.slice(0, 60)
 
 export function TrajectoryDrawer(props: { host: Host; service: TrajectoryService }) {
 	const { service } = props;
+	const session = useStore(props.host.selection.store, (state) => state.selected);
 	const entries = useStore(service.store, (state) => state.entries);
 	const sliceItems = useStore(service.store, (state) => state.sliceItems);
 	const mode = useStore(service.store, (state) => state.mode);
@@ -312,7 +313,7 @@ export function TrajectoryDrawer(props: { host: Host; service: TrajectoryService
 					</div>
 					<div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
 						{selected.details.map((detail, index) => (
-							<Detail key={`${selected.key}:${detail.label ?? detail.description ?? index}`} detail={detail} />
+							<Detail key={`${selected.key}:${detail.label ?? detail.description ?? index}`} detail={detail} host={props.host} session={session} />
 						))}
 						{selected.record.sliceMessage !== undefined ? (
 							<div className="mt-3 border-t border-line pt-2.5">

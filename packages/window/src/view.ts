@@ -1,4 +1,4 @@
-import { LOG_EVENTS, type PartialMessage, type SeqEntry } from "@milu/protocol";
+import { type ImageRef, LOG_EVENTS, type PartialMessage, type SeqEntry } from "@milu/protocol";
 
 export type LogEntry = SeqEntry["entry"];
 
@@ -74,6 +74,7 @@ export interface ViewItem {
 	usage?: { readonly totalTokens: number; readonly cost: number };
 	model?: { readonly provider: string; readonly modelId: string };
 	files?: readonly string[];
+	images?: readonly ImageRef[];
 	escalation?: ViewEscalation;
 	shell?: ViewShell;
 }
@@ -116,7 +117,6 @@ function contentText(content: unknown): string {
 			if (!block || typeof block !== "object") return "";
 			const value = block as { type?: unknown; text?: unknown };
 			if (value.type === "text") return String(value.text ?? "");
-			if (value.type === "image") return "(image)";
 			return "";
 		})
 		.join("\n");
@@ -136,6 +136,19 @@ function findLast(out: readonly ViewItem[], predicate: (item: ViewItem) => boole
 	return undefined;
 }
 
+function imageRefsOf(content: unknown): readonly ImageRef[] | undefined {
+	if (!Array.isArray(content)) return undefined;
+	const refs: ImageRef[] = [];
+	for (const block of content) {
+		if (typeof block !== "object" || block === null) continue;
+		const value = block as { type?: unknown; attachment?: ImageRef };
+		if (value.type !== "image" || value.attachment === undefined) continue;
+		if (typeof value.attachment.attachmentId !== "string") continue;
+		refs.push(value.attachment);
+	}
+	return refs.length === 0 ? undefined : refs;
+}
+
 function userVisit(entry: LogEntry, out: ViewItem[]): void {
 	if (entry.type !== "message" || entry.message.role !== "user") return;
 	const message = entry.message as {
@@ -153,6 +166,7 @@ function userVisit(entry: LogEntry, out: ViewItem[]): void {
 		kind: "user",
 		text: typeof message.content === "string" ? message.content : contentText(message.content),
 		time: message.timestamp ?? entry.timestamp ?? 0,
+		...(typeof message.content === "string" || imageRefsOf(message.content) === undefined ? {} : { images: imageRefsOf(message.content) }),
 		...(typeof message.from === "string" ? { from: message.from } : {}),
 		...(typeof message.scheduleId === "string"
 			? {

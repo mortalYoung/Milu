@@ -6,8 +6,9 @@ import type { AgentMessage, AgentToolResult } from "@earendil-works/pi-agent-cor
 import { isContextOverflow } from "@earendil-works/pi-ai";
 import type { Api, AssistantMessage, Model, ModelThinkingLevel } from "@earendil-works/pi-ai";
 import { DisposableStore, Emitter, type Event } from "@milu/di";
-import type { Entry, PendingKind, PreviewKind, SeqEntry, SessionRow } from "@milu/protocol";
+import type { Entry, ImageRef, PendingKind, PreviewKind, PromptImage, SeqEntry, SessionRow } from "@milu/protocol";
 
+import { encodeImageBytes, type ImageStore } from "../attachments/store.ts";
 import { AgentLoopService, type AgentLoopEvent, type PendingMessage } from "../services/agent-loop.ts";
 import type { CompactionService } from "../services/compaction.ts";
 import type { ExecutionService } from "../services/execution.ts";
@@ -136,6 +137,7 @@ export interface SessionDeps {
 	readonly hookService: HookService;
 	readonly compactionService: CompactionService;
 	readonly settingsService: SettingsService;
+	readonly images: ImageStore;
 }
 
 export class Session {
@@ -143,6 +145,7 @@ export class Session {
 	readonly root: string;
 	readonly path: string;
 	readonly storage: string;
+	readonly images: ImageStore;
 
 	readonly onEntry: Event<SeqEntry>;
 	readonly onLoopEvent: Event<AgentLoopEvent>;
@@ -177,7 +180,8 @@ export class Session {
 		this.root = deps.root;
 		this.path = tildify(deps.root);
 		this.storage = tildify(`${deps.root}/storage`);
-		this._log = new SessionLog(deps.executionService, deps.root);
+		this.images = deps.images;
+		this._log = new SessionLog(deps.executionService, deps.root, deps.images);
 		this.onEntry = this._entryEmitter.event;
 		this.onLoopEvent = this._loopEmitter.event;
 		this.onCompacting = this._compactingEmitter.event;
@@ -275,10 +279,10 @@ export class Session {
 		} as AgentMessage);
 	}
 
-	private async _submit(message: AgentMessage): Promise<{ ok: true } | { ok: false; error: string }> {
+	private async _submit(message: AgentMessage, wire: AgentMessage = message): Promise<{ ok: true } | { ok: false; error: string }> {
 		const loop = await this.open();
 		if (loop.isRunning()) {
-			const queued = { ...message, pendingId: randomUUID() } as unknown as AgentMessage;
+			const queued = { ...wire, pendingId: randomUUID() } as unknown as AgentMessage;
 			if (this._deps.settingsService.get().sendWhileRunning === "steering") loop.steer(queued);
 			else loop.followUp(queued);
 			return { ok: true };
@@ -289,9 +293,9 @@ export class Session {
 			return { ok: false, error: failure };
 		}
 		await this._log.append(message);
-		this._preLogged.add(message);
+		this._preLogged.add(wire);
 		await this._autoCompact();
-		this._launch(loop, message);
+		this._launch(loop, wire);
 		return { ok: true };
 	}
 
@@ -524,7 +528,46 @@ export class Session {
 	}
 
 	async run(text: string): Promise<void> {
-		await this._submit({ role: "user", content: text, timestamp: Date.now() } as AgentMessage);
+		await this.send(text);
+	}
+
+	async send(text: string, images: readonly PromptImage[] = []): Promise<void> {
+		if (images.length > 0) await this._requireImageModel();
+		const refs = await this.images.admit(images);
+		const timestamp = Date.now();
+		if (refs.length === 0) {
+			await this._submit({ role: "user", content: text, timestamp } as AgentMessage);
+			return;
+		}
+		const tail = text === "" ? [] : [{ type: "text" as const, text }];
+		const durable = {
+			role: "user",
+			content: [...refs.map((attachment) => ({ type: "image" as const, attachment })), ...tail],
+			timestamp,
+		} as AgentMessage;
+		const wire = {
+			role: "user",
+			content: [...images.map((image) => ({ type: "image" as const, data: encodeImageBytes(image.data), mimeType: image.mediaType })), ...tail],
+			timestamp,
+		} as AgentMessage;
+		await this._submit(durable, wire);
+	}
+
+	async imageRef(id: string): Promise<ImageRef | undefined> {
+		const entries = await this._log.rawEntries();
+		for (let index = entries.length - 1; index >= 0; index -= 1) {
+			const entry = entries[index]!;
+			if (entry.type !== "message") continue;
+			const content = (entry.message as { content?: unknown }).content;
+			if (!Array.isArray(content)) continue;
+			for (const block of content) {
+				if (typeof block !== "object" || block === null) continue;
+				const candidate = block as { type?: unknown; attachment?: ImageRef };
+				const ref = candidate.type === "image" ? candidate.attachment : undefined;
+				if (ref?.attachmentId === id) return ref;
+			}
+		}
+		return undefined;
 	}
 
 	abort(): boolean {
@@ -759,6 +802,11 @@ export class Session {
 	private async _contextWindow(): Promise<number | null> {
 		if (this._loop) return this._loop.modelContextWindow();
 		return (await this._resolvedModel())?.contextWindow ?? null;
+	}
+
+	private async _requireImageModel(): Promise<void> {
+		const model = this._deps.modelsService.resolve((await this._modelOf()) ?? undefined);
+		if (!model.input.includes("image")) throw new Error(`Model "${model.id}" does not accept image input; pick a vision model first.`);
 	}
 
 	private async _resolvedModel(): Promise<Model<Api> | null> {

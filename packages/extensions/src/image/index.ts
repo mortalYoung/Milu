@@ -1,6 +1,6 @@
 import type { Extension } from "@milu/core";
 
-import { activeSession, imageDataUrl, isRemote } from "./lib/image.ts";
+import { activeSession, imageDataUrl, isDisplayable } from "./lib/image.ts";
 
 interface PreviewArgs {
 	readonly src?: unknown;
@@ -32,7 +32,7 @@ const imageExtension: Extension = {
 				const alt = typeof value.alt === "string" ? value.alt : "";
 				const title = alt === "" ? "Image" : alt;
 
-				if (isRemote(source)) {
+				if (isDisplayable(source)) {
 					await dialog({ kind: "custom", id: "image.preview", title, data: { src: source, alt } });
 					return;
 				}

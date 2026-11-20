@@ -16,8 +16,9 @@ const MIME: Record<string, string> = {
 
 const MAX_BYTES = 8 * 1024 * 1024;
 
-export function isRemote(src: string): boolean {
-	return /^(data:|https?:)/i.test(src);
+/** A source the dialog can render directly: inline, remote, or a live object URL. */
+export function isDisplayable(src: string): boolean {
+	return /^(data:|blob:|https?:)/i.test(src);
 }
 
 function mimeOf(path: string): string | undefined {

@@ -37,6 +37,31 @@ export interface MessageEntry extends EntryBase {
 	readonly message: EntryMessage;
 }
 
+export type ImageMediaType = "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+
+/** Durable image reference recorded in a session log; never carries the bytes. */
+export interface ImageRef {
+	readonly type: "image";
+	readonly attachmentId: string;
+	readonly mediaType: ImageMediaType;
+	readonly bytes: number;
+	readonly width: number;
+	readonly height: number;
+	readonly name?: string;
+}
+
+/** One image travelling from the window to the host for admission. */
+export interface PromptImage {
+	readonly mediaType: ImageMediaType;
+	readonly data: Uint8Array;
+	readonly name?: string;
+}
+
+/** Durable sink a tool or prompt handler can commit images through. */
+export interface ImageSink {
+	save(image: PromptImage): Promise<ImageRef>;
+}
+
 export interface CustomEntry extends EntryBase {
 	readonly type: "custom";
 	readonly customType: string;
@@ -381,7 +406,8 @@ export interface Methods {
 		result: { entries: SeqEntry[]; total: number; hasMore: boolean; reset: boolean };
 	};
 	slice: { params: { session: string }; result: { items: { id: string; message: unknown }[] } };
-	prompt: { params: { text: string }; result: Record<string, never> };
+	prompt: { params: { text: string; images?: readonly PromptImage[] }; result: Record<string, never> };
+	attachment: { params: { session: string; id: string }; result: { ref: ImageRef; data: Uint8Array } };
 	abort: { params: Record<string, never>; result: { aborted: boolean } };
 	composer: { params: Record<string, never>; result: { layout: ComposerLayout } };
 	composerMode: { params: { session: string }; result: { mode: ComposerMode } };

@@ -1,9 +1,23 @@
 import { createServiceId, type Service } from "@milu/di";
-import type { PartialMessage, SeqEntry } from "@milu/protocol";
+import type { ImageMediaType, PartialMessage, SeqEntry } from "@milu/protocol";
 import { createStore } from "zustand/vanilla";
 
 import { type Connection, IConnection } from "./connection.ts";
 import { INotificationService, type NotificationService } from "./notifications.ts";
+
+export interface PendingImage {
+	readonly id: string;
+	readonly name: string;
+	readonly mediaType: ImageMediaType;
+	readonly data: Uint8Array;
+	readonly url: string;
+}
+
+export interface PendingImageInput {
+	readonly name?: string;
+	readonly mediaType: ImageMediaType;
+	readonly data: Uint8Array;
+}
 
 export interface TranscriptState {
 	readonly logs: Readonly<Record<string, readonly SeqEntry[]>>;
@@ -17,6 +31,7 @@ export interface TranscriptState {
 	readonly started: Readonly<Record<string, number>>;
 	readonly stopping: Readonly<Record<string, boolean>>;
 	readonly stepOpen: Readonly<Record<string, boolean>>;
+	readonly images: Readonly<Record<string, readonly PendingImage[]>>;
 }
 
 const EMPTY: TranscriptState = {
@@ -31,6 +46,7 @@ const EMPTY: TranscriptState = {
 	started: {},
 	stopping: {},
 	stepOpen: {},
+	images: {},
 };
 const NO_ENTRIES: readonly SeqEntry[] = [];
 
@@ -147,13 +163,45 @@ export class TranscriptService implements Service {
 		}
 	}
 
+	addImages(session: string, images: readonly PendingImageInput[]): void {
+		if (session === "" || images.length === 0) return;
+		const added = images.map((image) => {
+			const id = crypto.randomUUID();
+			return {
+				id,
+				name: image.name ?? "",
+				mediaType: image.mediaType,
+				data: image.data,
+				url: URL.createObjectURL(new Blob([image.data.slice().buffer as ArrayBuffer], { type: image.mediaType })),
+			} satisfies PendingImage;
+		});
+		this.store.setState((current) => ({ ...current, images: { ...current.images, [session]: [...(current.images[session] ?? []), ...added] } }), true);
+	}
+
+	removeImage(session: string, id: string): void {
+		const current = this.store.getState().images[session] ?? [];
+		const target = current.find((image) => image.id === id);
+		if (target === undefined) return;
+		URL.revokeObjectURL(target.url);
+		this.store.setState((state) => ({ ...state, images: { ...state.images, [session]: current.filter((image) => image.id !== id) } }), true);
+	}
+
+	pending(session: string): readonly PendingImage[] {
+		return this.store.getState().images[session] ?? [];
+	}
+
 	async send(session: string, text: string): Promise<void> {
 		const body = text.trim();
-		if (!session || !body) return;
+		const images = this.pending(session);
+		if (!session || (body === "" && images.length === 0)) return;
 		this.setDraft(session, "");
 		this.clearError(session);
 		try {
-			await this._connection.request("prompt", { text: body });
+			await this._connection.request("prompt", {
+				text: body,
+				...(images.length === 0 ? {} : { images: images.map((image) => ({ mediaType: image.mediaType, data: image.data, ...(image.name === "" ? {} : { name: image.name }) })) }),
+			});
+			this.clearImages(session);
 		} catch (error) {
 			this.fail(session, error instanceof Error ? error.message : String(error));
 		}
@@ -258,7 +306,15 @@ export class TranscriptService implements Service {
 	}
 
 	dispose(): void {
+		for (const images of Object.values(this.store.getState().images)) {
+			for (const image of images) URL.revokeObjectURL(image.url);
+		}
 		this.store.setState({ ...EMPTY }, true);
+	}
+
+	private clearImages(session: string): void {
+		for (const image of this.store.getState().images[session] ?? []) URL.revokeObjectURL(image.url);
+		this.store.setState((current) => ({ ...current, images: { ...current.images, [session]: [] } }), true);
 	}
 
 	private clearError(session: string): void {

@@ -21,6 +21,24 @@ function stringLength(value: unknown): number {
 	}
 }
 
+const IMAGE_PATCH = 42;
+const IMAGE_TOKEN_CAP = 1024;
+
+/** Provider-independent vision estimate: one token per 42px cell, two framing tokens, capped. */
+export function priceImage(width: number, height: number): number {
+	const scale = Math.max(1, Math.sqrt((544 * 544) / Math.max(1, width * height)));
+	const scaledWidth = Math.round(width * scale);
+	const scaledHeight = Math.round(height * scale);
+	const cells = Math.ceil(scaledHeight / IMAGE_PATCH) * (Math.ceil(scaledWidth / IMAGE_PATCH) + 1) + 2;
+	return Math.min(IMAGE_TOKEN_CAP, cells);
+}
+
+function imageSize(block: { readonly attachment?: { readonly width?: unknown; readonly height?: unknown } }): number {
+	const width = block.attachment?.width;
+	const height = block.attachment?.height;
+	return typeof width === "number" && typeof height === "number" ? priceImage(width, height) : IMAGE_TOKEN_CAP;
+}
+
 function priceContent(content: unknown): number {
 	if (typeof content === "string") return tokens(content.length) + BLOCK_OVERHEAD;
 	if (!Array.isArray(content)) return 0;
@@ -40,6 +58,9 @@ function priceContent(content: unknown): number {
 				break;
 			case "toolResult":
 				total += priceContent(block.content) + BLOCK_OVERHEAD;
+				break;
+			case "image":
+				total += imageSize(raw as { attachment?: { width?: unknown; height?: unknown } }) + BLOCK_OVERHEAD;
 				break;
 			default:
 				total += BLOCK_OVERHEAD + tokens(stringLength(raw));

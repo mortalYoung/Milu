@@ -19,6 +19,8 @@ import {
 import { clearForking, forkingOf, markForking, profileOf, type SessionProfile, writeProfile } from "../session/files.ts";
 import { Session } from "../session/session.ts";
 import type { AgentLoopEvent } from "./agent-loop.ts";
+import { IAttachmentsService } from "./attachments.ts";
+import type { AttachmentsService } from "./attachments.ts";
 import { ICompactionService } from "./compaction.ts";
 import type { CompactionService } from "./compaction.ts";
 import { IContributionService } from "./contributions.ts";
@@ -80,6 +82,7 @@ export class SessionService implements Service {
 		@IPromptService private readonly _promptService: PromptService,
 		@IHookService private readonly _hookService: HookService,
 		@ICompactionService private readonly _compactionService: CompactionService,
+		@IAttachmentsService private readonly _attachmentsService: AttachmentsService,
 	) {
 		this.onEntry = this._entryEmitter.event;
 		this.onLoopEvent = this._loopEmitter.event;
@@ -106,9 +109,11 @@ export class SessionService implements Service {
 		const existing = this._sessions.get(name);
 		if (existing) return existing;
 
+		const root = join(this._partnerRoot, name);
 		const session = new Session({
 			name,
-			root: join(this._partnerRoot, name),
+			root,
+			images: this._attachmentsService.store(this._partnerRoot, root),
 			executionService: this._executionService,
 			modelsService: this._modelsService,
 			toolService: this._toolService,
@@ -407,7 +412,7 @@ export class SessionService implements Service {
 	private async _names(): Promise<string[]> {
 		const listed = await this._executionService.env(this._partnerRoot).listDir(".");
 		if (!listed.ok) return [];
-		return listed.value.filter((entry) => entry.kind === "directory").map((entry) => entry.name);
+		return listed.value.filter((entry) => entry.kind === "directory" && !entry.name.startsWith(".")).map((entry) => entry.name);
 	}
 }
 

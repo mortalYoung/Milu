@@ -1,5 +1,5 @@
 import type { CustomModel, CustomProvider, Extension, ExtensionContext, Settings } from "@milu/core";
-import { expandHome, IExtensionService } from "@milu/core";
+import { expandHome, IAttachmentsService, IExtensionService } from "@milu/core";
 import type { AuthEventText, AuthLoginState, AuthPromptText } from "@milu/protocol";
 
 import { IMcpService } from "../mcp/index.ts";
@@ -180,6 +180,14 @@ const settingsExtension: Extension = {
 		context.actions.register({
 			id: "settings.collect",
 			run: async () => ({ data: await collect(context) }),
+		});
+
+		context.actions.register({
+			id: "settings.collectImages",
+			run: async ({ sessions }) => {
+				if (sessions === undefined) throw new Error("image collection needs the session store");
+				return { data: { removed: await context.get(IAttachmentsService).collect(sessions.partnerRoot) } };
+			},
 		});
 
 		context.actions.register({

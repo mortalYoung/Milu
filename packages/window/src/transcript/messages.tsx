@@ -1,10 +1,11 @@
-import { SLOT_POINTS } from "@milu/protocol";
+import { type ImageRef, SLOT_POINTS } from "@milu/protocol";
 import { useState } from "react";
 import { useStore } from "zustand";
 
 import { useScrollEdges } from "../api/scroll-edges.ts";
 import { Tip } from "../api/tooltip.tsx";
 import { copyText } from "../clipboard.ts";
+import { useImageUrl } from "../images.ts";
 import { Markdown } from "../markdown/react.tsx";
 import type { MarkdownEnv, MarkdownPort } from "../markdown/types.ts";
 import type { Host } from "../surfaces.ts";
@@ -64,8 +65,27 @@ export function MessageMeta(props: { host: Host; item: ViewItem; className?: str
 	);
 }
 
-export function UserMessage(props: { host: Host; item: ViewItem }) {
+function MessageImage(props: { host: Host; session: string; image: ImageRef }) {
+	const url = useImageUrl(props.host.images, props.session, props.image);
+	const label = props.image.name ?? "image";
+	if (url === undefined) return <div className="msg-image is-pending" aria-label={label} />;
+	return (
+		<button
+			type="button"
+			className="msg-image-button"
+			aria-label={`Open ${label}`}
+			onClick={() => {
+				void props.host.actions.invoke("image.preview", props.session, { src: url, alt: label }).catch(() => undefined);
+			}}
+		>
+			<img className="msg-image" src={url} alt={label} width={props.image.width} height={props.image.height} draggable={false} />
+		</button>
+	);
+}
+
+export function UserMessage(props: { host: Host; session?: string; item: ViewItem }) {
 	const schedule = props.item.schedule;
+	const session = props.session;
 	const [bubble, edges] = useScrollEdges<HTMLDivElement>();
 	return (
 		<div className="msg-block msg-block-user" data-entry={props.item.id}>
@@ -78,9 +98,18 @@ export function UserMessage(props: { host: Host; item: ViewItem }) {
 					{schedule.error ? <span className="msg-origin-error">{schedule.error}</span> : null}
 				</div>
 			) : null}
-			<div className={`msg-user read-clamp ${edges}`} ref={bubble}>
-				{props.item.text}
-			</div>
+			{props.item.images === undefined || session === undefined ? null : (
+				<div className="msg-images">
+					{props.item.images.map((image) => (
+						<MessageImage key={image.attachmentId} host={props.host} session={session} image={image} />
+					))}
+				</div>
+			)}
+			{props.item.text === "" ? null : (
+				<div className={`msg-user read-clamp ${edges}`} ref={bubble}>
+					{props.item.text}
+				</div>
+			)}
 			<MessageMeta host={props.host} item={props.item} />
 		</div>
 	);

@@ -2,6 +2,8 @@ import {
 	type Backend,
 	type BackendConfig,
 	ActionService,
+	AttachmentsService,
+	IAttachmentsService,
 	CapabilityService,
 	CommandsService,
 	ComposerService,
@@ -55,6 +57,7 @@ export async function createBackend(config: BackendConfig): Promise<Backend> {
 
 	const services = new ServiceCollection();
 	services.set(IConfigService, new ConfigService({ root: config.root, workspace: config.workspace }));
+	services.set(IAttachmentsService, new SyncDescriptor(AttachmentsService));
 	services.set(ICapabilityService, new SyncDescriptor(CapabilityService));
 	services.set(IContributionService, new SyncDescriptor(ContributionService));
 	services.set(IExecutionService, new SyncDescriptor(ExecutionService));

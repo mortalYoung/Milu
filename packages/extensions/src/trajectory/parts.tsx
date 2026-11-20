@@ -1,9 +1,30 @@
+import type { ImageRef } from "@milu/protocol";
+import { useImageUrl, type Host } from "@milu/window/api";
+
 import type { TrajectoryDetail, TrajectoryTone } from "./model.ts";
 
 export const CHIP_TONE: Partial<Record<TrajectoryTone, string>> = { system: "text-ink", change: "text-ink-soft", custom: "text-ink-soft", plain: "text-muted" };
 export const CAPTION_TONE: Partial<Record<TrajectoryTone, string>> = { change: "text-ink-soft", compact: "text-ink-soft", custom: "text-ink-soft", plain: "text-ink-soft" };
 
-export function Detail(props: { detail: TrajectoryDetail }) {
+function TrajectoryImage(props: { host: Host; session: string; image: ImageRef }) {
+	const url = useImageUrl(props.host.images, props.session, props.image);
+	const label = props.image.name ?? "image";
+	if (url === undefined) return <div className="size-16 rounded-[4px] border border-line bg-hover" aria-label={label} />;
+	return (
+		<button
+			type="button"
+			className="cursor-zoom-in border-0 bg-transparent p-0"
+			aria-label={`Open ${label}`}
+			onClick={() => {
+				void props.host.actions.invoke("image.preview", props.session, { src: url, alt: label }).catch(() => undefined);
+			}}
+		>
+			<img src={url} alt={label} className="block max-h-[180px] max-w-[240px] rounded-[4px] border border-line object-contain" draggable={false} />
+		</button>
+	);
+}
+
+export function Detail(props: { detail: TrajectoryDetail; host?: Host; session?: string }) {
 	const { detail } = props;
 	const label = detail.label !== undefined && detail.label !== "" ? detail.label : null;
 	const description = detail.description !== undefined && detail.description !== "" ? detail.description : null;
@@ -31,6 +52,25 @@ export function Detail(props: { detail: TrajectoryDetail }) {
 		return (
 			<>
 				{head}
+				{factsLine}
+			</>
+		);
+	}
+	if (content.kind === "images") {
+		const host = props.host;
+		const session = props.session;
+		return (
+			<>
+				{head}
+				{host === undefined || session === undefined ? (
+					<div className="mt-2 font-mono text-[10px] text-muted">{content.value.length} images</div>
+				) : (
+					<div className="mt-2 flex flex-wrap gap-1.5">
+						{content.value.map((image) => (
+							<TrajectoryImage key={image.attachmentId} host={host} session={session} image={image} />
+						))}
+					</div>
+				)}
 				{factsLine}
 			</>
 		);

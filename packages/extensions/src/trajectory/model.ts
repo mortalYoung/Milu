@@ -1,4 +1,4 @@
-import type { SeqEntry } from "@milu/protocol";
+import type { ImageRef, SeqEntry } from "@milu/protocol";
 import { LOG_EVENTS } from "@milu/protocol";
 
 export type LogEntry = SeqEntry["entry"];
@@ -8,7 +8,7 @@ export type TrajectoryTone = "plain" | "user" | "skill" | "result" | "message" |
 export interface TrajectoryDetail {
 	label?: string;
 	description?: string;
-	content?: { kind: "text" | "code" | "json"; value: string };
+	content?: { kind: "text" | "code" | "json"; value: string } | { kind: "images"; value: readonly ImageRef[] };
 	meta?: string[];
 	error?: boolean;
 }
@@ -59,7 +59,7 @@ interface RecordBase {
 }
 
 export type TrajectoryRecord =
-	| (RecordBase & { kind: "user"; content: string; skillName?: string })
+	| (RecordBase & { kind: "user"; content: string; images?: readonly ImageRef[]; skillName?: string })
 	| (RecordBase & {
 			kind: "assistant";
 			blocks: readonly TrajectoryBlock[];
@@ -77,6 +77,7 @@ export type TrajectoryRecord =
 			toolCallId: string;
 			toolName: string;
 			content: string;
+			images?: readonly ImageRef[];
 			details?: unknown;
 			usage?: TrajectoryUsage;
 			isError: boolean;
@@ -84,7 +85,7 @@ export type TrajectoryRecord =
 	| (RecordBase & { kind: "custom"; customType: string; data?: unknown });
 
 type Payload =
-	| { kind: "user"; content: string; skillName?: string }
+	| { kind: "user"; content: string; images?: readonly ImageRef[]; skillName?: string }
 	| {
 			kind: "assistant";
 			blocks: readonly TrajectoryBlock[];
@@ -97,7 +98,16 @@ type Payload =
 			usage?: TrajectoryUsage;
 			errorMessage?: string;
 	  }
-	| { kind: "toolResult"; toolCallId: string; toolName: string; content: string; details?: unknown; usage?: TrajectoryUsage; isError: boolean }
+	| {
+			kind: "toolResult";
+			toolCallId: string;
+			toolName: string;
+			content: string;
+			images?: readonly ImageRef[];
+			details?: unknown;
+			usage?: TrajectoryUsage;
+			isError: boolean;
+	  }
 	| { kind: "custom"; customType: string; data?: unknown };
 
 export interface TurnSummary {
@@ -133,6 +143,19 @@ export function contentText(content: unknown): string {
 		.join("\n");
 }
 
+export function imageRefsOf(content: unknown): readonly ImageRef[] | undefined {
+	if (!Array.isArray(content)) return undefined;
+	const refs: ImageRef[] = [];
+	for (const block of content) {
+		if (!block || typeof block !== "object") continue;
+		const value = block as { type?: unknown; attachment?: ImageRef };
+		if (value.type !== "image" || value.attachment === undefined) continue;
+		if (typeof value.attachment.attachmentId !== "string") continue;
+		refs.push(value.attachment);
+	}
+	return refs.length === 0 ? undefined : refs;
+}
+
 function usageOf(raw: unknown): TrajectoryUsage | undefined {
 	if (!raw || typeof raw !== "object") return undefined;
 	const usage = raw as Record<string, unknown>;
@@ -164,9 +187,11 @@ function messagePayload(entry: LogEntry): Payload | null {
 		errorMessage?: unknown;
 	};
 	if (message.role === "user") {
+		const images = imageRefsOf(message.content);
 		return {
 			kind: "user",
 			content: contentText(message.content),
+			...(images === undefined ? {} : { images }),
 			...(typeof message.skill === "string" ? { skillName: message.skill } : {}),
 		};
 	}
@@ -193,11 +218,13 @@ function payloadOf(entry: LogEntry): Payload | null {
 	if (entry.type !== "custom") return null;
 	if (entry.customType === LOG_EVENTS.toolResult) {
 		const data = dataOf(entry);
+		const images = imageRefsOf(data["content"]);
 		return {
 			kind: "toolResult",
 			toolCallId: String(data["toolCallId"] ?? ""),
 			toolName: String(data["toolName"] ?? ""),
 			content: contentText(data["content"]),
+			...(images === undefined ? {} : { images }),
 			...(data["details"] === undefined ? {} : { details: data["details"] }),
 			...(usageOf(data["usage"]) ? { usage: usageOf(data["usage"]) } : {}),
 			isError: data["isError"] === true,

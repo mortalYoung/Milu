@@ -16,6 +16,8 @@ import {
 	ILayoutService,
 	HotkeysService,
 	IHotkeysService,
+	IImageService,
+	ImageService,
 	PickerService,
 	IPickerService,
 	ColumnsService,
@@ -133,6 +135,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	services.set(CommandRegistryId, new SyncDescriptor(CommandRegistry));
 	services.set(ILayoutService, new SyncDescriptor(LayoutService));
 	services.set(IThemeService, new SyncDescriptor(ThemeService));
+	services.set(IImageService, new SyncDescriptor(ImageService));
 	container = new InstantiationService(services);
 	services.set(IInstantiationService, container);
 	await container.initialize();
@@ -164,6 +167,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 	const layout = container.get(ILayoutService);
 	const theme = container.get(IThemeService);
 	const motion = container.get(IMotionService);
+	const images = container.get(IImageService);
 
 	const disposables = new DisposableStore();
 	disposables.add(markdown);
@@ -253,6 +257,7 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 			layout,
 			theme,
 			motion,
+			images,
 			get: (id) => container.get(id),
 		},
 		start() {

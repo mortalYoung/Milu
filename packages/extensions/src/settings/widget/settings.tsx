@@ -1,6 +1,6 @@
 import type { ThemeMode, ThemeSettings, ThemeState } from "@milu/protocol";
 import type { DialogProps, IconKind, SessionListView } from "@milu/window/api";
-import { Bell, Check, Folder, Search } from "lucide-react";
+import { Bell, Check, Folder, Search, X } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useStore } from "zustand";
 
@@ -8,7 +8,7 @@ import { MCP_LIFECYCLES, type McpOptions } from "../../mcp/types.ts";
 import { ProviderMark } from "../../provider-marks.tsx";
 import type { ProviderRow, Settings, SettingsSnapshot } from "../index.ts";
 import { ProvidersBand } from "./providers.tsx";
-import { BUTTON_GHOST, BUTTON_PRIMARY, FIELD, InlineChoices, LINK, SheetPanel, SheetRow, Switch, ValueButton } from "./ui.tsx";
+import { BUTTON_DANGER, BUTTON_GHOST, BUTTON_PRIMARY, FIELD, InlineChoices, LINK, SheetPanel, SheetRow, Switch, ValueButton } from "./ui.tsx";
 
 const CATEGORIES = [
 	{ id: "general", label: "General", intro: "How Milu starts, where partner profiles live, and how it tells you something happened." },
@@ -16,6 +16,7 @@ const CATEGORIES = [
 	{ id: "pet", label: "Pet", intro: "Whether the desktop pet is on, how large it is, and whether it turns its head toward the pointer.", requires: "pet" },
 	{ id: "providers", label: "Providers", intro: "Keys and endpoints behind the models you can pick. A key is written once and never echoed back." },
 	{ id: "tools", label: "Tools", intro: "Limits for the shell, the web, and MCP servers." },
+	{ id: "images", label: "Images", intro: "How large an image may be, how many may ride one message, and how stored images are reclaimed." },
 	{ id: "skills", label: "Skills", intro: "Where skill folders are looked up, relative to the workspace or home." },
 	{ id: "memory", label: "Memory", intro: "When the agent writes memory, how much of it it keeps, and how the context is condensed." },
 	{ id: "permission", label: "Permission", intro: "What a new partner may touch by default." },
@@ -360,6 +361,36 @@ const FIELDS: readonly Field[] = [
 		description: "Max schedule runs per day, per partner.",
 		min: 0,
 		unit: "/ day",
+	},
+	{
+		id: "images.maxBytesMb",
+		scope: "settings",
+		category: "images",
+		kind: "number",
+		title: "Image Size Limit",
+		description: "Largest encoded image one message may submit. Larger files are refused before anything is stored.",
+		min: 1,
+		unit: "MB",
+	},
+	{
+		id: "images.maxMegapixels",
+		scope: "settings",
+		category: "images",
+		kind: "number",
+		title: "Image Pixel Limit",
+		description: "Decoded width times height a submitted image may carry. Guards against images that expand far beyond their file size.",
+		min: 1,
+		unit: "MP",
+	},
+	{
+		id: "images.maxPerMessage",
+		scope: "settings",
+		category: "images",
+		kind: "number",
+		title: "Images Per Message",
+		description: "How many images one message may carry.",
+		min: 1,
+		unit: "images",
 	},
 ];
 
@@ -784,6 +815,9 @@ export function SettingsDialog(props: DialogProps) {
 	const [activeBand, setActiveBand] = useState<CategoryId>("general");
 	const [open, setOpen] = useState<string | null>(null);
 	const [expanded, setExpanded] = useState<string | null>(null);
+	const [collecting, setCollecting] = useState(false);
+	const [collected, setCollected] = useState<{ readonly ok: boolean; readonly text: string } | null>(null);
+	const [confirmCollect, setConfirmCollect] = useState(false);
 	const [providerDetail, setProviderDetail] = useState(false);
 	const [providerFocus, setProviderFocus] = useState<string | null>(null);
 	const [editing, setEditing] = useState<string | null>(null);
@@ -1372,6 +1406,68 @@ export function SettingsDialog(props: DialogProps) {
 		/>
 	);
 
+	const collectRow = (searchQuery = ""): ReactNode => {
+		const description = "Delete pooled images no chat references any more. An image only one chat used is already reclaimed with that chat.";
+		const collect = (): void => {
+			setConfirmCollect(false);
+			setCollecting(true);
+			setCollected(null);
+			void props.host.actions
+				.request<{ readonly removed: number }>("settings.collectImages")
+				.then((value) => {
+					if (value === undefined) return;
+					setCollected({
+						ok: true,
+						text: value.removed === 0 ? "Nothing to clean up — every stored image is still referenced." : `Removed ${value.removed} unused file${value.removed === 1 ? "" : "s"}.`,
+					});
+				})
+				.catch((error: unknown) => setCollected({ ok: false, text: reason(error) }))
+				.finally(() => setCollecting(false));
+		};
+		const inline = (
+			<div className="grid gap-1.5">
+				{confirmCollect ? (
+					<div className="flex flex-wrap items-center justify-between gap-3 rounded-[8px] border border-signal/40 bg-signal/5 px-3 py-2.5">
+						<p className="m-0 max-w-[62ch] text-[12px] leading-snug text-ink">Delete image files no chat references any more? Images still in use keep their copies.</p>
+						<span className="flex shrink-0 gap-1.5">
+							<button type="button" className={BUTTON_GHOST} onClick={() => setConfirmCollect(false)}>
+								Cancel
+							</button>
+							<button type="button" className={BUTTON_DANGER} onClick={collect}>
+								Delete
+							</button>
+						</span>
+					</div>
+				) : null}
+				{collected === null ? null : (
+					<div
+						role="status"
+						className={`flex items-center gap-2 rounded-[8px] border px-3 py-2 font-sans text-[12px] leading-snug ${
+							collected.ok ? "border-accent-teal/40 bg-accent-teal/5 text-ink" : "border-signal/40 bg-signal/5 text-signal"
+						}`}
+					>
+						{collected.ok ? <Check size={13} className="shrink-0 text-accent-teal" /> : <X size={13} className="shrink-0 text-signal" />}
+						<span>{collected.text}</span>
+					</div>
+				)}
+			</div>
+		);
+		return (
+			<SheetRow
+				rowKey="images.collect"
+				variant="pill"
+				title={searchQuery === "" ? "Unused Images" : highlight("Unused Images", searchQuery)}
+				description={searchQuery === "" ? description : highlight(description, searchQuery)}
+				inline={inline}
+				control={
+					<button type="button" className={BUTTON_DANGER} disabled={collecting || confirmCollect} onClick={() => setConfirmCollect(true)}>
+						{collecting ? "Collecting…" : "Collect"}
+					</button>
+				}
+			/>
+		);
+	};
+
 	const renderBand = (id: CategoryId, searchQuery = ""): ReactNode => {
 		if (id === "appearance")
 			return (
@@ -1397,7 +1493,16 @@ export function SettingsDialog(props: DialogProps) {
 				/>
 			);
 		}
-		const fields = FIELDS.filter((field) => field.category === id);
+		const bandFields = FIELDS.filter((field) => field.category === id);
+		if (id === "images") {
+			return (
+				<>
+					{bandFields.map((field) => renderField(field, searchQuery))}
+					{collectRow(searchQuery)}
+				</>
+			);
+		}
+		const fields = bandFields;
 		const groups = new Map<string, Field[]>();
 		for (const field of fields) {
 			const name = field.group ?? "";

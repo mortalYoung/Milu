@@ -75,7 +75,7 @@ const TranscriptRow = memo(function TranscriptRow(props: { host: Host; session: 
 				<span>{item.text}</span>
 			</div>
 		);
-	if (item.kind === "user") return item.from ? <PeerMessage host={host} item={item} port={host.markdown} /> : <UserMessage host={host} item={item} />;
+	if (item.kind === "user") return item.from ? <PeerMessage host={host} item={item} port={host.markdown} /> : <UserMessage host={host} session={session} item={item} />;
 	const Row = host.rows.get(item.kind);
 	if (Row) return createElement(Row, { host, data: { item } });
 	return <AssistantBlock host={host} session={session} item={item} />;
