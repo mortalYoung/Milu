@@ -1,7 +1,7 @@
 import { type ComposerTip, type ComposerWidget, type ImageMediaType, SLOT_POINTS, type SlotItem } from "@milu/protocol";
 import { detectComposerTrigger, type ComposerTriggerToken, type Host, Kbd, type PendingImageInput } from "@milu/window";
 import { Tip } from "@milu/window/tooltip";
-import { type ChangeEvent, type ClipboardEvent, type DragEvent, type KeyboardEvent, memo, useEffect, useRef, useState } from "react";
+import { type ChangeEvent, type ClipboardEvent, type DragEvent, type KeyboardEvent, type MouseEvent, memo, useEffect, useRef, useState } from "react";
 import { useStore } from "zustand";
 
 import { mark } from "../boot.ts";
@@ -115,6 +115,20 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 		const picked = event.currentTarget.files === null ? [] : [...event.currentTarget.files];
 		event.currentTarget.value = "";
 		void accept(picked);
+	};
+
+	/** Treat the whole box as the input: clicks on chrome focus the caret at the end. */
+	const onBoxMouseDown = (event: MouseEvent<HTMLDivElement>): void => {
+		if (event.button !== 0) return;
+		const target = event.target;
+		if (!(target instanceof Element)) return;
+		if (target.closest("button, a, input, textarea, select, [role='button'], [contenteditable='true']") !== null) return;
+		event.preventDefault();
+		const element = area.current;
+		if (element === null) return;
+		const focused = document.activeElement === element;
+		element.focus();
+		if (!focused) element.setSelectionRange(element.value.length, element.value.length);
 	};
 	const composing = useRef(false);
 	useStore(host.sessions.store, (state) => state.rows);
@@ -320,7 +334,7 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 					const Slot = slotComponents.get(item.component);
 					return Slot ? <Slot key={item.id} host={host} data={item.data} /> : null;
 				})}
-				<div className={`composer-box${shownShell ? " shell" : ""}`}>
+				<div className={`composer-box${shownShell ? " shell" : ""}`} onMouseDown={onBoxMouseDown}>
 					{pending.length === 0 ? null : (
 						<div className="composer-images">
 							{pending.map((image) => (
