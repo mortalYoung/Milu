@@ -44,7 +44,7 @@ import { SessionLog } from "./log.ts";
 import type { OriginWindow } from "./origin.ts";
 import type { SliceItem } from "./slice.ts";
 import { textOf } from "./text.ts";
-import { type ContextBreakdown, priceMessages, totalTokens } from "./tokens.ts";
+import { type ContextBreakdown, priceMessage, priceMessages, totalTokens } from "./tokens.ts";
 
 const DEEP_TAIL_BYTES = 8 * 1024 * 1024;
 
@@ -390,17 +390,43 @@ export class Session {
 		this._errorAt = 0;
 	}
 
-	private async _autoCompact(): Promise<void> {
+	private async _overThreshold(measured?: number): Promise<boolean> {
 		const policy = compactionPolicy(this._deps.settingsService.get().compaction, await this._compactionTarget());
-		if (!(policy.thresholdRatio > 0)) return;
+		if (!(policy.thresholdRatio > 0)) return false;
 		const budget = await this._compactionBudget();
-		if (!budget) return;
-		const used = await this._contextTokens();
-		if (used === null || used < budget.threshold) return;
+		if (!budget) return false;
+		const used = measured ?? (await this._contextTokens());
+		return used !== null && used >= budget.threshold;
+	}
+
+	private async _autoCompact(): Promise<void> {
+		if (!(await this._overThreshold())) return;
 		try {
 			await this.compact();
 		} catch (error) {
 			console.error(`session ${this.name}: auto compact failed:`, error);
+		}
+	}
+
+	/**
+	 * Turn boundary inside a run: the loop is about to send another request. Measures the usage the provider
+	 * just reported plus the tool results added since, compacts when that crosses the line, and hands back the
+	 * rebuilt context — the running loop holds a snapshot, so only the returned context changes what it sends.
+	 */
+	async compactBeforeTurn(message: AssistantMessage, toolResults: readonly AgentMessage[] = []): Promise<readonly AgentMessage[] | null> {
+		if (!message.usage) return null;
+		const measured = message.usage.input + message.usage.cacheRead + message.usage.cacheWrite;
+		this._usedTokens = measured;
+		this._compacted = false;
+		try {
+			const pending = toolResults.reduce((sum, result) => sum + priceMessage(result), 0);
+			if (!(await this._overThreshold(measured + pending))) return null;
+			await this._log.flush();
+			if ((await this._compact({ duringRun: true })) === null) return null;
+			return [...(await this.open()).messages()];
+		} catch (error) {
+			console.error(`session ${this.name}: compact at the turn boundary failed:`, error);
+			return null;
 		}
 	}
 

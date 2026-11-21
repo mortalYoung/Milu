@@ -84,6 +84,11 @@ export class AgentLoopService implements Service {
 				return [{ role: "system", content: [{ type: "text", text: this._prompt }], timestamp: Date.now() }, ...out];
 			},
 			transformContext: async (messages) => [...(await this._emit("beforeRequest", messages))],
+			prepareNextTurnWithContext: async (context) => {
+				const messages = await this._session.compactBeforeTurn(context.message, context.toolResults);
+				if (messages === null) return undefined;
+				return { context: { ...context.context, messages: [...messages] } };
+			},
 		});
 		this.events = this._emitter.event;
 		this._disposables.add(this._emitter);
