@@ -13,14 +13,17 @@ document.querySelector(".theme-btn")?.addEventListener("click", () => {
 });
 
 const nav = document.querySelector(".nav");
+const foot = document.querySelector(".foot");
 const toTop = document.querySelector(".to-top");
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const onScroll = () => {
 	nav?.classList.toggle("is-scrolled", window.scrollY > 8);
-	toTop?.classList.toggle("is-visible", window.scrollY > 600);
+	const atFoot = foot ? foot.getBoundingClientRect().top < window.innerHeight - 16 : false;
+	toTop?.classList.toggle("is-visible", window.scrollY > 600 && !atFoot);
 };
 onScroll();
 window.addEventListener("scroll", onScroll, { passive: true });
+window.addEventListener("resize", onScroll);
 
 toTop?.addEventListener("click", (event) => {
 	event.preventDefault();

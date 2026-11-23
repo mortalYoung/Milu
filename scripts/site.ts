@@ -17,7 +17,7 @@ const server = Bun.serve({
 	port,
 	async fetch(request) {
 		const path = new URL(request.url).pathname;
-		const target = resolve(root, `.${normalize(path === "/" ? "/index.html" : path)}`);
+		const target = resolve(root, `.${normalize(path.endsWith("/") ? `${path}index.html` : path)}`);
 		if (!target.startsWith(root + sep)) return new Response("not found", { status: 404 });
 		const file = Bun.file(target);
 		if (!(await file.exists())) return new Response("not found", { status: 404 });

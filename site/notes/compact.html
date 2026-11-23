@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="zh-CN">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>上下文不该等到装满才整理 — Milu 设计笔记</title>
+		<meta
+			name="description"
+			content="窗口是固定的，会话却一直继续。Compact 把装不下的那一段换成一条检查点，上下文由检查点加尾巴投影出来，原文留在日志里。讲清尾巴预算、触发线，以及三步折叠。"
+		/>
+		<link rel="icon" href="../pixel_milu.png" />
+		<link rel="stylesheet" href="../style.css" />
+		<link rel="stylesheet" href="../notes.css" />
+	</head>
+
+	<body>
+		<svg class="sprite" aria-hidden="true" focusable="false">
+			<symbol id="w-mark" viewBox="45 40 210 72">
+				<path
+					d="M107.83 44.11c2.57 1.22.97 8.98.61 11.41-1.36 9.26-2.17 18.58-3.61 27.83-.36 2.36-2.56 7.8-.33 9.29 8.95-11.03 15.74-24.62 22.71-36.93 1.33-2.35 5.61-12.3 8.28-10.21.44 4.1-3.07 12.38-4.27 16.59-2.4 8.4-8.58 31.19-6.78 39.02.58 2.57 2.25 3.26 3.28 5.39-.41.44-.81.88-1.22 1.32-4.35-.92-4.66-6-4.93-9.65-.71-9.75 2.86-18.92 4.42-28.34.4-2.44 3.07-7.2 1.51-9.31-6.97 10.04-12.8 21.12-19.33 31.47-1.79 2.84-5.19 9.86-8.67 10.54-2.15-2.13.2-7.28.49-10.03.92-8.7 3.33-17.25 4.04-26 .21-2.56 1.92-6.67.47-8.94-2.63 3.8-3.73 8.9-5.71 13.06-6.11 12.89-19.33 37.12-35.96 37.37-1.95.04-3.51-.32-5.31-1.02-11.28-4.36-1.99-16.66 6.31-17.99 2.42-.39 5.45-2.06 6.98.52-2.42 3.74-12.31.79-15.11 8.68-.53 1.49-.3 3.27.74 4.54 6.89 8.46 21.82-5.27 26.35-10.76 8.77-10.65 13.09-23.26 18.86-35.49 1.19-2.51 3.57-12.01 6.18-12.36Zm94.67 46.05c.46.45.92.89 1.38 1.34-.66 2.88-4.81 7.38-2.38 10.22 4.51-2.02 10.06-10.98 12.32-11.55 2.4.8.6 3.79.35 5.49-.54 3.67.05 6.5 3.65 8.05 6.02 2.62 17.08-4.38 21.68-8.03 1.75-1.39 3.75-4.45 6-4.63 3.1 2.91-8.98 10.53-11.47 11.8-5.74 2.9-13.82 6.66-19.72 2-2.04-1.6-2.12-4.01-3.81-5.71-2.74.51-9.52 9.61-12.34 3.55-.7-1.5.32-3.43-.66-4.69-6.79 5.48-18.58 13.02-27.1 6.77-3.49-2.56-3.53-6.63-5.9-9.7-7.41 6.45-17.36 13.46-27.61 9.84-4.14-1.47-6.21-5.13-5.82-9.41.18-1.98 1.12-6.47 3.76-5.48 1.81 3.04-3.23 7.3.34 10.65 6.63 6.23 17.55-.09 23.22-4.45 1.52-1.17 4.86-2.89 5.53-4.78.83-2.34.09-6.1.2-8.61.2-4.35.85-9.27 2.08-13.45 1.07-3.68 3.24-11.81 8.3-11.38 5.21.45 3.14 7.77 2.61 10.86-1.07 6.22-3.86 12.09-6.26 17.85-.83 1.98-2.4 4.01-2.81 6.13-.41 2.13.21 4.21 1.19 6.08 5.41 10.34 18.8 2.92 25.36-2.17 2.56-1.99 5.12-5.18 7.91-6.59Zm-29-29.51c-4.49 2.63-6.31 14.98-6.76 19.85-.21 2.22-.65 5.19.76 7.08 3.84-5.33 5.38-13.29 6.65-19.63.47-2.36 2-5.89-.65-7.3ZM136.05 82.5c.75 2.36-2.57 4.57-4.69 4.33-1.28-2.21 2.8-5.58 4.69-4.33Z"
+					fill="currentColor"
+					fill-rule="evenodd"
+					stroke="currentColor"
+					stroke-linejoin="round"
+					stroke-width="0.25"
+				/>
+			</symbol>
+			<symbol id="i-half" viewBox="0 0 24 24">
+				<circle cx="12" cy="12" r="8" />
+				<path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" />
+			</symbol>
+			<symbol id="i-arrow-up" viewBox="0 0 24 24">
+				<path d="M12 19V5" />
+				<path d="m5 12 7-7 7 7" />
+			</symbol>
+		</svg>
+
+		<header class="nav">
+			<div class="wrap nav-inner">
+				<a class="brand" href="../index.html" aria-label="Milu — 返回首页">
+					<img src="../pixel_milu.png" alt="" width="24" height="24" />
+					<svg class="wordmark" viewBox="0 0 210 72" role="img" aria-label="Milu">
+						<use href="#w-mark" />
+					</svg>
+				</a>
+				<nav class="nav-links" aria-label="Site">
+					<a href="../index.html#demo">Demo</a>
+					<a href="../index.html#features">Features</a>
+					<a href="../index.html#get">Download</a>
+					<a href="index.html">Notes</a>
+					<a class="nav-github" href="https://github.com/mortalYoung/Milu" target="_blank" rel="noreferrer">GitHub <span class="arrow">↗</span></a>
+					<button class="theme-btn" type="button" aria-label="切换明暗主题" title="Light / dark">
+						<svg class="ico">
+							<use href="#i-half" />
+						</svg>
+					</button>
+				</nav>
+			</div>
+		</header>
+
+		<main id="top">
+			<div class="note-wrap">
+				<header class="note-head">
+					<p class="eyebrow"><span class="pulse"></span>Notes · 02 · Compact</p>
+					<h1>上下文不该等到装满才整理。</h1>
+					<p class="note-lede">窗口是固定的，会话却一直继续。Compact 要做的事只有一件：决定哪一段暂时不再带进上下文，并且把这件事写成一条能核对的记录。</p>
+					<p class="note-meta">
+						<span>中文</span>
+						<span>Milu 0.2.2</span>
+						<span>2026-11-20</span>
+						<span>约 3,300 字</span>
+						<span>约 11 分钟</span>
+					</p>
+				</header>
+
+				<div class="note-grid">
+					<aside class="toc" aria-label="目录">
+						<p class="toc-title">目录</p>
+						<ol>
+							<li><a href="#what">Compact 是什么</a></li>
+							<li><a href="#why">为什么需要 Compact</a></li>
+							<li>
+								<a href="#how">如何设计 Compact</a>
+								<ol>
+									<li><a href="#how-summary">摘要为什么不由模型写</a></li>
+									<li><a href="#how-check">为什么不等撞线才压</a></li>
+								</ol>
+							</li>
+							<li><a href="#sum">小结</a></li>
+						</ol>
+					</aside>
+
+					<article class="prose">
+						<p class="kicker" id="what">01 · 定义</p>
+						<h2>Compact 是什么</h2>
+						<p>
+							模型的上下文长度都是有限的。窗口这些年一直在变长，但还是有限，聊得够久总会顶到上限。顶到之后还想继续，就得有机制把上下文整理、删减一遍，让后面的对话还能进行下去。
+						</p>
+						<p>Compact 就是按某种策略压缩上下文：减少占用，同时尽量保住信息。</p>
+						<p>不同 harness 的做法不一样。有的直接丢掉上下文，靠检索取回；有的在丢掉之前先写一份摘要。</p>
+						<p>Milu 把这两件事分开：记忆系统负责整理、存储和检索历史，Compact 只管这一轮往窗口里带什么。</p>
+						<p class="kicker" id="why">02 · 动机</p>
+						<h2>为什么需要 Compact</h2>
+						<p>记忆系统能保证历史被整理、存储和检索，但它不减少上下文占用。要减少，只能由 Compact 决定这一轮带多少。</p>
+						<p>Compact 的矛盾在两头：删得越多，丢的信息越多；留得越多，占的窗口越多。信息完整性和上下文占用怎么平衡，就是这个设计要解决的问题。</p>
+						<p>上下文由系统提示词、工具调用和消息组成。系统提示词是固定的，工具调用和消息占掉剩下的部分。</p>
+						<p>所以 Compact 要做的事很具体：在工具调用和消息里挑出哪些留下、哪些收起，让固定的窗口装下尽量多的信息。</p>
+						<p class="kicker" id="how">03 · 设计</p>
+						<h2>如何设计 Compact</h2>
+						<p>Milu 把日志原文当作 SSOT：记忆系统从日志里抽条目、存下来、按需检索；Compact 把日志折叠成摘要，摘要的内容也来自这批条目。</p>
+						<p>要解决的问题只有一个：</p>
+						<p class="statement">如何将日志折叠成摘要，同时又能够支持记忆系统回溯日志原文？</p>
+						<p>折叠分三步。第一步定范围：先定留多长的尾巴，再从后往前回溯，找到折叠的起点。</p>
+						<p>留这一段尾巴，是为了压缩之后上下文里还有刚发生的事，对话接得上。</p>
+						<p>把尾巴的长度记作 <i>ρ</i>，取窗口减掉输出预留之后的一个比例 <i>k</i>：</p>
+						<figure class="formula">
+							<math display="block"> <mi>&#x03C1;</mi><mo>=</mo><mo>(</mo><mi>W</mi><mo>&#x2212;</mo><mi>O</mi><mo>)</mo><mi>k</mi> </math>
+							<span class="eqno">(1)</span>
+							<figcaption><i>W</i> 是窗口，<i>O</i> 是输出预留，<i>k</i> 默认 0.16</figcaption>
+						</figure>
+						<p><i>k</i> 默认 0.16。<i>k</i> 越大，留下的尾巴越长，进摘要的部分越小。</p>
+						<p>实测里，1M 窗口、64K 输出预留、<i>k</i> = 0.16，大概能留下十条以上，具体看消息长短。</p>
+						<p>条数不是固定的：算出预算之后，从最新一条往前按整条消息累加，加到够为止。</p>
+						<p>第二步是找出需要折叠的区间，也就是除了最近的聊天记录之外，其余需要生成摘要的部分。</p>
+						<p>日志在这里被切成两段：折叠区间换成摘要，尾巴区间原样保留。</p>
+						<p>切点按 <i>ρ</i> 估个大概，但落不到固定位置。累加是按整条消息走的，还要避开一次工具调用和它的结果，所以切点会前后挪一点，很少正好落在 <i>ρ</i> 上。</p>
+						<figure class="fig-paper">
+							<img src="../figures/compact-budget.svg" alt="一条横轴从左到右分成四段：折叠区间、尾巴、留白、输出预留；折叠区间与尾巴之间标着切点" />
+							<figcaption>图 1：默认值下窗口被切成的四段。折叠区间是切点之前的部分，<i>ρ</i> 是尾巴预算，<i>H</i> 是留白，<i>O</i> 是输出预留。</figcaption>
+						</figure>
+						<p>第三步，把折叠区间做结构性替换。</p>
+						<p>做法是从记忆系统里挑条目、拼成摘要，放回折叠区间原来的位置，前后各加一句：前面说明更早的消息已经归档，后面提醒需要细节时去回读。</p>
+						<p>
+							挑选有范围：从上次整理到的那一条之后，到这次折叠区间的终点。摘要要覆盖的是这段时间里还在发生的事：起点往前挪，会带进早就结束的内容；起点往后收，又会漏掉这段里的转折。停在折叠区间终点，是因为尾巴还在上下文里，不必再进摘要。
+						</p>
+						<p>然后是条数。先给 <code>event</code> 留 3 个位置，取最近的三条；剩下的 N − 3 条从其他 <code>kind</code> 里按优先级挑，同级取新的。</p>
+						<p>3 不是推出来的数。实践里一段区间内真正关键的事件就几条，占摘要的 30% 左右，所以定成 3。</p>
+						<p>剩下的问题是：什么时候压。</p>
+						<p>触发有两种：手动和自动。手动是用户要求压一次，在 Milu 里注册成一个 Action；自动由系统按用量判断，不用人管。</p>
+						<p>自动触发的时机有三个：前两个在 run 之外，第三个在 run 之内。</p>
+						<ul>
+							<li>一次发送之前：用户消息刚写进日志，请求还没发出。</li>
+							<li>一次续跑之前：恢复一个挂起的 run，同样在请求发出之前。</li>
+							<li>turn 边界：一次工具批次跑完之后、下一次请求发出之前；那一轮的 assistant 消息和工具结果已经落地，投影可以整体换掉。</li>
+						</ul>
+						<p>判断标准就一条：当前用量是否超过 <i>θ</i>。</p>
+						<figure class="formula">
+							<math display="block">
+								<mi>&#x03B8;</mi><mo>=</mo><mo>min</mo><mo>(</mo><mi>W</mi><mi>r</mi><mo>,</mo><mspace width="0.5em" /> <mi>W</mi><mo>&#x2212;</mo><mi>O</mi><mo>&#x2212;</mo
+								><mi>H</mi><mo>)</mo>
+							</math>
+							<span class="eqno">(2)</span>
+							<figcaption><i>W</i> 是窗口，<i>O</i> 是输出预留，<i>H</i> 是留白，<i>r</i> 是阈值比例；<i>θ</i> 是触发线，向下取整。</figcaption>
+						</figure>
+						<p>以 DeepSeek 4.1 flash 为例：128K 窗口、8K 输出预留，算的时候用 128,000 和 8,192；阈值比例 0.8、留白 65,536、保留比例 0.16 都取默认值。</p>
+						<p>两个候选先算出来：<i>W·r</i> 给出 102,400，<i>W − O − H</i> 给出 54,272。取小的，<i>θ</i> 落在 54,272，这一轮装到 54,272 就该压了。</p>
+						<figure class="fig-paper">
+							<img src="../figures/compact-trigger.svg" alt="一条从 0 到 128,000 的横轴，两条竖线：实线在 54,272，虚线在 102,400" />
+							<figcaption>图 2：两个候选。实线是 <i>W − O − H</i>，虚线是 <i>W·r</i>，取小之后 <i>θ</i> 落在实线上。</figcaption>
+						</figure>
+						<p>三个数凑满整窗：54,272 的历史、65,536 的留白、8,192 的输出预留。这条线只到窗口的 42%，跟「装满才压」差得很远，差的就是留白。在这个窗口上，65,536 占 51%。</p>
+						<p>
+							留白因此做成了设置项。调到 16,384，<i>W − O − H</i> 变成 103,424，反过来比比例的 102,400 大，<i>θ</i> 升到 102,400，占窗口的
+							80%，压缩回到「快满才压」。同一个模型，只动留白，触发点从 42% 挪到 80%。
+						</p>
+						<p>
+							54,272 再切成两半。尾巴按 <i>(W − O) × 0.16</i> 留，119,808 × 0.16 = 19,169，折叠区间是前面 35,103。一次读文件的结果常有几千 token，19,169
+							只够最近几轮，更早的读取都进了折叠区间。
+						</p>
+						<p>
+							放进一次具体的会话：agent 改一个模块，读几个文件、跑两次测试、改两处代码。系统提示词和工具定义先占一截，剩下的由消息和工具结果填，几十次工具调用就摸到
+							54,272。触发落在 turn 边界，那次工具结果刚写进日志、下一轮请求还没发出，前半段换成摘要，最近几轮原样留着。接着改，模型不用重读刚才那些文件。
+						</p>
+						<h3 id="how-summary">3.1 摘要为什么不由模型写</h3>
+						<p>Compact 自己写摘要，等于对同一段历史再概括一次。记忆抽取已经做过一遍：那段对话被整理成一条条带原文引用的记忆。</p>
+						<ul>
+							<li>再概括一次不会更准，只会在已有的结果上再丢一层。</li>
+							<li>概括本身有损。模型改写一遍，措辞、数字、指代都可能变，事后也不知道丢了什么：摘要里没有的东西，分不清是被判为不重要，还是根本没读出来。</li>
+						</ul>
+						<p>复用已有条目就没有这道损失。摘要条目全部来自记忆系统，压缩只决定挑哪几条、按什么顺序排，一个字不改。</p>
+						<ul>
+							<li>不重复劳动：每次压缩省一次调用、一段延迟，也省一次输出 token。</li>
+							<li>损失可逆：每条摘要挂着记忆系统的 <code>id</code>，能回溯原文。</li>
+							<li>只有一套说法：摘要条目和记忆是同一份内容，不会出现两处说法不一。</li>
+						</ul>
+						<p>能这么做，前提是两者共用同一份日志：抽取读的条目和压缩遮蔽的条目是同一批。</p>
+						<h3 id="how-check">3.2 为什么不等撞线才压</h3>
+						<p>很简单，如果等撞线才压，极有可能连回答的位置都没有。</p>
+						<p>
+							一次请求的窗口预算里不只有历史。这一轮的回答、工具调用的参数，都要塞进同一块空间。历史顶到窗口，回答就没地方放，请求会被拒；就算勉强发出去，模型也只能写出半句话。
+						</p>
+						<p><i>θ</i> 就是从这头反推的：扣掉输出预留 <i>O</i> 和留白 <i>H</i>，剩下的才是历史能占的高度。所以 <i>θ</i> 触发时，窗口里还空着 65,536 + 8,192 = 73,728 个 token。</p>
+						<p>撞线之后也不是没救：请求因为超出窗口被拒，可以压一次再重试。机会只有一次，而且这一轮已经白跑。提前压，是把这类失败挡在前面。</p>
+						<p>代价是压得更频繁，尾巴更短，更多内容进摘要。留白不是越大越好：128,000 的窗口上，默认的 65,536 就占 51%，触发点被拉到 42%，这也是它被做成设置项的原因。</p>
+						<p class="kicker" id="sum">04 · 小结</p>
+						<h2>回头看那个问题</h2>
+						<p>回到第三章开头那个问题：如何把日志折叠成摘要，同时又能够支持记忆系统回溯日志原文。</p>
+						<p>前半句的答案：日志没动，动的是投影。遮蔽的条目从上下文里剔掉，摘要插成一条 user 消息，检查点里记下这次遮了哪些条目、给了什么摘要。</p>
+						<p>
+							后半句的答案：摘要当索引，原文当底本。摘要条目全部来自记忆系统，每条挂着 atom，atom 记着来源条目的编号，按
+							<code>id</code> 就能取回逐字原文；前言说明更早的消息已归档，尾注提示需要细节时回读。
+						</p>
+						<p>两半能对上号，是因为共用同一份日志：压缩遮蔽的条目和记忆抽取读的条目是同一批，检查点里的遮蔽清单就是这次摘要的覆盖范围。</p>
+
+						<p class="note-end">
+							<span>Notes · 02 · Compact</span>
+							<span><a href="memory.html">← Notes · 01 · Memory</a> · <a href="../index.html">返回 Milu</a></span>
+						</p>
+					</article>
+				</div>
+			</div>
+		</main>
+		<footer class="foot">
+			<div class="wrap">
+				<div class="foot-grid">
+					<div>
+						<a class="foot-brand" href="../index.html" aria-label="Milu — 返回首页">
+							<img src="../pixel_milu.png" alt="" width="22" height="22" />
+							<svg class="wordmark" viewBox="0 0 210 72" role="img" aria-label="Milu">
+								<use href="#w-mark" />
+							</svg>
+						</a>
+						<p class="foot-tag">一个留在你机器上的 agent harness。</p>
+					</div>
+					<nav class="foot-links" aria-label="Elsewhere">
+						<a href="https://github.com/mortalYoung/Milu" target="_blank" rel="noreferrer">GitHub</a>
+						<a href="https://github.com/mortalYoung/Milu/issues" target="_blank" rel="noreferrer">Issues</a>
+						<a href="index.html">设计笔记</a>
+					</nav>
+				</div>
+				<p class="foot-note">
+					<span>Built on pi, Electron and Shiki. © 2026 Milu.</span>
+					<span>No account · no server · no telemetry</span>
+				</p>
+			</div>
+		</footer>
+
+		<a class="to-top" href="#top" aria-label="回到顶部" title="回到顶部">
+			<svg class="ico">
+				<use href="#i-arrow-up" />
+			</svg>
+		</a>
+
+		<script type="module" src="../notes.js"></script>
+	</body>
+</html>

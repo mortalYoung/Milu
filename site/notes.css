@@ -137,6 +137,20 @@
 	font-style: italic;
 }
 
+.prose .statement {
+	margin: 22px 0 24px;
+	text-align: center;
+	font-weight: 600;
+	color: var(--ink);
+}
+
+.prose i {
+	font-family: "Newsreader", Georgia, serif;
+	font-style: italic;
+	font-size: 1.04em;
+	letter-spacing: 0.01em;
+}
+
 .prose a {
 	color: var(--ink);
 	text-decoration: underline;
@@ -300,7 +314,7 @@
 	color: var(--ink);
 }
 
-.note-end {
+.prose .note-end {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: baseline;
@@ -316,12 +330,12 @@
 	color: var(--muted-soft);
 }
 
-.note-end a {
+.prose .note-end a {
 	color: var(--ink);
 	text-decoration: none;
 }
 
-.note-end a:hover {
+.prose .note-end a:hover {
 	text-decoration: underline;
 	text-underline-offset: 3px;
 }
@@ -380,6 +394,7 @@
 /* ——— 中文排版 ——— */
 
 html[lang="zh-CN"] .note-head h1,
+html[lang="zh-CN"] .note-title,
 html[lang="zh-CN"] .prose h2,
 html[lang="zh-CN"] .prose h3 {
 	font-family: "Newsreader", "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC", ui-serif, Georgia, serif;
@@ -394,6 +409,7 @@ html[lang="zh-CN"] .prose th,
 html[lang="zh-CN"] .note-meta,
 html[lang="zh-CN"] .toc a,
 html[lang="zh-CN"] .note-end,
+html[lang="zh-CN"] .note-desc,
 html[lang="zh-CN"] .foot-tag,
 html[lang="zh-CN"] .foot-note,
 html[lang="zh-CN"] .foot-links {
@@ -417,7 +433,7 @@ html[lang="zh-CN"] .note-lede {
 	line-height: 1.85;
 }
 
-html[lang="zh-CN"] .prose p {
+html[lang="zh-CN"] .prose p:not(.kicker):not(.note-end) {
 	font-size: 15px;
 	line-height: 1.9;
 }
@@ -450,6 +466,11 @@ html[lang="zh-CN"] .prose th {
 html[lang="zh-CN"] .prose td code,
 html[lang="zh-CN"] .prose th code {
 	font-size: 11.5px;
+}
+
+.prose td code,
+.prose th code {
+	white-space: nowrap;
 }
 
 html[lang="zh-CN"] .toc a {
@@ -651,4 +672,86 @@ html[lang="zh-CN"] .toc a {
 	font-size: 11.5px;
 	line-height: 1.7;
 	color: var(--muted);
+}
+
+/* ——— 笔记列表 ——— */
+
+.note-list {
+	margin: 0 0 clamp(48px, 8vh, 80px);
+	padding: 0;
+	list-style: none;
+}
+
+.note-list li {
+	border-bottom: 1px solid var(--line);
+}
+
+.note-list a {
+	display: grid;
+	grid-template-columns: 56px minmax(0, 1fr) auto;
+	align-items: start;
+	gap: 8px 28px;
+	padding: clamp(22px, 3.4vh, 32px) 0;
+	text-decoration: none;
+}
+
+.note-no {
+	padding-top: 6px;
+	font-family: var(--mono);
+	font-size: 9px;
+	letter-spacing: 0.14em;
+	color: var(--muted-soft);
+}
+
+.note-body {
+	display: block;
+	min-width: 0;
+}
+
+.note-title {
+	display: block;
+	font-family: var(--serif);
+	font-size: clamp(19px, 1.9vw, 24px);
+	line-height: 1.35;
+	letter-spacing: -0.012em;
+	color: var(--ink);
+}
+
+.note-desc {
+	display: block;
+	max-width: 46em;
+	margin-top: 9px;
+	font-size: 14px;
+	line-height: 1.75;
+	color: var(--ink-soft);
+}
+
+.note-run {
+	padding-top: 7px;
+	font-family: var(--mono);
+	font-size: 9px;
+	letter-spacing: 0.1em;
+	white-space: nowrap;
+	color: var(--muted-soft);
+}
+
+.note-list a:hover .note-title {
+	text-decoration: underline;
+	text-decoration-color: var(--line-strong);
+	text-underline-offset: 4px;
+}
+
+.note-list a:hover .note-no,
+.note-list a:hover .note-run {
+	color: var(--ink);
+}
+
+@media (max-width: 760px) {
+	.note-list a {
+		grid-template-columns: 36px minmax(0, 1fr);
+	}
+	.note-run {
+		grid-column: 2;
+		padding-top: 0;
+	}
 }
