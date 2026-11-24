@@ -25,6 +25,11 @@ export type ToolNext = (call: ToolCall, env: ExecutionEnv) => Promise<ToolResult
 
 export type ToolMiddleware = (call: ToolCall, env: ExecutionEnv, next: ToolNext) => Promise<ToolResult>;
 
+export interface ToolProvider {
+	readonly id: string;
+	tools(session: Session): Promise<readonly AgentTool[]>;
+}
+
 export interface Tool {
 	readonly name: string;
 	readonly label: string;
@@ -49,6 +54,7 @@ function extend(parameters: TSchema, fields: readonly ToolFields[], name: string
 
 export class ToolService implements Service {
 	private readonly _tools: Tool[] = [];
+	private readonly _providers: ToolProvider[] = [];
 	private readonly _middleware: ToolMiddleware[] = [];
 	private readonly _fields: ToolFields[] = [];
 
@@ -64,6 +70,16 @@ export class ToolService implements Service {
 			dispose: () => {
 				const at = this._tools.indexOf(tool);
 				if (at >= 0) this._tools.splice(at, 1);
+			},
+		};
+	}
+
+	contribute(provider: ToolProvider): Disposable {
+		this._providers.push(provider);
+		return {
+			dispose: () => {
+				const at = this._providers.indexOf(provider);
+				if (at >= 0) this._providers.splice(at, 1);
 			},
 		};
 	}
@@ -88,8 +104,20 @@ export class ToolService implements Service {
 		};
 	}
 
+	private async _provided(session: Session): Promise<readonly AgentTool[]> {
+		const out: AgentTool[] = [];
+		for (const provider of this._providers) {
+			try {
+				out.push(...(await provider.tools(session)));
+			} catch (error) {
+				console.error(`tool provider "${provider.id}" failed:`, error);
+			}
+		}
+		return out;
+	}
+
 	async tools(session: Session): Promise<readonly AgentTool[]> {
-		return this._tools.map((tool) => ({
+		const base = this._tools.map((tool) => ({
 			name: tool.name,
 			label: tool.label,
 			description: tool.description,
@@ -98,6 +126,8 @@ export class ToolService implements Service {
 			execute: async (toolCallId: string, params: unknown, signal?: AbortSignal) =>
 				this._run({ session, workspace: await this._workspaceOf(session), toolCallId, name: tool.name, params, signal }),
 		}));
+		const taken = new Set(base.map((tool) => tool.name));
+		return [...base, ...(await this._provided(session)).filter((tool) => !taken.has(tool.name))];
 	}
 
 	async run(session: Session, call: { readonly toolCallId: string; readonly name: string; readonly params: unknown; readonly signal?: AbortSignal }): Promise<ToolResult> {
@@ -112,7 +142,11 @@ export class ToolService implements Service {
 
 	private async _run(call: ToolCall): Promise<ToolResult> {
 		const tool = this._tools.find((each) => each.name === call.name);
-		if (!tool) throw new Error(`tool "${call.name}" is not registered`);
+		if (!tool) {
+			const provided = (await this._provided(call.session)).find((each) => each.name === call.name);
+			if (!provided) throw new Error(`tool "${call.name}" is not registered`);
+			return provided.execute(call.toolCallId, call.params, call.signal) as Promise<ToolResult>;
+		}
 
 		const env = this._executionService.env(call.workspace ?? this._configService.workspace);
 		const chain = this._middleware.reduceRight<ToolNext>(

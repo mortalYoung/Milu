@@ -110,6 +110,30 @@ export async function readEntries(path: string, keep: (entry: Entry) => boolean 
 	}
 }
 
+export async function readEntriesFrom(path: string, from: number): Promise<{ entries: Entry[]; offset: number }> {
+	const handle = await open(path, "r");
+	try {
+		const info = await handle.stat();
+		const start = from > info.size ? 0 : from;
+		if (info.size <= start) return { entries: [], offset: start };
+		const buffer = Buffer.alloc(info.size - start);
+		const { bytesRead } = await handle.read(buffer, 0, buffer.length, start);
+		const text = buffer.subarray(0, bytesRead);
+		const entries: Entry[] = [];
+		let cursor = 0;
+		for (;;) {
+			const end = text.indexOf(0x0a, cursor);
+			if (end < 0) break;
+			const entry = parseEntry(text.subarray(cursor, end).toString("utf8"));
+			if (entry !== null) entries.push(entry);
+			cursor = end + 1;
+		}
+		return { entries, offset: start + cursor };
+	} finally {
+		await handle.close();
+	}
+}
+
 async function readHeader(path: string): Promise<{ kind?: string; version?: number; id?: string; createdAt?: number; cwd?: string } | null> {
 	let handle: FileHandle | null = null;
 	try {
@@ -136,7 +160,7 @@ function isSessionHeader(header: Awaited<ReturnType<typeof readHeader>>): header
 	return header?.kind === "header" && header.version === 4 && typeof header.id === "string";
 }
 
-async function newestLog(root: string): Promise<string | null> {
+export async function newestLog(root: string): Promise<string | null> {
 	const candidates: { path: string; at: number }[] = [];
 	const consider = async (path: string): Promise<void> => {
 		if (!path.endsWith(".jsonl")) return;

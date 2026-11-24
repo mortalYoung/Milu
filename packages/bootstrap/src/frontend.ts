@@ -404,6 +404,10 @@ export async function createFrontEnd(deps: FrontEndDeps): Promise<FrontEnd> {
 						files.mark(event.path);
 						return;
 					}
+					if (event.type === "sessions") {
+						void sessions.refresh();
+						return;
+					}
 					if (event.type === "compacting") {
 						sessions.patchCompacting(event.session, event.compacting);
 						return;

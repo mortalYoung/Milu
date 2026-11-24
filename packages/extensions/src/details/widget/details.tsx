@@ -277,6 +277,11 @@ export function SessionDetailsDialog(props: DialogProps) {
 								<Fact label="Storage" block tip={tildifyPath(shown.storage)}>
 									{shown.storage}
 								</Fact>
+								{shown.origin ? (
+									<Fact label="Origin" tip={`created by ${shown.origin}`}>
+										{shown.origin}
+									</Fact>
+								) : null}
 								<Fact label="Size" tip={sizeParts}>
 									<AnimatedNumber value={details?.size.bytes ?? 0} format={formatSize} />
 								</Fact>

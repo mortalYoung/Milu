@@ -116,6 +116,7 @@ export { SelectionService, ISelectionService } from "./services/selection.ts";
 export { SessionService, ISessionService, type SessionCompactingEvent, type SessionEntry, type SessionLoopEvent } from "./services/sessions.ts";
 export { Session, type SessionDeps } from "./session/session.ts";
 export { SessionLog } from "./session/log.ts";
+export { settleEscalation, pendingEscalations, type EscalationDecision, type EscalationRequest } from "./session/escalation.ts";
 export { pendingId, pendingView } from "./session/pending.ts";
 export { retainTail, safeTailStart, spanCost } from "./session/select.ts";
 export { projectSlice } from "./session/slice.ts";

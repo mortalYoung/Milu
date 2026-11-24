@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { join } from "node:path";
 
 import { type AgentHookContext, type AgentReminder, EVENTS, type Extension, expandHome, IHookService, reminderText } from "@milu/core";
 
@@ -49,7 +48,7 @@ async function contextChanged(context: AgentHookContext, skills: SkillsService, 
 		type: EVENTS.contextChanged,
 		data: {
 			workspace: workspace ? expandHome(workspace.path) : null,
-			storage: join(context.session.root, "storage"),
+			storage: expandHome(context.session.storage),
 			sandbox,
 			skills: (await skills.list(context.session)).map((skill) => ({ name: skill.name, description: skill.description, digest: digestOf(skill.name, skill.description) })),
 		},

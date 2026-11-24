@@ -22,13 +22,21 @@ export interface SessionListState {
 export class SessionListService implements Service {
 	readonly store = createStore<SessionListState>()(() => ({ rows: [], arrived: false, view: initialView() }));
 
+	private _quietUntil = 0;
+
 	constructor(@IConnection private readonly _connection: Connection) {}
 
 	apply(rows: readonly SessionRow[]): void {
 		this.store.setState((state) => ({ ...state, rows, arrived: true }), true);
 	}
 
-	async refresh(): Promise<string | null> {
+	drop(name: string): void {
+		this._quietUntil = Date.now() + 500;
+		this.store.setState((state) => ({ ...state, rows: state.rows.filter((row) => row.name !== name && row.forkedFrom !== name) }), true);
+	}
+
+	async refresh(force = false): Promise<string | null> {
+		if (!force && Date.now() < this._quietUntil) return null;
 		const result = await this._connection.request("sessions", {});
 		this.apply(result.sessions);
 		return result.selected;

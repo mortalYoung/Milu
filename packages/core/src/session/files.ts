@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -32,6 +33,8 @@ export interface SessionProfile {
 	createdAt: number;
 	forkedFrom?: string;
 	pinned?: boolean;
+	origin?: string;
+	scratch?: string;
 }
 
 export interface WorkspaceFacts {
@@ -56,6 +59,14 @@ async function writeJson(file: string, value: unknown): Promise<void> {
 export function tildify(path: string): string {
 	const home = homedir();
 	return path.startsWith(home) ? `~${path.slice(home.length)}` : path;
+}
+
+export function profileSyncOf(dir: string): SessionProfile | null {
+	try {
+		return JSON.parse(readFileSync(join(dir, PROFILE_FILE), "utf8")) as SessionProfile;
+	} catch {
+		return null;
+	}
 }
 
 export function profileOf(dir: string): Promise<SessionProfile | null> {
@@ -95,6 +106,15 @@ export async function clearForking(dir: string): Promise<void> {
 
 export function writeProfile(dir: string, profile: SessionProfile): Promise<void> {
 	return writeJson(join(dir, PROFILE_FILE), profile);
+}
+
+export async function writeOrigin(dir: string, origin: string | undefined, scratch: string | undefined): Promise<void> {
+	const profile = (await profileOf(dir)) ?? { name: basename(dir), createdAt: Date.now() };
+	await writeJson(join(dir, PROFILE_FILE), {
+		...profile,
+		...(origin === undefined ? {} : { origin }),
+		...(scratch === undefined ? {} : { scratch }),
+	});
 }
 
 export async function writePinned(dir: string, pinned: boolean): Promise<void> {

@@ -566,6 +566,21 @@ body.pane-dragging {
 	cursor: pointer;
 }
 
+.session-origin {
+	flex: none;
+	display: inline-flex;
+	align-items: center;
+	height: 15px;
+	padding: 0 3px;
+	border-radius: 3px;
+	background: var(--selected);
+	color: var(--muted);
+	font-family: var(--mono);
+	font-size: 9px;
+	line-height: 1;
+	letter-spacing: 0.02em;
+}
+
 .session-fork::before {
 	content: "";
 	position: absolute;

@@ -146,6 +146,7 @@ export interface SessionRow {
 	readonly startedAt?: number;
 	readonly forkedFrom?: string;
 	readonly pinned?: boolean;
+	readonly origin?: string | null;
 	readonly readAt?: number;
 	readonly running: boolean;
 	readonly compacting?: boolean;
@@ -389,6 +390,7 @@ export type LiveEvent =
 	| { readonly type: "settings" }
 	| { readonly type: "command"; readonly action: string }
 	| { readonly type: "file"; readonly path: string }
+	| { readonly type: "sessions" }
 	| { readonly type: "motion"; readonly window: string; readonly drag: "left" | "right" | null; readonly look: number | null };
 
 export interface BootMark {

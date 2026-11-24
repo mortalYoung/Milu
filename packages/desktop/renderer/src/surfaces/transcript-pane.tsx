@@ -20,10 +20,15 @@ const NO_ROWS: readonly DisplayRow[] = [];
 
 function EscalationCard(props: { item: ViewItem; host: Host; session: string }) {
 	const escalation = props.item.escalation;
+	const [sent, setSent] = useState<string | null>(null);
 	if (!escalation) return null;
+	const pending = escalation.status === "pending" && sent !== escalation.id;
 	const tone = escalation.status === "approved" ? " ok" : escalation.status === "rejected" ? " no" : " drp";
 	const answer = (approved: boolean): void => {
+		if (!pending) return;
+		setSent(escalation.id);
 		void props.host.actions.invoke("permission.answer", props.session, { escalationId: escalation.id, approved }).catch((error: unknown) => {
+			setSent(null);
 			props.host.transcript.fail(props.session, error instanceof Error ? error.message : String(error));
 		});
 	};
@@ -37,7 +42,7 @@ function EscalationCard(props: { item: ViewItem; host: Host; session: string }) 
 				</span>
 				{escalation.justification ? <span className="msg-escalation-just">justification: {escalation.justification}</span> : null}
 			</div>
-			{escalation.status === "pending" ? (
+			{pending ? (
 				<div className="msg-escalation-actions">
 					<button type="button" className="conv-dialog-button" onClick={() => answer(true)}>
 						Approve

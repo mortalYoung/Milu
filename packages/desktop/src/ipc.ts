@@ -93,6 +93,9 @@ export class IpcServer {
 		const subscriptions = [
 			this._backend.sessions.onEntry(({ session, entry }) => {
 				this._broadcast({ type: "entry", session, entry });
+				if (entry.entry.type === "custom" && (entry.entry.customType === "agent/start" || entry.entry.customType === "agent/end")) {
+					this._broadcast({ type: "live", event: { type: "status", session, running: entry.entry.customType === "agent/start" } });
+				}
 				if (entry.entry.type !== "custom" || entry.entry.customType !== "escalation/request" || this._looking(session)) return;
 				const request = entry.entry.data as { command?: unknown; from?: unknown; to?: unknown } | undefined;
 				this._notify({
@@ -103,7 +106,14 @@ export class IpcServer {
 				});
 			}),
 			this._backend.layout.onChange((state) => this._broadcast({ type: "live", event: { type: "layout", ...state } })),
-			this._backend.watch.onChange((path: string) => this._broadcast({ type: "live", event: { type: "file", path } })),
+			this._backend.watch.onChange((path: string) => {
+				if (path === this._backend.sessions.partnerRoot) {
+					this._broadcast({ type: "live", event: { type: "sessions" } });
+					return;
+				}
+				this._broadcast({ type: "live", event: { type: "file", path } });
+			}),
+			this._backend.watch.watch(this._backend.sessions.partnerRoot),
 			this._backend.sessions.onFork(({ session, error }) => this._broadcast({ type: "live", event: { type: "fork", session, ...(error === undefined ? {} : { error }) } })),
 			this._backend.sessions.onCompacting(({ session, compacting }) => this._broadcast({ type: "live", event: { type: "compacting", session, compacting } })),
 			this._backend.sessions.onLoopEvent(({ session, event }) => {

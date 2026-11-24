@@ -1,4 +1,6 @@
-import { cp, mkdir, rm } from "node:fs/promises";
+import { watch, type FSWatcher } from "node:fs";
+import { cp, mkdir, rename, rm, stat } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { createServiceId, DisposableStore, Emitter, type Event, type Service } from "@milu/di";
@@ -17,6 +19,7 @@ import {
 	type SessionValue,
 } from "../extensions/types.ts";
 import { clearForking, forkingOf, markForking, profileOf, type SessionProfile, writeProfile } from "../session/files.ts";
+import { newestLog, readEntriesFrom } from "../session/log.ts";
 import { Session } from "../session/session.ts";
 import type { AgentLoopEvent } from "./agent-loop.ts";
 import { IAttachmentsService } from "./attachments.ts";
@@ -58,6 +61,8 @@ export interface SessionCompactingEvent {
 	readonly compacting: boolean;
 }
 
+const TAIL_WINDOW = 64 * 1024;
+
 export class SessionService implements Service {
 	readonly onEntry: Event<SessionEntry>;
 	readonly onLoopEvent: Event<SessionLoopEvent>;
@@ -72,6 +77,10 @@ export class SessionService implements Service {
 	private readonly _forkEmitter = new Emitter<SessionForkEvent>();
 	private readonly _compactingEmitter = new Emitter<SessionCompactingEvent>();
 	private readonly _forks = new Map<string, Promise<void>>();
+	private readonly _cursors = new Map<string, { path: string; offset: number; seq: number }>();
+	private readonly _written = new Map<string, number>();
+	private readonly _timers = new Map<string, NodeJS.Timeout>();
+	private _follower: FSWatcher | null = null;
 
 	constructor(
 		@IExecutionService private readonly _executionService: ExecutionService,
@@ -93,10 +102,72 @@ export class SessionService implements Service {
 	async initialize(): Promise<void> {
 		this._partnerRoot = expandHome(this._settingsService.get().partner_profile_path);
 		await this._discardIncomplete();
+		await mkdir(this._partnerRoot, { recursive: true });
+		this._follow();
 	}
 
 	get partnerRoot(): string {
 		return this._partnerRoot;
+	}
+
+	private _follow(): void {
+		try {
+			this._follower = watch(this._partnerRoot, { recursive: true });
+		} catch (error) {
+			console.error(`sessions: cannot watch ${this._partnerRoot}:`, error);
+			this._follower = null;
+			return;
+		}
+		const onEvent = (_type: string, filename: string | Buffer | null): void => {
+			if (typeof filename !== "string" || !filename.endsWith(".jsonl")) return;
+			const name = filename.slice(0, filename.indexOf("/"));
+			if (name === "") return;
+			const pending = this._timers.get(name);
+			if (pending !== undefined) clearTimeout(pending);
+			this._timers.set(
+				name,
+				setTimeout(() => {
+					this._timers.delete(name);
+					void this._tail(name);
+				}, 120),
+			);
+		};
+		this._follower.on("change", onEvent);
+		this._follower.on("rename", onEvent);
+		this._follower.on("error", (error) => {
+			console.error(`sessions: cannot follow ${this._partnerRoot}:`, error);
+			this._stopFollowing();
+		});
+	}
+
+	private _stopFollowing(): void {
+		for (const timer of this._timers.values()) clearTimeout(timer);
+		this._timers.clear();
+		this._follower?.close();
+		this._follower = null;
+	}
+
+	// 别的进程（ACP）往日志里写时，把新增的条目转成 onEntry，界面才会跟着更新
+	private async _tail(name: string): Promise<void> {
+		const path = await newestLog(join(this._partnerRoot, name));
+		if (path === null) return;
+		const info = await stat(path).catch(() => null);
+		if (info === null) return;
+		const existing = this._cursors.get(name);
+		const written = this._written.get(name);
+		const fresh = existing === undefined || existing.path !== path;
+		// 见过本进程写过、还没建游标：说明日志里到那个 seq 都是我们自己发的，直接从末尾接着看。
+		// 否则按外部写入处理，从末尾窗口读起，免得漏掉刚写进来的条目。
+		const cursor = fresh ? { path, offset: written !== undefined ? info.size : Math.max(0, info.size - TAIL_WINDOW), seq: written ?? -1 } : existing;
+		this._written.delete(name);
+		this._cursors.set(name, cursor);
+		const { entries, offset } = await readEntriesFrom(path, cursor.offset);
+		cursor.offset = offset;
+		for (const entry of entries) {
+			if (entry.seq <= cursor.seq) continue;
+			cursor.seq = entry.seq;
+			this._entryEmitter.fire({ session: name, entry: { seq: entry.seq, entry } });
+		}
 	}
 	// ——— the chats on disk ———
 
@@ -125,7 +196,14 @@ export class SessionService implements Service {
 		this._sessions.set(name, session);
 
 		const relays = new DisposableStore();
-		relays.add(session.onEntry((entry) => this._entryEmitter.fire({ session: name, entry })));
+		relays.add(
+			session.onEntry((entry) => {
+				const cursor = this._cursors.get(name);
+				if (cursor === undefined) this._written.set(name, entry.seq);
+				else if (entry.seq > cursor.seq) cursor.seq = entry.seq;
+				this._entryEmitter.fire({ session: name, entry });
+			}),
+		);
 		relays.add(session.onLoopEvent((event) => this._loopEmitter.fire({ session: name, event })));
 		relays.add(session.onCompacting((compacting) => this._compactingEmitter.fire({ session: name, compacting })));
 		this._relays.set(name, relays);
@@ -217,6 +295,23 @@ export class SessionService implements Service {
 		for (const session of this._sessions.values()) await session.close();
 	}
 
+	async remove(name: string): Promise<void> {
+		if (this.running(name)) throw new Error(`"${name}" is still running; stop it before deleting`);
+		const dir = join(this._partnerRoot, name);
+		const facts = await stat(dir).catch(() => null);
+		if (facts === null) throw new Error(`no session named "${name}"`);
+		await this.close(name);
+		const trash = join(homedir(), ".Trash");
+		await mkdir(trash, { recursive: true });
+		const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+		let target = join(trash, `milu-${name}-${stamp}`);
+		for (let index = 2; ; index += 1) {
+			if ((await stat(target).catch(() => null)) === null) break;
+			target = join(trash, `milu-${name}-${stamp}-${index}`);
+		}
+		await rename(dir, target);
+	}
+
 	async close(name: string): Promise<void> {
 		const session = this._sessions.get(name);
 		if (!session) return;
@@ -227,6 +322,7 @@ export class SessionService implements Service {
 	}
 
 	dispose(): void {
+		this._stopFollowing();
 		this._entryEmitter.dispose();
 		this._loopEmitter.dispose();
 		this._forkEmitter.dispose();

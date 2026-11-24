@@ -1,22 +1,10 @@
-import type { Session } from "@milu/core";
+import type { EscalationRequest, Session } from "@milu/core";
 import { EVENTS } from "@milu/core";
 import type { SeqEntry } from "@milu/protocol";
 
 import type { SandboxMode } from "./types.ts";
 
-export interface EscalationRequest {
-	readonly escalationId: string;
-	readonly toolCallId: string;
-	readonly toolName: string;
-	readonly params: unknown;
-	readonly command: string;
-	readonly from: SandboxMode;
-	readonly to: SandboxMode;
-	readonly justification: string;
-	readonly timestamp: number;
-}
-
-export type EscalationDecision = "approved" | "rejected" | "dropped";
+export type { EscalationDecision, EscalationRequest } from "@milu/core";
 
 export interface EscalationState {
 	readonly requests: readonly EscalationRequest[];

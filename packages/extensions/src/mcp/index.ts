@@ -1,5 +1,6 @@
 import {
 	type AgentHookContext,
+	type AgentTool,
 	EVENTS,
 	type ExecutionEnv,
 	type Extension,
@@ -39,6 +40,35 @@ const mcpExtension: Extension = {
 	activate(context) {
 		const mcp = context.get(IMcpService);
 		const sessions = context.get(ISessionService);
+		const tools = context.get(IToolService);
+
+		context.disposables.add(
+			tools.contribute({
+				id: "mcp",
+				tools: async (session) => {
+					const out: AgentTool[] = [];
+					const taken = new Set<string>();
+					for (const server of await mcp.list(session)) {
+						for (const tool of server.tools) {
+							const name = taken.has(tool.name) ? `${server.name}_${tool.name}` : tool.name;
+							if (taken.has(name)) continue;
+							taken.add(name);
+							out.push({
+								name,
+								label: name,
+								description: tool.description ?? `${server.name}: ${tool.name}`,
+								parameters: (tool.inputSchema ?? { type: "object", properties: {} }) as AgentTool["parameters"],
+								execute: async (_toolCallId: string, params: unknown) => {
+									const result = await mcp.call(session, server.name, tool.name, params);
+									return { content: [{ type: "text" as const, text: result.content }], details: { server: server.name, tool: tool.name, isError: result.isError } };
+								},
+							});
+						}
+					}
+					return out;
+				},
+			}),
+		);
 
 		context.actions.register({
 			id: "mcp.servers",

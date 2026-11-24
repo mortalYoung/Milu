@@ -75,10 +75,19 @@ export class McpManager {
 		await this._started(name);
 		if (session.tools.length === 0) {
 			const listed = await session.client!.listTools();
-			session.tools = listed.tools.map((tool) => ({ name: tool.name, ...(tool.description ? { description: tool.description } : {}) }));
+			session.tools = listed.tools.map((tool) => ({
+				name: tool.name,
+				...(tool.description ? { description: tool.description } : {}),
+				...(tool.inputSchema === undefined ? {} : { inputSchema: tool.inputSchema }),
+			}));
 		}
 		this._touch(session);
 		return session.tools;
+	}
+
+	add(config: McpServerConfig): void {
+		if (this._sessions.has(config.name)) return;
+		this._sessions.set(config.name, { config, client: null, tools: [], state: "stopped" });
 	}
 
 	statuses(): McpServerStatus[] {

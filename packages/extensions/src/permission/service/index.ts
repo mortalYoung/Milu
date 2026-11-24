@@ -6,6 +6,7 @@ import {
 	type ExecutionEnv,
 	EVENTS,
 	expandHome,
+	settleEscalation,
 	type Session,
 	type SettingsPoint,
 	type SettingsService,
@@ -95,7 +96,7 @@ export class PermissionService implements Service {
 	}
 
 	async env(session: Session, workspace: string | null, mode?: SandboxMode): Promise<ExecutionEnv> {
-		const storage = join(session.root, "storage");
+		const storage = expandHome(session.storage);
 		await mkdir(storage, { recursive: true });
 		const saved = await session.sandbox();
 		const cache = expandHome(saved.cache ?? PM_CACHE);
@@ -144,7 +145,7 @@ export class PermissionService implements Service {
 			const decision = await this._decisionOf(call.session, existing.escalationId);
 			if (!decision) return stopResult();
 			if (!decision.approved) return decision.dropped ? droppedResult(existing) : rejectedResult(existing);
-			return next(call, await this.env(call.session, call.workspace, existing.to));
+			return next(call, await this.env(call.session, call.workspace, isMode(existing.to) ? existing.to : undefined));
 		}
 
 		const outcome = await this._request(call, requested, justification ?? "");
@@ -160,18 +161,7 @@ export class PermissionService implements Service {
 	}
 
 	async settle(session: Session, request: EscalationRequest, decision: EscalationDecision, drive = true): Promise<boolean> {
-		const resumed = await session.resume(request.toolCallId, async () => {
-			await session.record(EVENTS.escalationDecision, {
-				escalationId: request.escalationId,
-				approved: decision === "approved",
-				...(decision === "dropped" ? { dropped: true } : {}),
-				timestamp: Date.now(),
-			});
-			return this._toolService.run(session, { toolCallId: request.toolCallId, name: request.toolName, params: request.params });
-		});
-		if (!resumed) await session.record(EVENTS.escalationDecision, { escalationId: request.escalationId, approved: false, dropped: true, timestamp: Date.now() });
-		if (resumed && drive) void session.continue();
-		return resumed;
+		return settleEscalation(session, this._toolService, request, decision, drive);
 	}
 
 	async requestOf(session: Session, escalationId: string): Promise<EscalationRequest | null> {
