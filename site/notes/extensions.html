@@ -6,7 +6,7 @@
 		<title>功能都长在扩展上 — Milu 设计笔记</title>
 		<meta
 			name="description"
-			content="一个扩展是一份声明加一个模块。Milu 读声明装界面，按来源决定它能碰什么：内置的和内核同进程，磁盘的各占一个 utility process，只拿到一组能力动词。"
+			content="从 VS Code 的进程模型说起：Milu 把扩展的生命挂在应用生命周期上，Starting 里发现并登记，Restored 之后逐个激活，贡献点决定它挂在哪，磁盘扩展各占一个 utility process 兜住风险。"
 		/>
 		<link rel="icon" href="../pixel_milu.png" />
 		<link rel="stylesheet" href="../style.css" />
@@ -68,8 +68,8 @@
 						<span>中文</span>
 						<span>Milu 0.2.2</span>
 						<span>2026-11-24</span>
-						<span>约 2,200 字</span>
-						<span>约 7 分钟</span>
+						<span>约 2,300 字</span>
+						<span>约 8 分钟</span>
 					</p>
 				</header>
 
