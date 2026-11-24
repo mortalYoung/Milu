@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="zh-CN">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>功能都长在扩展上 — Milu 设计笔记</title>
+		<meta
+			name="description"
+			content="一个扩展是一份声明加一个模块。Milu 读声明装界面，按来源决定它能碰什么：内置的和内核同进程，磁盘的各占一个 utility process，只拿到一组能力动词。"
+		/>
+		<link rel="icon" href="../pixel_milu.png" />
+		<link rel="stylesheet" href="../style.css" />
+		<link rel="stylesheet" href="../notes.css" />
+	</head>
+
+	<body>
+		<svg class="sprite" aria-hidden="true" focusable="false">
+			<symbol id="w-mark" viewBox="45 40 210 72">
+				<path
+					d="M107.83 44.11c2.57 1.22.97 8.98.61 11.41-1.36 9.26-2.17 18.58-3.61 27.83-.36 2.36-2.56 7.8-.33 9.29 8.95-11.03 15.74-24.62 22.71-36.93 1.33-2.35 5.61-12.3 8.28-10.21.44 4.1-3.07 12.38-4.27 16.59-2.4 8.4-8.58 31.19-6.78 39.02.58 2.57 2.25 3.26 3.28 5.39-.41.44-.81.88-1.22 1.32-4.35-.92-4.66-6-4.93-9.65-.71-9.75 2.86-18.92 4.42-28.34.4-2.44 3.07-7.2 1.51-9.31-6.97 10.04-12.8 21.12-19.33 31.47-1.79 2.84-5.19 9.86-8.67 10.54-2.15-2.13.2-7.28.49-10.03.92-8.7 3.33-17.25 4.04-26 .21-2.56 1.92-6.67.47-8.94-2.63 3.8-3.73 8.9-5.71 13.06-6.11 12.89-19.33 37.12-35.96 37.37-1.95.04-3.51-.32-5.31-1.02-11.28-4.36-1.99-16.66 6.31-17.99 2.42-.39 5.45-2.06 6.98.52-2.42 3.74-12.31.79-15.11 8.68-.53 1.49-.3 3.27.74 4.54 6.89 8.46 21.82-5.27 26.35-10.76 8.77-10.65 13.09-23.26 18.86-35.49 1.19-2.51 3.57-12.01 6.18-12.36Zm94.67 46.05c.46.45.92.89 1.38 1.34-.66 2.88-4.81 7.38-2.38 10.22 4.51-2.02 10.06-10.98 12.32-11.55 2.4.8.6 3.79.35 5.49-.54 3.67.05 6.5 3.65 8.05 6.02 2.62 17.08-4.38 21.68-8.03 1.75-1.39 3.75-4.45 6-4.63 3.1 2.91-8.98 10.53-11.47 11.8-5.74 2.9-13.82 6.66-19.72 2-2.04-1.6-2.12-4.01-3.81-5.71-2.74.51-9.52 9.61-12.34 3.55-.7-1.5.32-3.43-.66-4.69-6.79 5.48-18.58 13.02-27.1 6.77-3.49-2.56-3.53-6.63-5.9-9.7-7.41 6.45-17.36 13.46-27.61 9.84-4.14-1.47-6.21-5.13-5.82-9.41.18-1.98 1.12-6.47 3.76-5.48 1.81 3.04-3.23 7.3.34 10.65 6.63 6.23 17.55-.09 23.22-4.45 1.52-1.17 4.86-2.89 5.53-4.78.83-2.34.09-6.1.2-8.61.2-4.35.85-9.27 2.08-13.45 1.07-3.68 3.24-11.81 8.3-11.38 5.21.45 3.14 7.77 2.61 10.86-1.07 6.22-3.86 12.09-6.26 17.85-.83 1.98-2.4 4.01-2.81 6.13-.41 2.13.21 4.21 1.19 6.08 5.41 10.34 18.8 2.92 25.36-2.17 2.56-1.99 5.12-5.18 7.91-6.59Zm-29-29.51c-4.49 2.63-6.31 14.98-6.76 19.85-.21 2.22-.65 5.19.76 7.08 3.84-5.33 5.38-13.29 6.65-19.63.47-2.36 2-5.89-.65-7.3ZM136.05 82.5c.75 2.36-2.57 4.57-4.69 4.33-1.28-2.21 2.8-5.58 4.69-4.33Z"
+					fill="currentColor"
+					fill-rule="evenodd"
+					stroke="currentColor"
+					stroke-linejoin="round"
+					stroke-width="0.25"
+				/>
+			</symbol>
+			<symbol id="i-half" viewBox="0 0 24 24">
+				<circle cx="12" cy="12" r="8" />
+				<path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" />
+			</symbol>
+			<symbol id="i-arrow-up" viewBox="0 0 24 24">
+				<path d="M12 19V5" />
+				<path d="m5 12 7-7 7 7" />
+			</symbol>
+		</svg>
+
+		<header class="nav">
+			<div class="wrap nav-inner">
+				<a class="brand" href="../index.html" aria-label="Milu — 返回首页">
+					<img src="../pixel_milu.png" alt="" width="24" height="24" />
+					<svg class="wordmark" viewBox="0 0 210 72" role="img" aria-label="Milu">
+						<use href="#w-mark" />
+					</svg>
+				</a>
+				<nav class="nav-links" aria-label="Site">
+					<a href="../index.html#demo">Demo</a>
+					<a href="../index.html#features">Features</a>
+					<a href="../index.html#get">Download</a>
+					<a href="index.html">Notes</a>
+					<a class="nav-github" href="https://github.com/mortalYoung/Milu" target="_blank" rel="noreferrer">GitHub <span class="arrow">↗</span></a>
+					<button class="theme-btn" type="button" aria-label="切换明暗主题" title="Light / dark">
+						<svg class="ico">
+							<use href="#i-half" />
+						</svg>
+					</button>
+				</nav>
+			</div>
+		</header>
+
+		<main id="top">
+			<div class="note-wrap">
+				<header class="note-head">
+					<p class="eyebrow"><span class="pulse"></span>Notes · 03 · Extensions</p>
+					<h1>功能都长在扩展上。</h1>
+					<p class="note-lede">内核只留会话、日志和模型，其余功能都由扩展补上。每个扩展先说清自己是什么、往哪挂，Milu 再按来源决定它能碰什么。</p>
+					<p class="note-meta">
+						<span>中文</span>
+						<span>Milu 0.2.2</span>
+						<span>2026-11-24</span>
+						<span>约 2,200 字</span>
+						<span>约 7 分钟</span>
+					</p>
+				</header>
+
+				<div class="note-grid">
+					<aside class="toc" aria-label="目录">
+						<p class="toc-title">目录</p>
+						<ol>
+							<li><a href="#what">扩展系统是什么</a></li>
+							<li>
+								<a href="#how">怎么设计</a>
+								<ol>
+									<li><a href="#load">加载</a></li>
+									<li><a href="#activate">激活</a></li>
+									<li><a href="#contributions">Contributions</a></li>
+									<li><a href="#faults">出错的时候</a></li>
+								</ol>
+							</li>
+						</ol>
+					</aside>
+
+					<article class="prose">
+						<p class="kicker" id="what">01 · 定义</p>
+						<h2>扩展系统是什么</h2>
+						<p>扩展系统里，VS Code 那套最出名。</p>
+						<p>它的界面和扩展在两个进程里：编辑器界面跑在渲染进程（workbench），扩展跑在 extension host。</p>
+						<ul>
+							<li>扩展把 extension host 拖垮，窗口和编辑器还在，重启就能接着用。</li>
+							<li>扩展读大文件、建索引，堵的是宿主的线程，界面不跟着卡。</li>
+						</ul>
+						<p>
+							两侧靠一条 RPC 通道说话。扩展拿到的 <code>vscode</code> 模块是这条通道的客户端，调用先落到 workbench，再由 workbench
+							决定哪些转给主进程；文件读写、窗口控制最后发生在主进程那一侧，扩展碰不到。
+						</p>
+						<p>按这套设计，<code>vscode</code> 给的 API 是收着的：稳定的才允许发布，实验性的只能本地调试。管住扩展的是另外三样东西：进程分隔、API 契约、workspace trust。</p>
+						<p class="kicker" id="how">02 · 设计</p>
+						<h2>怎么设计</h2>
+						<p>设计插件系统，第一步是把应用的生命周期划清楚：</p>
+						<ol>
+							<li><code>Starting</code>：启动。注册服务、初始化容器、准备扩展环境。</li>
+							<li><code>Restored</code>：恢复。先把上次的对话读回来，让用户看到之前的会话。</li>
+							<li><code>Ready</code>：就绪。进程起来了、扩展激活完、工具和命令都注册好，从这里开始才能正常交互。</li>
+							<li><code>Dispose</code>：收场。销毁实例、释放资源、关掉子进程。</li>
+						</ol>
+						<p>有了这条线，加载、激活、卸载才各有落点。</p>
+						<h3 id="load">2.1 加载</h3>
+						<p>加载发生在 <code>Starting</code>，做两件事：认出有哪些扩展，把它们登记到点位上。</p>
+						<p>Milu 的扩展分两类。内置的随应用发布，磁盘的由用户装在指定目录。发现就是扫这两类，收集基本信息：id、版本、部件、服务、窗口。</p>
+						<p>这些信息不参与运行，只决定后面怎么处理这个扩展。</p>
+						<p>登记把发现到的信息挂到 Milu 的点位上。点位和相关顺序是这样：</p>
+						<ol>
+							<li>点位（Contribution Points）：扩展能挂东西的位置，类似插件系统的钩子或插槽，靠声明式配置扩展应用。</li>
+							<li>声明时机：容器初始化时把运行时点位一次声明完，等扩展加载和登记时，位置已经在了。</li>
+							<li>扩展登记：点位就绪后把信息挂上去，每条给一个 disposable，卸载时能精确摘掉。</li>
+						</ol>
+						<p>这里有个约束：还在 <code>Starting</code>，一行扩展代码都没跑。点位只能靠声明式配置，没法依赖扩展运行时的行为。</p>
+						<p>所以点位的声明是静态的，得在扩展跑起来之前定死。这样在加载和登记阶段，Milu 手上就有一张完整的挂载点清单，处理贡献时不必回头问扩展。</p>
+						<h3 id="activate">2.2 激活</h3>
+						<p>进 <code>Restored</code> 之后，Milu 逐个激活扩展。</p>
+						<p>每个扩展配一个 <code>context</code>。内置的直接调 <code>activate(context)</code>；磁盘的先 fork 一个子进程跑它的代码，把执行环境隔开，出问题也只到那一层。</p>
+						<p>fork 之前，Milu 先把通道搭好：消息接口和方法表。子进程起来之后，通过这条通道发激活请求，收回注册的工具、命令、钩子、设置。</p>
+						<p>两种扩展待遇不同，理由只有一个：内置是随应用发布的，按可信代码对待；磁盘来自外部，行为不确定，用子进程把风险隔开。</p>
+						<p class="statement">激活方式看的是扩展来源，不是它写了什么。</p>
+						<h3 id="contributions">2.3 贡献点</h3>
+						<p>贡献点（Contribution Points）是 Milu 提供的固定挂载点，扩展往这些位置塞条目，功能就长出来了。</p>
+						<p>粗分四类：菜单项、输入框两侧的部件、系统提示词、通用槽位。每一类有对应的点位，条目的形状也各不相同。</p>
+						<p>界面上能挂东西的位置都能这么接。扩展只往预定义的点位里塞条目，不改核心逻辑，所以功能可以一直加，核心不用跟着动。</p>
+						<p>
+							贡献点不是运行时数据。Milu 拿到的是一条 <code>{ id, component, data, order }</code>，<code>component</code> 或者
+							<code>widget</code> 只是个名字，它拿这个名字去注册表里找已经加载好的部件。
+						</p>
+						<h3 id="faults">2.4 出错的时候</h3>
+						<p>运行扩展系统，除了保证稳定，还要保证两件事：隔离性和可观测性。隔离决定一处坏会不会扩散，可观测性决定坏了以后能不能查。</p>
+						<p>
+							隔离性只对磁盘扩展成立。每个磁盘扩展各占一个 utility process，彼此不相干，也和 Milu 分开；内置扩展和 Milu
+							同进程，不做隔离，因为它们是随应用一起发布的，按可信代码对待。这里换来的是稳定性和可控性，不是安全边界：子进程本身是完整的
+							Node，读写文件、起子进程都做得到，真正的限制在于它只能通过那几个能力动词跟 Milu 说话。
+						</p>
+						<p>
+							加载阶段先挡一层。Milu 校验扩展的元数据：<code>apiVersion</code> 必须是 1，部件类型、服务命名空间、窗口路径、id
+							是否重复也一并检查。校验不过就整条拒绝，原因写进失败列表；磁盘来源逐条拒绝，坏一个不耽误其余，内置来源直接抛出去，让构建问题在开发阶段就暴露。
+						</p>
+						<p>
+							激活阶段坏在代码里。<code>activate</code> 抛错、这台机器上根本没有可用的扩展宿主、两个扩展声明了同一个设置键，Milu
+							的处理都一样：捕获、记一条失败、把这个扩展整批卸掉，其余扩展继续激活。
+						</p>
+						<p>
+							运行阶段坏在进程和数据上。子进程退出（崩溃、被终止都算），Milu 先撤掉它这一轮注册的内容，再重试，最多三次，间隔 300ms
+							乘已试次数；三次都起不来，记一条失败并彻底卸载，工具表和命令表里不残留它的东西。跨边界的数据也有兜底：返回值过不了
+							<code>structuredClone</code> 会在回复发出前被拦下；服务没声明、方法不在方法表里、拥有者没在跑，三种情况各有明确报错。界面这一侧，部件抛错由外层错误边界渲染一行「扩展
+							id failed: 原因」，贡献字段求值抛错只丢那一条，静态资源跳出扩展根目录直接 404。
+						</p>
+						<p>
+							可观测性目前只有两样东西，但够查：<code>extensions.status()</code> 给出每个扩展的 id、来源、apiVersion 和它实现了哪些服务；失败列表给出 ref
+							和错误原文，两者都在设置里看得到。没有的是耗时和运行指标，现在也没有激活超时：子进程起得来、<code>activate</code> 一直不返回，Milu 会一直等下去，<code>Ready</code>
+							也就不落定。这是眼下明确的缺口。
+						</p>
+
+						<p class="note-end">
+							<span>Notes · 03 · Extensions</span>
+							<span><a href="compact.html">← Notes · 02 · Compact</a> · <a href="../index.html">返回 Milu</a></span>
+						</p>
+					</article>
+				</div>
+			</div>
+		</main>
+		<footer class="foot">
+			<div class="wrap">
+				<div class="foot-grid">
+					<div>
+						<a class="foot-brand" href="../index.html" aria-label="Milu — 返回首页">
+							<img src="../pixel_milu.png" alt="" width="22" height="22" />
+							<svg class="wordmark" viewBox="0 0 210 72" role="img" aria-label="Milu">
+								<use href="#w-mark" />
+							</svg>
+						</a>
+						<p class="foot-tag">一个留在你机器上的 agent harness。</p>
+					</div>
+					<nav class="foot-links" aria-label="Elsewhere">
+						<a href="https://github.com/mortalYoung/Milu" target="_blank" rel="noreferrer">GitHub</a>
+						<a href="https://github.com/mortalYoung/Milu/issues" target="_blank" rel="noreferrer">Issues</a>
+						<a href="index.html">设计笔记</a>
+					</nav>
+				</div>
+				<p class="foot-note">
+					<span>Built on pi, Electron and Shiki. © 2026 Milu.</span>
+					<span>No account · no server · no telemetry</span>
+				</p>
+			</div>
+		</footer>
+
+		<a class="to-top" href="#top" aria-label="回到顶部" title="回到顶部">
+			<svg class="ico">
+				<use href="#i-arrow-up" />
+			</svg>
+		</a>
+
+		<script type="module" src="../notes.js"></script>
+	</body>
+</html>
