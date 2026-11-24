@@ -114,6 +114,13 @@
 							<li><code>Dispose</code>：收场。销毁实例、释放资源、关掉子进程。</li>
 						</ol>
 						<p>有了这条线，加载、激活、卸载才各有落点。</p>
+						<figure class="fig-paper">
+							<img
+								src="../figures/extensions-lifecycle.svg"
+								alt="一条时间轴，四个阶段：Starting、Restored、Ready、Dispose；加载在 Starting 内，激活从它的末尾起、跨过 Restored 到 Ready，Ready 之后是能交互的一段"
+							/>
+							<figcaption>图 1：<code>Starting</code>、<code>Restored</code>、<code>Ready</code>、<code>Dispose</code> 四个阶段，以及加载与激活各自占的那一段。</figcaption>
+						</figure>
 						<h3 id="load">2.1 加载</h3>
 						<p>加载发生在 <code>Starting</code>，做两件事：认出有哪些扩展，把它们登记到点位上。</p>
 						<p>Milu 的扩展分两类。内置的随应用发布，磁盘的由用户装在指定目录。发现就是扫这两类，收集基本信息：id、版本、部件、服务、窗口。</p>
@@ -131,6 +138,13 @@
 						<p>每个扩展配一个 <code>context</code>。内置的直接调 <code>activate(context)</code>；磁盘的先 fork 一个子进程跑它的代码，把执行环境隔开，出问题也只到那一层。</p>
 						<p>fork 之前，Milu 先把通道搭好：消息接口和方法表。子进程起来之后，通过这条通道发激活请求，收回注册的工具、命令、钩子、设置。</p>
 						<p>两种扩展待遇不同，理由只有一个：内置是随应用发布的，按可信代码对待；磁盘来自外部，行为不确定，用子进程把风险隔开。</p>
+						<figure class="fig-paper">
+							<img
+								src="../figures/extensions-activate.svg"
+								alt="左侧是 Milu，右侧两条道：上道内置扩展用一条箭头标 activate(context)，下道磁盘扩展用 fork、spawn、activate 到达子进程，再由一条回路把注册交回 Milu"
+							/>
+							<figcaption>图 2：两种装载的激活路径。上道一次同进程调用，下道 fork 之后靠消息往返，回程是注册。</figcaption>
+						</figure>
 						<p class="statement">激活方式看的是扩展来源，不是它写了什么。</p>
 						<h3 id="contributions">2.3 贡献点</h3>
 						<p>贡献点（Contribution Points）是 Milu 提供的固定挂载点，扩展往这些位置塞条目，功能就长出来了。</p>

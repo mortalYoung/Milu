@@ -6,7 +6,7 @@
 		<title>上下文不该等到装满才整理 — Milu 设计笔记</title>
 		<meta
 			name="description"
-			content="窗口是固定的，会话却一直继续。Compact 把装不下的那一段换成一条检查点，上下文由检查点加尾巴投影出来，原文留在日志里。讲清尾巴预算、触发线，以及三步折叠。"
+			content="窗口是固定的，会话却一直继续。Compact 把装不下的那一段折叠成摘要：先留一段尾巴，再定折叠区间，最后用记忆里的条目拼成摘要。讲清尾巴预算 ρ、触发线 θ，以及为什么摘要不自己写。"
 		/>
 		<link rel="icon" href="../pixel_milu.png" />
 		<link rel="stylesheet" href="../style.css" />
