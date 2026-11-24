@@ -23,7 +23,7 @@ const MIN_SIDE = 64;
 const MAX_SIDE = 512;
 const INSET = 24;
 const FILE = "floating.json";
-const TOP_LEVEL = "screen-saver";
+const TOP_LEVEL = "floating";
 const DRAG_MS = 220;
 const LOOK_MS = 200;
 const LOOK_NEAR = 40;
@@ -127,7 +127,7 @@ export class FloatingWindows implements WindowHost {
 			},
 		});
 		window.setAlwaysOnTop(true, TOP_LEVEL);
-		window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+		window.setVisibleOnAllWorkspaces(true);
 		window.setIgnoreMouseEvents(descriptor.clickThrough !== false, { forward: true });
 		if (descriptor.movable === false) window.setMovable(false);
 		window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
