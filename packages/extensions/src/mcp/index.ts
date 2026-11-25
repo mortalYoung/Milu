@@ -58,8 +58,8 @@ const mcpExtension: Extension = {
 								label: name,
 								description: tool.description ?? `${server.name}: ${tool.name}`,
 								parameters: (tool.inputSchema ?? { type: "object", properties: {} }) as AgentTool["parameters"],
-								execute: async (_toolCallId: string, params: unknown) => {
-									const result = await mcp.call(session, server.name, tool.name, params);
+								execute: async (_toolCallId: string, params: unknown, signal?: AbortSignal) => {
+									const result = await mcp.call(session, server.name, tool.name, params, signal);
 									return { content: [{ type: "text" as const, text: result.content }], details: { server: server.name, tool: tool.name, isError: result.isError } };
 								},
 							});

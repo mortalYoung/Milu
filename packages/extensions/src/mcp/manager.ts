@@ -50,6 +50,9 @@ interface Session {
 	idleTimer?: ReturnType<typeof setTimeout>;
 }
 
+const keyOf = (name: string, owner: string): string => (owner === "" ? name : `${owner}\u0000${name}`);
+const nameOf = (key: string): string => (key.includes("\u0000") ? key.slice(key.indexOf("\u0000") + 1) : key);
+
 export class McpManager {
 	private _sessions = new Map<string, Session>();
 	private _idleTimeoutMs = DEFAULT_IDLE_TTL_MS;
@@ -70,9 +73,9 @@ export class McpManager {
 		);
 	}
 
-	async tools(name: string): Promise<readonly McpToolSummary[]> {
-		const session = this._session(name);
-		await this._started(name);
+	async tools(name: string, owner = ""): Promise<readonly McpToolSummary[]> {
+		const session = this._session(this._keyFor(name, owner));
+		await this._started(this._keyFor(name, owner));
 		if (session.tools.length === 0) {
 			const listed = await session.client!.listTools();
 			session.tools = listed.tools.map((tool) => ({
@@ -85,13 +88,15 @@ export class McpManager {
 		return session.tools;
 	}
 
-	add(config: McpServerConfig): void {
-		if (this._sessions.has(config.name)) return;
-		this._sessions.set(config.name, { config, client: null, tools: [], state: "stopped" });
+	add(config: McpServerConfig, owner = ""): void {
+		const key = keyOf(config.name, owner);
+		if (this._sessions.has(key)) return;
+		this._sessions.set(key, { config, client: null, tools: [], state: "stopped" });
 	}
 
-	statuses(): McpServerStatus[] {
-		return [...this._sessions.values()].map((session) => ({
+	statuses(owner = ""): McpServerStatus[] {
+		const mine = [...this._sessions.entries()].filter(([key]) => key === nameOf(key) || key.startsWith(`${owner}\u0000`));
+		return mine.map(([, session]) => ({
 			name: session.config.name,
 			lifecycle: session.config.lifecycle ?? this._defaultLifecycle,
 			state: session.state,
@@ -100,12 +105,13 @@ export class McpManager {
 		}));
 	}
 
-	async resolve(granted: readonly string[]): Promise<readonly McpServerTools[]> {
+	async resolve(granted: readonly string[], owner = ""): Promise<readonly McpServerTools[]> {
 		const resolved: McpServerTools[] = [];
 		for (const name of granted) {
-			if (!this._sessions.has(name)) continue;
+			const key = this._keyFor(name, owner);
+			if (!this._sessions.has(key)) continue;
 			try {
-				resolved.push({ name, tools: await this.tools(name) });
+				resolved.push({ name, tools: await this.tools(name, owner) });
 			} catch (error) {
 				resolved.push({ name, tools: [], error: error instanceof Error ? error.message : String(error) });
 			}
@@ -113,9 +119,9 @@ export class McpManager {
 		return resolved;
 	}
 
-	async call(name: string, tool: string, args: unknown, signal?: AbortSignal): Promise<{ content: string; isError: boolean }> {
-		const session = this._session(name);
-		await this._started(name);
+	async call(name: string, tool: string, args: unknown, signal?: AbortSignal, owner = ""): Promise<{ content: string; isError: boolean }> {
+		const session = this._session(this._keyFor(name, owner));
+		await this._started(this._keyFor(name, owner));
 		const result = (await session.client!.callTool({ name: tool, arguments: (args ?? {}) as Record<string, unknown> }, undefined, signal ? { signal } : {})) as {
 			content?: Array<{ text?: string; resource?: { text?: string } }>;
 			isError?: boolean;
@@ -136,6 +142,11 @@ export class McpManager {
 		const sessions = [...this._sessions.values()];
 		this._sessions.clear();
 		await Promise.allSettled(sessions.map((session) => this._close(session)));
+	}
+
+	private _keyFor(name: string, owner: string): string {
+		const mine = keyOf(name, owner);
+		return this._sessions.has(mine) ? mine : keyOf(name, "");
 	}
 
 	private _session(name: string): Session {

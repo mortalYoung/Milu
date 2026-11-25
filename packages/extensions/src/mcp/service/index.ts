@@ -100,12 +100,12 @@ export class McpService implements Service {
 	private async _authorized(session: Session): Promise<readonly string[]> {
 		const granted = await grantedServers(session);
 		const attached = await sessionServers(session);
-		for (const server of attached) this._manager.add(server);
+		for (const server of attached) this._manager.add(server, session.name);
 		return [...new Set([...granted, ...attached.map((server) => server.name)])];
 	}
 
 	async list(session: Session): Promise<{ name: string; tools: { name: string; description?: string; inputSchema?: unknown }[]; error?: string }[]> {
-		return [...(await this._manager.resolve(await this._authorized(session)))].map((server) => ({
+		return [...(await this._manager.resolve(await this._authorized(session), session.name))].map((server) => ({
 			name: server.name,
 			tools: server.tools.map((tool) => ({
 				name: tool.name,
@@ -137,7 +137,7 @@ export class McpService implements Service {
 	async call(session: Session, server: string, tool: string, args: unknown, signal?: AbortSignal): Promise<{ content: string; isError: boolean }> {
 		const granted = await this._authorized(session);
 		if (!granted.includes(server)) throw new Error(`MCP server "${server}" is not authorized for this session`);
-		return this._manager.call(server, tool, args, signal);
+		return this._manager.call(server, tool, args, signal, session.name);
 	}
 
 	dispose(): void {
