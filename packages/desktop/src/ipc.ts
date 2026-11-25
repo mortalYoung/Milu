@@ -323,6 +323,7 @@ export class IpcServer {
 		const name = this._backend.selection.selected;
 		if (!name) throw new Error("no session is selected");
 		const session = await this._backend.sessions.ensure(name);
+		if (await session.external()) throw new Error(`"${name}" is driven by another client; fork it to continue here`);
 		await this._backend.extensions.settled();
 		await session.send(params.text, params.images ?? []);
 		return {};

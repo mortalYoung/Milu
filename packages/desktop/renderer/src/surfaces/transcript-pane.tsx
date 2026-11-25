@@ -21,7 +21,8 @@ const NO_ROWS: readonly DisplayRow[] = [];
 function EscalationCard(props: { item: ViewItem; host: Host; session: string }) {
 	const escalation = props.item.escalation;
 	const [sent, setSent] = useState<string | null>(null);
-	if (!escalation) return null;
+	const external = useStore(props.host.sessions.store, (state) => state.rows.find((row) => row.name === props.session)?.origin != null);
+	if (!escalation || external) return null;
 	const pending = escalation.status === "pending" && sent !== escalation.id;
 	const tone = escalation.status === "approved" ? " ok" : escalation.status === "rejected" ? " no" : " drp";
 	const answer = (approved: boolean): void => {

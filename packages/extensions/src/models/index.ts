@@ -73,6 +73,7 @@ const modelsExtension: Extension = {
 			id: "model.set",
 			run: async ({ session, args }) => {
 				if (!session) throw new Error("model.set needs a session");
+				if (await session.external()) throw new Error(`"${session.name}" is driven by another client; it picks its own model`);
 				const choice = (args ?? {}) as { provider?: string; modelId?: string };
 				if (!choice.provider) throw new Error("model.set needs a provider");
 				const next = { provider: choice.provider, ...(choice.modelId ? { modelId: choice.modelId } : {}) };
@@ -89,6 +90,7 @@ const modelsExtension: Extension = {
 			id: "model.effort",
 			run: async ({ session, args }) => {
 				if (!session) throw new Error("model.effort needs a session");
+				if (await session.external()) throw new Error(`"${session.name}" is driven by another client; it picks its own model`);
 				const level = ((args ?? {}) as { level?: string }).level;
 				if (!level) throw new Error("model.effort needs a level");
 				const current = await session.model();

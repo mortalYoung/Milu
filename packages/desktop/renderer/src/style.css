@@ -2606,6 +2606,19 @@ body.pane-dragging {
 	font-family: var(--mono);
 }
 
+.composer-actions-field {
+	display: contents;
+	border: 0;
+	margin: 0;
+	padding: 0;
+	min-width: 0;
+}
+
+.composer-actions-field:disabled .composer-actions button,
+.composer-actions-field:disabled .composer-actions-right button {
+	opacity: 0.4;
+}
+
 .composer-actions {
 	display: flex;
 	align-items: center;

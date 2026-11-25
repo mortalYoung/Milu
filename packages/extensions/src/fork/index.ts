@@ -1,6 +1,7 @@
 import type { Extension, Session } from "@milu/core";
 
 const forked = async (session: Session): Promise<boolean> => (await session.profile())?.forkedFrom !== undefined;
+const external = async (session: Session): Promise<boolean> => (await session.profile())?.origin !== undefined;
 
 const forkExtension: Extension = {
 	id: "fork",
@@ -14,7 +15,7 @@ const forkExtension: Extension = {
 				group: "copy",
 				icon: "git-fork",
 				title: async (session) => ((await forked(session)) ? null : "Fork"),
-				disabled: async (session) => session.running || (await session.forking()),
+				disabled: async (session) => session.running || (await session.forking()) || (await external(session)),
 				action: "fork.chat",
 			},
 			{
@@ -23,7 +24,7 @@ const forkExtension: Extension = {
 				group: "copy",
 				icon: "copy-plus",
 				title: "Duplicate",
-				disabled: async (session) => session.running || (await session.forking()),
+				disabled: async (session) => session.running || (await session.forking()) || (await external(session)),
 				action: "fork.duplicate",
 			},
 			{

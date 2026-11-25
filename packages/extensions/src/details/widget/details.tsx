@@ -145,6 +145,8 @@ export function SessionDetailsDialog(props: DialogProps) {
 	const sizeParts = details?.size.parts.map((part) => `${part.label} · ${formatBytes(part.bytes)}`).join("\n");
 	const modelLabel = details?.model?.name ?? details?.resolved?.name ?? (details ? "default" : "—");
 	const sandbox = details ? sandboxLabel(details.sandbox) : "—";
+	// 别的客户端建的会话（origin 非空）这边只读：模型、推理档、沙箱都不从这里改
+	const external = shown.origin != null;
 
 	async function setModel(provider: string, modelId?: string): Promise<void> {
 		await props.host.actions.invoke("model.set", summary?.name, { provider, ...(modelId ? { modelId } : {}) });
@@ -285,7 +287,7 @@ export function SessionDetailsDialog(props: DialogProps) {
 								<Fact label="Size" tip={sizeParts}>
 									<AnimatedNumber value={details?.size.bytes ?? 0} format={formatSize} />
 								</Fact>
-								{details?.models.length ? (
+								{details?.models.length && !external ? (
 									<MenuValue
 										label="Model"
 										value={modelLabel}
@@ -300,7 +302,7 @@ export function SessionDetailsDialog(props: DialogProps) {
 								) : (
 									<Fact label="Model">{details ? modelLabel : "—"}</Fact>
 								)}
-								{details?.efforts.length ? (
+								{details?.efforts.length && !external ? (
 									<MenuValue label="Effort" value={details.effort} tip="Effort (Thinking Level)">
 										{details.efforts.map((level) => (
 											<DropdownMenu.Item className={MENU_ITEM} key={level} onSelect={() => void setEffort(level)}>
@@ -312,7 +314,7 @@ export function SessionDetailsDialog(props: DialogProps) {
 								) : (
 									<Fact label="Effort">{details ? (details.effort ?? "—") : "—"}</Fact>
 								)}
-								{details ? (
+								{details && !external ? (
 									<MenuValue label="Sandbox" value={sandbox} tip="default permission for new runs (global)">
 										{SANDBOX_OPTIONS.map((option) => (
 											<DropdownMenu.Item className={MENU_ITEM} key={option.mode} onSelect={() => void setSandbox(option.mode)}>
