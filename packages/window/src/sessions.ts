@@ -23,6 +23,7 @@ export class SessionListService implements Service {
 	readonly store = createStore<SessionListState>()(() => ({ rows: [], arrived: false, view: initialView() }));
 
 	private _quietUntil = 0;
+	private _epoch = 0;
 
 	constructor(@IConnection private readonly _connection: Connection) {}
 
@@ -32,12 +33,18 @@ export class SessionListService implements Service {
 
 	drop(name: string): void {
 		this._quietUntil = Date.now() + 500;
+		this._epoch += 1;
 		this.store.setState((state) => ({ ...state, rows: state.rows.filter((row) => row.name !== name && row.forkedFrom !== name) }), true);
 	}
 
 	async refresh(force = false): Promise<string | null> {
 		if (!force && Date.now() < this._quietUntil) return null;
+		const epoch = this._epoch;
 		const result = await this._connection.request("sessions", {});
+		if (epoch !== this._epoch) {
+			if (force) return this.refresh(true);
+			return result.selected;
+		}
 		this.apply(result.sessions);
 		return result.selected;
 	}

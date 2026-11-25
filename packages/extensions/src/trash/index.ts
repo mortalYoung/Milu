@@ -32,7 +32,10 @@ const trashExtension: Extension = {
 			},
 			run: async ({ session, sessions }) => {
 				if (!session || !sessions) throw new Error("trash.session needs a session");
-				for (const name of [session.name, ...(await sessions.forksOf(session.name))]) await sessions.remove(name);
+				const names = [session.name, ...(await sessions.forksOf(session.name))];
+				const busy = names.filter((name) => sessions.running(name));
+				if (busy.length > 0) throw new Error(`${busy.map((name) => `"${name}"`).join(", ")} is still running; stop it before deleting`);
+				for (const name of names) await sessions.remove(name);
 			},
 		});
 	},

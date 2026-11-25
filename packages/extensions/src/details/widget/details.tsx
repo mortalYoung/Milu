@@ -145,7 +145,6 @@ export function SessionDetailsDialog(props: DialogProps) {
 	const sizeParts = details?.size.parts.map((part) => `${part.label} · ${formatBytes(part.bytes)}`).join("\n");
 	const modelLabel = details?.model?.name ?? details?.resolved?.name ?? (details ? "default" : "—");
 	const sandbox = details ? sandboxLabel(details.sandbox) : "—";
-	// 别的客户端建的会话（origin 非空）这边只读：模型、推理档、沙箱都不从这里改
 	const external = shown.origin != null;
 
 	async function setModel(provider: string, modelId?: string): Promise<void> {
