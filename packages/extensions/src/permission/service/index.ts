@@ -1,4 +1,4 @@
-import { chmod, mkdir, realpath } from "node:fs/promises";
+import { chmod, mkdir, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -6,6 +6,8 @@ import {
 	type ExecutionEnv,
 	EVENTS,
 	expandHome,
+	SANDBOX_FILE,
+	settleEscalation,
 	type Session,
 	type SettingsPoint,
 	type SettingsService,
@@ -55,7 +57,7 @@ export class PermissionService implements Service {
 	private _sandbox: SettingsPoint<SandboxMode> | null = null;
 	private _exempt: SettingsPoint<string> | null = null;
 	private _envMap: SettingsPoint<Record<string, string>> | null = null;
-	private readonly _modes = new Map<string, SandboxMode>();
+	private readonly _modes = new Map<string, { mode: SandboxMode; stamp: number }>();
 	private readonly _nonce = Date.now().toString(36);
 	private _seq = 0;
 	private readonly _failures = new Map<string, string[]>();
@@ -73,17 +75,20 @@ export class PermissionService implements Service {
 	}
 
 	async mode(session: Session): Promise<SandboxMode> {
+		const stamp = await stat(join(session.root, SANDBOX_FILE))
+			.then((info) => info.mtimeMs)
+			.catch(() => 0);
 		const cached = this._modes.get(session.name);
-		if (cached) return cached;
+		if (cached !== undefined && cached.stamp === stamp) return cached.mode;
 		const saved = await session.sandbox();
 		const mode = isMode(saved) ? saved : (this._sandbox?.get() ?? SANDBOX_DEFAULT);
-		this._modes.set(session.name, mode);
+		this._modes.set(session.name, { mode, stamp });
 		return mode;
 	}
 
 	async setMode(session: Session, mode: SandboxMode): Promise<void> {
 		await session.setSandbox(mode);
-		this._modes.set(session.name, mode);
+		this._modes.delete(session.name);
 	}
 
 	isConfining(): boolean {
@@ -95,7 +100,7 @@ export class PermissionService implements Service {
 	}
 
 	async env(session: Session, workspace: string | null, mode?: SandboxMode): Promise<ExecutionEnv> {
-		const storage = join(session.root, "storage");
+		const storage = expandHome(session.storage);
 		await mkdir(storage, { recursive: true });
 		const saved = await session.sandbox();
 		const cache = expandHome(saved.cache ?? PM_CACHE);
@@ -144,7 +149,7 @@ export class PermissionService implements Service {
 			const decision = await this._decisionOf(call.session, existing.escalationId);
 			if (!decision) return stopResult();
 			if (!decision.approved) return decision.dropped ? droppedResult(existing) : rejectedResult(existing);
-			return next(call, await this.env(call.session, call.workspace, existing.to));
+			return next(call, await this.env(call.session, call.workspace, isMode(existing.to) ? existing.to : undefined));
 		}
 
 		const outcome = await this._request(call, requested, justification ?? "");
@@ -160,18 +165,7 @@ export class PermissionService implements Service {
 	}
 
 	async settle(session: Session, request: EscalationRequest, decision: EscalationDecision, drive = true): Promise<boolean> {
-		const resumed = await session.resume(request.toolCallId, async () => {
-			await session.record(EVENTS.escalationDecision, {
-				escalationId: request.escalationId,
-				approved: decision === "approved",
-				...(decision === "dropped" ? { dropped: true } : {}),
-				timestamp: Date.now(),
-			});
-			return this._toolService.run(session, { toolCallId: request.toolCallId, name: request.toolName, params: request.params });
-		});
-		if (!resumed) await session.record(EVENTS.escalationDecision, { escalationId: request.escalationId, approved: false, dropped: true, timestamp: Date.now() });
-		if (resumed && drive) void session.continue();
-		return resumed;
+		return settleEscalation(session, this._toolService, request, decision, drive);
 	}
 
 	async requestOf(session: Session, escalationId: string): Promise<EscalationRequest | null> {

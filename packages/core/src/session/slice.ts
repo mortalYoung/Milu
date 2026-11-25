@@ -14,6 +14,7 @@ interface SliceContext {
 	readonly entries: readonly Entry[];
 	readonly out: SliceItem[];
 	readonly keepDangling: boolean;
+	readonly results: Set<string>;
 }
 
 function custom(entry: Entry, type: string): Record<string, unknown> | null {
@@ -95,6 +96,7 @@ function toolResult(ctx: SliceContext): void {
 
 	const item: SliceItem = { id: ctx.entry.id, message: result };
 	const callId = String((result as unknown as { toolCallId?: unknown }).toolCallId ?? "");
+	if (ctx.results.has(callId)) return;
 	let owner = -1;
 	for (let index = ctx.out.length - 1; index >= 0; index -= 1) {
 		const prev = ctx.out[index]?.message;
@@ -107,9 +109,13 @@ function toolResult(ctx: SliceContext): void {
 		}
 	}
 	if (owner < 0) {
-		if (ctx.keepDangling) ctx.out.push(item);
+		if (ctx.keepDangling) {
+			ctx.results.add(callId);
+			ctx.out.push(item);
+		}
 		return;
 	}
+	ctx.results.add(callId);
 	let at = owner;
 	while (at + 1 < ctx.out.length && ctx.out[at + 1]?.message.role === "toolResult") at += 1;
 	ctx.out.splice(at + 1, 0, item);
@@ -179,6 +185,7 @@ export function projectSlice(entries: readonly Entry[], options: { keepDangling?
 
 export function projectSliceItems(entries: readonly Entry[], options: { keepDangling?: boolean } = {}): SliceItem[] {
 	const out: SliceItem[] = [];
-	entries.forEach((entry, index) => visit({ entry, index, entries, out, keepDangling: options.keepDangling ?? false }));
+	const results = new Set<string>();
+	entries.forEach((entry, index) => visit({ entry, index, entries, out, keepDangling: options.keepDangling ?? false, results }));
 	return out;
 }

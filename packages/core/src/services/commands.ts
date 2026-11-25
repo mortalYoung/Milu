@@ -13,6 +13,8 @@ export interface ComposerCommandSource {
 	list(session: Session | null): Promise<readonly ComposerCommand[]> | readonly ComposerCommand[];
 }
 
+const WRITE_COMMANDS = new Set(["clear", "compact", "workspace"]);
+
 export class CommandsService implements Service {
 	private readonly _sources: ComposerCommandSource[] = [];
 
@@ -38,9 +40,11 @@ export class CommandsService implements Service {
 		return [...contributed, ...sourced.flat()];
 	}
 
-	async run(session: Session, name: string, input = "", from: Pick<ActionContext, "dialog" | "sessions"> = {}): Promise<ActionOutcome> {
+	async run(session: Session, name: string, input = "", from: Pick<ActionContext, "dialog" | "sessions"> & { asDriver?: boolean } = {}): Promise<ActionOutcome> {
 		const command = (await this.list(session)).find((each) => each.name === name);
 		if (!command) throw new Error(`no command "/${name}"`);
+		if (WRITE_COMMANDS.has(command.name) && from.asDriver !== true && (await session.external()))
+			throw new Error(`"${session.name}" is driven by another client; /${command.name} would fork its history`);
 		const args = input.trim();
 		const commandId = `cmd-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 		await session.record(EVENTS.commandRun, { commandId, name: command.name, ...(args === "" ? {} : { args }), timestamp: Date.now() });

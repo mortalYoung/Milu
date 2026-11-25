@@ -108,6 +108,12 @@ function Row(props: {
 				<span className="max-w-[78px] truncate">{session.forkedFrom}</span>
 			</span>
 		);
+	const origin =
+		typeof session.origin === "string" && session.origin !== "" ? (
+			<span className="session-origin" title={`created by ${session.origin}`}>
+				{session.origin}
+			</span>
+		) : null;
 	const signalList = session.signals ?? [];
 	const approvalSignal = signalList.find((signal) => signal.id === "permission");
 	const restSignals = approvalSignal === undefined ? signalList : signalList.filter((signal) => signal !== approvalSignal);
@@ -198,6 +204,7 @@ function Row(props: {
 				{unread}
 				{forkButton}
 				{forkOf}
+				{origin}
 			</span>
 			<span className="mt-0.5 truncate font-sans text-[12px] leading-[1.35] text-muted">{preview || "—"}</span>
 		</span>
@@ -213,6 +220,7 @@ function Row(props: {
 				{unread}
 				{forkButton}
 				{forkOf}
+				{origin}
 				{signals}
 				{status}
 				{pin}
@@ -234,6 +242,7 @@ function Row(props: {
 				{unread}
 				{forkButton}
 				{forkOf}
+				{origin}
 				{signals}
 				{status}
 				{pin}
@@ -342,8 +351,21 @@ export function SessionListSurface(props: SurfaceProps) {
 
 	const run = async (item: ContributionItem, session: string): Promise<void> => {
 		if (!item.action) return;
-		await host.actions.invoke(item.action, session, item.args);
-		await host.sessions.refresh();
+		const trash = item.action === "trash.session";
+		try {
+			if (!(await host.actions.invoke(item.action, session, item.args))) return;
+		} catch (error) {
+			if (trash) await host.sessions.refresh(true);
+			host.notifications.push({ title: `Couldn't ${trash ? "delete" : "run"} ${session}`, body: error instanceof Error ? error.message : String(error), tone: "error" });
+			return;
+		}
+		if (!trash) {
+			await host.sessions.refresh();
+			return;
+		}
+		host.sessions.drop(session);
+		const selected = host.selection.store.getState().selected;
+		if (selected !== "" && host.sessions.get(selected) === undefined) void host.selection.select("");
 	};
 	const closeSearch = () => {
 		host.workbench.setSearch(false);

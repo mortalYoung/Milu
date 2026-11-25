@@ -33,6 +33,7 @@ export interface McpOptions {
 export interface McpToolSummary {
 	readonly name: string;
 	readonly description?: string;
+	readonly inputSchema?: unknown;
 }
 
 export interface McpServerTools {

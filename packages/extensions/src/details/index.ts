@@ -48,6 +48,7 @@ export interface SessionSummary {
 	readonly persona?: string;
 	readonly forkedFrom?: string;
 	readonly pinned?: boolean;
+	readonly origin?: string;
 	readonly running: boolean;
 	readonly workspace?: { readonly path: string | null };
 }
@@ -188,6 +189,7 @@ export async function collectSummary(session: Session): Promise<SessionSummary> 
 		...(profile?.persona ? { persona: profile.persona } : {}),
 		...(profile?.forkedFrom ? { forkedFrom: profile.forkedFrom } : {}),
 		...(profile?.pinned ? { pinned: true } : {}),
+		...(profile?.origin ? { origin: profile.origin } : {}),
 		running: session.running,
 		...(workspace ? { workspace: { path: workspace.path } } : {}),
 	};

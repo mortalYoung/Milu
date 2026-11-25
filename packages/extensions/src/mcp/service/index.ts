@@ -7,7 +7,30 @@ import { createServiceId, type Service } from "@milu/di";
 import { configPath, loadConfig } from "../config.ts";
 import { grantedServers } from "../grants.ts";
 import { McpManager } from "../manager.ts";
-import type { McpOptions, McpServerStatus } from "../types.ts";
+import type { McpOptions, McpServerConfig, McpServerStatus } from "../types.ts";
+
+const SESSION_FILE = "mcp.json";
+
+async function sessionServers(session: Session): Promise<readonly McpServerConfig[]> {
+	try {
+		const parsed = JSON.parse(await readFile(join(session.root, SESSION_FILE), "utf8")) as { servers?: unknown };
+		if (!Array.isArray(parsed.servers)) return [];
+		const out: McpServerConfig[] = [];
+		for (const raw of parsed.servers) {
+			const server = raw as { name?: unknown; command?: unknown; args?: unknown; env?: unknown };
+			if (typeof server.name !== "string" || typeof server.command !== "string" || server.name === "") continue;
+			const args = Array.isArray(server.args) ? server.args.filter((each): each is string => typeof each === "string") : [];
+			const env: Record<string, string> = {};
+			if (typeof server.env === "object" && server.env !== null && !Array.isArray(server.env)) {
+				for (const [key, value] of Object.entries(server.env)) if (typeof value === "string") env[key] = value;
+			}
+			out.push({ name: server.name, transport: { type: "stdio", command: server.command, ...(args.length > 0 ? { args } : {}), ...(Object.keys(env).length > 0 ? { env } : {}) } });
+		}
+		return out;
+	} catch {
+		return [];
+	}
+}
 
 const DEFAULT_IDLE_TIMEOUT_SEC = 60;
 const DEFAULT_MAX_BUFFER_SIZE = 10 * 1024 * 1024;
@@ -74,10 +97,21 @@ export class McpService implements Service {
 		await this._manager.load(await loadConfig(file));
 	}
 
-	async list(session: Session): Promise<{ name: string; tools: { name: string; description?: string }[]; error?: string }[]> {
-		return [...(await this._manager.resolve(await grantedServers(session)))].map((server) => ({
+	private async _authorized(session: Session): Promise<readonly string[]> {
+		const granted = await grantedServers(session);
+		const attached = await sessionServers(session);
+		for (const server of attached) this._manager.add(server, session.name);
+		return [...new Set([...granted, ...attached.map((server) => server.name)])];
+	}
+
+	async list(session: Session): Promise<{ name: string; tools: { name: string; description?: string; inputSchema?: unknown }[]; error?: string }[]> {
+		return [...(await this._manager.resolve(await this._authorized(session), session.name))].map((server) => ({
 			name: server.name,
-			tools: server.tools.map((tool) => ({ name: tool.name, ...(tool.description ? { description: tool.description } : {}) })),
+			tools: server.tools.map((tool) => ({
+				name: tool.name,
+				...(tool.description ? { description: tool.description } : {}),
+				...(tool.inputSchema === undefined ? {} : { inputSchema: tool.inputSchema }),
+			})),
 			...(server.error ? { error: server.error } : {}),
 		}));
 	}
@@ -88,7 +122,7 @@ export class McpService implements Service {
 
 	async statuses(session: Session): Promise<McpServerStatus[]> {
 		const byName = new Map(this._manager.statuses().map((status) => [status.name, status]));
-		return (await grantedServers(session)).map((name) => {
+		return (await this._authorized(session)).map((name) => {
 			const status = byName.get(name);
 			return {
 				name,
@@ -101,9 +135,9 @@ export class McpService implements Service {
 	}
 
 	async call(session: Session, server: string, tool: string, args: unknown, signal?: AbortSignal): Promise<{ content: string; isError: boolean }> {
-		const granted = await grantedServers(session);
+		const granted = await this._authorized(session);
 		if (!granted.includes(server)) throw new Error(`MCP server "${server}" is not authorized for this session`);
-		return this._manager.call(server, tool, args, signal);
+		return this._manager.call(server, tool, args, signal, session.name);
 	}
 
 	dispose(): void {

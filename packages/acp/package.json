@@ -1,0 +1,21 @@
+{
+	"name": "@milu/acp",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"exports": {
+		".": "./src/bin.ts"
+	},
+	"scripts": {
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@milu/bootstrap": "workspace:*",
+		"@milu/core": "workspace:*",
+		"@milu/di": "workspace:*",
+		"@milu/protocol": "workspace:*"
+	},
+	"devDependencies": {
+		"@types/node": "latest"
+	}
+}

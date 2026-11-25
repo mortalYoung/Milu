@@ -71,6 +71,7 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 	const busy = useStore(host.sessions.store, (state) => state.rows.find((row) => row.name === selected)?.running ?? false);
 	const compacting = useStore(host.sessions.store, (state) => state.rows.find((row) => row.name === selected)?.compacting ?? false);
 	const stopping = useStore(host.transcript.store, (state) => state.stopping[selected] === true);
+	const external = useStore(host.sessions.store, (state) => state.rows.find((row) => row.name === selected)?.origin != null);
 	const above = useStore(host.slots.store, (state) => state.points[SLOT_POINTS.composerAbove] ?? NO_SLOT_ITEMS);
 	const slotComponents = useStore(host.slots.store, (state) => state.components);
 
@@ -80,6 +81,7 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 	const pendingCount = pending.length;
 
 	const accept = async (incoming: readonly File[]): Promise<void> => {
+		if (external) return;
 		if (selected === "") return;
 		const images: PendingImageInput[] = [];
 		for (const file of incoming) {
@@ -91,6 +93,7 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 	};
 
 	const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>): void => {
+		if (external) return;
 		const pasted = [...event.clipboardData.items]
 			.filter((item) => item.kind === "file")
 			.map((item) => item.getAsFile())
@@ -101,6 +104,7 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 	};
 
 	const onDrop = (event: DragEvent<HTMLFormElement>): void => {
+		if (external) return;
 		const dropped = [...event.dataTransfer.files].filter((file) => imageTypeOf(file.type) !== undefined);
 		if (dropped.length === 0) return;
 		event.preventDefault();
@@ -364,7 +368,10 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 							value={text}
 							className="composer-input"
 							rows={1}
-							placeholder={shownShell ? "Run a shell command…" : `Message${selected === "" ? "" : ` @${selected}`}`}
+							disabled={external}
+							placeholder={
+								external ? "This chat is driven by another client — read only" : shownShell ? "Run a shell command…" : `Message${selected === "" ? "" : ` @${selected}`}`
+							}
 							autoComplete="off"
 							spellCheck={false}
 							aria-label="Message"
@@ -390,41 +397,43 @@ export function Composer(props: { host: Host; onSent?: () => void }) {
 						/>
 					</div>
 
-					<div className="composer-actions">
-						{awaiting ? (
-							<span className="composer-skeleton" aria-hidden="true">
-								<span className="composer-skeleton-pill" />
-								<span className="composer-skeleton-pill wide" />
-							</span>
-						) : (
-							<ComposerActions host={host} items={layout.left} />
-						)}
-						<div className="composer-actions-right">
-							<input ref={files} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple className="composer-file-input" onChange={onPickFiles} />
-							{awaiting ? null : (
-								<Tip label="Attach image">
-									<button type="button" className="composer-attach" aria-label="Attach image" onClick={() => files.current?.click()}>
-										+
-									</button>
-								</Tip>
+					<fieldset className="composer-actions-field" disabled={external}>
+						<div className="composer-actions">
+							{awaiting ? (
+								<span className="composer-skeleton" aria-hidden="true">
+									<span className="composer-skeleton-pill" />
+									<span className="composer-skeleton-pill wide" />
+								</span>
+							) : (
+								<ComposerActions host={host} items={layout.left} />
 							)}
-							{awaiting ? null : <ComposerActions host={host} items={layout.right} />}
-							{awaiting ? null : (
-								<Tip label={stopping ? "Stopping" : compacting ? "Compacting" : busy ? "Stop" : "Send"}>
-									<button
-										type="button"
-										className={`composer-send${busy ? " composer-stop" : ""}${idle ? " is-idle" : ""}`}
-										aria-label={stopping ? "Stopping" : compacting ? "Compacting" : busy ? "Stop" : "Send"}
-										aria-busy={stopping || compacting || undefined}
-										disabled={stopping || compacting || idle}
-										onClick={() => (busy ? void host.transcript.abort(selected) : void submit())}
-									>
-										{busy ? <SquareIcon size={14} /> : <ArrowUpIcon size={14} />}
-									</button>
-								</Tip>
-							)}
+							<div className="composer-actions-right">
+								<input ref={files} type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple className="composer-file-input" onChange={onPickFiles} />
+								{awaiting ? null : (
+									<Tip label="Attach image">
+										<button type="button" className="composer-attach" aria-label="Attach image" disabled={external} onClick={() => files.current?.click()}>
+											+
+										</button>
+									</Tip>
+								)}
+								{awaiting ? null : <ComposerActions host={host} items={layout.right} />}
+								{awaiting ? null : (
+									<Tip label={stopping ? "Stopping" : compacting ? "Compacting" : busy ? "Stop" : "Send"}>
+										<button
+											type="button"
+											className={`composer-send${busy ? " composer-stop" : ""}${idle ? " is-idle" : ""}`}
+											aria-label={stopping ? "Stopping" : compacting ? "Compacting" : busy ? "Stop" : "Send"}
+											aria-busy={stopping || compacting || undefined}
+											disabled={stopping || compacting || idle || external}
+											onClick={() => (busy ? void host.transcript.abort(selected) : void submit())}
+										>
+											{busy ? <SquareIcon size={14} /> : <ArrowUpIcon size={14} />}
+										</button>
+									</Tip>
+								)}
+							</div>
 						</div>
-					</div>
+					</fieldset>
 				</div>
 
 				{awaiting ? null : <ComposerTips tips={layout.tips} shellMode={shownShell} />}

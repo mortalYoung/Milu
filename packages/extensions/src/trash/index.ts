@@ -1,12 +1,4 @@
-import { rename } from "node:fs/promises";
-import { homedir } from "node:os";
-import { basename, join } from "node:path";
-
 import type { Extension } from "@milu/core";
-
-async function moveToTrash(path: string): Promise<void> {
-	await rename(path, join(homedir(), ".Trash", `${basename(path)}-${Date.now()}`));
-}
 
 const trashExtension: Extension = {
 	id: "trash",
@@ -41,9 +33,9 @@ const trashExtension: Extension = {
 			run: async ({ session, sessions }) => {
 				if (!session || !sessions) throw new Error("trash.session needs a session");
 				const names = [session.name, ...(await sessions.forksOf(session.name))];
-				const roots = names.map((name) => sessions.get(name).root);
-				for (const name of names) await sessions.close(name);
-				for (const root of roots) await moveToTrash(root);
+				const busy = names.filter((name) => sessions.running(name));
+				if (busy.length > 0) throw new Error(`${busy.map((name) => `"${name}"`).join(", ")} is still running; stop it before deleting`);
+				for (const name of names) await sessions.remove(name);
 			},
 		});
 	},

@@ -7,6 +7,7 @@ import type { PendingKind } from "@milu/protocol";
 import { type AgentReminder, reminderText } from "../session/events.ts";
 import { pendingId } from "../session/pending.ts";
 import type { Session } from "../session/session.ts";
+import { textOf } from "../session/text.ts";
 import type { AgentHookPoint, HookService } from "./hooks.ts";
 import type { ModelsService } from "./models.ts";
 import type { ToolService } from "./tools.ts";
@@ -27,7 +28,7 @@ export type AgentLoopEvent =
 	| ({ type: "message_update"; message: AgentMessage } & AgentLoopProgress)
 	| ({ type: "message_end"; message: AgentMessage } & AgentLoopProgress)
 	| ({ type: "tool_start"; toolCallId: string; toolName: string; args: unknown } & AgentLoopProgress)
-	| ({ type: "tool_end"; toolCallId: string; toolName: string; isError: boolean } & AgentLoopProgress)
+	| ({ type: "tool_end"; toolCallId: string; toolName: string; isError: boolean; preview: string } & AgentLoopProgress)
 	| { type: "reminder"; reminder: AgentReminder }
 	| ({ type: "turn_end" } & AgentLoopProgress)
 	| ({ type: "retry_scheduled"; retry: number; maxRetries: number; delayMs: number; error: string } & AgentLoopProgress)
@@ -37,6 +38,14 @@ export type AgentLoopEvent =
 
 export interface AgentLoopRun {
 	error?: string;
+}
+
+const PREVIEW_LIMIT = 600;
+
+function previewOf(result: unknown): string {
+	const content = (result as { content?: unknown } | null)?.content;
+	const text = textOf(content).trim().replace(/\s+\n/g, "\n");
+	return text.length > PREVIEW_LIMIT ? `${text.slice(0, PREVIEW_LIMIT)}…` : text;
 }
 
 function beforeTrailingUser(messages: readonly AgentMessage[], injected: readonly AgentMessage[]): AgentMessage[] {
@@ -462,7 +471,14 @@ export class AgentLoopService implements Service {
 				this._emitter.fire({ type: "tool_start", ...progress, toolCallId: event.toolCallId, toolName: event.toolName, args: event.args });
 				return;
 			case "tool_execution_end":
-				this._emitter.fire({ type: "tool_end", ...progress, toolCallId: event.toolCallId, toolName: event.toolName, isError: event.isError });
+				this._emitter.fire({
+					type: "tool_end",
+					...progress,
+					toolCallId: event.toolCallId,
+					toolName: event.toolName,
+					isError: event.isError,
+					preview: previewOf(event.result),
+				});
 				return;
 			case "turn_end":
 				this._emitter.fire({ type: "turn_end", ...progress });

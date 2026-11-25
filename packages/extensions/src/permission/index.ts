@@ -51,6 +51,7 @@ const permissionExtension: Extension = {
 			id: "permission.sandbox",
 			run: async ({ session, args }) => {
 				if (!session) throw new Error("permission.sandbox needs a session");
+				if (await session.external()) throw new Error(`"${session.name}" is driven by another client; it sets its own sandbox mode`);
 				const mode = (args as { mode?: SandboxMode } | undefined)?.mode;
 				if (mode !== "read-only" && mode !== "workspace-write" && mode !== "danger-full-access") throw new Error("permission.sandbox needs a mode");
 				await permission.setMode(session, mode);
@@ -61,6 +62,7 @@ const permissionExtension: Extension = {
 			id: "permission.answer",
 			run: async ({ session, args }) => {
 				if (!session) throw new Error("permission.answer needs a session");
+				if (await session.external()) throw new Error(`"${session.name}" is driven by another client; it answers its own escalations`);
 				const { escalationId, approved } = (args ?? {}) as { escalationId?: string; approved?: boolean };
 				if (!escalationId) throw new Error("permission.answer needs an escalationId");
 				const request = await permission.requestOf(session, escalationId);

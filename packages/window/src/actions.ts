@@ -27,24 +27,25 @@ export class ActionsService implements Service {
 		return result.data as T | undefined;
 	}
 
-	async invoke(action: string, session?: string, args?: unknown): Promise<void> {
+	async invoke(action: string, session?: string, args?: unknown): Promise<boolean> {
 		let result = await this._send(action, session, args, false);
 		if (!result.ok) throw new Error(result.error ?? `action "${action}" failed`);
 
 		if (result.confirm) {
-			if (!(await this._dialogService.confirm(result.confirm))) return;
+			if (!(await this._dialogService.confirm(result.confirm))) return false;
 			result = await this._send(action, session, args, true);
 			if (!result.ok) throw new Error(result.error ?? `action "${action}" failed`);
 		}
 
 		const command = result.command;
-		if (!command) return;
+		if (!command) return true;
 		if (command.kind === "view") {
 			this._workbench.showView(command.view);
-			return;
+			return true;
 		}
 
 		await this._commands.copy?.(command.text);
+		return true;
 	}
 
 	dispose(): void {}

@@ -27,6 +27,11 @@ const RULES: readonly Rule[] = [
 	},
 	{ pkg: "bootstrap", forbid: ["electron", /^@milu\/desktop$/], why: "the composition root composes libraries; shells import it, not the reverse" },
 	{
+		pkg: "acp",
+		forbid: ["electron", /^@milu\/(desktop|window|extensions)$/, /^@milu\/bootstrap\/frontend$/],
+		why: "the stdio adapter is another edge: it runs the core headless, never a shell or the window runtime",
+	},
+	{
 		pkg: "extensions",
 		forbid: ["electron", /^@milu\/(desktop|bootstrap)$/, /^@milu\/window(?!\/api)/],
 		why: "an extension gets core capabilities and the window API, never the window runtime or a shell",

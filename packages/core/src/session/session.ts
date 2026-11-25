@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, stat } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 
 import type { AgentMessage, AgentToolResult } from "@earendil-works/pi-agent-core";
 import { isContextOverflow } from "@earendil-works/pi-ai";
@@ -24,6 +24,8 @@ import {
 	promptChangedSinceLastPersist,
 	forkingOf,
 	profileOf,
+	driverLive,
+	profileSyncOf,
 	readAtOf,
 	recordPrompt,
 	sandboxOf,
@@ -36,6 +38,7 @@ import {
 	type WorkspaceFacts,
 	writeModel,
 	writePinned,
+	writeOrigin,
 	writeProfile,
 	writeReadAt,
 	writeSandbox,
@@ -144,7 +147,7 @@ export class Session {
 	readonly name: string;
 	readonly root: string;
 	readonly path: string;
-	readonly storage: string;
+	private _storage: string;
 	readonly images: ImageStore;
 
 	readonly onEntry: Event<SeqEntry>;
@@ -172,6 +175,8 @@ export class Session {
 	private _errorAt = 0;
 	private _prompt = "";
 	private readonly _suspended = new Set<string>();
+	private readonly _resuming = new Set<string>();
+	private readonly _settling = new Set<string>();
 	private readonly _preLogged = new Set<AgentMessage>();
 
 	constructor(deps: SessionDeps) {
@@ -179,7 +184,9 @@ export class Session {
 		this.name = deps.name;
 		this.root = deps.root;
 		this.path = tildify(deps.root);
-		this.storage = tildify(`${deps.root}/storage`);
+		this._profile = profileSyncOf(deps.root);
+		const initialScratch = this._profile?.scratch;
+		this._storage = typeof initialScratch === "string" && initialScratch !== "" ? initialScratch : `${deps.root}/storage`;
 		this.images = deps.images;
 		this._log = new SessionLog(deps.executionService, deps.root, deps.images);
 		this.onEntry = this._entryEmitter.event;
@@ -190,6 +197,26 @@ export class Session {
 		this._disposables.add(this._compactingEmitter);
 		this._disposables.add(this._log);
 		this._disposables.add(this._log.onEntry((entry) => this._entryEmitter.fire(entry)));
+	}
+
+	get storage(): string {
+		return tildify(this._storage);
+	}
+
+	async external(): Promise<boolean> {
+		if ((await this._profileOf())?.origin !== undefined) return true;
+		return driverLive(this.root);
+	}
+
+	async mark(origin: string | undefined, scratch: string | undefined): Promise<void> {
+		const profile = (await this._profileOf()) ?? { name: this.name, createdAt: Date.now() };
+		this._profile = {
+			...profile,
+			...(origin === undefined ? {} : { origin }),
+			...(scratch === undefined ? {} : { scratch }),
+		};
+		if (scratch !== undefined) this._storage = scratch;
+		await writeOrigin(this.root, origin, scratch);
 	}
 
 	// ——— what the row needs (cheap: files, plus the log's head) ———
@@ -204,6 +231,7 @@ export class Session {
 			name: this.name,
 			path: this.path,
 			storage: this.storage,
+			origin: profile?.origin ?? null,
 			createdAt: profile?.createdAt ?? 0,
 			...(profile?.persona ? { persona: profile.persona } : {}),
 			...(profile?.forkedFrom ? { forkedFrom: profile.forkedFrom } : {}),
@@ -330,37 +358,47 @@ export class Session {
 		return this._suspended.size > 0;
 	}
 
+	claimEscalation(escalationId: string): boolean {
+		if (this._settling.has(escalationId)) return false;
+		this._settling.add(escalationId);
+		return true;
+	}
+
+	releaseEscalation(escalationId: string): void {
+		this._settling.delete(escalationId);
+	}
+
 	async resume(toolCallId: string, build: () => Promise<AgentToolResult<unknown>>): Promise<boolean> {
 		const loop = await this.open();
-		if (loop.isStreaming()) {
+		if (loop.isStreaming() || this._resuming.has(toolCallId)) {
 			this._suspended.delete(toolCallId);
 			return false;
 		}
-		const messages = [...(await this._log.transcript({ keepDangling: true }))];
-		const at = messages.findIndex((message) => toolCalls(message).some((call) => call.id === toolCallId));
-		if (at < 0) {
-			this._suspended.delete(toolCallId);
-			return false;
-		}
-		if (messages.slice(at + 1).some((message) => message.role !== "toolResult")) {
-			this._suspended.delete(toolCallId);
-			return false;
-		}
+		this._resuming.add(toolCallId);
+		try {
+			const messages = [...(await this._log.transcript({ keepDangling: true }))];
+			const at = messages.findIndex((message) => toolCalls(message).some((call) => call.id === toolCallId));
+			if (at < 0) return false;
+			const answered = messages.some((message) => message.role === "toolResult" && (message as { toolCallId?: unknown }).toolCallId === toolCallId);
+			if (answered) return false;
 
-		const call = toolCalls(messages[at]!).find((each) => each.id === toolCallId);
-		const outcome = await build();
-		const result = {
-			role: "toolResult",
-			toolCallId,
-			toolName: String(call?.name ?? ""),
-			content: outcome.content,
-			details: outcome.details,
-			timestamp: Date.now(),
-		} as ToolResult;
-		loop.restore([...messages, result]);
-		await this._recordToolResult(result);
-		this._suspended.delete(toolCallId);
-		return true;
+			const call = toolCalls(messages[at]!).find((each) => each.id === toolCallId);
+			const outcome = await build();
+			const result = {
+				role: "toolResult",
+				toolCallId,
+				toolName: String(call?.name ?? ""),
+				content: outcome.content,
+				details: outcome.details,
+				timestamp: Date.now(),
+			} as ToolResult;
+			loop.restore([...messages, result]);
+			await this._recordToolResult(result);
+			return true;
+		} finally {
+			this._resuming.delete(toolCallId);
+			this._suspended.delete(toolCallId);
+		}
 	}
 
 	async continue(): Promise<void> {
@@ -534,7 +572,8 @@ export class Session {
 	}
 
 	private async _openLoop(): Promise<AgentLoopService> {
-		await mkdir(join(this.root, "storage"), { recursive: true });
+		await this._profileOf();
+		await mkdir(this._storage, { recursive: true });
 		await this._log.open();
 		if ((await this._log.openCompaction()) !== null) {
 			await this._log.record(EVENTS.compactionEnd, { error: "abandoned", timestamp: Date.now() }).catch(() => undefined);
@@ -900,7 +939,11 @@ export class Session {
 	}
 
 	private async _profileOf(): Promise<SessionProfile | null> {
-		if (this._profile === undefined) this._profile = await profileOf(this.root);
+		if (this._profile === undefined) {
+			this._profile = await profileOf(this.root);
+			const scratch = this._profile?.scratch;
+			if (typeof scratch === "string" && scratch !== "") this._storage = scratch;
+		}
 		return this._profile;
 	}
 
