@@ -55,7 +55,12 @@ export interface SessionSummary {
 
 export interface ModelChoiceGroup {
 	readonly provider: string;
-	readonly models: readonly { readonly id: string; readonly name: string }[];
+	readonly models: readonly {
+		readonly id: string;
+		readonly name: string;
+		readonly contextWindow?: number;
+		readonly cost?: { readonly input: number; readonly output: number };
+	}[];
 }
 
 export interface SessionDetails extends SessionSummary {
@@ -211,7 +216,15 @@ export async function collectDetails(session: Session, sources: DetailsSources):
 	const billed = usage ? usage.input + usage.cacheRead + usage.cacheWrite : 0;
 	const groups: ModelChoiceGroup[] = sources.models
 		? (sources.settings.get().providers ?? [])
-				.map((provider) => ({ provider, models: sources.models!.available(provider).map((model) => ({ id: model.id, name: model.name })) }))
+				.map((provider) => ({
+					provider,
+					models: sources.models!.available(provider).map((model) => ({
+						id: model.id,
+						name: model.name,
+						...(model.contextWindow === undefined ? {} : { contextWindow: model.contextWindow }),
+						cost: { input: model.cost.input, output: model.cost.output },
+					})),
+				}))
 				.filter((group) => group.models.length > 0)
 		: [];
 	let efforts: readonly string[] = [];

@@ -2,11 +2,13 @@ import { type DialogProps, formatWorkspacePath, tildifyPath } from "@milu/window
 import { Markdown } from "@milu/window/api/markdown/react";
 import { Tip } from "@milu/window/api/tooltip";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import * as Popover from "@radix-ui/react-popover";
+import { ChevronDown, ChevronRight, FolderPen, Lock, TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 
-import { CARD, EYEBROW, HEAD_ROW, MENU, MENU_CHECK, MENU_ITEM, MENU_LABEL, SUMMARY } from "../chrome.ts";
-import type { ModelChoiceGroup, SessionDetails, SessionSummary } from "../index.ts";
+import { MODEL_PANEL, ModelPanel, ModelPill, modelRowsOf } from "../../models/picker.tsx";
+import { CARD, EYEBROW, HEAD_ROW, MENU, MENU_ITEM, SUMMARY } from "../chrome.ts";
+import type { SessionDetails, SessionSummary } from "../index.ts";
 import { digits, formatBytes, formatDate, formatSize, formatTokens, percent, seconds, tokensPerSecond } from "../utils.ts";
 import { ActivityHeatmap } from "./activity.tsx";
 import { AnimatedNumber } from "./animated-number.tsx";
@@ -34,7 +36,7 @@ function Fact(props: { label: string; tip?: string; block?: boolean; children: R
 	);
 }
 
-function MenuValue(props: { label: string; value: string; tip?: string; children: ReactNode }) {
+function MenuValue(props: { label: string; value: string; tip?: string; icon?: ReactNode; children: ReactNode }) {
 	return (
 		<div className="flex min-w-0 items-baseline justify-between gap-3">
 			<span className="shrink-0 text-[12px] text-muted">{props.label}</span>
@@ -46,7 +48,8 @@ function MenuValue(props: { label: string; value: string; tip?: string; children
 						aria-label={`${props.label}: ${props.tip ?? props.value}`}
 					>
 						<Tip label={props.tip}>
-							<span className="inline-flex min-w-0 items-center gap-[3px] [&>span:first-child]:overflow-hidden [&>span:first-child]:text-ellipsis [&>span:first-child]:whitespace-nowrap">
+							<span className="inline-flex min-w-0 items-center gap-[4px] [&>span:first-child]:overflow-hidden [&>span:first-child]:text-ellipsis [&>span:first-child]:whitespace-nowrap">
+								{props.icon}
 								<span>{props.value}</span>
 								<ChevronDown size={9} className="shrink-0 text-muted-soft" />
 							</span>
@@ -63,29 +66,34 @@ function MenuValue(props: { label: string; value: string; tip?: string; children
 	);
 }
 
-function ModelMenu(props: { groups: readonly ModelChoiceGroup[]; model: { provider: string; modelId?: string } | null; onSelect: (provider: string, modelId?: string) => void }) {
+const SANDBOX_OPTIONS = [
+	{ mode: "read-only", label: "read-only", icon: Lock, danger: false },
+	{ mode: "workspace-write", label: "workspace-write", icon: FolderPen, danger: false },
+	{ mode: "danger-full-access", label: "full access", icon: TriangleAlert, danger: true },
+] as const;
+
+function EffortBars(props: { level: string; levels: readonly string[] }) {
+	const total = Math.max(props.levels.length, 1);
+	const filled = Math.max(props.levels.indexOf(props.level) + 1, 1);
 	return (
-		<>
-			{props.groups.map((group) => (
-				<DropdownMenu.Group key={group.provider}>
-					<DropdownMenu.Label className={MENU_LABEL}>{group.provider}</DropdownMenu.Label>
-					{group.models.map((model) => (
-						<DropdownMenu.Item className={MENU_ITEM} key={model.id} onSelect={() => props.onSelect(group.provider, model.id)}>
-							<span>{model.name}</span>
-							{props.model?.provider === group.provider && props.model.modelId === model.id ? <span className={MENU_CHECK}>✓</span> : null}
-						</DropdownMenu.Item>
-					))}
-				</DropdownMenu.Group>
+		<span className="inline-flex w-[14px] shrink-0 items-end justify-center gap-[2px]" aria-hidden>
+			{Array.from({ length: total }, (_, index) => (
+				<span key={index} className={`w-[2px] rounded-[1px] ${index < filled ? "bg-ink" : "bg-line-strong"}`} style={{ height: `${4 + index * 2}px` }} />
 			))}
-		</>
+		</span>
 	);
 }
 
-const SANDBOX_OPTIONS = [
-	{ mode: "read-only", label: "read-only" },
-	{ mode: "workspace-write", label: "workspace-write" },
-	{ mode: "danger-full-access", label: "full access" },
-] as const;
+function SandboxIcon(props: { mode: string; size?: number }) {
+	const option = SANDBOX_OPTIONS.find((each) => each.mode === props.mode);
+	if (!option) return null;
+	const Icon = option.icon;
+	return (
+		<span className="inline-flex w-[14px] shrink-0 justify-center">
+			<Icon size={props.size ?? 12} className={option.danger ? "text-signal" : "text-ink-soft"} />
+		</span>
+	);
+}
 
 function sandboxLabel(mode: string): string {
 	return SANDBOX_OPTIONS.find((option) => option.mode === mode)?.label ?? mode;
@@ -287,26 +295,42 @@ export function SessionDetailsDialog(props: DialogProps) {
 									<AnimatedNumber value={details?.size.bytes ?? 0} format={formatSize} />
 								</Fact>
 								{details?.models.length && !external ? (
-									<MenuValue
-										label="Model"
-										value={modelLabel}
-										tip={
-											details.model
-												? `${details.model.provider} · ${details.model.name ?? "default"}`
-												: `default · ${details.resolved?.provider ?? "—"} · ${details.resolved?.name ?? "—"}`
-										}
-									>
-										<ModelMenu groups={details.models} model={details.model} onSelect={(provider, modelId) => void setModel(provider, modelId)} />
-									</MenuValue>
+									<div className="flex min-w-0 items-center justify-between gap-3">
+										<span className="shrink-0 text-[12px] text-muted">Model</span>
+										<Popover.Root>
+											<Popover.Trigger asChild>
+												<ModelPill
+													provider={details.model?.provider ?? details.resolved?.provider ?? null}
+													label={modelLabel}
+													aria-label={`Model: ${modelLabel}`}
+													title={
+														details.model
+															? `${details.model.provider} · ${details.model.name ?? "default"}`
+															: `default · ${details.resolved?.provider ?? "—"} · ${details.resolved?.name ?? "—"}`
+													}
+												/>
+											</Popover.Trigger>
+											<Popover.Portal>
+												<Popover.Content side="bottom" align="end" sideOffset={6} collisionPadding={8} className={MODEL_PANEL} onOpenAutoFocus={(event) => event.preventDefault()}>
+													<ModelPanel rows={modelRowsOf(details.models)} selected={details.model} onPick={(row) => void setModel(row.provider, row.id)} />
+												</Popover.Content>
+											</Popover.Portal>
+										</Popover.Root>
+									</div>
 								) : (
 									<Fact label="Model">{details ? modelLabel : "—"}</Fact>
 								)}
 								{details?.efforts.length && !external ? (
-									<MenuValue label="Effort" value={details.effort} tip="Effort (Thinking Level)">
+									<MenuValue label="Effort" value={details.effort} tip="Effort (Thinking Level)" icon={<EffortBars level={details.effort} levels={details.efforts} />}>
 										{details.efforts.map((level) => (
-											<DropdownMenu.Item className={MENU_ITEM} key={level} onSelect={() => void setEffort(level)}>
+											<DropdownMenu.Item
+												className={`${MENU_ITEM} ${level === details.effort ? "text-ink" : ""}`}
+												key={level}
+												style={level === details.effort ? { backgroundColor: "var(--selected)" } : undefined}
+												onSelect={() => void setEffort(level)}
+											>
+												<EffortBars level={level} levels={details.efforts} />
 												<span>{level}</span>
-												{level === details.effort ? <span className={MENU_CHECK}>✓</span> : null}
 											</DropdownMenu.Item>
 										))}
 									</MenuValue>
@@ -314,11 +338,16 @@ export function SessionDetailsDialog(props: DialogProps) {
 									<Fact label="Effort">{details ? (details.effort ?? "—") : "—"}</Fact>
 								)}
 								{details && !external ? (
-									<MenuValue label="Sandbox" value={sandbox} tip="default permission for new runs (global)">
+									<MenuValue label="Sandbox" value={sandbox} tip="default permission for new runs (global)" icon={<SandboxIcon mode={details.sandbox} />}>
 										{SANDBOX_OPTIONS.map((option) => (
-											<DropdownMenu.Item className={MENU_ITEM} key={option.mode} onSelect={() => void setSandbox(option.mode)}>
-												<span>{option.label}</span>
-												{option.mode === details.sandbox ? <span className={MENU_CHECK}>✓</span> : null}
+											<DropdownMenu.Item
+												className={`${MENU_ITEM} ${option.mode === details.sandbox ? "text-ink" : ""}`}
+												key={option.mode}
+												style={option.mode === details.sandbox ? { backgroundColor: "var(--selected)" } : undefined}
+												onSelect={() => void setSandbox(option.mode)}
+											>
+												<SandboxIcon mode={option.mode} />
+												<span className={option.danger ? "text-signal" : undefined}>{option.label}</span>
 											</DropdownMenu.Item>
 										))}
 									</MenuValue>

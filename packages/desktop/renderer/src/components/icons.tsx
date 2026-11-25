@@ -13,9 +13,11 @@ import {
 	EllipsisVertical,
 	FileText,
 	Folder,
+	FolderOpen,
 	FolderTree,
 	GitFork,
 	Info,
+	MousePointer2,
 	type LucideIcon,
 	PanelLeft,
 	PanelLeftClose,
@@ -27,9 +29,11 @@ import {
 	Search,
 	Settings as SettingsIcon,
 	Square,
+	SquareCode,
 	SquarePen,
 	Terminal,
 	Trash2,
+	Zap,
 } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -67,6 +71,10 @@ export const SquarePenIcon = sized(SquarePen);
 export const AlarmClockIcon = sized(AlarmClock);
 export const TerminalIcon = sized(Terminal);
 export const BrainIcon = sized(Brain);
+export const FolderOpenIcon = sized(FolderOpen);
+export const SquareCodeIcon = sized(SquareCode);
+export const MousePointerIcon = sized(MousePointer2);
+export const ZapIcon = sized(Zap);
 
 const NAMED: Record<string, (props: { size?: number; className?: string }) => ReactNode> = {
 	info: InfoIcon,
@@ -85,9 +93,17 @@ const NAMED: Record<string, (props: { size?: number; className?: string }) => Re
 	"alarm-clock": AlarmClockIcon,
 	terminal: TerminalIcon,
 	brain: BrainIcon,
+	finder: FolderOpenIcon,
+	vscode: SquareCodeIcon,
+	cursor: MousePointerIcon,
+	zed: ZapIcon,
 };
 
 export function IconByName(props: { name?: string; size?: number; className?: string }) {
-	const Icon = props.name ? NAMED[props.name] : undefined;
+	const name = props.name;
+	if (name !== undefined && name.startsWith("data:image/")) {
+		return <img src={name} alt="" width={props.size} height={props.size} draggable={false} className={`object-contain ${props.className ?? ""}`} />;
+	}
+	const Icon = name ? NAMED[name] : undefined;
 	return Icon ? <Icon size={props.size} className={props.className} /> : null;
 }

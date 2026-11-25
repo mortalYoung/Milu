@@ -1,6 +1,7 @@
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { accessSync, constants, existsSync, statSync } from "node:fs";
-import { homedir } from "node:os";
+import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { delimiter, dirname, join } from "node:path";
 
 export interface Editor {
@@ -8,16 +9,15 @@ export interface Editor {
 	readonly name: string;
 	readonly cli?: string;
 	readonly app?: string;
+	readonly icon: string;
 }
 
 export type OpenOutcome = { ok: true; via: string } | { ok: false; reason: "missing-path" | "no-editor" | "editor-missing" | "open-failed" };
 
 const EDITORS: Editor[] = [
-	{ id: "code", name: "VS Code", cli: "code", app: "Visual Studio Code" },
-	{ id: "cursor", name: "Cursor", cli: "cursor", app: "Cursor" },
-	{ id: "zed", name: "Zed", cli: "zed", app: "Zed" },
-	{ id: "windsurf", name: "Windsurf", cli: "windsurf", app: "Windsurf" },
-	{ id: "subl", name: "Sublime Text", cli: "subl", app: "Sublime Text" },
+	{ id: "code", name: "VS Code", cli: "code", app: "Visual Studio Code", icon: "vscode" },
+	{ id: "cursor", name: "Cursor", cli: "cursor", app: "Cursor", icon: "cursor" },
+	{ id: "zed", name: "Zed", cli: "zed", app: "Zed", icon: "zed" },
 ];
 
 function which(command: string): string | null {
@@ -44,6 +44,69 @@ export function listInstalledEditors(): Editor[] {
 			return false;
 		}
 	});
+}
+
+const ICONS = new Map<string, Promise<string | null>>();
+
+function tool(file: string, args: readonly string[]): Promise<string | null> {
+	return new Promise((resolve) => {
+		execFile(file, [...args], { timeout: 5000 }, (error, stdout) => resolve(error ? null : stdout));
+	});
+}
+
+async function iconOf(bundle: string): Promise<string | null> {
+	const resources = join(bundle, "Contents", "Resources");
+	let name: string | null = null;
+	const plist = await tool("/usr/bin/plutil", ["-convert", "json", "-o", "-", join(bundle, "Contents", "Info.plist")]);
+	if (plist !== null) {
+		try {
+			const declared = (JSON.parse(plist) as { CFBundleIconFile?: unknown }).CFBundleIconFile;
+			if (typeof declared === "string" && declared !== "") name = declared.endsWith(".icns") ? declared : `${declared}.icns`;
+		} catch {}
+	}
+	if (name === null) {
+		try {
+			name = (await readdir(resources)).find((entry) => entry.endsWith(".icns")) ?? null;
+		} catch {
+			return null;
+		}
+	}
+	if (name === null) return null;
+	const dir = await mkdtemp(join(tmpdir(), "milu-icon-"));
+	try {
+		const out = join(dir, "icon.png");
+		if ((await tool("/usr/bin/sips", ["-s", "format", "png", "-Z", "64", join(resources, name), "--out", out])) === null) return null;
+		return `data:image/png;base64,${(await readFile(out)).toString("base64")}`;
+	} catch {
+		return null;
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+}
+
+function bundleOf(app: string): string | null {
+	for (const root of ["/Applications", join(homedir(), "Applications")]) {
+		const bundle = join(root, `${app}.app`);
+		if (existsSync(bundle)) return bundle;
+	}
+	return null;
+}
+
+function cached(bundle: string | null): Promise<string | null> {
+	if (bundle === null) return Promise.resolve(null);
+	const hit = ICONS.get(bundle);
+	if (hit !== undefined) return hit;
+	const pending = iconOf(bundle);
+	ICONS.set(bundle, pending);
+	return pending;
+}
+
+export function editorIcon(editor: Editor): Promise<string | null> {
+	return cached(editor.app === undefined ? null : bundleOf(editor.app));
+}
+
+export function finderIcon(): Promise<string | null> {
+	return cached("/System/Library/CoreServices/Finder.app");
 }
 
 function expandTilde(path: string): string {

@@ -1,18 +1,18 @@
 import type { Extension, SessionMenuItem } from "@milu/core";
 
-import { listInstalledEditors, openInCodeEditor, openInFinder } from "./openers.ts";
+import { editorIcon, finderIcon, listInstalledEditors, openInCodeEditor, openInFinder } from "./openers.ts";
 
-function openTargets(action: string): SessionMenuItem[] {
-	return [
-		{ id: `${action}:default`, title: "Open with default", action, args: {} },
-		{ id: `${action}:finder`, title: "Open with Finder", action, args: { via: "finder" } },
-		...listInstalledEditors().map((editor) => ({
+async function openTargets(action: string): Promise<SessionMenuItem[]> {
+	const editors = await Promise.all(
+		listInstalledEditors().map(async (editor) => ({
 			id: `${action}:${editor.id}`,
-			title: `Open with ${editor.name}`,
+			title: editor.name,
+			icon: (await editorIcon(editor)) ?? editor.icon,
 			action,
 			args: { editorId: editor.id },
 		})),
-	];
+	);
+	return [...editors, { id: `${action}:finder`, title: "Finder", icon: (await finderIcon()) ?? "finder", action, args: { via: "finder" } }];
 }
 
 async function openPath(path: string, args: unknown): Promise<void> {
@@ -41,12 +41,15 @@ const openExtension: Extension = {
 				group: "open",
 				icon: "folder",
 				title: "Open storage",
-				items: openTargets("open.storage"),
+				items: () => openTargets("open.storage"),
 			},
 		],
 	},
 
 	activate(context) {
+		for (const editor of listInstalledEditors()) void editorIcon(editor);
+		void finderIcon();
+
 		context.actions.register({
 			id: "open.workspace",
 			run: async ({ session, args }) => {
