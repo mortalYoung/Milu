@@ -1,4 +1,5 @@
 import { watch, type FSWatcher } from "node:fs";
+import { open } from "node:fs/promises";
 import { cp, mkdir, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -79,6 +80,7 @@ export class SessionService implements Service {
 	private readonly _forks = new Map<string, Promise<void>>();
 	private readonly _cursors = new Map<string, { path: string; offset: number; seq: number }>();
 	private readonly _written = new Map<string, number>();
+	private readonly _externalRunning = new Set<string>();
 	private readonly _timers = new Map<string, NodeJS.Timeout>();
 	private _follower: FSWatcher | null = null;
 
@@ -140,6 +142,20 @@ export class SessionService implements Service {
 		});
 	}
 
+	private async _lineStart(path: string, from: number): Promise<number> {
+		if (from === 0) return 0;
+		const handle = await open(path, "r");
+		try {
+			const info = await handle.stat();
+			const buffer = Buffer.alloc(Math.min(info.size - from, TAIL_WINDOW));
+			const { bytesRead } = await handle.read(buffer, 0, buffer.length, from);
+			const at = buffer.subarray(0, bytesRead).indexOf(0x0a);
+			return at < 0 ? info.size : from + at + 1;
+		} finally {
+			await handle.close();
+		}
+	}
+
 	private _stopFollowing(): void {
 		for (const timer of this._timers.values()) clearTimeout(timer);
 		this._timers.clear();
@@ -147,7 +163,6 @@ export class SessionService implements Service {
 		this._follower = null;
 	}
 
-	// 别的进程（ACP）往日志里写时，把新增的条目转成 onEntry，界面才会跟着更新
 	private async _tail(name: string): Promise<void> {
 		const path = await newestLog(join(this._partnerRoot, name));
 		if (path === null) return;
@@ -156,16 +171,18 @@ export class SessionService implements Service {
 		const existing = this._cursors.get(name);
 		const written = this._written.get(name);
 		const fresh = existing === undefined || existing.path !== path;
-		// 见过本进程写过、还没建游标：说明日志里到那个 seq 都是我们自己发的，直接从末尾接着看。
-		// 否则按外部写入处理，从末尾窗口读起，免得漏掉刚写进来的条目。
-		const cursor = fresh ? { path, offset: written !== undefined ? info.size : Math.max(0, info.size - TAIL_WINDOW), seq: written ?? -1 } : existing;
+		const start = fresh ? (written !== undefined ? info.size : await this._lineStart(path, Math.max(0, info.size - TAIL_WINDOW))) : 0;
+		const cursor = fresh ? { path, offset: start, seq: written ?? -1 } : existing;
 		this._written.delete(name);
 		this._cursors.set(name, cursor);
 		const { entries, offset } = await readEntriesFrom(path, cursor.offset);
 		cursor.offset = offset;
+		if (entries.length > 0) this._sessions.get(name)?.invalidate();
 		for (const entry of entries) {
 			if (entry.seq <= cursor.seq) continue;
 			cursor.seq = entry.seq;
+			if (entry.type === "custom" && entry.customType === "agent/start") this._externalRunning.add(name);
+			if (entry.type === "custom" && entry.customType === "agent/end") this._externalRunning.delete(name);
 			this._entryEmitter.fire({ session: name, entry: { seq: entry.seq, entry } });
 		}
 	}
@@ -287,7 +304,7 @@ export class SessionService implements Service {
 	}
 
 	running(name: string): boolean {
-		return this._sessions.get(name)?.running ?? false;
+		return (this._sessions.get(name)?.running ?? false) || this._externalRunning.has(name);
 	}
 
 	async shutdown(): Promise<void> {
@@ -486,7 +503,8 @@ export class SessionService implements Service {
 		const [menu, signals] = await Promise.all([this._menuOf(session), this._signalsOf(session)]);
 		const extra = { menu, ...(signals.length === 0 ? {} : { signals }) };
 		try {
-			return { ...(await session.row()), ...extra };
+			const row = await session.row();
+			return { ...row, running: row.running === true || this._externalRunning.has(session.name), ...extra };
 		} catch (error) {
 			console.error(`session "${session.name}" did not open:`, error);
 			const profile = await profileOf(session.root);

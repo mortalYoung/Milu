@@ -1,4 +1,4 @@
-import { chmod, mkdir, realpath } from "node:fs/promises";
+import { chmod, mkdir, realpath, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -6,6 +6,7 @@ import {
 	type ExecutionEnv,
 	EVENTS,
 	expandHome,
+	SANDBOX_FILE,
 	settleEscalation,
 	type Session,
 	type SettingsPoint,
@@ -56,7 +57,7 @@ export class PermissionService implements Service {
 	private _sandbox: SettingsPoint<SandboxMode> | null = null;
 	private _exempt: SettingsPoint<string> | null = null;
 	private _envMap: SettingsPoint<Record<string, string>> | null = null;
-	private readonly _modes = new Map<string, SandboxMode>();
+	private readonly _modes = new Map<string, { mode: SandboxMode; stamp: number }>();
 	private readonly _nonce = Date.now().toString(36);
 	private _seq = 0;
 	private readonly _failures = new Map<string, string[]>();
@@ -74,17 +75,20 @@ export class PermissionService implements Service {
 	}
 
 	async mode(session: Session): Promise<SandboxMode> {
+		const stamp = await stat(join(session.root, SANDBOX_FILE))
+			.then((info) => info.mtimeMs)
+			.catch(() => 0);
 		const cached = this._modes.get(session.name);
-		if (cached) return cached;
+		if (cached !== undefined && cached.stamp === stamp) return cached.mode;
 		const saved = await session.sandbox();
 		const mode = isMode(saved) ? saved : (this._sandbox?.get() ?? SANDBOX_DEFAULT);
-		this._modes.set(session.name, mode);
+		this._modes.set(session.name, { mode, stamp });
 		return mode;
 	}
 
 	async setMode(session: Session, mode: SandboxMode): Promise<void> {
 		await session.setSandbox(mode);
-		this._modes.set(session.name, mode);
+		this._modes.delete(session.name);
 	}
 
 	isConfining(): boolean {

@@ -1,9 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { isAbsolute, join, resolve, sep } from "node:path";
 
 import type { AgentLoopEvent, Backend, EscalationRequest, Session } from "@milu/core";
-import { EVENTS, settleEscalation } from "@milu/core";
+import { clearDriver, EVENTS, settleEscalation, writeDriver } from "@milu/core";
 import type { ImageMediaType, PromptImage, SeqEntry } from "@milu/protocol";
 
 import { ERROR, RpcError, type RpcServer } from "./rpc.ts";
@@ -61,8 +62,6 @@ function lodyDataDirs(): readonly string[] {
 	return candidates.filter((each): each is string => typeof each === "string" && each !== "").map((each) => each.replace(/\/+$/, ""));
 }
 
-// 临时目录里的 cwd 不是工作区：客户端的辅助会话（起标题之类）拿它当 cwd，用完就丢。
-// 协议里没有字段表达这件事，只能按路径判断；认错的后果只是少删一个可恢复的目录。
 function insideTempDir(path: string): boolean {
 	const temp = resolve(tmpdir());
 	const target = resolve(path);
@@ -183,6 +182,12 @@ function promptOf(prompt: unknown): Prompt {
 			continue;
 		}
 		if (block["type"] === "resource_link" && typeof block["uri"] === "string") lines.push(`${String(block["name"] ?? "resource")}: ${block["uri"]}`);
+		if (block["type"] === "resource") {
+			const resource = block["resource"];
+			const text = isRecord(resource) && typeof resource["text"] === "string" ? resource["text"] : null;
+			const uri = isRecord(resource) && typeof resource["uri"] === "string" ? resource["uri"] : "";
+			if (text !== null) lines.push(uri === "" ? text : `${uri}\n\n${text}`);
+		}
 	}
 	return { text: lines.join("\n\n").trim(), images };
 }
@@ -238,6 +243,7 @@ export class AcpAgent {
 	private readonly _compacting = new Map<string, string>();
 	private _compactingSeq = 0;
 	private readonly _sent = new Map<string, string>();
+	private readonly _streamIds = new Map<string, { stamp: number; seq: number }>();
 
 	constructor(private readonly _deps: AcpAgentDeps) {}
 
@@ -317,6 +323,8 @@ export class AcpAgent {
 		const cwd = record["cwd"];
 		const workspace = typeof cwd === "string" && cwd.trim() !== "" ? await this._existingDirectory(cwd).catch(() => null) : null;
 		if (workspace !== null) await session.setWorkspace(workspace);
+		await writeDriver(session.root, this._client ?? "acp");
+		await this._attachServers(session, stdioServersOf(params));
 		await this._replay(session);
 		await this._commands(session);
 		return { modes: await this._modesOf(session), configOptions: await this._configOptionsOf(session) };
@@ -352,7 +360,7 @@ export class AcpAgent {
 		if (pending === undefined) return;
 		this._pending.delete(session.name);
 		const backend = await this._backendOf();
-		if (pending.origin !== null && (pending.scratch !== null || pending.workspace !== null)) await session.mark(pending.origin, pending.scratch ?? undefined);
+		await session.mark(pending.origin ?? "acp", pending.scratch ?? undefined);
 		if (pending.workspace !== null && pending.scratch === null) await session.setWorkspace(pending.workspace);
 		await this._attachServers(session, pending.servers);
 		await this._adoptClientModel(backend, session, pending.model);
@@ -412,8 +420,7 @@ export class AcpAgent {
 					.catch(() => null)
 			: null;
 		await backend.sessions.close(sessionId);
-		// 用完就丢的会话（工作区在临时目录里，比如起标题）连目录一起收掉，
-		// 否则它会在列表之外一直占着 ~/partners；走 remove 即移进废纸篓，可恢复。
+		await clearDriver(join(backend.sessions.partnerRoot, sessionId)).catch(() => undefined);
 		if (workspace !== null && insideTempDir(workspace.path) && known) {
 			await backend.sessions.remove(sessionId).catch((error: unknown) => console.error(`acp: failed to drop "${sessionId}":`, error));
 		}
@@ -425,10 +432,12 @@ export class AcpAgent {
 		const session = await this._sessionOf(record["sessionId"]);
 		if (this._turns.has(session.name)) throw new RpcError(ERROR.invalidRequest, `"${session.name}" is running; cancel it before deleting`);
 		const backend = await this._backendOf();
-		await backend.sessions.remove(session.name);
 		this._live.delete(session.name);
 		this._pending.delete(session.name);
 		this._forget(session.name);
+		await clearDriver(join(backend.sessions.partnerRoot, session.name)).catch(() => undefined);
+		if (!(await backend.sessions.names()).includes(session.name)) return {};
+		await backend.sessions.remove(session.name);
 		return {};
 	}
 
@@ -445,7 +454,7 @@ export class AcpAgent {
 		const now = new Date();
 		const pad = (value: number): string => String(value).padStart(2, "0");
 		const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-		const base = `acp-${stamp}`;
+		const base = `acp-${stamp}-${randomUUID().replace(/-/g, "").slice(0, 4)}`;
 		if (!taken.has(base.toLowerCase())) return base;
 		for (let index = 2; ; index += 1) {
 			const candidate = `${base}-${index}`;
@@ -502,7 +511,8 @@ export class AcpAgent {
 			name: typeof model.name === "string" && model.name !== "" ? model.name : model.id,
 			description: backend.models.name(model.provider) ?? model.provider,
 		}));
-		const wanted = chosen === null ? undefined : `${chosen.provider}/${chosen.modelId ?? ""}`;
+		const effective = this._chosen(backend, chosen);
+		const wanted = effective === null ? undefined : `${effective.provider}/${effective.modelId ?? ""}`;
 		const current = options.some((option) => option.value === wanted) ? wanted : options[0]?.value;
 		const out: Record<string, unknown>[] = [];
 		if (options.length > 0 && current !== undefined) {
@@ -533,11 +543,9 @@ export class AcpAgent {
 		const chosen = this._chosen(backend, await session.model());
 		if (chosen === null) throw new RpcError(ERROR.internal, "no model is configured");
 		if (configId === "model") {
-			const at = value.lastIndexOf("/");
-			const provider = at < 0 ? "" : value.slice(0, at);
-			const modelId = at < 0 ? "" : value.slice(at + 1);
-			if (provider === "" || modelId === "") throw new RpcError(ERROR.invalidParams, `"${value}" is not provider/model`);
-			await session.setModel({ provider, modelId, ...(chosen.thinkingLevel === undefined ? {} : { thinkingLevel: chosen.thinkingLevel }) });
+			const picked = backend.models.available().find((model) => `${model.provider}/${model.id}` === value);
+			if (picked === undefined) throw new RpcError(ERROR.invalidParams, `"${value}" is not an available model`);
+			await session.setModel({ provider: picked.provider, modelId: picked.id, ...(chosen.thinkingLevel === undefined ? {} : { thinkingLevel: chosen.thinkingLevel }) });
 		} else if (configId === "reasoning") {
 			await session.setModel({ ...chosen, thinkingLevel: value });
 		} else {
@@ -608,9 +616,22 @@ export class AcpAgent {
 	private async _prompt(params: unknown): Promise<unknown> {
 		const record = isRecord(params) ? params : {};
 		const session = await this._sessionOf(record["sessionId"]);
+		const backend = await this._backendOf();
 		await this._materialize(session);
+		await writeDriver(session.root, this._client ?? "acp");
 		const prompt = promptOf(record["prompt"]);
 		if (prompt.text === "" && prompt.images.length === 0) throw new RpcError(ERROR.invalidParams, "prompt carries no content");
+		const command = /^\/([a-z][\w-]*)(?:\s+([\s\S]*))?$/.exec(prompt.text);
+		if (command !== null) {
+			const known = (await backend.commands.list(session)).find((each) => each.name === command[1]);
+			if (known !== undefined) {
+				const turn = this._begin(session.name);
+				await backend.commands.run(session, known.name, command[2] ?? "", { asDriver: true });
+				this._turns.delete(session.name);
+				turn.settle("end_turn");
+				return { stopReason: "end_turn" };
+			}
+		}
 		const turn = this._begin(session.name);
 		try {
 			await session.send(prompt.text, prompt.images);
@@ -622,6 +643,7 @@ export class AcpAgent {
 		this._compacting.delete(session.name);
 		this._turns.delete(session.name);
 		this._sent.clear();
+		if (stopReason !== null && stopReason.startsWith("error:")) throw new RpcError(ERROR.internal, stopReason.slice("error:".length));
 		if (stopReason === null) {
 			const row = await session.row();
 			throw new RpcError(ERROR.internal, row.error ?? "the run did not start — is a model configured?");
@@ -682,6 +704,7 @@ export class AcpAgent {
 	}
 
 	private _entry(session: string, entry: SeqEntry): void {
+		if (!this._live.has(session) || !this._turns.has(session)) return;
 		if (entry.entry.type !== "custom" || entry.entry.customType !== EVENTS.escalationRequest) return;
 		const request = escalationOf(entry.entry.data);
 		if (request === null) return;
@@ -706,7 +729,8 @@ export class AcpAgent {
 		try {
 			const response = await this._deps.rpc.request("session/request_permission", { sessionId: session, toolCall, options });
 			const outcome = isRecord(response) ? response["outcome"] : undefined;
-			if (isRecord(outcome) && outcome["outcome"] === "selected" && typeof outcome["optionId"] === "string") optionId = outcome["optionId"];
+			const chosen = isRecord(outcome) && outcome["outcome"] === "selected" ? outcome["optionId"] : undefined;
+			if (typeof chosen === "string" && options.some((option) => option.optionId === chosen)) optionId = chosen;
 		} catch (error) {
 			console.error("acp: permission request failed:", error);
 		}
@@ -762,6 +786,10 @@ export class AcpAgent {
 			const turn = this._turns.get(session);
 			if (turn === undefined) return;
 			if (turn.open > 0) return;
+			if (event.error !== undefined) {
+				turn.settle(`error:${event.error}`);
+				return;
+			}
 			turn.settle(turn.cancelled ? "cancelled" : "end_turn");
 			return;
 		}
@@ -788,9 +816,18 @@ export class AcpAgent {
 
 	private _stream(session: string, message: unknown): void {
 		if (!isRecord(message) || message["role"] !== "assistant") return;
-		const id = `${session}:${String(message["id"] ?? "")}`;
+		const id = `${session}:${this._streamKey(session, message)}`;
 		this._flush(session, `${id}:text`, "agent_message_chunk", chunksOf(message["content"], "text"));
 		this._flush(session, `${id}:thinking`, "agent_thought_chunk", chunksOf(message["content"], "thinking"));
+	}
+
+	private _streamKey(session: string, message: Record<string, unknown>): string {
+		if (typeof message["id"] === "string") return message["id"];
+		const stamp = typeof message["timestamp"] === "number" ? message["timestamp"] : 0;
+		const last = this._streamIds.get(session);
+		const seq = last !== undefined && last.stamp === stamp ? last.seq : (last?.seq ?? 0) + 1;
+		this._streamIds.set(session, { stamp, seq });
+		return `anonymous-${seq}`;
 	}
 
 	private _chunk(session: string, kind: string, text: string): void {

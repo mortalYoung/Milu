@@ -132,6 +132,7 @@ export {
 	type ReminderType,
 } from "./session/events.ts";
 export type { SandboxConfig, SessionModel, SessionProfile, WorkspaceFacts } from "./session/files.ts";
+export { clearDriver, DRIVER_FILE, SANDBOX_FILE, writeDriver } from "./session/files.ts";
 export { SettingsService, ISettingsService, type CustomModel, type CustomProvider, type DefaultModel, type Settings, type SettingsPoint } from "./services/settings.ts";
 export { ThemesService, IThemesService } from "./services/themes.ts";
 export type { Entry, Theme, ThemeAppearance, ThemeMode, ThemeSettings, ThemeState, ThemeTokenKey, ThemeTokens } from "@milu/protocol";

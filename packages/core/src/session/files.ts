@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
 export const PROFILE_FILE = "profile.json";
+export const DRIVER_FILE = "driver.json";
 export const READ_FILE = "read.json";
 export const WORKSPACE_FILE = "workspace.json";
 export const MODEL_FILE = "model.json";
@@ -115,6 +116,27 @@ export async function writeOrigin(dir: string, origin: string | undefined, scrat
 		...(origin === undefined ? {} : { origin }),
 		...(scratch === undefined ? {} : { scratch }),
 	});
+}
+
+export async function writeDriver(dir: string, owner: string): Promise<void> {
+	await writeJson(join(dir, DRIVER_FILE), { owner, pid: process.pid, updatedAt: Date.now() });
+}
+
+export async function clearDriver(dir: string): Promise<void> {
+	await rm(join(dir, DRIVER_FILE), { force: true });
+}
+
+export async function driverLive(dir: string): Promise<boolean> {
+	const data = await readJson<{ pid?: unknown }>(join(dir, DRIVER_FILE));
+	const pid = typeof data?.pid === "number" ? data.pid : null;
+	if (pid === null) return false;
+	if (pid === process.pid) return true;
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch {
+		return false;
+	}
 }
 
 export async function writePinned(dir: string, pinned: boolean): Promise<void> {

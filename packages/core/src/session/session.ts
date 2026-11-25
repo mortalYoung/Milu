@@ -24,6 +24,7 @@ import {
 	promptChangedSinceLastPersist,
 	forkingOf,
 	profileOf,
+	driverLive,
 	profileSyncOf,
 	readAtOf,
 	recordPrompt,
@@ -202,10 +203,9 @@ export class Session {
 		return tildify(this._storage);
 	}
 
-	// 由别的客户端（Lody / Zed）通过 ACP 建的会话：那边握着对话状态，从这里发言会各说各的，
-	// 两个进程往同一份日志里追加还会撞 seq，所以本地只读。
 	async external(): Promise<boolean> {
-		return (await this._profileOf())?.origin !== undefined;
+		if ((await this._profileOf())?.origin !== undefined) return true;
+		return driverLive(this.root);
 	}
 
 	async mark(origin: string | undefined, scratch: string | undefined): Promise<void> {

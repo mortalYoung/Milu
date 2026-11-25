@@ -65,10 +65,10 @@ export class RpcServer {
 			for (let at = pending.indexOf("\n"); at >= 0; at = pending.indexOf("\n")) {
 				const line = pending.slice(0, at);
 				pending = pending.slice(at + 1);
-				await this._incoming(line);
+				void this._incoming(line);
 			}
 		}
-		if (pending.trim() !== "") await this._incoming(pending);
+		if (pending.trim() !== "") void this._incoming(pending);
 	}
 
 	private async _incoming(line: string): Promise<void> {
