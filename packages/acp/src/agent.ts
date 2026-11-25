@@ -1,6 +1,6 @@
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { isAbsolute, join } from "node:path";
+import { homedir, tmpdir } from "node:os";
+import { isAbsolute, join, resolve, sep } from "node:path";
 
 import type { AgentLoopEvent, Backend, EscalationRequest, Session } from "@milu/core";
 import { EVENTS, settleEscalation } from "@milu/core";
@@ -59,6 +59,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function lodyDataDirs(): readonly string[] {
 	const candidates = [process.env["LODY_DATA_DIR"], join(homedir(), ".lody"), join(homedir(), ".lody-oss")];
 	return candidates.filter((each): each is string => typeof each === "string" && each !== "").map((each) => each.replace(/\/+$/, ""));
+}
+
+// 临时目录里的 cwd 不是工作区：客户端的辅助会话（起标题之类）拿它当 cwd，用完就丢。
+// 协议里没有字段表达这件事，只能按路径判断；认错的后果只是少删一个可恢复的目录。
+function insideTempDir(path: string): boolean {
+	const temp = resolve(tmpdir());
+	const target = resolve(path);
+	return target === temp || target.startsWith(`${temp}${sep}`);
 }
 
 // session/new 里没有字段说明 cwd 是用户的项目还是客户端自己的临时目录：Lody 只在 worktree
@@ -241,6 +249,7 @@ export class AcpAgent {
 				"session/load": (params: unknown) => this._loadSession(params),
 				"session/list": (params: unknown) => this._listSessions(params),
 				"session/delete": (params: unknown) => this._deleteSession(params),
+				"session/close": (params: unknown) => this._closeSession(params),
 				"session/prompt": (params: unknown) => this._prompt(params),
 				"session/set_mode": (params: unknown) => this._setMode(params),
 				"session/set_config_option": (params: unknown) => this._setConfigOption(params),
@@ -265,7 +274,7 @@ export class AcpAgent {
 			agentCapabilities: {
 				loadSession: true,
 				promptCapabilities: { image: true, audio: false, embeddedContext: true },
-				sessionCapabilities: { list: {}, delete: {} },
+				sessionCapabilities: { list: {}, delete: {}, close: {} },
 			},
 			authMethods: [],
 			agentInfo: AGENT,
@@ -384,6 +393,31 @@ export class AcpAgent {
 		const facts = await stat(path).catch(() => null);
 		if (facts === null || !facts.isDirectory()) throw new RpcError(ERROR.invalidParams, `cwd is not a directory: ${path}`);
 		return path;
+	}
+
+	private async _closeSession(params: unknown): Promise<unknown> {
+		const record = isRecord(params) ? params : {};
+		const sessionId = record["sessionId"];
+		if (typeof sessionId !== "string" || sessionId === "") return {};
+		this._forget(sessionId);
+		this._pending.delete(sessionId);
+		this._live.delete(sessionId);
+		const backend = await this._backendOf().catch(() => null);
+		if (backend === null) return {};
+		const known = (await backend.sessions.names()).includes(sessionId);
+		const workspace = known
+			? await backend.sessions
+					.get(sessionId)
+					.workspace()
+					.catch(() => null)
+			: null;
+		await backend.sessions.close(sessionId);
+		// 用完就丢的会话（工作区在临时目录里，比如起标题）连目录一起收掉，
+		// 否则它会在列表之外一直占着 ~/partners；走 remove 即移进废纸篓，可恢复。
+		if (workspace !== null && insideTempDir(workspace.path) && known) {
+			await backend.sessions.remove(sessionId).catch((error: unknown) => console.error(`acp: failed to drop "${sessionId}":`, error));
+		}
+		return {};
 	}
 
 	private async _deleteSession(params: unknown): Promise<unknown> {
