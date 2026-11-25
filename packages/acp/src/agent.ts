@@ -367,7 +367,6 @@ export class AcpAgent {
 	}
 
 	private async _attachServers(session: Session, servers: readonly AttachedServer[]): Promise<void> {
-		if (servers.length === 0) return;
 		try {
 			await mkdir(session.root, { recursive: true });
 			const payload = { servers: servers.map((server) => ({ name: server.name, command: server.command, args: [...server.args], env: { ...server.env } })) };
