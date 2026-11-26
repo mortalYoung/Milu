@@ -4,7 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import { isAbsolute, join, resolve, sep } from "node:path";
 
 import type { AgentLoopEvent, Backend, EscalationRequest, Session } from "@milu/core";
-import { clearDriver, EVENTS, settleEscalation, writeDriver } from "@milu/core";
+import { clearDriver, EVENTS, pendingEscalations, settleEscalation, writeDriver } from "@milu/core";
 import type { ImageMediaType, PromptImage, SeqEntry } from "@milu/protocol";
 
 import { ERROR, RpcError, type RpcServer } from "./rpc.ts";
@@ -34,7 +34,60 @@ const TOOL_KINDS: Readonly<Record<string, string>> = {
 	webfetch: "fetch",
 };
 
+interface LodyModelUsage {
+	inputTokens: number;
+	outputTokens: number;
+	cacheReadInputTokens: number;
+	cacheCreationInputTokens?: number;
+	costUSD?: number;
+}
+
+const LODY_SCHEDULE_TOOLS: Readonly<Record<string, string>> = {
+	create: "CronCreate",
+	list: "CronList",
+	delete: "CronDelete",
+	run: "ScheduleWakeup",
+};
+
+function lodyToolName(name: string, args: unknown): string | null {
+	if (name !== "schedule" || !isRecord(args)) return null;
+	const op = args["op"];
+	return typeof op === "string" ? (LODY_SCHEDULE_TOOLS[op] ?? null) : null;
+}
+
+function lodyMeta(name: string, args: unknown): Record<string, unknown> | null {
+	const toolName = lodyToolName(name, args);
+	return toolName === null ? null : { toolName };
+}
+
+function usageOf(message: unknown): LodyModelUsage | null {
+	if (!isRecord(message) || !isRecord(message["usage"])) return null;
+	const usage = message["usage"];
+	const count = (value: unknown): number => (typeof value === "number" && Number.isFinite(value) ? value : 0);
+	const cost = isRecord(usage["cost"]) ? usage["cost"]["total"] : undefined;
+	return {
+		inputTokens: count(usage["input"]),
+		outputTokens: count(usage["output"]),
+		cacheReadInputTokens: count(usage["cacheRead"]),
+		cacheCreationInputTokens: count(usage["cacheWrite"]),
+		...(typeof cost === "number" ? { costUSD: cost } : {}),
+	};
+}
+
+function addUsage(into: LodyModelUsage, from: LodyModelUsage): void {
+	into.inputTokens += from.inputTokens;
+	into.outputTokens += from.outputTokens;
+	into.cacheReadInputTokens += from.cacheReadInputTokens;
+	into.cacheCreationInputTokens = (into.cacheCreationInputTokens ?? 0) + (from.cacheCreationInputTokens ?? 0);
+	if (from.costUSD !== undefined) into.costUSD = (into.costUSD ?? 0) + from.costUSD;
+}
+
+function emptyUsage(): LodyModelUsage {
+	return { inputTokens: 0, outputTokens: 0, cacheReadInputTokens: 0 };
+}
+
 const START_GRACE_MS = 2000;
+const FORK_GRACE_MS = 60_000;
 const START_POLL_MS = 100;
 
 interface Pending {
@@ -244,6 +297,12 @@ export class AcpAgent {
 	private _compactingSeq = 0;
 	private readonly _sent = new Map<string, string>();
 	private readonly _streamIds = new Map<string, { stamp: number; seq: number }>();
+	private readonly _toolMeta = new Map<string, Record<string, unknown>>();
+	private readonly _tasks = new Map<string, Set<string>>();
+	private readonly _scheduled = new Map<string, Set<string>>();
+	private readonly _usageByModel = new Map<string, Map<string, LodyModelUsage>>();
+	private readonly _usageDelta = new Map<string, Map<string, LodyModelUsage>>();
+	private readonly _usageScope = randomUUID();
 
 	constructor(private readonly _deps: AcpAgentDeps) {}
 
@@ -253,6 +312,7 @@ export class AcpAgent {
 				initialize: (params: unknown) => this._initialize(params),
 				"session/new": (params: unknown) => this._newSession(params),
 				"session/load": (params: unknown) => this._loadSession(params),
+				"session/fork": (params: unknown) => this._forkSession(params),
 				"session/list": (params: unknown) => this._listSessions(params),
 				"session/delete": (params: unknown) => this._deleteSession(params),
 				"session/close": (params: unknown) => this._closeSession(params),
@@ -280,7 +340,8 @@ export class AcpAgent {
 			agentCapabilities: {
 				loadSession: true,
 				promptCapabilities: { image: true, audio: false, embeddedContext: true },
-				sessionCapabilities: { list: {}, delete: {}, close: {} },
+				sessionCapabilities: { list: {}, delete: {}, close: {}, fork: {} },
+				_meta: { lody: { tasks: { version: 1 }, compaction: { version: 1 }, sessionActivity: { version: 1 }, usage: { version: 1 } } },
 			},
 			authMethods: [],
 			agentInfo: AGENT,
@@ -314,6 +375,7 @@ export class AcpAgent {
 			.settled()
 			.then(() => this._commands(session))
 			.catch((error: unknown) => console.error("acp: commands failed:", error));
+		this._title(name);
 		return { sessionId: name, modes: await this._modesOf(session), configOptions: await this._configOptionsOf(session) };
 	}
 
@@ -325,9 +387,57 @@ export class AcpAgent {
 		if (workspace !== null) await session.setWorkspace(workspace);
 		await writeDriver(session.root, this._client ?? "acp");
 		await this._attachServers(session, stdioServersOf(params));
+		this._title(session.name);
 		await this._replay(session);
+		await this._pendingEscalations(session);
 		await this._commands(session);
 		return { modes: await this._modesOf(session), configOptions: await this._configOptionsOf(session) };
+	}
+
+	private async _pendingEscalations(session: Session): Promise<void> {
+		for (const request of await pendingEscalations(session)) {
+			if (this._asked.has(request.escalationId)) continue;
+			this._asked.add(request.escalationId);
+			void this._ask(session.name, request).catch((error: unknown) => console.error("acp: escalation failed:", error));
+		}
+	}
+
+	private async _forkSession(params: unknown): Promise<unknown> {
+		const record = isRecord(params) ? params : {};
+		const source = await this._sessionOf(record["sessionId"]);
+		const backend = await this._backendOf();
+		let target: string;
+		try {
+			target = await backend.sessions.copy(source.name, "fork");
+		} catch (error) {
+			throw new RpcError(ERROR.invalidRequest, error instanceof Error ? error.message : String(error));
+		}
+		this._live.add(target);
+		await this._awaitFork(backend, target);
+		const session = backend.sessions.get(target);
+		const cwd = record["cwd"];
+		if (typeof cwd === "string" && cwd.trim() !== "") {
+			const workspace = await this._existingDirectory(cwd).catch(() => null);
+			if (workspace !== null) await session.setWorkspace(workspace);
+		}
+		await writeDriver(session.root, this._client ?? "acp");
+		await this._attachServers(session, stdioServersOf(params));
+		this._title(target);
+		await this._commands(session);
+		return { sessionId: target, modes: await this._modesOf(session), configOptions: await this._configOptionsOf(session) };
+	}
+
+	private async _awaitFork(backend: Backend, target: string): Promise<void> {
+		const deadline = Date.now() + FORK_GRACE_MS;
+		while (Date.now() < deadline) {
+			const forking = await backend.sessions
+				.get(target)
+				.forking()
+				.catch(() => false);
+			if (!forking) return;
+			await new Promise((resolve) => setTimeout(resolve, START_POLL_MS));
+		}
+		console.error(`acp: fork "${target}" did not settle within ${FORK_GRACE_MS}ms`);
 	}
 
 	private async _listSessions(params: unknown): Promise<unknown> {
@@ -467,6 +577,7 @@ export class AcpAgent {
 		if (!this._live.has(sessionId) && !(await backend.sessions.names()).includes(sessionId)) {
 			throw new RpcError(ERROR.resourceNotFound, `no session "${sessionId}"`);
 		}
+		this._live.add(sessionId);
 		return backend.sessions.get(sessionId);
 	}
 
@@ -666,10 +777,7 @@ export class AcpAgent {
 		const modeId = record["modeId"];
 		if (!isMode(modeId)) throw new RpcError(ERROR.invalidParams, `unknown mode "${String(modeId)}"`);
 		await session.setSandbox(modeId);
-		this._deps.rpc.notify("session/update", {
-			sessionId: session.name,
-			update: { sessionUpdate: "current_mode_update", currentModeId: modeId },
-		});
+		this._modeChanged(session.name, modeId);
 		return {};
 	}
 
@@ -703,8 +811,36 @@ export class AcpAgent {
 	}
 
 	private _entry(session: string, entry: SeqEntry): void {
-		if (!this._live.has(session) || !this._turns.has(session)) return;
-		if (entry.entry.type !== "custom" || entry.entry.customType !== EVENTS.escalationRequest) return;
+		if (!this._live.has(session)) return;
+		if (entry.entry.type === "message" && entry.entry.message.role === "user" && !this._turns.has(session)) {
+			const text = chunksOf(entry.entry.message.content, "text").trim();
+			if (text !== "") this._chunk(session, "user_message_chunk", text);
+			return;
+		}
+		if (entry.entry.type !== "custom") return;
+		const kind = entry.entry.customType;
+		const data = (entry.entry.data ?? {}) as Record<string, unknown>;
+		if (kind === EVENTS.taskStart) {
+			this._taskStarted(session, data);
+			return;
+		}
+		if (kind === EVENTS.taskEnd) {
+			this._taskEnded(session, data);
+			return;
+		}
+		if (kind === EVENTS.scheduleRun) {
+			this._scheduleFired(session, data);
+			return;
+		}
+		if (kind === EVENTS.retryScheduled) {
+			this._retry(session, "scheduled", data);
+			return;
+		}
+		if (kind === EVENTS.retryStarted) {
+			this._retry(session, "started", data);
+			return;
+		}
+		if (kind !== EVENTS.escalationRequest) return;
 		const request = escalationOf(entry.entry.data);
 		if (request === null) return;
 		if (this._asked.has(request.escalationId)) return;
@@ -720,6 +856,7 @@ export class AcpAgent {
 			{ optionId: "allow_always", name: `本会话放开到 ${request.to}`, kind: "allow_always" },
 			{ optionId: "reject_once", name: "拒绝", kind: "reject_once" },
 		];
+		void this._activity(session);
 		const toolCall = {
 			...toolUpdate(request.toolCallId, request.toolName, request.params, "pending"),
 			...(request.justification === "" ? {} : { content: [{ type: "content", content: { type: "text", text: request.justification } }] }),
@@ -736,8 +873,12 @@ export class AcpAgent {
 
 		const backend = await this._backendOf();
 		const target = backend.sessions.get(session);
-		if (optionId === "allow_always" && isMode(request.to)) await target.setSandbox(request.to);
+		if (optionId === "allow_always" && isMode(request.to)) {
+			await target.setSandbox(request.to);
+			this._modeChanged(session, request.to);
+		}
 		await settleEscalation(target, backend.tools, request, optionId === null || optionId === "reject_once" ? "rejected" : "approved");
+		void this._activity(session);
 		const turn = this._turns.get(session);
 		if (turn === undefined) return;
 		turn.open = Math.max(0, turn.open - 1);
@@ -754,7 +895,7 @@ export class AcpAgent {
 	}
 
 	private _compaction(session: string, compacting: boolean): void {
-		if (!this._turns.has(session)) return;
+		if (!this._live.has(session)) return;
 		const open = this._compacting.get(session);
 		if (compacting) {
 			if (open !== undefined) return;
@@ -762,7 +903,14 @@ export class AcpAgent {
 			this._compacting.set(session, toolCallId);
 			this._deps.rpc.notify("session/update", {
 				sessionId: session,
-				update: { sessionUpdate: "tool_call", toolCallId, title: "Compacting context", kind: "other", status: "in_progress" },
+				update: {
+					sessionUpdate: "tool_call",
+					toolCallId,
+					title: "Compacting context",
+					kind: "other",
+					status: "in_progress",
+					_meta: { lody: { activity: { version: 1, kind: "context_compaction", automatic: true } } },
+				},
 			});
 			this._chunk(session, "agent_thought_chunk", "正在压缩上下文，稍等…");
 			return;
@@ -771,7 +919,12 @@ export class AcpAgent {
 		this._compacting.delete(session);
 		this._deps.rpc.notify("session/update", {
 			sessionId: session,
-			update: { sessionUpdate: "tool_call_update", toolCallId: open, status: "completed" },
+			update: {
+				sessionUpdate: "tool_call_update",
+				toolCallId: open,
+				status: "completed",
+				_meta: { lody: { activity: { version: 1, kind: "context_compaction", automatic: true } } },
+			},
 		});
 	}
 
@@ -779,9 +932,12 @@ export class AcpAgent {
 		if (event.type === "run_start") {
 			const turn = this._turns.get(session);
 			if (turn !== undefined) turn.started = true;
+			void this._activity(session);
 			return;
 		}
 		if (event.type === "run_end") {
+			this._closeScheduled(session);
+			void this._activity(session);
 			const turn = this._turns.get(session);
 			if (turn === undefined) return;
 			if (turn.open > 0) return;
@@ -792,15 +948,28 @@ export class AcpAgent {
 			turn.settle(turn.cancelled ? "cancelled" : "end_turn");
 			return;
 		}
-		if (!this._turns.has(session)) return;
+		if (!this._live.has(session)) return;
+		if (event.type === "turn_end") {
+			void this._usage(session);
+			void this._activity(session);
+			return;
+		}
+		if (event.type === "message_end") {
+			this._account(session, event.message);
+			return;
+		}
 		if (event.type === "message_update") this._stream(session, event.message);
 		if (event.type === "tool_start") {
+			const meta = lodyMeta(event.toolName, event.args);
+			if (meta !== null) this._toolMeta.set(`${session}:${event.toolCallId}`, meta);
 			this._deps.rpc.notify("session/update", {
 				sessionId: session,
-				update: { sessionUpdate: "tool_call", ...toolUpdate(event.toolCallId, event.toolName, event.args, "in_progress") },
+				update: { sessionUpdate: "tool_call", ...toolUpdate(event.toolCallId, event.toolName, event.args, "in_progress"), ...(meta === null ? {} : { _meta: { lody: meta } }) },
 			});
 		}
 		if (event.type === "tool_end") {
+			const meta = this._toolMeta.get(`${session}:${event.toolCallId}`) ?? null;
+			this._toolMeta.delete(`${session}:${event.toolCallId}`);
 			this._deps.rpc.notify("session/update", {
 				sessionId: session,
 				update: {
@@ -808,9 +977,224 @@ export class AcpAgent {
 					toolCallId: event.toolCallId,
 					status: event.isError ? "failed" : "completed",
 					...(event.preview === "" ? {} : { content: [{ type: "content", content: { type: "text", text: event.preview } }] }),
+					...(meta === null ? {} : { _meta: { lody: meta } }),
 				},
 			});
 		}
+	}
+
+	private _title(session: string): void {
+		this._deps.rpc.notify("session/update", { sessionId: session, update: { sessionUpdate: "session_info_update", title: session } });
+	}
+
+	private async _usage(session: string): Promise<void> {
+		const backend = await this._backendOf().catch(() => null);
+		if (backend === null) return;
+		const context = await backend.sessions
+			.get(session)
+			.contextUsage()
+			.catch(() => null);
+		const modelUsage = this._modelUsage(session);
+		const spent = Object.values(modelUsage).every((row) => row.costUSD !== undefined) ? Object.values(modelUsage).reduce((sum, row) => sum + (row.costUSD ?? 0), 0) : undefined;
+		if (context !== null) {
+			this._deps.rpc.notify("session/update", {
+				sessionId: session,
+				update: { sessionUpdate: "usage_update", used: context.used, size: context.window, ...(spent === undefined ? {} : { cost: { amount: spent, currency: "USD" } }) },
+			});
+		}
+		const rows = Object.entries(modelUsage);
+		if (rows.length === 0) return;
+		const latest = rows.reduce((best, [, row]) => (row.inputTokens + row.outputTokens > best.inputTokens + best.outputTokens ? row : best), emptyUsage());
+		const delta = this._takeDelta(session);
+		this._deps.rpc.notify("_lody/session/usage_update", {
+			sessionId: session,
+			usage: latest,
+			modelUsage,
+			...(Object.keys(delta).length === 0 ? {} : { delta: { usage: latest, modelUsage: delta } }),
+			_meta: { lody: { usageScopeId: this._usageScope } },
+		});
+	}
+
+	private _account(session: string, message: unknown): void {
+		if (!isRecord(message) || message["role"] !== "assistant") return;
+		const usage = usageOf(message);
+		if (usage === null) return;
+		const model = typeof message["model"] === "string" && message["model"] !== "" ? message["model"] : "unknown";
+		const totals = this._usageByModel.get(session) ?? new Map<string, LodyModelUsage>();
+		const total = totals.get(model) ?? emptyUsage();
+		addUsage(total, usage);
+		totals.set(model, total);
+		this._usageByModel.set(session, totals);
+		const pending = this._usageDelta.get(session) ?? new Map<string, LodyModelUsage>();
+		const delta = pending.get(model) ?? emptyUsage();
+		addUsage(delta, usage);
+		pending.set(model, delta);
+		this._usageDelta.set(session, pending);
+	}
+
+	private _modelUsage(session: string): Record<string, LodyModelUsage> {
+		const totals = this._usageByModel.get(session);
+		return totals === undefined ? {} : Object.fromEntries(totals);
+	}
+
+	private _takeDelta(session: string): Record<string, LodyModelUsage> {
+		const pending = this._usageDelta.get(session);
+		if (pending === undefined) return {};
+		this._usageDelta.delete(session);
+		return Object.fromEntries(pending);
+	}
+
+	private async _activity(session: string): Promise<void> {
+		if (!this._live.has(session)) return;
+		const backend = await this._backendOf().catch(() => null);
+		if (backend === null) return;
+		const target = backend.sessions.get(session);
+		const state = target.hasSuspended() ? "requires_action" : target.running ? "running" : "idle";
+		this._deps.rpc.notify("_lody/session/activity_update", {
+			version: 1,
+			sessionId: session,
+			state,
+			backgroundTaskCount: this._tasks.get(session)?.size ?? 0,
+		});
+	}
+
+	private _taskStarted(session: string, data: Record<string, unknown>): void {
+		const taskId = typeof data["taskId"] === "string" ? data["taskId"] : null;
+		if (taskId === null) return;
+		const live = this._tasks.get(session) ?? new Set<string>();
+		live.add(taskId);
+		this._tasks.set(session, live);
+		const command = typeof data["command"] === "string" ? data["command"] : "";
+		const startedAt = typeof data["timestamp"] === "number" ? Math.round(data["timestamp"] / 1000) : Math.round(Date.now() / 1000);
+		this._deps.rpc.notify("session/update", {
+			sessionId: session,
+			update: {
+				sessionUpdate: "tool_call",
+				toolCallId: `task-${taskId}`,
+				title: command === "" ? taskId : command.length > 80 ? `${command.slice(0, 80)}…` : command,
+				kind: "execute",
+				status: "in_progress",
+				_meta: {
+					lody: { task: { version: 1, taskId, kind: "background", status: "in_progress", ...(command === "" ? {} : { description: command }), startedAtEpochSeconds: startedAt } },
+				},
+			},
+		});
+		void this._activity(session);
+	}
+
+	private _taskEnded(session: string, data: Record<string, unknown>): void {
+		const taskId = typeof data["taskId"] === "string" ? data["taskId"] : null;
+		if (taskId === null) return;
+		const live = this._tasks.get(session);
+		live?.delete(taskId);
+		const exitCode = typeof data["exitCode"] === "number" ? data["exitCode"] : null;
+		const status = exitCode === null || exitCode === 0 ? "completed" : "failed";
+		const endedAt = typeof data["timestamp"] === "number" ? Math.round(data["timestamp"] / 1000) : Math.round(Date.now() / 1000);
+		this._deps.rpc.notify("session/update", {
+			sessionId: session,
+			update: {
+				sessionUpdate: "tool_call_update",
+				toolCallId: `task-${taskId}`,
+				status,
+				_meta: {
+					lody: {
+						task: {
+							version: 1,
+							taskId,
+							kind: "background",
+							status,
+							endedAtEpochSeconds: endedAt,
+							...(status === "failed" && exitCode !== null ? { error: `exit ${exitCode}` } : {}),
+						},
+					},
+				},
+			},
+		});
+		void this._activity(session);
+	}
+
+	private _scheduleFired(session: string, data: Record<string, unknown>): void {
+		const runId = typeof data["runId"] === "string" ? data["runId"] : null;
+		if (runId === null) return;
+		const dispatched = data["status"] === "dispatched";
+		const startedAt = typeof data["dispatchedAt"] === "number" ? Math.round(data["dispatchedAt"] / 1000) : Math.round(Date.now() / 1000);
+		if (!dispatched) {
+			this._deps.rpc.notify("session/update", {
+				sessionId: session,
+				update: {
+					sessionUpdate: "tool_call",
+					toolCallId: `schedule-${runId}`,
+					title: "Scheduled run",
+					kind: "other",
+					status: "failed",
+					_meta: { lody: { task: { version: 1, taskId: runId, kind: "scheduled", status: "failed", ...(typeof data["error"] === "string" ? { error: data["error"] } : {}) } } },
+				},
+			});
+			return;
+		}
+		const pending = this._scheduled.get(session) ?? new Set<string>();
+		pending.add(runId);
+		this._scheduled.set(session, pending);
+		this._deps.rpc.notify("session/update", {
+			sessionId: session,
+			update: {
+				sessionUpdate: "tool_call",
+				toolCallId: `schedule-${runId}`,
+				title: "Scheduled run",
+				kind: "other",
+				status: "in_progress",
+				_meta: { lody: { task: { version: 1, taskId: runId, kind: "scheduled", status: "in_progress", startedAtEpochSeconds: startedAt } } },
+			},
+		});
+		void this._activity(session);
+	}
+
+	private _closeScheduled(session: string): void {
+		const pending = this._scheduled.get(session);
+		if (pending === undefined || pending.size === 0) return;
+		this._scheduled.delete(session);
+		const endedAt = Math.round(Date.now() / 1000);
+		for (const runId of pending) {
+			this._deps.rpc.notify("session/update", {
+				sessionId: session,
+				update: {
+					sessionUpdate: "tool_call_update",
+					toolCallId: `schedule-${runId}`,
+					status: "completed",
+					_meta: { lody: { task: { version: 1, taskId: runId, kind: "scheduled", status: "completed", endedAtEpochSeconds: endedAt } } },
+				},
+			});
+		}
+	}
+
+	private _modeChanged(session: string, modeId: string): void {
+		this._deps.rpc.notify("session/update", { sessionId: session, update: { sessionUpdate: "current_mode_update", currentModeId: modeId } });
+	}
+
+	private _retry(session: string, phase: "scheduled" | "started", data: Record<string, unknown>): void {
+		const retryId = typeof data["retryId"] === "string" ? data["retryId"] : null;
+		if (retryId === null) return;
+		const toolCallId = `retry-${retryId}`;
+		const activity = { version: 1, kind: "retry", automatic: true };
+		if (phase === "scheduled") {
+			const reason = typeof data["error"] === "string" ? data["error"] : undefined;
+			this._deps.rpc.notify("session/update", {
+				sessionId: session,
+				update: {
+					sessionUpdate: "tool_call",
+					toolCallId,
+					title: typeof data["retry"] === "number" ? `Retrying (${data["retry"]})` : "Retrying",
+					kind: "other",
+					status: "in_progress",
+					_meta: { lody: { activity: { ...activity, ...(reason === undefined ? {} : { failureReason: reason.slice(0, 300) }) } } },
+				},
+			});
+			return;
+		}
+		this._deps.rpc.notify("session/update", {
+			sessionId: session,
+			update: { sessionUpdate: "tool_call_update", toolCallId, status: "completed", _meta: { lody: { activity } } },
+		});
 	}
 
 	private _stream(session: string, message: unknown): void {

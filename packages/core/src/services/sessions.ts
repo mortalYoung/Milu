@@ -79,7 +79,7 @@ export class SessionService implements Service {
 	private readonly _compactingEmitter = new Emitter<SessionCompactingEvent>();
 	private readonly _forks = new Map<string, Promise<void>>();
 	private readonly _cursors = new Map<string, { path: string; offset: number; seq: number }>();
-	private readonly _written = new Map<string, number>();
+	private readonly _ownSeq = new Map<string, number>();
 	private readonly _externalRunning = new Set<string>();
 	private readonly _timers = new Map<string, NodeJS.Timeout>();
 	private _follower: FSWatcher | null = null;
@@ -169,11 +169,10 @@ export class SessionService implements Service {
 		const info = await stat(path).catch(() => null);
 		if (info === null) return;
 		const existing = this._cursors.get(name);
-		const written = this._written.get(name);
+		const own = this._ownSeq.get(name) ?? -1;
 		const fresh = existing === undefined || existing.path !== path;
-		const start = fresh ? (written !== undefined ? info.size : await this._lineStart(path, Math.max(0, info.size - TAIL_WINDOW))) : 0;
-		const cursor = fresh ? { path, offset: start, seq: written ?? -1 } : existing;
-		this._written.delete(name);
+		const start = fresh ? (own >= 0 ? info.size : await this._lineStart(path, Math.max(0, info.size - TAIL_WINDOW))) : 0;
+		const cursor = fresh ? { path, offset: start, seq: Math.max(existing?.seq ?? -1, own) } : existing;
 		this._cursors.set(name, cursor);
 		const { entries, offset } = await readEntriesFrom(path, cursor.offset);
 		cursor.offset = offset;
@@ -215,9 +214,9 @@ export class SessionService implements Service {
 		const relays = new DisposableStore();
 		relays.add(
 			session.onEntry((entry) => {
+				if (entry.seq > (this._ownSeq.get(name) ?? -1)) this._ownSeq.set(name, entry.seq);
 				const cursor = this._cursors.get(name);
-				if (cursor === undefined) this._written.set(name, entry.seq);
-				else if (entry.seq > cursor.seq) cursor.seq = entry.seq;
+				if (cursor !== undefined && entry.seq > cursor.seq) cursor.seq = entry.seq;
 				this._entryEmitter.fire({ session: name, entry });
 			}),
 		);

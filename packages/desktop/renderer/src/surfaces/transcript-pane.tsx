@@ -22,11 +22,11 @@ function EscalationCard(props: { item: ViewItem; host: Host; session: string }) 
 	const escalation = props.item.escalation;
 	const [sent, setSent] = useState<string | null>(null);
 	const external = useStore(props.host.sessions.store, (state) => state.rows.find((row) => row.name === props.session)?.origin != null);
-	if (!escalation || external) return null;
+	if (!escalation) return null;
 	const pending = escalation.status === "pending" && sent !== escalation.id;
 	const tone = escalation.status === "approved" ? " ok" : escalation.status === "rejected" ? " no" : " drp";
 	const answer = (approved: boolean): void => {
-		if (!pending) return;
+		if (!pending || external) return;
 		setSent(escalation.id);
 		void props.host.actions.invoke("permission.answer", props.session, { escalationId: escalation.id, approved }).catch((error: unknown) => {
 			setSent(null);
@@ -45,12 +45,13 @@ function EscalationCard(props: { item: ViewItem; host: Host; session: string }) 
 			</div>
 			{pending ? (
 				<div className="msg-escalation-actions">
-					<button type="button" className="conv-dialog-button" onClick={() => answer(true)}>
+					<button type="button" className="conv-dialog-button" disabled={external} onClick={() => answer(true)}>
 						Approve
 					</button>
-					<button type="button" className="conv-dialog-button" onClick={() => answer(false)}>
+					<button type="button" className="conv-dialog-button" disabled={external} onClick={() => answer(false)}>
 						Deny
 					</button>
+					{external ? <span className="msg-escalation-just">another client drives this chat and answers it</span> : null}
 				</div>
 			) : (
 				<div className={"msg-escalation-status" + tone}>{escalation.status}</div>

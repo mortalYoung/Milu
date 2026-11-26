@@ -60,6 +60,10 @@ createInterface({ input: child.stdout }).on("line", (line) => {
 		console.error(`[update] ${kind} ${JSON.stringify(update).slice(0, 160)}`);
 		return;
 	}
+	if (typeof message.method === "string" && message.method.startsWith("_lody/")) {
+		console.error(`[lody] ${message.method} ${JSON.stringify(message.params).slice(0, 320)}`);
+		return;
+	}
 	if (message.method === "session/request_permission") {
 		const params = message.params ?? {};
 		console.error(
@@ -140,6 +144,19 @@ try {
 		result = await call("session/prompt", { sessionId: created.sessionId, prompt });
 	}
 	console.error(`\n[probe] prompt → ${JSON.stringify(result)}`);
+
+	if (process.env["ACP_PROBE_FORK"] === "1") {
+		mark("session/fork");
+		const forked = (await call("session/fork", { sessionId: created.sessionId, cwd: process.cwd(), mcpServers: [] })) as { sessionId?: string; error?: unknown };
+		console.error(`[probe] session/fork → ${JSON.stringify(forked).slice(0, 300)}`);
+		const forkedId = forked.sessionId;
+		if (typeof forkedId === "string") {
+			const reopened = await call("session/load", { sessionId: forkedId, cwd: process.cwd(), mcpServers: [] });
+			console.error(`[probe] load fork → ${JSON.stringify(reopened).slice(0, 160)}`);
+			const removed = await call("session/delete", { sessionId: forkedId });
+			console.error(`[probe] delete fork → ${JSON.stringify(removed)}`);
+		}
+	}
 
 	if (process.env["ACP_PROBE_DELETE"] === "1") {
 		mark("session/delete");

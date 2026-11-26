@@ -14,17 +14,31 @@ interface PeerEnvelope {
 	readonly notice?: unknown;
 }
 
+function reaches(fromOrigin: string | null, toOrigin: string | null): boolean {
+	if (toOrigin === null) return true;
+	return fromOrigin !== null && fromOrigin === toOrigin;
+}
+
+function refusal(fromOrigin: string | null, to: string, toOrigin: string): string {
+	if (fromOrigin === null) return `"${to}" belongs to another client (origin "${toOrigin}"); a chat without an origin can only write to chats without one`;
+	return `"${to}" belongs to another client (origin "${toOrigin}"); chats with origin "${fromOrigin}" can only write to their own client or to chats without one`;
+}
+
 export class PeerService implements Service {
 	constructor(private readonly _sessionService: SessionService) {}
 
 	async list(asker: string): Promise<readonly PeerMember[]> {
+		const fromOrigin = await this._sessionService.get(asker).origin();
 		const names = (await this._sessionService.names()).filter((name) => name !== asker);
-		return Promise.all(
+		const members = await Promise.all(
 			names.map(async (name) => {
-				const profile = await this._sessionService.get(name).profile();
+				const session = this._sessionService.get(name);
+				if (!reaches(fromOrigin, await session.origin())) return null;
+				const profile = await session.profile();
 				return { name, ...(profile?.forkedFrom ? { forkedFrom: profile.forkedFrom } : {}) };
 			}),
 		);
+		return members.filter((member): member is PeerMember => member !== null);
 	}
 
 	async send(input: { from: Session; to: string; text: string }): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -37,6 +51,10 @@ export class PeerService implements Service {
 
 		const target = await this._session(input.to);
 		if (!target) return { ok: false, error: `no chat named "${input.to}"` };
+
+		const toOrigin = await target.origin();
+		const fromOrigin = await input.from.origin();
+		if (!reaches(fromOrigin, toOrigin) && toOrigin !== null) return { ok: false, error: refusal(fromOrigin, input.to, toOrigin) };
 
 		const delivered = await target.deliver(text, { peer: { from: input.from.name, hop } });
 		if (!delivered.ok) return { ok: false, error: `"${input.to}" could not start: ${delivered.error}` };

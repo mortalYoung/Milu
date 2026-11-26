@@ -208,6 +208,10 @@ export class Session {
 		return driverLive(this.root);
 	}
 
+	async origin(): Promise<string | null> {
+		return (await this._profileOf())?.origin ?? null;
+	}
+
 	async mark(origin: string | undefined, scratch: string | undefined): Promise<void> {
 		const profile = (await this._profileOf()) ?? { name: this.name, createdAt: Date.now() };
 		this._profile = {
@@ -392,7 +396,9 @@ export class Session {
 				details: outcome.details,
 				timestamp: Date.now(),
 			} as ToolResult;
-			loop.restore([...messages, result]);
+			let insert = at + 1;
+			while (insert < messages.length && messages[insert]?.role === "toolResult") insert += 1;
+			loop.restore([...messages.slice(0, insert), result, ...messages.slice(insert)]);
 			await this._recordToolResult(result);
 			return true;
 		} finally {
