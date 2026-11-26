@@ -446,7 +446,8 @@ export class SessionLog {
 		);
 		const sliced = projectSlice([...newestFirst].reverse());
 		const firstUser = sliced.findIndex((message) => message.role === "user");
-		return firstUser < 0 ? [] : sliced.slice(firstUser);
+		if (firstUser < 0) return [];
+		return Promise.all(sliced.slice(firstUser).map((message) => this._images.wire(message)));
 	}
 
 	dispose(): void {

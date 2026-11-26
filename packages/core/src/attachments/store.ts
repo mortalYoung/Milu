@@ -75,6 +75,10 @@ function wireImage(block: unknown): WireImage | undefined {
 	return { type: "image", data: value.data, mimeType: value.mimeType };
 }
 
+function isImageBlock(block: unknown): boolean {
+	return typeof block === "object" && block !== null && (block as { type?: unknown }).type === "image";
+}
+
 function durableImage(block: unknown): DurableImage | undefined {
 	if (typeof block !== "object" || block === null) return undefined;
 	const value = block as { type?: unknown; attachment?: unknown };
@@ -204,7 +208,11 @@ export class ImageStore {
 		const next = await Promise.all(
 			blocks.map(async (block) => {
 				const durable = durableImage(block);
-				if (durable === undefined) return block;
+				if (durable === undefined) {
+					if (!isImageBlock(block) || wireImage(block) !== undefined) return block;
+					changed = true;
+					return { type: "text", text: "[image omitted: the block carries no image data]" };
+				}
 				changed = true;
 				try {
 					const data = await this.read(durable.attachment);
