@@ -81,7 +81,7 @@ export class PermissionService implements Service {
 		const cached = this._modes.get(session.name);
 		if (cached !== undefined && cached.stamp === stamp) return cached.mode;
 		const saved = await session.sandbox();
-		const mode = isMode(saved) ? saved : (this._sandbox?.get() ?? SANDBOX_DEFAULT);
+		const mode = isMode(saved.mode) ? saved.mode : (this._sandbox?.get() ?? SANDBOX_DEFAULT);
 		this._modes.set(session.name, { mode, stamp });
 		return mode;
 	}
