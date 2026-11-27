@@ -64,6 +64,13 @@ export interface SessionCompactingEvent {
 
 const TAIL_WINDOW = 64 * 1024;
 
+export class SessionLockedError extends Error {
+	constructor(name: string) {
+		super(`"${name}" is locked; unlock it before deleting`);
+		this.name = "SessionLockedError";
+	}
+}
+
 export class SessionService implements Service {
 	readonly onEntry: Event<SessionEntry>;
 	readonly onLoopEvent: Event<SessionLoopEvent>;
@@ -316,6 +323,7 @@ export class SessionService implements Service {
 		const dir = join(this._partnerRoot, name);
 		const facts = await stat(dir).catch(() => null);
 		if (facts === null) throw new Error(`no session named "${name}"`);
+		if ((await profileOf(dir))?.locked === true) throw new SessionLockedError(name);
 		await this.close(name);
 		const trash = join(homedir(), ".Trash");
 		await mkdir(trash, { recursive: true });
@@ -515,6 +523,7 @@ export class SessionService implements Service {
 				...(profile?.persona ? { persona: profile.persona } : {}),
 				...(profile?.forkedFrom ? { forkedFrom: profile.forkedFrom } : {}),
 				...(profile?.pinned ? { pinned: true } : {}),
+				...(profile?.locked ? { locked: true } : {}),
 				running: session.running,
 				error: reason(error),
 				...extra,

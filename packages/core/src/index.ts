@@ -15,6 +15,7 @@ import type { SettingsService } from "./services/settings.ts";
 import type { ToolService } from "./services/tools.ts";
 import type { WatchService } from "./services/watch.ts";
 
+export { SessionLockedError } from "./services/sessions.ts";
 export { Agent } from "@earendil-works/pi-agent-core";
 export { isRetryableAssistantError } from "@earendil-works/pi-ai";
 export type { StreamFn } from "@earendil-works/pi-agent-core";

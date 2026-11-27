@@ -36,6 +36,7 @@ export interface SessionProfile {
 	pinned?: boolean;
 	origin?: string;
 	scratch?: string;
+	locked?: boolean;
 }
 
 export interface WorkspaceFacts {
@@ -142,6 +143,11 @@ export async function driverLive(dir: string): Promise<boolean> {
 export async function writePinned(dir: string, pinned: boolean): Promise<void> {
 	const profile = (await profileOf(dir)) ?? { name: basename(dir), createdAt: Date.now() };
 	await writeJson(join(dir, PROFILE_FILE), { ...profile, pinned });
+}
+
+export async function writeLocked(dir: string, locked: boolean): Promise<void> {
+	const profile = (await profileOf(dir)) ?? { name: basename(dir), createdAt: Date.now() };
+	await writeJson(join(dir, PROFILE_FILE), { ...profile, locked });
 }
 
 export function writeReadAt(dir: string, readAt: number): Promise<void> {

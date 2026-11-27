@@ -12,6 +12,7 @@ const trashExtension: Extension = {
 				group: "danger",
 				danger: true,
 				icon: "trash",
+				disabled: async (session) => (await session.profile())?.locked === true,
 				title: "Move to Trash",
 				action: "trash.session",
 			},

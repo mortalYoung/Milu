@@ -13,6 +13,7 @@ export const BUILTIN: Record<string, () => Promise<{ default: Extension }>> = {
 	image: () => import("./image/index.ts"),
 	settings: () => import("./settings/index.ts"),
 	pin: () => import("./pin/index.ts"),
+	lock: () => import("./lock/index.ts"),
 	copy: () => import("./copy/index.ts"),
 	open: () => import("./open/index.ts"),
 	trash: () => import("./trash/index.ts"),

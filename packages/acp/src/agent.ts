@@ -4,7 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import { isAbsolute, join, resolve, sep } from "node:path";
 
 import type { AgentLoopEvent, Backend, EscalationRequest, Session } from "@milu/core";
-import { clearDriver, EVENTS, pendingEscalations, settleEscalation, writeDriver } from "@milu/core";
+import { clearDriver, EVENTS, pendingEscalations, SessionLockedError, settleEscalation, writeDriver } from "@milu/core";
 import type { ImageMediaType, PromptImage, SeqEntry } from "@milu/protocol";
 
 import { ERROR, RpcError, type RpcServer } from "./rpc.ts";
@@ -546,7 +546,12 @@ export class AcpAgent {
 		this._forget(session.name);
 		await clearDriver(join(backend.sessions.partnerRoot, session.name)).catch(() => undefined);
 		if (!(await backend.sessions.names()).includes(session.name)) return {};
-		await backend.sessions.remove(session.name);
+		try {
+			await backend.sessions.remove(session.name);
+		} catch (error) {
+			if (error instanceof SessionLockedError) throw new RpcError(ERROR.invalidRequest, error.message);
+			throw error;
+		}
 		return {};
 	}
 

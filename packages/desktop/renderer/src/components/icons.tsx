@@ -17,6 +17,8 @@ import {
 	FolderTree,
 	GitFork,
 	Info,
+	Lock,
+	LockOpen,
 	MousePointer2,
 	type LucideIcon,
 	PanelLeft,
@@ -75,6 +77,8 @@ export const FolderOpenIcon = sized(FolderOpen);
 export const SquareCodeIcon = sized(SquareCode);
 export const MousePointerIcon = sized(MousePointer2);
 export const ZapIcon = sized(Zap);
+export const LockIcon = sized(Lock);
+export const LockOpenIcon = sized(LockOpen);
 
 const NAMED: Record<string, (props: { size?: number; className?: string }) => ReactNode> = {
 	info: InfoIcon,
@@ -93,6 +97,8 @@ const NAMED: Record<string, (props: { size?: number; className?: string }) => Re
 	"alarm-clock": AlarmClockIcon,
 	terminal: TerminalIcon,
 	brain: BrainIcon,
+	lock: LockIcon,
+	"lock-open": LockOpenIcon,
 	finder: FolderOpenIcon,
 	vscode: SquareCodeIcon,
 	cursor: MousePointerIcon,

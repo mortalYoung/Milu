@@ -146,6 +146,7 @@ export interface SessionRow {
 	readonly startedAt?: number;
 	readonly forkedFrom?: string;
 	readonly pinned?: boolean;
+	readonly locked?: boolean;
 	readonly origin?: string | null;
 	readonly readAt?: number;
 	readonly running: boolean;

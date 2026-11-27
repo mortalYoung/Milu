@@ -37,6 +37,7 @@ import {
 	writeWorkspace,
 	type WorkspaceFacts,
 	writeModel,
+	writeLocked,
 	writePinned,
 	writeOrigin,
 	writeProfile,
@@ -240,6 +241,7 @@ export class Session {
 			...(profile?.persona ? { persona: profile.persona } : {}),
 			...(profile?.forkedFrom ? { forkedFrom: profile.forkedFrom } : {}),
 			...(profile?.pinned ? { pinned: true } : {}),
+			...(profile?.locked ? { locked: true } : {}),
 			...(facts.startedAt ? { startedAt: facts.startedAt } : {}),
 			...(readAt !== undefined ? { readAt } : {}),
 			...(workspace ? { workspace: workspace.path } : {}),
@@ -808,6 +810,11 @@ export class Session {
 		delete next.forkedFrom;
 		await writeProfile(this.root, next);
 		this._profile = next;
+	}
+
+	async lock(locked: boolean): Promise<void> {
+		await writeLocked(this.root, locked);
+		this._profile = { ...(this._profile ?? { name: this.name, createdAt: Date.now() }), locked };
 	}
 
 	async pin(pinned: boolean): Promise<void> {

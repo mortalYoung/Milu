@@ -27,6 +27,7 @@ import {
 	IconByName,
 	MoreVerticalIcon,
 	PanelLeftCloseIcon,
+	LockIcon,
 	PinIcon,
 	SearchIcon,
 } from "../components/icons.tsx";
@@ -86,6 +87,12 @@ function Row(props: {
 			<PinIcon size={9} className="text-muted" />
 		</span>
 	) : null;
+	const locked =
+		session.locked === true ? (
+			<span className="inline-flex shrink-0" title="locked — cannot be deleted">
+				<LockIcon size={9} className="text-muted" />
+			</span>
+		) : null;
 	const unread = props.unread ? <span className="size-[5px] shrink-0 rounded-full bg-ink" title="new messages" /> : null;
 	const workspaceNode =
 		workspace === "" ? (
@@ -194,6 +201,7 @@ function Row(props: {
 					{signals}
 					{status}
 					{pin}
+					{locked}
 					{time}
 				</span>
 			</span>
@@ -224,6 +232,7 @@ function Row(props: {
 				{signals}
 				{status}
 				{pin}
+				{locked}
 				{time}
 			</span>
 			{hasMeta ? (
@@ -246,6 +255,7 @@ function Row(props: {
 				{signals}
 				{status}
 				{pin}
+				{locked}
 				{time}
 			</span>
 			{hasMeta ? (
