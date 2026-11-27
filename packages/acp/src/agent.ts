@@ -389,6 +389,7 @@ export class AcpAgent {
 		await this._attachServers(session, stdioServersOf(params));
 		this._title(session.name);
 		await this._replay(session);
+		void this._activity(session.name);
 		await this._pendingEscalations(session);
 		await this._commands(session);
 		return { modes: await this._modesOf(session), configOptions: await this._configOptionsOf(session) };
@@ -744,6 +745,7 @@ export class AcpAgent {
 				await backend.commands.run(session, known.name, command[2] ?? "", { asDriver: true });
 				this._turns.delete(session.name);
 				turn.settle("end_turn");
+				void this._activity(session.name, "idle");
 				return { stopReason: "end_turn" };
 			}
 		}
@@ -758,6 +760,7 @@ export class AcpAgent {
 		this._compacting.delete(session.name);
 		this._turns.delete(session.name);
 		this._sent.clear();
+		void this._activity(session.name, "idle");
 		if (stopReason !== null && stopReason.startsWith("error:")) throw new RpcError(ERROR.internal, stopReason.slice("error:".length));
 		if (stopReason === null) {
 			const row = await session.row();
@@ -937,12 +940,12 @@ export class AcpAgent {
 		if (event.type === "run_start") {
 			const turn = this._turns.get(session);
 			if (turn !== undefined) turn.started = true;
-			void this._activity(session);
+			void this._activity(session, "running");
 			return;
 		}
 		if (event.type === "run_end") {
 			this._closeScheduled(session);
-			void this._activity(session);
+			void this._activity(session, "idle");
 			const turn = this._turns.get(session);
 			if (turn === undefined) return;
 			if (turn.open > 0) return;
@@ -1049,12 +1052,13 @@ export class AcpAgent {
 		return Object.fromEntries(pending);
 	}
 
-	private async _activity(session: string): Promise<void> {
+	private async _activity(session: string, known?: "running" | "idle"): Promise<void> {
 		if (!this._live.has(session)) return;
 		const backend = await this._backendOf().catch(() => null);
 		if (backend === null) return;
 		const target = backend.sessions.get(session);
-		const state = target.hasSuspended() ? "requires_action" : target.running ? "running" : "idle";
+		// 事件到达时 loop 的 running 还没翻面（run_end 在 finally 之前发），所以由调用方给出已知状态
+		const state = target.hasSuspended() ? "requires_action" : (known ?? (target.running ? "running" : "idle"));
 		this._deps.rpc.notify("_lody/session/activity_update", {
 			version: 1,
 			sessionId: session,
