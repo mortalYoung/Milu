@@ -1,5 +1,5 @@
-import { access, appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { access, appendFile, mkdir, open, readFile, rename, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 export const SCHEMA_VERSION = 1;
 export const MISFIRE_GRACE_MS = 5 * 60_000;
@@ -64,6 +64,20 @@ function runsPath(sessionRoot: string): string {
 function isDefinition(value: unknown): value is ScheduleDefinition {
 	const record = value as ScheduleDefinition | null;
 	return Boolean(record && typeof record.id === "string" && typeof record.schedule === "object" && record.schedule !== null);
+}
+
+export async function claimRun(sessionRoot: string, runId: string): Promise<boolean> {
+	const path = join(dir(sessionRoot), "claims", encodeURIComponent(runId));
+	await mkdir(dirname(path), { recursive: true });
+	try {
+		const handle = await open(path, "wx");
+		await handle.writeFile(JSON.stringify({ pid: process.pid, at: Date.now() }));
+		await handle.close();
+		return true;
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "EEXIST") return false;
+		throw error;
+	}
 }
 
 export async function hasDefinitions(sessionRoot: string): Promise<boolean> {

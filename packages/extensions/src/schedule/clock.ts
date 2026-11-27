@@ -3,6 +3,7 @@ import { EVENTS, type Session } from "@milu/core";
 import { advanceNext, describeRule } from "./rules.ts";
 import {
 	appendRun,
+	claimRun,
 	hasDefinitions,
 	loadDefinitions,
 	MISFIRE_GRACE_MS,
@@ -204,6 +205,8 @@ export class ScheduleClock {
 			for (const fire of plan.fires) {
 				const definition = this._definitions.find((item) => item.id === fire.id);
 				if (!definition) continue;
+				// 另一个后端可能同时在跑同一份 schedule：先抢这个 runId，抢不到就交给对方
+				if (!(await claimRun(this._options.session.root, fire.runId))) continue;
 
 				if (today >= this._options.dailyCap) {
 					this._definitions = this._definitions.map((item) => (item.id === fire.id ? pause(item, at) : item));
