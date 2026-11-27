@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="zh-CN">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<title>内核不依赖任何界面 — Milu 设计笔记</title>
+		<meta
+			name="description"
+			content="从 headless core 的定义与约束出发，经分层与扩展点讲到 ACP 接入：协议层作为第二个传输适配器复用同一个内核，能力协商、权限模型与事件语义各自约束什么，以及协议化接入的收益与代价。"
+		/>
+		<link rel="icon" href="../pixel_milu.png" />
+		<link rel="stylesheet" href="../style.css" />
+		<link rel="stylesheet" href="../notes.css" />
+	</head>
+
+	<body>
+		<svg class="sprite" aria-hidden="true" focusable="false">
+			<symbol id="w-mark" viewBox="45 40 210 72">
+				<path
+					d="M107.83 44.11c2.57 1.22.97 8.98.61 11.41-1.36 9.26-2.17 18.58-3.61 27.83-.36 2.36-2.56 7.8-.33 9.29 8.95-11.03 15.74-24.62 22.71-36.93 1.33-2.35 5.61-12.3 8.28-10.21.44 4.1-3.07 12.38-4.27 16.59-2.4 8.4-8.58 31.19-6.78 39.02.58 2.57 2.25 3.26 3.28 5.39-.41.44-.81.88-1.22 1.32-4.35-.92-4.66-6-4.93-9.65-.71-9.75 2.86-18.92 4.42-28.34.4-2.44 3.07-7.2 1.51-9.31-6.97 10.04-12.8 21.12-19.33 31.47-1.79 2.84-5.19 9.86-8.67 10.54-2.15-2.13.2-7.28.49-10.03.92-8.7 3.33-17.25 4.04-26 .21-2.56 1.92-6.67.47-8.94-2.63 3.8-3.73 8.9-5.71 13.06-6.11 12.89-19.33 37.12-35.96 37.37-1.95.04-3.51-.32-5.31-1.02-11.28-4.36-1.99-16.66 6.31-17.99 2.42-.39 5.45-2.06 6.98.52-2.42 3.74-12.31.79-15.11 8.68-.53 1.49-.3 3.27.74 4.54 6.89 8.46 21.82-5.27 26.35-10.76 8.77-10.65 13.09-23.26 18.86-35.49 1.19-2.51 3.57-12.01 6.18-12.36Zm94.67 46.05c.46.45.92.89 1.38 1.34-.66 2.88-4.81 7.38-2.38 10.22 4.51-2.02 10.06-10.98 12.32-11.55 2.4.8.6 3.79.35 5.49-.54 3.67.05 6.5 3.65 8.05 6.02 2.62 17.08-4.38 21.68-8.03 1.75-1.39 3.75-4.45 6-4.63 3.1 2.91-8.98 10.53-11.47 11.8-5.74 2.9-13.82 6.66-19.72 2-2.04-1.6-2.12-4.01-3.81-5.71-2.74.51-9.52 9.61-12.34 3.55-.7-1.5.32-3.43-.66-4.69-6.79 5.48-18.58 13.02-27.1 6.77-3.49-2.56-3.53-6.63-5.9-9.7-7.41 6.45-17.36 13.46-27.61 9.84-4.14-1.47-6.21-5.13-5.82-9.41.18-1.98 1.12-6.47 3.76-5.48 1.81 3.04-3.23 7.3.34 10.65 6.63 6.23 17.55-.09 23.22-4.45 1.52-1.17 4.86-2.89 5.53-4.78.83-2.34.09-6.1.2-8.61.2-4.35.85-9.27 2.08-13.45 1.07-3.68 3.24-11.81 8.3-11.38 5.21.45 3.14 7.77 2.61 10.86-1.07 6.22-3.86 12.09-6.26 17.85-.83 1.98-2.4 4.01-2.81 6.13-.41 2.13.21 4.21 1.19 6.08 5.41 10.34 18.8 2.92 25.36-2.17 2.56-1.99 5.12-5.18 7.91-6.59Zm-29-29.51c-4.49 2.63-6.31 14.98-6.76 19.85-.21 2.22-.65 5.19.76 7.08 3.84-5.33 5.38-13.29 6.65-19.63.47-2.36 2-5.89-.65-7.3ZM136.05 82.5c.75 2.36-2.57 4.57-4.69 4.33-1.28-2.21 2.8-5.58 4.69-4.33Z"
+					fill="currentColor"
+					fill-rule="evenodd"
+					stroke="currentColor"
+					stroke-linejoin="round"
+					stroke-width="0.25"
+				/>
+			</symbol>
+			<symbol id="i-half" viewBox="0 0 24 24">
+				<circle cx="12" cy="12" r="8" />
+				<path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" />
+			</symbol>
+			<symbol id="i-arrow-up" viewBox="0 0 24 24">
+				<path d="M12 19V5" />
+				<path d="m5 12 7-7 7 7" />
+			</symbol>
+		</svg>
+
+		<header class="nav">
+			<div class="wrap nav-inner">
+				<a class="brand" href="../index.html" aria-label="Milu — 返回首页">
+					<img src="../pixel_milu.png" alt="" width="24" height="24" />
+					<svg class="wordmark" viewBox="0 0 210 72" role="img" aria-label="Milu">
+						<use href="#w-mark" />
+					</svg>
+				</a>
+				<nav class="nav-links" aria-label="Site">
+					<a href="../index.html#demo">Demo</a>
+					<a href="../index.html#features">Features</a>
+					<a href="../index.html#get">Download</a>
+					<a href="index.html">Notes</a>
+					<a class="nav-github" href="https://github.com/mortalYoung/Milu" target="_blank" rel="noreferrer">GitHub <span class="arrow">↗</span></a>
+					<button class="theme-btn" type="button" aria-label="切换明暗主题" title="Light / dark">
+						<svg class="ico">
+							<use href="#i-half" />
+						</svg>
+					</button>
+				</nav>
+			</div>
+		</header>
+
+		<main id="top">
+			<div class="note-wrap">
+				<header class="note-head">
+					<p class="eyebrow"><span class="pulse"></span>Notes · 04 · ACP</p>
+					<h1>内核不依赖任何界面。</h1>
+					<p class="note-lede">会话、日志、模型与工具构成一个没有界面的内核，宿主只是接入层。ACP 是这条边界上的第二个适配器：它不改动内核，把同一个核心交给编辑器。</p>
+					<p class="note-meta">
+						<span>中文</span>
+						<span>Milu 0.4.0</span>
+						<span>2026-11-27</span>
+						<span>约 2,700 字</span>
+						<span>约 9 分钟</span>
+						<span class="note-chip" title="AI 协助撰写">AI</span>
+					</p>
+				</header>
+
+				<div class="note-grid">
+					<aside class="toc" aria-label="目录">
+						<p class="toc-title">目录</p>
+						<ol>
+							<li><a href="#what">headless core 是什么</a></li>
+							<li><a href="#why">为什么核心不得感知界面</a></li>
+							<li>
+								<a href="#arch">分层与边界</a>
+								<ol>
+									<li><a href="#layer-core">核心层</a></li>
+									<li><a href="#layer-boot">组装层</a></li>
+									<li><a href="#layer-edge">传输层</a></li>
+									<li><a href="#layer-ui">表现层</a></li>
+								</ol>
+							</li>
+							<li><a href="#ext">能力的注入方式</a></li>
+							<li>
+								<a href="#acp">ACP 接入</a>
+								<ol>
+									<li><a href="#acp-what">协议定位</a></li>
+									<li><a href="#acp-how">实现方式</a></li>
+									<li><a href="#acp-life">会话生命周期</a></li>
+									<li><a href="#acp-caps">能力协商</a></li>
+									<li><a href="#acp-perm">权限模型</a></li>
+									<li><a href="#acp-events">事件语义</a></li>
+								</ol>
+							</li>
+							<li>
+								<a href="#why-acp">协议化接入的收益与代价</a>
+								<ol>
+									<li><a href="#gain">收益</a></li>
+									<li><a href="#split">标准与扩展的分工</a></li>
+									<li><a href="#cost">代价</a></li>
+									<li><a href="#when">适用边界</a></li>
+								</ol>
+							</li>
+							<li><a href="#end">结论</a></li>
+						</ol>
+					</aside>
+
+					<article class="prose">
+						<p class="kicker" id="what">01 · 定义</p>
+						<h2>headless core 是什么</h2>
+						<p>
+							headless core
+							指一个不假设自己被谁调用的内核。它持有会话状态、消息日志、模型调用、工具执行与权限判定，把这四件事暴露成服务与事件；它不渲染界面，也不为某个具体客户端留入口。
+						</p>
+						<p>约束落在三条上：</p>
+						<ol>
+							<li>依赖面：只允许 <code>node:*</code> 与仓库内的协议层、依赖注入层；不允许 Electron、DOM、socket，也不允许宿主独有的 API。</li>
+							<li>所有权：每一份可变状态只有一个服务持有，并且明说自己的开始与结束（<code>create → initialize → dispose</code>）。</li>
+							<li>对外形状：只有两种 —— 请求返回一个值，事件描述发生了什么。不存在第三条通道。</li>
+						</ol>
+						<p>第三条是分出「界面」与「内核」的关键：事件只说发生了什么，不说给谁。谁在听、怎么展示、要不要重放，全部属于适配层。</p>
+						<p class="statement">内核描述发生了什么；适配层决定谁听到。</p>
+
+						<p class="kicker" id="why">02 · 约束</p>
+						<h2>为什么核心不得感知界面</h2>
+						<p>三条理由，代价依次升高：</p>
+						<ol>
+							<li>宿主数量。桌面窗口、编辑器、定时任务、命令行是四个接入方。界面一旦写进核心，每增加一个接入方都要回到核心改一次。</li>
+							<li>状态归属。界面状态（展开、选中、动画）与持久状态（会话、日志、策略）混在一处，就无法判断哪些该落盘、哪些该丢弃。</li>
+							<li>信任边界。渲染进程与外部客户端都不可信。核心若信任调用方传来的路径、命令与档位，权限校验就形同虚设 —— 校验必须发生在核心，而不是在界面。</li>
+						</ol>
+						<p>第二条决定持久化的正确性，第三条决定安全模型是否成立。两者都不是风格问题，因此写成包的依赖规则，让越界成为编译错误而不是评审意见。</p>
+
+						<p class="kicker" id="arch">03 · 架构</p>
+						<h2>分层与边界</h2>
+						<p>四层，依赖方向单向朝下。</p>
+						<table>
+							<caption>
+								四层的职责与允许的依赖
+							</caption>
+							<thead>
+								<tr>
+									<th>层</th>
+									<th>内容</th>
+									<th>允许依赖</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr>
+									<td>核心层</td>
+									<td>服务、状态、事件</td>
+									<td><code>protocol</code>、<code>di</code>、<code>extension-types</code></td>
+								</tr>
+								<tr>
+									<td>组装层</td>
+									<td>容器装配</td>
+									<td><code>core</code>、<code>extensions</code>、<code>window</code></td>
+								</tr>
+								<tr>
+									<td>传输层</td>
+									<td>请求注册表与适配器</td>
+									<td><code>protocol</code></td>
+								</tr>
+								<tr>
+									<td>表现层</td>
+									<td>界面、扩展的窗口部件</td>
+									<td>以上全部</td>
+								</tr>
+							</tbody>
+						</table>
+
+						<h3 id="layer-core">3.1 核心层</h3>
+						<p>
+							服务由 token 标识，容器负责构建：扩展声明自己需要哪些服务，构造函数上的装饰器负责解析，容器是唯一的全局。核心只导出服务与类型，不导出模块级单例 ——
+							单例一旦成立，初始化顺序就变成隐式约定。
+						</p>
+
+						<h3 id="layer-boot">3.2 组装层</h3>
+						<p>
+							全仓只有一处做装配：<code>createBackend</code> 建核心容器，<code>createFrontEnd</code>
+							建窗口容器。其余包只导出、不组装。「谁和谁被装在一起」是宿主的问题，不是核心的问题。
+						</p>
+
+						<h3 id="layer-edge">3.3 传输层</h3>
+						<p>
+							一份请求注册表把方法名映射成一次服务调用，一个传输端口负责把请求送出去、把事件收回来。今天的实现是 Electron
+							IPC：渲染进程发起请求，主进程返回值，事件走单向广播。适配器是唯一知道通道名的地方。
+						</p>
+
+						<h3 id="layer-ui">3.4 表现层</h3>
+						<p>
+							渲染进程从应用自定义协议加载，经 preload 桥与主进程通信，<code>contextIsolation</code> 与
+							<code>sandbox</code> 打开。界面里的每一项功能都来自扩展的声明，外壳不持有扩展代码，也不维护扩展清单。
+						</p>
+						<p>四层里只有传输层是可替换的。换一次传输，前三层的代码不动。</p>
+
+						<p class="kicker" id="ext">04 · 扩展点</p>
+						<h2>能力的注入方式</h2>
+						<p>
+							内核不自带功能菜单。功能由扩展声明自己在窗口里的位置：清单写清
+							id、类型与入口模块，宿主读清单、把入口当模块导入，部件只拿到自己那一份数据。跨进程的扩展由子进程承载，宿主给它的是一份动词清单 —— 注册工具、注册动作、读取设置 ——
+							而不是服务句柄。
+						</p>
+						<ol>
+							<li>声明式注册：扩展说的是「我在哪出现」，不是「核心在哪分支」。</li>
+							<li>容器装配：扩展声明的服务在启动前注册进容器，生命周期归容器。</li>
+							<li>进程隔离：外部安装的扩展运行在子进程，宿主只经协议契约与它来往。</li>
+						</ol>
+						<p>核心的边界因此不是「功能多不多」，而是「能不能被扩展补上」。这一点另有专文，见 Notes · 03《功能都长在扩展上》。</p>
+
+						<p class="kicker" id="acp">05 · 接入</p>
+						<h2>ACP 接入</h2>
+
+						<h3 id="acp-what">5.1 协议定位</h3>
+						<p>
+							ACP（Agent Client Protocol）是客户端与 agent 之间的会话协议，走 JSON-RPC，承载在标准输入输出上。它把角色切成两半：客户端持有界面与用户，agent
+							持有会话与执行。方法面很窄：
+						</p>
+						<ul>
+							<li><code>initialize</code>：交换版本与能力。</li>
+							<li>
+								<code>session/new</code
+								>、<code>session/load</code>、<code>session/fork</code>、<code>session/list</code>、<code>session/close</code>、<code>session/delete</code>：会话的建立、恢复、派生与管理。
+							</li>
+							<li><code>session/prompt</code>：推进一轮；<code>session/cancel</code>：中断。</li>
+							<li><code>session/set_mode</code>、<code>session/set_config_option</code>：调整档位与选项。</li>
+						</ul>
+						<p>窄是设计的一部分：协议只规定会话级的动作，不规定界面长什么样，也不规定 agent 有哪些工具。</p>
+
+						<h3 id="acp-how">5.2 实现方式</h3>
+						<p>
+							接入层是一个新的适配器，不是第二个核心。入口导入组装层的
+							<code>createBackend</code>，用与桌面完全相同的容器启动核心；适配器把协议请求映射成对既有服务的调用，把核心事件翻译成通知。协议层只负责编解码、错误码与请求响应的配对。
+						</p>
+						<p>所以「换一个宿主」在这里是一次适配，不是一次重写：会话存储、工具执行、权限策略、模型调用都只有一份实现。</p>
+
+						<h3 id="acp-life">5.3 会话生命周期</h3>
+						<ol>
+							<li><code>new</code>：以客户端给出的工作目录建立会话，返回会话 id。</li>
+							<li>
+								<code>load</code>：把已存在的会话接回内存。客户端打开历史会话时通常先 <code>load</code> 再
+								<code>prompt</code>，因此加载过的会话必须按「正在使用」对待，而不是当作只读投影。
+							</li>
+							<li><code>fork</code>：复制出一个新会话，此后两者独立演进。</li>
+							<li><code>close</code> 与 <code>delete</code>：释放句柄，或移除磁盘数据。移除前要尊重会话自身的锁定状态。</li>
+						</ol>
+						<p>所有权写在会话目录里：谁在驱动、由谁负责终态。带来源标记的会话，其审批与决策归驱动方客户端，本地界面不越权代答。</p>
+
+						<h3 id="acp-caps">5.4 能力协商</h3>
+						<p><code>initialize</code> 的返回值是一份声明集合，客户端据此决定能做什么。形状分三段：</p>
+						<table>
+							<caption>
+								声明集合的三段
+							</caption>
+							<thead>
+								<tr>
+									<th>段</th>
+									<th>内容</th>
+									<th>回答的问题</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr>
+									<td><code>agentCapabilities</code></td>
+									<td>会话恢复、输入形态（图片、内嵌上下文）</td>
+									<td>会话能不能接回来，输入能带什么</td>
+								</tr>
+								<tr>
+									<td><code>sessionCapabilities</code></td>
+									<td>列出、删除、关闭、派生</td>
+									<td>客户端能对会话做哪些管理动作</td>
+								</tr>
+								<tr>
+									<td><code>_meta.&lt;vendor&gt;</code></td>
+									<td>任务、压缩、活动状态、用量，逐项带版本</td>
+									<td>标准没有覆盖的那部分</td>
+								</tr>
+							</tbody>
+						</table>
+						<p>
+							规则是「声明即承诺」：客户端只依据声明行事，未声明的能力不该被试探；反过来说，一个键就是一条对客户端的承诺，声明了没实现，比不声明更糟。版本号属于协商内容，不是装饰。
+						</p>
+
+						<h3 id="acp-perm">5.5 权限模型</h3>
+						<p>
+							工具越出工作区或触到敏感文件时，核心不自行放行，而是向客户端发起一次审批，选项固定为「本次允许、本会话始终允许、拒绝」。批准结果改变的是策略，不是校验：路径规范化、符号链接解析、只读边界仍然由核心完成。
+						</p>
+						<p>结果有两种落点 —— 一次调用，或写入会话级档位供后续调用沿用。后者要持久化，并且必须在重连之后依然生效，否则「始终允许」只是一次性的措辞。</p>
+
+						<h3 id="acp-events">5.6 事件语义</h3>
+						<p>内容流由标准通知承载：消息块、工具调用与结果、计划。状态类信号（活动状态、用量）在标准里没有对应位置，走厂商扩展。</p>
+						<p>
+							这里有一条容易被忽略的约束：状态类事件必须报已确定的状态，而不是正在切换中的值。一次运行结束的通知可能早于内部标志位归位；若此时按「当前是否在运行」现算，客户端会收到「仍在运行」，并一直停在这个状态。适配层知道语义，就应该由它给出状态，而不是让核心的瞬时值决定。
+						</p>
+						<p class="statement">契约规定形状，适配层负责时机。</p>
+
+						<p class="kicker" id="why-acp">06 · 必要性</p>
+						<h2>协议化接入的收益与代价</h2>
+
+						<h3 id="gain">6.1 收益</h3>
+						<ol>
+							<li>一个协议对应多个宿主。编辑器、IDE 插件、命令行工具接入同一份实现，不必为每个宿主写一份私有 IPC。</li>
+							<li>复用客户端已有的能力。审批、会话列表、差异展示、终端联动由客户端提供，agent 不重复实现界面。</li>
+							<li>边界清晰。协议是唯一契约，排错只需要看消息流。</li>
+						</ol>
+
+						<h3 id="split">6.2 标准与扩展的分工</h3>
+						<p>
+							判断依据是「标准里有没有这个能力」，不是「客户端认不认」。会话与内容流走标准；标准没有的部分才放进
+							<code>_meta</code>，并且逐项标版本。这条顺序不能反：先用扩展补齐，再回头发现标准已有对应能力，等于引入一份协议内的私有方言。
+						</p>
+
+						<h3 id="cost">6.3 代价</h3>
+						<ol>
+							<li>协商状态要自己维护。客户端可能不回、可能重连，状态过期后需要重新对齐。</li>
+							<li>往返开销。审批与会话管理都是请求-响应，体感取决于客户端。</li>
+							<li>可观测性下降。协议没有回执，丢一条通知不会产生错误码。日志与探针因此是必需品。</li>
+						</ol>
+
+						<h3 id="when">6.4 适用边界</h3>
+						<p>单宿主、同进程、不需要外部客户端时，直接调用服务比引入协议省事。一旦出现第二个宿主，或者宿主不由自己维护，协议化的总成本就低于维护两份适配。</p>
+
+						<p class="kicker" id="end">07 · 结论</p>
+						<h2>内核中性</h2>
+						<p>
+							回到开头那条判断：界面不是主体。今天有两个适配器 —— 桌面渲染进程的 IPC，与编辑器的 ACP —— 它们调用同一个
+							<code>createBackend</code>，共享同一份会话、工具与权限实现。第三个宿主出现时，需要新增的仍然只是一层适配。
+						</p>
+						<p>内核中性不是「抽象得好看」，而是一条可验证的约束：换掉接入层，核心代码一行不改。协议化的价值也只在一条约束成立时才成立 —— 否则多一个协议，就是多一份实现。</p>
+
+						<p class="note-end">
+							<span>Notes · 04 · ACP</span>
+							<span><a href="extensions.html">← Notes · 03 · Extensions</a> · <a href="../index.html">返回 Milu</a></span>
+						</p>
+					</article>
+				</div>
+			</div>
+		</main>
+		<footer class="foot">
+			<div class="wrap">
+				<div class="foot-grid">
+					<div>
+						<a class="foot-brand" href="../index.html" aria-label="Milu — 返回首页">
+							<img src="../pixel_milu.png" alt="" width="22" height="22" />
+							<svg class="wordmark" viewBox="0 0 210 72" role="img" aria-label="Milu">
+								<use href="#w-mark" />
+							</svg>
+						</a>
+						<p class="foot-tag">一个留在你机器上的 agent harness。</p>
+					</div>
+					<nav class="foot-links" aria-label="Elsewhere">
+						<a href="https://github.com/mortalYoung/Milu" target="_blank" rel="noreferrer">GitHub</a>
+						<a href="https://github.com/mortalYoung/Milu/issues" target="_blank" rel="noreferrer">Issues</a>
+						<a href="index.html">设计笔记</a>
+					</nav>
+				</div>
+				<p class="foot-note">
+					<span>Built on pi, Electron and Shiki. © 2026 Milu.</span>
+					<span>No account · no server · no telemetry</span>
+				</p>
+			</div>
+		</footer>
+
+		<a class="to-top" href="#top" aria-label="回到顶部" title="回到顶部">
+			<svg class="ico">
+				<use href="#i-arrow-up" />
+			</svg>
+		</a>
+
+		<script type="module" src="../notes.js"></script>
+	</body>
+</html>
