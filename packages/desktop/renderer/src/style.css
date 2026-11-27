@@ -1898,6 +1898,8 @@ body.pane-dragging {
 
 .msg-escalation-cmd {
 	margin: 0 0 4px;
+	max-height: 132px;
+	overflow-y: auto;
 	font-family: inherit;
 	font-size: 12px;
 	line-height: 1.5;
@@ -1915,6 +1917,8 @@ body.pane-dragging {
 }
 
 .msg-escalation-just {
+	max-height: 48px;
+	overflow-y: auto;
 	color: color-mix(in srgb, var(--muted) 80%, transparent);
 }
 
